@@ -2,7 +2,7 @@ export type ToolHand='left'|'right';
 export type ControllerRole='tool'|'support'|'unassigned';
 /** Semantic role bindings. Hardware parsing and application commands remain separate. */
 export const FUTURE_XR_BINDINGS=Object.freeze({trigger:'sculpt',grip:'workspace-or-layer-grab',thumbstick:'brush-or-shape-size'} as const);
-export const PLANNED_XR_ACTIONS=Object.freeze({tool:Object.freeze({trigger:'sculpt-stamp-apply',grip:'grab-selected-layer',thumbstick:'brush-shape-size',face:'tools-menus'}),support:Object.freeze({grip:'grab-workspace',thumbstick:'four-direction-shortcuts',face:'tools-menus'}),bothGrips:'two-hand-manipulation'} as const);
+export const PLANNED_XR_ACTIONS=Object.freeze({tool:Object.freeze({trigger:'sculpt-stamp-apply',grip:'grab-selected-layer',thumbstick:'brush-shape-size',face:'tools-menus'}),support:Object.freeze({trigger:'hold-alternate-tool',grip:'grab-workspace',thumbstick:'four-direction-shortcuts',face:'tools-menus'}),bothGrips:'two-hand-manipulation'} as const);
 export class XRControllerRoles {
  dominant:ToolHand='right';
  setDominant(hand:unknown):void{if(hand!=='left'&&hand!=='right')throw new Error('Tool hand must be left or right.');this.dominant=hand;}

@@ -59,7 +59,11 @@ export class XRFrameStats {
  private readonly intervals=new Float64Array(120);private count=0;private head=0;private sum=0;
  frames=0;cpuMs=0;latestMs=0;spikes=0;
  reset():void{this.last=null;this.count=this.head=this.sum=0;this.frames=0;this.cpuMs=this.latestMs=this.spikes=0;}
- frame(time:number,cpuMs=this.cpuMs):void{if(!Number.isFinite(time))return;if(this.last!==null){const interval=time-this.last;if(interval>0&&interval<1000){const baseline=this.averageMs;if(this.count>=6&&interval>Math.max(baseline*2,baseline+8))this.spikes++;this.latestMs=interval;if(this.count===120)this.sum-=this.intervals[this.head];else this.count++;this.intervals[this.head]=interval;this.sum+=interval;this.head=(this.head+1)%120;}}this.last=time;this.frames++;this.cpuMs=cpuMs;}
+ frame(time:number,cpuMs=this.cpuMs):void{if(!Number.isFinite(time)||this.last!==null&&time<=this.last)return;if(this.last!==null){const interval=time-this.last;if(interval>0){const baseline=this.averageMs;if(this.count>=6&&interval>Math.max(baseline*2,baseline+8))this.spikes++;this.latestMs=interval;if(this.count===120)this.sum-=this.intervals[this.head];else this.count++;this.intervals[this.head]=interval;this.sum+=interval;this.head=(this.head+1)%120;}}this.last=time;this.frames++;this.cpuMs=cpuMs;}
+ pause():void{this.last=null;}
+ get sampleCount():number{return this.count;}
+ get medianMs():number{const a=this.intervals.slice(0,this.count).sort();return this.count?a[Math.ceil(this.count*.5)-1]:0;}
+ get p99Ms():number|null{const a=this.intervals.slice(0,this.count).sort();return this.count>=100?a[Math.ceil(this.count*.99)-1]:null;}
  get averageMs():number{return this.count?this.sum/this.count:0;}
  get fps():number{return this.averageMs?1000/this.averageMs:0;}
  get maxMs():number{let max=0;for(let i=0;i<this.count;i++)max=Math.max(max,this.intervals[i]);return max;}

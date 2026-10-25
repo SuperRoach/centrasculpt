@@ -74,6 +74,7 @@ export class IncrementalMesher {
     }
     this.invalidate();
   }
+  get pendingChunks():number{return this.dirty.size;}
   invalidate(bounds?: Bounds | null): void {
     if (bounds === null) return;
     if (!bounds) {this.chunks.forEach((_,id)=>this.dirty.add(id));return;}

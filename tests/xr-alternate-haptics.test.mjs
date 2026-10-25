@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {Group,Matrix4} from 'three';
 import {EditorToolState} from '../work/test-build/editor-tool-state.mjs';
 import {XRAlternateTool} from '../work/test-build/xr-alternate-tool.mjs';
+import {XRControllers} from '../work/test-build/xr-controllers.mjs';
+import {XRControllerRoles} from '../work/test-build/xr-controller-roles.mjs';
 import {XRHaptics} from '../work/test-build/xr-haptics.mjs';
 import {XRClayStroke} from '../work/test-build/xr-clay-stroke.mjs';
 import {IndependentLayers} from '../work/test-build/independent-layers.mjs';
@@ -23,3 +25,18 @@ test('configurable Off/Clay; matching primary is no-op, connection changes need 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 test('haptic strengths/durations subtle; shared cooldown, pending gate and disable',async()=>{const h=new XRHaptics(),calls=[],state={connected:true,tracked:true,source:{gamepad:{hapticActuators:[{pulse:(...v)=>{calls.push(v);return true;}}]}}};assert(h.pulse(state,'tool',0));assert(!h.pulse(state,'stamp',100));await tick();assert(!h.pulse(state,'history',70));assert(h.pulse(state,'stroke-start',80));await tick();h.enabled=false;assert(!h.pulse(state,'grab',200));assert.equal(calls.length,2);for(const [v,d] of calls){assert(v<=.25);assert(d<=28);}});
 test('haptics tolerate absent, false, throwing/rejected actuators and lost tracking',async()=>{const h=new XRHaptics();for(const pulse of [undefined,()=>false,()=>{throw Error('unsupported');},()=>Promise.reject(Error('unsupported'))]){const state={connected:true,tracked:true,source:{gamepad:{hapticActuators:[{pulse}]}}};assert.doesNotThrow(()=>h.pulse(state,'selection',0));await tick();state.tracked=false;assert.equal(h.pulse(state,'grab',100),false);}assert.equal(h.pulse(undefined,'tool'),false);});
+
+// Exercise the actual polling bridge with reversed connection slots and roles.
+
+for(const dominant of ['left','right'])for(const interruption of ['visibility','disconnect','role','tracking','grip','stop'])test(`bridge ${dominant} Tool / reversed slots restores on ${interruption}`,()=>{
+ const f=fixture(),roles=new XRControllerRoles();roles.setDominant(dominant);const rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group();const session=new EventTarget();session.visibilityState='visible';const source=hand=>({handedness:hand,profiles:['meta-quest-touch-plus'],targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping:'xr-standard',axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false}))}}),support=source(roles.support),tool=source(roles.dominant);const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{alternate:f.alternate,stroke:f.stroke,toolMode:()=>f.tools.active,layers:()=>f.layers,workspace:new Group()});const down=(src,index,value)=>Object.assign(src.gamepad.buttons[index],{value,pressed:!!value});
+ try{rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});bridge.start(session);bridge.update(0);down(support,0,1);bridge.update(16);assert.equal(f.tools.active,'smooth');
+ if(interruption==='visibility'){session.visibilityState='hidden';session.dispatchEvent(new Event('visibilitychange'));}
+ if(interruption==='disconnect')rays[1].dispatchEvent({type:'disconnected'});
+ if(interruption==='role')bridge.setDominant(roles.support);
+ if(interruption==='tracking')rays[1].visible=false;
+ if(interruption==='grip')down(support,1,1);
+ if(interruption==='stop')bridge.stop();
+ bridge.update(32);assert.equal(f.tools.active,'clay');assert.equal(f.tools.port.settings().mode,'subtract');assert.equal(f.layers.undoCount,0);assert(!f.stroke.active);
+ }finally{bridge.dispose();f.dispose();}
+});

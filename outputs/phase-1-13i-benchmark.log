@@ -1,0 +1,18 @@
+{
+  scope: 'Warm Node alternate router plus throttled haptic request; 100k frames per batch, stub settings port. Excludes UI selection side effects, SDF/meshing, GPU/XR and physical actuators. Pending promise suppresses batch bursts.',
+  batchesMsPerFrame: [
+    0.00003329584000000011,
+    0.000033185419999999794,
+    0.00003584124999999972,
+    0.000032959580000000414,
+    0.00003551459000000022,
+    0.000032887080000000424,
+    0.00003232416999999998,
+    0.00003232624999999984,
+    0.000031266669999999974,
+    0.000031494999999999894
+  ],
+  medianMsPerFrame: 0.00003292333000000042,
+  maxBatchMsPerFrame: 0.00003584124999999972,
+  actuatorCalls: 12
+}

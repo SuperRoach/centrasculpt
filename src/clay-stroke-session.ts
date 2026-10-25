@@ -14,6 +14,7 @@ export class ClayStrokeSession {
  constructor(private readonly layers:()=>IndependentLayers,private readonly changed:()=>void=()=>{}){}
  get localRadius():number{return this.radius;}
  get active():boolean{return this.phase!=='idle';}
+ get replayRemaining():number{return this.phase==='committing'?Math.max(0,this.queue.length-this.cursor):0;}
  get buffered():boolean{return this.steady>0||this.straight;}
  begin(settings:SculptSettings,controls:ClayPathControls,time:number,freeSpace=false):void{
   if(this.active)throw new Error('Finish the current Clay stroke.');
@@ -27,12 +28,12 @@ export class ClayStrokeSession {
   const dt=(time-this.last)/1000;if(![point.x,point.y,point.z,time].every(Number.isFinite)||dt<0||dt>.15||this.raw.length>=8192)throw new Error('Clay tracking/sample budget interrupted.');
   const p={...point,t:(time-this.started)/1000};this.raw.push(p);this.last=time;
   if(!this.buffered)this.layers().applyStrokeLocal(point,this.radius,this.settings.mode,this.settings.strength,dt,this.settings.hardness,this.freeSpace);
-  if(this.buffered&&time-this.previewTime>=33){this.preview=filterClayPath(this.raw,this.steady,this.radius,this.straight);this.previewTime=time;}
+  if(this.buffered&&time-this.previewTime>=33){const start=this.layers().metrics.enabled?performance.now():0;this.preview=filterClayPath(this.raw,this.steady,this.radius,this.straight);if(this.layers().metrics.enabled)this.layers().metrics.record('path',performance.now()-start);this.previewTime=time;}
  }
  end():void{
   if(this.phase!=='drawing')return;if(!this.valid())throw new Error('Clay target changed.');
   if(!this.buffered){this.preview=this.raw;this.layers().finishStroke();this.phase='idle';this.changed();return;}
-  this.preview=filterClayPath(this.raw,this.steady,this.radius,this.straight);this.queue=clayReplay(this.preview);this.phase='committing';
+  const start=this.layers().metrics.enabled?performance.now():0;this.preview=filterClayPath(this.raw,this.steady,this.radius,this.straight);this.queue=clayReplay(this.preview);if(this.layers().metrics.enabled)this.layers().metrics.record('path',performance.now()-start);this.phase='committing';
  }
  pump(budgetMs=4):boolean{
   if(this.phase!=='committing')return false;if(!this.valid())throw new Error('Clay target changed during replay.');

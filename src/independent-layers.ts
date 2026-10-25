@@ -1,3 +1,4 @@
+import {SculptMetrics} from './sculpt-metrics';
 import {applyRenderStyle} from './render-style';
 import {prepareStamp} from './shape-stamp';
 import { Group, MeshStandardMaterial } from 'three';
@@ -25,6 +26,7 @@ export class LayerRuntime {
   readonly surface: ChunkSurface;
   readonly history: SculptHistory;
   readonly material: MeshStandardMaterial;
+  metrics?:SculptMetrics;
   triangles=0;
   lastMeshMs=0;
   lastChanged=0;
@@ -40,9 +42,10 @@ export class LayerRuntime {
     try{if(!deferMesh)this.rebuild();}catch(error){this.mesher.dispose();this.material.dispose();throw error;}
   }
   rebuild(maxChunks=Infinity): boolean {
+    const measured=!!this.metrics?.enabled,start=measured?performance.now():0;
     const update=this.mesher.rebuildChunks(maxChunks);if(!update)return false;
     this.surface.update(update.updates);this.triangles=update.triangles;
-    this.lastMeshMs=update.stats.milliseconds;this.lastChanged=update.stats.chunks;this.totalChunks=update.stats.totalChunks;return true;
+    this.lastMeshMs=update.stats.milliseconds;this.lastChanged=update.stats.chunks;this.totalChunks=update.stats.totalChunks;if(measured)this.metrics!.record('remesh',performance.now()-start);return true;
   }
   dispose(): void {this.mesher.dispose();this.material.dispose();this.surface.group.clear();}
 }
@@ -52,6 +55,7 @@ type TimelineEntry=BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';la
 
 /** Owns one independent rendering/editing runtime per layer. The derived compositor only reads these independent sources. */
 export class IndependentLayers {
+  readonly metrics=new SculptMetrics();
   readonly group=new Group();
   readonly composite:BooleanComposite;
   readonly neutral=new MeshStandardMaterial({color:'#afbd94',roughness:0.68,metalness:0.03});
@@ -74,6 +78,10 @@ export class IndependentLayers {
     try {for(const layer of project.layerStack.layers)this.install(new LayerRuntime(layer,this.neutral));this.syncPresentation();}
     catch(error){this.dispose();throw error;}
   }
+  /** Lower bound: current source grids+scratch, source geometry and retained payloads.
+   * Excludes pending history Maps, derived CSG, retired Bake, JS/GPU overhead. */
+  get trackedBytes():number{let bytes=0;for(const r of this.runtimes.values()){bytes+=r.volume.resolution**3*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}return bytes;}
+  get pendingChunks():number{let count=0;for(const r of this.runtimes.values())count+=r.mesher.pendingChunks;return count;}
   get active(): LayerRuntime {return this.runtime(this.project.activeLayerId);}
   runtime(id: string): LayerRuntime {const runtime=this.runtimes.get(id);if(!runtime)throw new Error('Layer runtime does not exist.');return runtime;}
   get undoCount(): number {return this.past.length;}
@@ -88,7 +96,7 @@ export class IndependentLayers {
     if(runtime.volume!==runtime.layer.volume)throw new Error('Volume replaced outside the layer resolution command. Keep meshing and history bound to the original layer store.');
     runtime.layer.assertEditable();return runtime;
   }
-  private install(runtime: LayerRuntime): void {this.runtimes.set(runtime.layer.id,runtime);this.group.add(runtime.surface.group);}
+  private install(runtime: LayerRuntime): void {runtime.metrics=this.metrics;this.runtimes.set(runtime.layer.id,runtime);this.group.add(runtime.surface.group);}
   private assertCapacity(additional=0,replacing?:string,extraLayers=0,reactivating?:string): void {
     const layers=this.project.layerStack.layers;
     const held=new Set<LayerRuntime>();for(const entry of this.future)if(entry.kind==='bake'&&!this.runtimes.has(entry.layerId)&&entry.layerId!==reactivating)held.add(entry.runtime);
@@ -115,7 +123,7 @@ export class IndependentLayers {
   beginStroke(): void {
     if(this.transformSession)throw new Error('Finish the transform before sculpting.');
     if(this.strokeLayer)throw new Error('Finish the current stroke first.');
-    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.stroke.reset();
+    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.stroke.reset();this.metrics.beginStroke();
   }
   applyStroke(worldPoint: Point3,radius: number,mode: BrushMode,strength: number,dt: number,hardness: number): Bounds|null {
     if(!this.strokeLayer)return null;const layer=this.runtime(this.strokeLayer).layer;return this.applyStrokeLocal(toLocal(worldPoint,layer.transform),radius/uniformScale(layer.transform),mode,strength,dt,hardness);
@@ -127,18 +135,18 @@ export class IndependentLayers {
     const start=performance.now();
     const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace);
     this.composite.invalidateLayer(runtime.layer,dirty);
-    runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;return dirty;
+    runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;this.metrics.record('brush',runtime.brushMs);return dirty;
   }
   breakStrokePath(): void {this.stroke.reset();}
   finishStroke(): void {
     if(!this.strokeLayer)return;
-    const runtime=this.runtime(this.strokeLayer);this.strokeLayer=null;this.stroke.reset();
+    const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();
     if(runtime.history.commit())this.recordCommit(runtime.layer.id);
-    runtime.rebuild();
+    const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
   cancelStroke():void {
-    if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer);this.strokeLayer=null;this.stroke.reset();
-    const dirty=runtime.history.cancel((index,before,after)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0)));this.composite.invalidateLayer(runtime.layer,dirty);runtime.rebuild();
+    if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();
+    const dirty=runtime.history.cancel((index,before,after)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0)));this.composite.invalidateLayer(runtime.layer,dirty);const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
   private recordCommit(id: string): void {
     this.discardFuture();

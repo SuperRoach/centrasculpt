@@ -1,8 +1,31 @@
 # Development Status — Centra Sculpt / vrappPOC
 
-Last updated: 2026-10-26. **Current phase: 1.13h VR Layer Selection and Transform UX; 404 tests pass. Physical Quest 3 acceptance and timing are pending.** Phase 1.13f and earlier results are recorded below.
+Last updated: 2026-10-26. **Current phase: 1.13i Alternate Brush, Haptics and Input Recovery; 433 tests pass. Physical Quest 3 acceptance and timing are pending.** Phase 1.13f and earlier results are recorded below.
 
-## Phase 1.13h — VR Layer Selection and Transform UX (current)
+## Phase 1.13i — Alternate Brush, Haptics and Input Recovery (current)
+
+### Follow-up — Tool-stick sizing during alternate hold (2026-10-26)
+
+Tool Up/Down now sizes the temporary Clay/Smooth brush while Support trigger holds it. Only the tracked Support trigger is exempted, and only while an alternate brush is active. Tool trigger, active strokes/replay, busy operations, menus/diagnostics and either grip continue to reserve input. Tool changes and interruptions retain neutral-stick rearming. Temporary radius feedback takes priority in the HUD; release restores the original primary radius/settings.
+
+Validation: **433 tests pass, 0 failed/skipped**, production build and `git diff --check` PASS. Three new tests exercise the exemption/remaining guards and both-handed reversed-slot bridge sizing/restoration with native-byte and history isolation. Logs: `outputs/alternate-sizing-{tests,build}.log`. Changed for this follow-up: `src/xr-brush-sizing.ts`, `src/xr-controllers.ts`, `src/xr-experience.ts`, `tests/xr-brush-sizing.test.mjs` and both handover guides. Physical checklist item 9 updated; Quest verification pending. Existing bundle advisory and deferred dynamic SDF bounds remain. No commit, push or merge.
+
+
+Implemented 2026-10-26 from the dirty 1.13h checkout. The user-requested interaction scope takes precedence over the prior performance recommendation; cooperative stamp/remesh scheduling and high-detail picking profiling remain deferred.
+
+- **Alternate:** Support trigger holds Smooth by default for Clay. Tool Options configures Off / Smooth / Clay; Stamp/Transform stay explicit primary modes. Exact prior brush settings and Clay path settings restore on release. Press/release transitions wait through active strokes and buffered replay plus Tool trigger release; no alternate edge cancels or splits the transaction. Temporary-setting edits do not overwrite the saved primary configuration.
+- **Precedence / recovery:** menus/diagnostic targeting/grips reserve input. A blocked hold needs release/repress. Menus restore before explicit tool selection. Existing transaction cancellation and role/visibility/disconnect/session guards restore overrides; Support tracking loss rolls back unfinished work. Four-direction Support shortcuts, realistic models, Clay/Steady/Line, Stamp, transformed independent layers and dual-grip navigation remain. No native schema/storage/kernel/export changes.
+- **Feedback:** active-tool/context card and Support trigger hints; optional desktop diagnostics haptics checkbox. Best-effort per-source pulse for tool selection, successful stamp/history commands, stroke edges, changed selection and grab entry. Intensity .10–.25, 12–28 ms, shared 80 ms cooldown, one pending request, no delayed queue or per-voxel impulses. Unsupported/throwing/rejecting actuators remain silent without affecting commands.
+- **Validation:** TypeScript/Vite build PASS; **430 passed, 0 failed/skipped** (404 prior + 26 new); whitespace check PASS. New tests cover exact restoration/native-byte isolation, live/buffered stroke continuity, configuration, blocked/held guards, both-handed reversed-slot bridge recovery and haptic throttling/failure. Three prior menu/hint expectations updated for intentional added controls. Existing layer/save/export/Boolean/Bake/navigation suites pass. Logs: `outputs/phase-1-13i-{build,tests}.log`. No new browser visual or physical Quest success claim.
+- **Performance / known issues:** warm Node semantic alternate+haptic routing median 0.000033 ms/frame, maximum batch mean 0.000036 ms/frame (100k frames/batch; stub settings port). Excludes UI tool-selection side effects, edits/remesh, GPU/XR and actuator latency. `scripts/benchmark-alternate-haptics.mjs`, `outputs/phase-1-13i-input-benchmark.json`. Existing synchronous stamp/remesh pauses and Vite size advisory persist. Closely spaced cues are intentionally dropped; configuration currently supports brush alternates only and is session state.
+- **Files:** added `src/xr-alternate-tool.ts`, `src/xr-haptics.ts`, `tests/xr-alternate-haptics.test.mjs`, benchmark script/result and [VR_ALTERNATE_HAPTICS.md](VR_ALTERNATE_HAPTICS.md). Updated `editor-tool-state`, `xr-controllers`, `xr-experience`, `xr-actions`, `xr-controller-roles`, compile list, prior menu/workspace tests and this handover. Detailed 16-step physical Quest checklist in the linked guide, pending.
+- **Protection / Git:** incoming source/tests/scripts/docs snapshot `work/checkpoints/before-1-13i.tar.gz`, SHA-256 `6fc0d8b40ca96014157b45e9188499667b95f85d03c08a8b51fa8d31cab949af`. HEAD advanced externally to `5016bd7` during implementation and includes earlier edits from this run; preserved. This agent ran no commit, merge or push command.
+
+**Future Phase 3.1 — Expandable SDF bounds and/or sparse voxel storage remains explicitly deferred for future scheduling**, preserving existing detail without manual resampling. Physical Quest validation and measured cooperative stamp/remesh work remain pending.
+
+---
+
+## Phase 1.13h — VR Layer Selection and Transform UX (previous)
 
 Implemented 2026-10-26. Reused the rendered source meshes, Layers/Options palettes, existing layer metadata transaction and input roles. The user-requested UX phase takes priority over the performance-oriented 1.13h recommendation below; that stamp scheduling work remains deferred to a subsequent phase.
 

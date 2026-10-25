@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Group,Matrix4,Quaternion,Vector3} from 'three';
 import {BRUSH_RADIUS_LIMITS} from '../work/test-build/brush-settings.mjs';
+import {XRAlternateTool} from '../work/test-build/xr-alternate-tool.mjs';
 import {XRBrushSizing} from '../work/test-build/xr-brush-sizing.mjs';
 import {XRBrushPreview} from '../work/test-build/xr-brush-preview.mjs';
 import {XRClayStroke} from '../work/test-build/xr-clay-stroke.mjs';
@@ -81,4 +82,31 @@ test('Support left/right undo/redo semantic mapping is unchanged by Tool sizing'
 test('temporary radius readout works without diagnostic panels, then disappears at idle',()=>{
  const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>({fillRect(){},fillText(t){draws.push(t);}})})};const f=fixture(),shortcuts=new XRSupportShortcuts();let view;
  try{view=new XRShortcutView();view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});f.update(0,-1);view.paint(shortcuts,32,true,false,f.sizing.feedback);assert(view.mesh.visible);assert(draws.some(t=>t.startsWith('Radius ')));for(let i=0;i<60;i++)f.update();view.paint(shortcuts,1200,true,false,f.sizing.feedback);assert.equal(view.mesh.visible,false);}finally{view?.dispose();f.dispose();globalThis.document=original;}
+});
+
+test('alternate sizing exemption only bypasses tracked Support trigger; other reservations rearm at neutral',()=>{
+ const f=fixture(),support={...f.s,role:'support',connectionId:3,buttons:{grip:{pressed:false,rawValue:0},trigger:{pressed:true,rawValue:1}}};let time=0;
+ const step=(alternate=true,enabled=true,busy=false)=>f.sizing.update(f.s,[f.s,support],time+=16,enabled,busy,alternate);
+ try{step(false);f.s.stick.y=-1;step(false);near(f.radius,.22);step();near(f.radius,.22);f.s.stick.y=0;step();f.s.stick.y=-1;step();assert(f.radius>.22);
+ for(const guard of ['tool-trigger','support-grip','tool-grip','menu','stroke','tracking']){const before=f.radius;
+ if(guard==='tool-trigger')f.s.buttons.trigger.rawValue=.5;
+ if(guard==='support-grip')support.buttons.grip.rawValue=.5;
+ if(guard==='tool-grip')f.s.buttons.grip.rawValue=.5;
+ if(guard==='tracking')support.tracked=false;
+ step(true,guard!=='menu',guard==='stroke');near(f.radius,before);
+ f.s.buttons.trigger.rawValue=f.s.buttons.grip.rawValue=support.buttons.grip.rawValue=0;support.tracked=true;
+ step();near(f.radius,before);f.s.stick.y=0;step();f.s.stick.y=-1;step();assert(f.radius>before);
+ }
+ }finally{f.dispose();}
+});
+for(const dominant of ['left','right'])test(`alternate ${dominant} Tool stick sizes temporary brush and restores primary size without edits`,()=>{
+ const f=fixture(),roles=new XRControllerRoles();roles.setDominant(dominant);f.tools.adjust('operation',1);f.tools.path.steady=75;f.tools.path.straightLine=true;const before={...f.settings},native=new Uint8Array(saveSculptProject(f.layers.project)),alternate=new XRAlternateTool(f.tools),rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group();const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{alternate,sizing:f.sizing,toolMode:()=>f.tools.active,layers:()=>f.layers,workspace:new Group()}),tool=source(dominant),support=source(roles.support),session=new EventTarget();session.visibilityState='visible';let time=0;const update=()=>bridge.update(time+=16),axis=y=>{tool.gamepad.axes[3]=y;update();};
+ try{bridge.start(session);rays[1].dispatchEvent({type:'connected',data:tool});rays[0].dispatchEvent({type:'connected',data:support});update();
+ // A stick already deflected on tool change cannot leak into the alternate.
+ axis(-1);Object.assign(support.gamepad.buttons[0],{pressed:true,value:1});const primaryRadius=f.radius;update();assert(alternate.active);near(f.radius,primaryRadius);update();near(f.radius,primaryRadius);
+ axis(0);axis(-1);assert(f.radius>primaryRadius);assert.match(f.sizing.feedback,/Radius/);axis(1);near(f.radius,primaryRadius);axis(-1);const temporary=f.radius;
+ Object.assign(tool.gamepad.buttons[0],{pressed:true,value:1});update();axis(-1);near(f.radius,temporary);Object.assign(tool.gamepad.buttons[0],{pressed:false,value:0});update();near(f.radius,temporary);axis(0);axis(-1);assert(f.radius>temporary);
+ Object.assign(support.gamepad.buttons[0],{pressed:false,value:0});update();assert(!alternate.active);near(f.radius,primaryRadius);assert.equal(f.settings.mode,'subtract');assert.equal(f.settings.strength,before.strength);assert.equal(f.settings.hardness,before.hardness);assert.equal(f.tools.path.steady,75);assert(f.tools.path.straightLine);update();near(f.radius,primaryRadius);axis(0);axis(-1);assert(f.radius>primaryRadius);
+ assert.equal(f.layers.undoCount,0);assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)),native);
+ }finally{bridge.dispose();f.dispose();}
 });

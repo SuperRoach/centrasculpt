@@ -2,8 +2,8 @@ import type {ControllerRole} from './xr-controller-roles';
 import type {XRInteractionState} from './workspace-grab';
 export type HintMode='hidden'|'on-demand'|'always';
 export const CONTROL_HINTS=Object.freeze([
- {role:'support',input:'Trigger',label:'Hold alternate brush · release restores',working:true},
  {role:'support',input:'Grip',label:'Grab Workspace',working:true},
+ {role:'support',input:'Trigger',label:'Hold alternate brush · release restores',working:true},
  {role:'tool',input:'Grip',label:'Layer in Transform / both grips workspace',working:true},
  {role:'tool',input:'Trigger',label:'Clay / stamp / menu selection',working:true},
  {role:'tool',input:'Thumbstick',label:'Up / Down: brush radius / stamp size',working:true},
