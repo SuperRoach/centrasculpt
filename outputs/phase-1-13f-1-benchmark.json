@@ -1,0 +1,35 @@
+{
+  "description": "Node CPU measurements, 90 moving samples, mesh every 3 samples; no GPU/XR timing claim",
+  "results": [
+    {
+      "resolution": 64,
+      "gridAndScratchMiB": 2,
+      "brushMedianMs": 0.024917000000002076,
+      "brushP95Ms": 0.1349999999999909,
+      "brushMaxMs": 0.46870800000000656,
+      "meshMedianMs": 4.180292000000009,
+      "meshP95Ms": 6.931750000000008,
+      "meshMaxMs": 8.069625000000002,
+      "finishMs": 5.253332999999998,
+      "emptySmoothMs": 0.01933375000000012,
+      "rebuiltChunks": 130,
+      "totalChunks": 64,
+      "triangles": 6672
+    },
+    {
+      "resolution": 128,
+      "gridAndScratchMiB": 16,
+      "brushMedianMs": 0.11787500000002638,
+      "brushP95Ms": 0.19974999999999454,
+      "brushMaxMs": 0.9365829999999846,
+      "meshMedianMs": 8.20595800000001,
+      "meshP95Ms": 10.461958999999979,
+      "meshMaxMs": 13.564583999999968,
+      "finishMs": 12.887500000000045,
+      "emptySmoothMs": 0.007902090000000044,
+      "rebuiltChunks": 236,
+      "totalChunks": 512,
+      "triangles": 27208
+    }
+  ]
+}

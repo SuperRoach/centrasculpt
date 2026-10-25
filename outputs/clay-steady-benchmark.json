@@ -1,0 +1,45 @@
+{
+  "scope": "Synthetic Node trajectory filter and 64-cubed source replay. Excludes XR input, GPU, rendering/canvas uploads and headset latency. Pump wall time includes the final synchronous mesh rebuild.",
+  "filters": {
+    "zero": {
+      "medianMs": 0.005084000000010747,
+      "maxMs": 2.146582999999964,
+      "inputSamples": 181,
+      "outputSamples": 181
+    },
+    "high": {
+      "medianMs": 0.039459000000022115,
+      "maxMs": 0.05120799999997416,
+      "inputSamples": 181,
+      "outputSamples": 184
+    },
+    "highLong": {
+      "medianMs": 1.5313750000000255,
+      "maxMs": 3.2937919999999963,
+      "inputSamples": 8101,
+      "outputSamples": 8200
+    }
+  },
+  "jitter": {
+    "rawRms": 0.01269271335750125,
+    "steady35Rms": 0.009674001118628019,
+    "steady100Rms": 0.0026341621665603152
+  },
+  "replay64": {
+    "releasePreparationMs": 0.13383300000003828,
+    "pumpFrames": 6,
+    "totalPumpMs": 34.255167000000085,
+    "maxPumpMs": 22.116292000000044,
+    "nominalPostReleaseFramesAt90HzMs": 77.77777777777777,
+    "undoCount": 1
+  },
+  "policy": {
+    "previewIntervalMs": 33,
+    "buffered": "Steady >0 or Straight Line: whole path retained until release",
+    "pumpBudgetMs": 4,
+    "maxDabsPerPump": 64,
+    "nonPreemptible": "A brush dab and final mesh rebuild can exceed the cooperative budget.",
+    "maxRawSamples": 8192,
+    "maxSpatialSamples": 16383
+  }
+}

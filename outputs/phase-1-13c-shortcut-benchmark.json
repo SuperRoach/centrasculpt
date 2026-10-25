@@ -1,0 +1,17 @@
+{
+  "scope": "Warm Node semantic router only; idle/held command/menu excursions. Excludes rendering, canvas, input polling, real history/meshing, GPU and headset.",
+  "framesPerBatch": 100000,
+  "batchesMsPerFrame": [
+    0.000025887920000000123,
+    0.000014880829999999606,
+    0.000014960829999999988,
+    0.00001781582999999955,
+    0.000017669589999999858,
+    0.000017967500000000315,
+    0.000017394580000000132,
+    0.00002130125000000021,
+    0.000014102499999999623,
+    0.000014163749999999595
+  ],
+  "medianMsPerFrame": 0.000017532084999999993
+}

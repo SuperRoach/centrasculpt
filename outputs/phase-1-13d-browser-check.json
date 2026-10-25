@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-25",
+  "server": "http://localhost:5173/",
+  "emulatorUrl": "http://localhost:5173/?xrEmulate=quest3",
+  "desktopChecks": {
+    "startup": true,
+    "numericTransformOneHistoryAction": true,
+    "undo": "0 undo / 1 redo",
+    "redo": "1 undo / 0 redo",
+    "smoothSelection": true,
+    "lockedLayerDisablesTransforms": true
+  },
+  "emulatedXRChecks": {
+    "enter": "presenting",
+    "exit": "ready",
+    "reenter": "presenting",
+    "secondExit": "ready",
+    "desktopSaveEnabledAfterExit": true,
+    "stereoGrayBackground": true
+  },
+  "applicationConsoleErrors": [],
+  "developmentWarnings": [
+    "Multiple instances of Three.js being imported",
+    "Could not find menu_pressed_min in the model"
+  ],
+  "screenshot": "outputs/phase-1-13d-browser-stereo.jpg",
+  "limitations": [
+    "No live controller-driven menu interaction exercised in emulator",
+    "Physical Quest 3 interactive-menu verification pending"
+  ],
+  "sourceChanges": "None; documentation and browser evidence only."
+}

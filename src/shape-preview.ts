@@ -89,7 +89,7 @@ export class ShapeGhost implements ShapePreviewPort {
   private kind:ShapeKind|null=null;
   private key='';
   stats={updates:0,totalMs:0,lastMs:0,geometryBuilds:0};
-  constructor(private readonly stack:()=>LayerStack){this.model=new ShapePreviewModel(stack().activeLayerId);this.group.name='Shape Ghost · not project geometry';this.group.userData.previewOnly=true;this.group.matrixAutoUpdate=false;this.pose.matrixAutoUpdate=false;this.group.add(this.pose);this.group.visible=false;}
+  constructor(private readonly stack:()=>LayerStack,model?:ShapePreviewModel){this.model=model??new ShapePreviewModel(stack().activeLayerId);this.group.name='Shape Ghost · not project geometry';this.group.userData.previewOnly=true;this.group.matrixAutoUpdate=false;this.pose.matrixAutoUpdate=false;this.group.add(this.pose);this.group.visible=false;}
   preview(definition:Readonly<ShapeDefinition>):void {this.model.set(definition,this.stack());this.model.setEnabled(true,this.stack());this.sync();}
   clear():void {this.model.setEnabled(false,this.stack());this.sync();}
   sync(busy=false):boolean {
@@ -105,6 +105,12 @@ export class ShapeGhost implements ShapePreviewPort {
       this.solidMaterial.color.set(d.operation==='add'?'#38a09a':'#cb624d');this.edgeMaterial.color.set(d.operation==='add'?'#267c78':'#a83f2c');this.edges!.renderOrder=20;this.group.updateWorldMatrix(true,true);
     }
     this.stats.lastMs=performance.now()-start;this.stats.totalMs+=this.stats.lastMs;this.stats.updates++;return true;
+  }
+  /** Bounds warning is presentation only; it never changes a stamp definition. */
+  setWarning(warning:boolean):void {
+    const subtract=this.model.definition.operation==='subtract';
+    this.solidMaterial.color.set(warning?'#e8b174':subtract?'#cb624d':'#38a09a');
+    this.edgeMaterial.color.set(warning?'#ffc66e':subtract?'#a83f2c':'#267c78');
   }
   get cachedShapes():number{return this.cache.size;}
   reset():void {this.model.reset(this.stack().activeLayerId);this.key='';this.sync();}

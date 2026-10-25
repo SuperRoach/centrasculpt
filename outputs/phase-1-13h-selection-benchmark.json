@@ -1,0 +1,47 @@
+{
+  "description": "Node CPU, 33³ sphere layers with overlapping ray hits, 40 warmup + 200 measured updates; cached boxes. Excludes GPU/browser/XR/controller polling. Ray tests use existing meshes without BVH.",
+  "rows": [
+    {
+      "layers": 1,
+      "triangles": 8088,
+      "raycastMedianMs": 0.10070899999999483,
+      "raycastP95Ms": 0.12008400000001984,
+      "highlightMedianMs": 0.0007500000000391083,
+      "highlightP95Ms": 0.0021250000000350155,
+      "totalMedianMs": 0.10225000000002638,
+      "totalP95Ms": 0.12279200000000401,
+      "outlinesOnlyP95Ms": 0.0008750000000077307,
+      "boundsBuilds": 1,
+      "outlineVertices": 24,
+      "undoCount": 0
+    },
+    {
+      "layers": 4,
+      "triangles": 32352,
+      "raycastMedianMs": 0.4355410000000006,
+      "raycastP95Ms": 0.8508339999999635,
+      "highlightMedianMs": 0.0010419999999840002,
+      "highlightP95Ms": 0.009958000000040101,
+      "totalMedianMs": 0.43983300000002146,
+      "totalP95Ms": 0.8647080000000074,
+      "outlinesOnlyP95Ms": 0.0006250000000136424,
+      "boundsBuilds": 2,
+      "outlineVertices": 24,
+      "undoCount": 0
+    },
+    {
+      "layers": 8,
+      "triangles": 64704,
+      "raycastMedianMs": 0.7969160000000102,
+      "raycastP95Ms": 1.359375,
+      "highlightMedianMs": 0.0005830000000059954,
+      "highlightP95Ms": 0.0015409999999747015,
+      "totalMedianMs": 0.7977919999999585,
+      "totalP95Ms": 1.3601249999999254,
+      "outlinesOnlyP95Ms": 0.00029200000005857873,
+      "boundsBuilds": 2,
+      "outlineVertices": 24,
+      "undoCount": 0
+    }
+  ]
+}

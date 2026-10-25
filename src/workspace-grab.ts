@@ -1,7 +1,7 @@
 import {Matrix4,Quaternion,Vector3} from 'three';
 import type {Object3D} from 'three';
 import type {XRControllerState} from './xr-input';
-export type XRInteractionState='idle'|'workspace-grab'|'layer-grab'|'two-hand-grab'|'sculpting';
+export type XRInteractionState='idle'|'workspace-grab'|'layer-grab'|'two-hand-grab'|'sculpting'|'menu';
 /** Navigation only. World-space rigid delta applied to the frozen initial workspace matrix. */
 export class WorkspaceGrab {
  state:XRInteractionState='idle';

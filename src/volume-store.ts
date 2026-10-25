@@ -27,5 +27,5 @@ export interface VolumeStore {
   worldBounds(transform?: VolumeTransform): VolumeBounds;
   normalAt(point: readonly number[]): Vec3;
   reset(record?: VoxelChangeListener): void;
-  brush(center: Point3,radius: number,mode: BrushMode,amount: number,record?: VoxelChangeListener,hardness?: number): Bounds | null;
+  brush(center: Point3,radius: number,mode: BrushMode,amount: number,record?: VoxelChangeListener,hardness?: number, freeSpace?: boolean, strength?: number): Bounds | null;
 }

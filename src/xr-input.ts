@@ -68,7 +68,7 @@ export class XRControllerInput {
     b.justPressed=allowed&&(!was&&b.pressed||!!(slot.presses&bit));b.justReleased=was&&!b.pressed||!!(slot.releases&bit);
    }
    slot.presses=slot.releases=0;
-   const axes=mapping.axes;state.stick.available=!!pad&&!!axes&&Number.isInteger(axes[0])&&Number.isInteger(axes[1])&&axes[0]>=0&&axes[1]>=0&&axes[0]<pad.axes.length&&axes[1]<pad.axes.length;
+   const axes=mapping.axes;state.stick.available=!!pad&&!!axes&&Number.isInteger(axes[0])&&Number.isInteger(axes[1])&&axes[0]>=0&&axes[1]>=0&&axes[0]<pad.axes.length&&axes[1]<pad.axes.length&&Number.isFinite(pad.axes[axes[0]])&&Number.isFinite(pad.axes[axes[1]]);
    if(enabled&&state.stick.available)applyStickDeadZone(state.stick,pad!.axes[axes![0]],pad!.axes[axes![1]],this.options.axisDeadZone);else state.stick.x=state.stick.y=0;
   }
  }

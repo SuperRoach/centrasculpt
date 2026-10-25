@@ -1,3 +1,4 @@
+import {EditorToolState} from './editor-tool-state';
 import {countVisibleMeshes} from './xr-performance';
 import {XRExperience} from './xr-experience';
 import {XRSceneRig} from './xr-scene';
@@ -119,13 +120,13 @@ renderer.domElement.addEventListener('pointermove',event=>{
 function syncViewportTools():void {
   viewportTools?.sync(shapeGhost.model.enabled?'boolean':ui.mode==='smooth'?'smooth':'brush',input.mode,layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked());
 }
-function chooseWorkspace(tool:WorkspaceTool):void {
-  if(loadingProject||ui.modalOpen||xrBlocked())return;stop();
-  shapeLibraryUI.setOpen(tool==='boolean');if(tool!=='boolean')ui.selectBrushTool(tool);transformTools!.setMode('sculpt');
+function chooseWorkspace(tool:WorkspaceTool,fromXR=false):void {
+  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;stop();
+  shapeLibraryUI.setOpen(tool==='boolean',fromXR);if(tool!=='boolean')ui.selectBrushTool(tool);transformTools!.setMode('sculpt');
   syncTransformUI();cursor.visible=false;ui.status(tool==='boolean'?'Boolean shapes · position and click once to stamp':`${tool==='smooth'?'Smooth':'Brush'} tool · ${layers.active.layer.name}`);
 }
-function chooseLayerMode(mode:EditorMode):void {
-  if(loadingProject||ui.modalOpen||xrBlocked())return;stop();shapeLibraryUI.setOpen(false);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.active.layer.name}`);
+function chooseLayerMode(mode:EditorMode,fromXR=false):void {
+  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;stop();shapeLibraryUI.setOpen(false,fromXR);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.active.layer.name}`);
 }
 viewportTools=createViewportTools(ui.viewport,chooseWorkspace,chooseLayerMode);
 syncViewportTools();
@@ -217,7 +218,7 @@ ui.onTransformAction(action=>{
 ui.onLayerAction(async(action,id,value)=>{
   if(loadingProject||xrBlocked())return;stop();
   try {
-    if(action==='new')return await heavy('Creating independent layer…',()=>{layers.create(Number(value));ui.projectMessage('Independent layer created. Overlapping volumes remain separate.');});
+    if(action==='new'||action==='new-empty')return await heavy('Creating independent layer…',()=>{layers.create(Number(value),action==='new-empty');ui.projectMessage('Independent layer created. Overlapping volumes remain separate.');});
     if(action==='duplicate')return await heavy('Copying independent voxel data…',()=>{layers.duplicate(id);ui.projectMessage('Layer duplicated with independent voxel storage and fresh history.');});
     if(action==='delete') {
       const layer=layers.project.layerStack.get(id);
@@ -312,10 +313,15 @@ async function exportGlb(composite:boolean) {
 }
 document.getElementById('export')!.addEventListener('click',()=>void exportGlb(false));
 document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb(true));
+const editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
+ selectTool:tool=>{if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
+ selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
+});
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
+ tools:editorTools,layers:()=>layers,historyChanged:()=>{cursor.visible=false;refresh();},
  sculptureInfo:()=>({activeResolution:`${layers.active.layer.volume.resolution}³`,resolutions:layers.project.layerStack.layers.map(layer=>`${layer.volume.resolution}³`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
  canEnter:()=>!loadingProject&&!ui.modalOpen&&(!booleanPreview||!layers.composite.pending),hidden:[shapeGhost.group,cursor,grid],
  lockDesktop:blocked=>{
@@ -332,10 +338,21 @@ void xrExperience.check();
 function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w=ui.viewport.clientWidth,h=ui.viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();
+function pollComposite(now:number):void{
+  if(booleanPreview&&!loadingProject&&!ui.modalOpen&&now-lastCompositePoll>100){
+    lastCompositePoll=now;
+    const job=layers.composite.tick();
+    if(job)ui.compositeInfo('Preview pending · updates after a short pause. Brushes still target the selected source layer.');
+    if(job)void job.then(changed=>{
+      const s=layers.composite.stats;if(changed){syncView();syncStats();}if(changed&&s)ui.compositeInfo(`${s.resolution}³ · voxel ${s.step.toFixed(4)} world · SAMPLE ${s.samplingMs.toFixed(1)} ms · MESH ${s.meshingMs.toFixed(1)} ms · ${s.chunks}/${s.totalChunks} chunks${s.capped?' · Quality capped; fine detail may be lost.':''}`);
+    }).catch(error=>{ui.compositeInfo(`Preview unavailable: ${message(error)} Sources kept; use Separate Layers.`);ui.projectMessage(message(error),true);});
+  }
+}
 renderer.setAnimationLoop((now,frame)=>{
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
     const cpuStart=performance.now();if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
+    if(!xrExperience!.controllers.grab?.active&&!xrExperience!.controllers.layerGrab?.active)pollComposite(now);
     renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
   }
   xrExperience?.refreshButton();
@@ -354,14 +371,7 @@ renderer.setAnimationLoop((now,frame)=>{
     }else layers.breakStrokePath();
     if(layers.drawing&&now-lastRebuild>=1000/30){runtime.rebuild();syncStats();lastRebuild=performance.now();}
   }else{cursor.visible=false;layers.breakStrokePath();}
-  if(booleanPreview&&!loadingProject&&!ui.modalOpen&&now-lastCompositePoll>100){
-    lastCompositePoll=now;
-    const job=layers.composite.tick();
-    if(job)ui.compositeInfo('Preview pending · updates after a short pause. Brushes still target the selected source layer.');
-    if(job)void job.then(changed=>{
-      const s=layers.composite.stats;if(changed){syncView();syncStats();}if(changed&&s)ui.compositeInfo(`${s.resolution}³ · voxel ${s.step.toFixed(4)} world · SAMPLE ${s.samplingMs.toFixed(1)} ms · MESH ${s.meshingMs.toFixed(1)} ms · ${s.chunks}/${s.totalChunks} chunks${s.capped?' · Quality capped; fine detail may be lost.':''}`);
-    }).catch(error=>{ui.compositeInfo(`Preview unavailable: ${message(error)} Sources kept; use Separate Layers.`);ui.projectMessage(message(error),true);});
-  }
+  pollComposite(now);
   if(ghostRotation){ghostRotation.space=document.querySelector<HTMLSelectElement>('#shape-space')!.value==='world'?'world':'local';ghostRotation.sync();}
   shapeGhost.sync(loadingProject||ui.modalOpen||xrBlocked());shapeLibraryUI.refresh();syncViewportTools();
   renderer.render(scene,camera);

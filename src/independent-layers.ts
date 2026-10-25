@@ -118,10 +118,14 @@ export class IndependentLayers {
     const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.stroke.reset();
   }
   applyStroke(worldPoint: Point3,radius: number,mode: BrushMode,strength: number,dt: number,hardness: number): Bounds|null {
+    if(!this.strokeLayer)return null;const layer=this.runtime(this.strokeLayer).layer;return this.applyStrokeLocal(toLocal(worldPoint,layer.transform),radius/uniformScale(layer.transform),mode,strength,dt,hardness);
+  }
+  /** Trusted trajectory input is already layer-local; workspace presentation never enters source metadata. */
+  applyStrokeLocal(point:Point3,radius:number,mode:BrushMode,strength:number,dt:number,hardness:number,freeSpace=false):Bounds|null {
     if(!this.strokeLayer)return null;
     const runtime=this.editableRuntime(this.strokeLayer);
     const start=performance.now();
-    const dirty=this.stroke.apply(runtime.layer.volume,toLocal(worldPoint,runtime.layer.transform),radius/uniformScale(runtime.layer.transform),mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds));
+    const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace);
     this.composite.invalidateLayer(runtime.layer,dirty);
     runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;return dirty;
   }
@@ -131,6 +135,10 @@ export class IndependentLayers {
     const runtime=this.runtime(this.strokeLayer);this.strokeLayer=null;this.stroke.reset();
     if(runtime.history.commit())this.recordCommit(runtime.layer.id);
     runtime.rebuild();
+  }
+  cancelStroke():void {
+    if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer);this.strokeLayer=null;this.stroke.reset();
+    const dirty=runtime.history.cancel((index,before,after)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0)));this.composite.invalidateLayer(runtime.layer,dirty);runtime.rebuild();
   }
   private recordCommit(id: string): void {
     this.discardFuture();
@@ -186,12 +194,15 @@ export class IndependentLayers {
     this.assertAvailable();this.finishStroke();this.finishTransform();
     const runtime=this.editableRuntime(this.project.activeLayerId),start=performance.now(),patch=prepareStamp(runtime.layer,value);
     if(!patch.indices.length){this.lastStampStats={evaluationMs:patch.evaluationMs,scanned:patch.scanned,evaluated:patch.evaluated,meshingMs:0,totalMs:performance.now()-start,changedVoxels:0,chunks:0,totalChunks:runtime.totalChunks};return false;}
-    runtime.history.begin('shape-stamp');
+    // Allocate the exact history snapshots before source mutation; preparation owns
+    // the patch, so no Map-based stroke recorder is needed for these unique indices.
+    const committed=runtime.history.commitPatch('shape-stamp',patch),hadSurface=runtime.triangles>0;
     for(let i=0;i<patch.indices.length;i++){
-      runtime.history.record(patch.indices[i],patch.before[i],patch.after[i]);runtime.volume.writeVoxel(patch.indices[i],patch.after[i]);
-      runtime.mesher.invalidateSample(patch.indices[i],(patch.before[i]<0)!==(patch.after[i]<0));
+      runtime.volume.writeVoxel(patch.indices[i],patch.after[i]);
+      const signChanged=(patch.before[i]<0)!==(patch.after[i]<0);
+      if(hadSurface||signChanged)runtime.mesher.invalidateSample(patch.indices[i],signChanged);
     }
-    if(runtime.history.commit())this.recordCommit(runtime.layer.id);
+    if(committed)this.recordCommit(runtime.layer.id);
     this.composite.invalidateLayer(runtime.layer,patch.bounds);
     const meshStart=performance.now(),rebuilt=runtime.rebuild();
     this.lastStampStats={evaluationMs:patch.evaluationMs,meshingMs:performance.now()-meshStart,totalMs:performance.now()-start,changedVoxels:patch.indices.length,scanned:patch.scanned,evaluated:patch.evaluated,chunks:rebuilt?runtime.lastChanged:0,totalChunks:runtime.totalChunks};
@@ -205,10 +216,11 @@ export class IndependentLayers {
     const names=new Set(this.project.layerStack.layers.map(l=>l.name));let result=base.slice(0,128),suffix=2;
     while(names.has(result)){const ending=` ${suffix++}`;result=base.slice(0,128-ending.length)+ending;}return result;
   }
-  create(resolution=64): SdfLayer {this.assertAvailable();
+  create(resolution=64,empty=false): SdfLayer {this.assertAvailable();
     this.finishStroke();this.finishTransform();if(![64,128,192].includes(resolution))throw new Error('Choose 64³, 128³ or 192³.');
     this.assertCapacity(resolution**3,undefined,1);
-    const layer=new SdfLayer(new SDFVolume(resolution),{name:this.uniqueName(`Layer ${this.project.layerStack.layers.length+1}`),order:this.project.layerStack.layers.length});
+    const volume=new SDFVolume(resolution,1.6,!empty);if(empty)volume.values.fill(volume.extent*4);
+    const layer=new SdfLayer(volume,{name:this.uniqueName(`Layer ${this.project.layerStack.layers.length+1}`),order:this.project.layerStack.layers.length});
     const runtime=new LayerRuntime(layer,this.neutral);this.project.layerStack.insert(layer);this.install(runtime);this.syncPresentation();return layer;
   }
   duplicate(id: string): SdfLayer {this.assertAvailable();

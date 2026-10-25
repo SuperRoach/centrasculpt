@@ -66,3 +66,16 @@ test('ray-trigger debug controls activate once per tap, swap live roles and togg
 test('frame states and visual geometry are reused across controller polling',()=>{
  const {bridge,rays}=harness(),s=source();try{rays[0].dispatchEvent({type:'connected',data:s});bridge.start(new FakeSession());const state=bridge.input.states[0],buttons=state.buttons,stick=state.stick,geometry=bridge.slots[0].line.geometry;for(let i=0;i<100;i++)bridge.update(i*11);assert.equal(bridge.input.states[0],state);assert.equal(state.buttons,buttons);assert.equal(state.stick,stick);assert.equal(bridge.slots[0].line.geometry,geometry);}finally{bridge.dispose();}
 });
+
+test('automatic grip precedence and both release transitions work with either dominant hand',()=>{
+ for(const hand of ['left','right']){
+ const layers=new IndependentLayers(createBaseProject(new SDFVolume(17),{mode:'add',radius:.3,strength:.5,hardness:.6,camera:{position:[2,2,3],target:[0,0,0]}})),roles=new XRControllerRoles();roles.setDominant(hand);
+ const rays=[new Group(),new Group()],grips=[new Group(),new Group()],workspace=new Group();workspace.add(layers.group);
+ const c=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},new Group(),roles,undefined,()=>{},{toolMode:()=> 'transform',workspace,layers:()=>layers});
+ const session={visibilityState:'visible',addEventListener(){},removeEventListener(){}};c.start(session);
+ const tool=source(hand),support=source(hand==='left'?'right':'left');rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});c.update(0);
+ press(tool,1,1);c.update(16);assert(c.layerGrab.active);assert.equal(c.grab.active,false);grips[0].position.x=.4;c.update(32);assert(Math.abs(layers.active.layer.transform.position[0]-.4)<1e-8);
+ press(support,1,1);c.update(48);assert.equal(c.grab.state,'two-hand-grab');assert.equal(c.layerGrab.active,false);assert.equal(layers.undoCount,1);const layerPose=JSON.stringify(layers.active.layer.transform);grips[1].position.y=.3;c.update(64);assert.equal(c.grab.state,'two-hand-grab');assert.equal(JSON.stringify(layers.active.layer.transform),layerPose);
+ press(tool,1,0);c.update(80);assert.equal(layers.undoCount,1);assert(c.grab.active);press(tool,1,1);c.update(96);assert.equal(c.grab.state,'two-hand-grab');press(support,1,0);c.update(112);assert(c.layerGrab.active);assert.equal(c.grab.active,false);const anchor=JSON.stringify(layers.active.layer.transform);c.update(128);assert(Math.abs(layers.active.layer.transform.position[0]-JSON.parse(anchor).position[0])<1e-10);assert(Math.abs(layers.active.layer.transform.position[1]-JSON.parse(anchor).position[1])<1e-10);grips[0].position.z+=.1;c.update(144);press(tool,1,0);c.update(160);assert.equal(layers.undoCount,2);c.stop();c.dispose();layers.dispose();
+ }
+});

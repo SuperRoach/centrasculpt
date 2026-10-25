@@ -34,7 +34,7 @@ export class XRSessionController {
    session.addEventListener('end',()=>queueMicrotask(()=>this.finish(active)),{once:true});
    this.prepared=true;this.hooks.prepare();await this.manager.setSession(session);
    if(this.session!==session)return;
-   this.state='presenting';this.reason='VR active · viewing only · use headset system controls to exit.';this.hooks.changed();
+   this.state='presenting';this.reason='VR active · Tool Hand edits the selected layer · use headset system controls to exit.';this.hooks.changed();
   }catch(error){
    if(session){try{await session.end();}catch{/* Restore the app even if setup never completed. */}this.finish(session);}
    else{this.state='ready';this.hooks.changed();}

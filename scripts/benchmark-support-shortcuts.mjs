@@ -1,0 +1,10 @@
+import './compile-core.mjs';
+import {performance} from 'node:perf_hooks';
+import {writeFileSync} from 'node:fs';
+import {XRSupportShortcuts} from '../work/test-build/xr-support-shortcuts.mjs';
+const state={connectionId:1,connected:true,role:'support',tracked:true,gripTracked:true,stick:{available:true,x:0,y:0},buttons:{grip:{pressed:false,rawValue:0},trigger:{pressed:false,rawValue:0}}};
+const router=new XRSupportShortcuts(),states=[state];
+const batch=()=>{const start=performance.now();for(let i=0;i<100000;i++){const phase=i%120;state.stick.x=phase<10?0:phase<60?-.85:0;state.stick.y=phase<60?0:phase<110?-.85:0;router.step(state,states,'idle',i*11.11);}return (performance.now()-start)/100000;};
+for(let i=0;i<3;i++)batch();const batches=Array.from({length:10},batch),sorted=[...batches].sort((a,b)=>a-b);
+const report={scope:'Warm Node semantic router only; idle/held command/menu excursions. Excludes rendering, canvas, input polling, real history/meshing, GPU and headset.',framesPerBatch:100000,batchesMsPerFrame:batches,medianMsPerFrame:(sorted[4]+sorted[5])/2};
+writeFileSync('outputs/phase-1-13c-shortcut-benchmark.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));

@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-25",
+  "url": "http://localhost:5173/",
+  "desktop": {
+    "startup": true,
+    "radiusPrecision": "0.220 -> 0.230 with ArrowUp",
+    "smoothSelection": true
+  },
+  "emulator": {
+    "url": "http://localhost:5173/?xrEmulate=quest3",
+    "entry": "presenting",
+    "exit": "ready",
+    "desktopSaveEnabledAfterExit": true,
+    "staticBrushVolumeRendered": true
+  },
+  "applicationConsoleErrors": [],
+  "screenshot": "outputs/phase-1-13f-browser-stereo.jpg",
+  "limitations": [
+    "No live analogue controller sizing exercised in browser",
+    "No physical 1.13f Quest 3 test performed"
+  ]
+}

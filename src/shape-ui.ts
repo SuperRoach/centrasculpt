@@ -23,7 +23,7 @@ export function createShapeLibraryUI(host:HTMLElement,ghost:ShapeGhost,stack:()=
  for(const event of ['pointerdown','pointerup','click'] as const)quick.addEventListener(event,e=>e.stopPropagation());
  const details=host.querySelector<HTMLDetailsElement>('details')!,enabled=host.querySelector<HTMLInputElement>('#show-shape')!,space=host.querySelector<HTMLSelectElement>('#shape-space')!;
  let error='',key='';
- function apply(action:()=>void){if(busy())return;beforeChange();try{ghost.model.sync(stack());action();error='';}catch(e){error=(e as Error).message;}ghost.sync(busy());key='';refresh();afterChange();}
+ function apply(action:()=>void,allowXR=false){if(busy()&&!allowXR)return;beforeChange();try{ghost.model.sync(stack());action();error='';}catch(e){error=(e as Error).message;}ghost.sync(busy());key='';refresh();afterChange();}
  details.addEventListener('toggle',()=>{
   apply(()=>{ghost.model.setEnabled(details.open,stack());});document.body.classList.toggle('shape-library-open',details.open);
   if(window.matchMedia('(max-width:760px)').matches)(details.open?host:document.getElementById('viewport')!).scrollIntoView({block:'start'});
@@ -85,5 +85,5 @@ export function createShapeLibraryUI(host:HTMLElement,ghost:ShapeGhost,stack:()=
   host.querySelector('#shape-error')!.textContent=error;
   host.querySelector('#shape-performance')!.textContent=`Preview update ${ghost.stats.lastMs.toFixed(3)} ms · ${ghost.cachedShapes}/4 cached shapes`;
  }
- refresh();return {refresh,setOpen(open:boolean){apply(()=>{details.open=open;ghost.model.setEnabled(open,stack());});}};
+ refresh();return {refresh,setOpen(open:boolean,allowXR=false){apply(()=>{details.open=open;ghost.model.setEnabled(open,stack());},allowXR);}};
 }

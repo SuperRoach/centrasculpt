@@ -1,0 +1,20 @@
+{
+  "scope": "Warm Node sizing + shared in-memory setter, and brush-preview matrix/material updates. Excludes DOM setters, surface raycast, canvas/GPU/rendering and physical headset input.",
+  "framesPerBatch": 20000,
+  "batches": 10,
+  "idle": {
+    "medianMsPerUpdate": 0.00004093539999999934,
+    "maxBatchMsPerUpdate": 0.00006784999999999855
+  },
+  "adjusting": {
+    "medianMsPerUpdate": 0.00012470207499999902,
+    "maxBatchMsPerUpdate": 0.000172847950000002
+  },
+  "previewMatrices": {
+    "medianMsPerUpdate": 0.00021384167500000046,
+    "maxBatchMsPerUpdate": 0.000265047899999999
+  },
+  "geometryReused": true,
+  "historyEntries": 0,
+  "sourceRemeshPending": false
+}

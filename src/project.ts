@@ -1,3 +1,4 @@
+import {BRUSH_RADIUS_LIMITS} from './brush-settings';
 import {validateProjectDisplay,type ProjectDisplayPreferences} from './display-preferences';
 import { SculptProject, LayerStack, SdfLayer, createBaseProject, validateId, validateName, validateLayerMetadata } from './layers';
 import type { VolumeStore } from './volume-store';
@@ -24,7 +25,7 @@ function triple(value: unknown): [number,number,number] {
 function validateSettings(value: unknown, version = PROJECT_VERSION): ProjectSettings {
   const data=object(value), camera=object(data.camera);
   if (!['add','subtract','smooth'].includes(String(data.mode)) || typeof data.mode !== 'string') throw new Error('Unknown brush mode.');
-  if (typeof data.radius !== 'number' || !Number.isFinite(data.radius) || data.radius < 0.12 || data.radius > 0.5) throw new Error('Brush radius must be between 0.12 and 0.50.');
+  if (typeof data.radius !== 'number' || !Number.isFinite(data.radius) || data.radius < BRUSH_RADIUS_LIMITS.min || data.radius > BRUSH_RADIUS_LIMITS.max) throw new Error('Brush radius must be between 0.12 and 0.50.');
   if (typeof data.strength !== 'number' || !Number.isFinite(data.strength) || data.strength < 0.01 || data.strength > 1) throw new Error('Brush strength must be between 0.01 and 1.');
   const hardness=version===1?0:data.hardness;
   if(typeof hardness!=='number'||!Number.isFinite(hardness)||hardness<0||hardness>1)throw new Error('Brush hardness must be between 0 and 1.');

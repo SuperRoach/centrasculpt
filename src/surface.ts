@@ -5,9 +5,11 @@ import type { ChunkUpdate } from './mesh';
 /** One draw mesh per nonempty chunk. Only updated chunks get new GPU attributes. */
 export class ChunkSurface {
   readonly group = new Group();
+  revision=0;
   private readonly meshes = new Map<number,Mesh>();
   constructor(private readonly material: Material) { this.group.name='SDF Sculpture'; }
   update(updates: ChunkUpdate[]): void {
+    if(updates.length)this.revision++;
     for(const {id,geometry} of updates) {
       let mesh=this.meshes.get(id);
       if(!geometry.getAttribute('position').count) {

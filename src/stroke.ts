@@ -3,12 +3,13 @@ import type { VolumeStore } from './volume-store';
 import type { Bounds, BrushMode, Point3, VoxelChangeListener } from './sdf';
 
 /** Integrates elapsed time into bounded dabs and resamples motion to avoid gaps.
- * A stationary hold continues sculpting; movement divides, rather than multiplies, strength.
+ * Legacy stationary holds continue sculpting; free-space constructive dabs deposit
+ * immediately and repeated holds are idempotent. Both retain distance interpolation.
  */
 export class ClayStroke {
   private previous: Point3 | null = null;
   reset(): void { this.previous = null; }
-  apply(volume: VolumeStore, center: Point3, radius: number, mode: BrushMode, strength: number, elapsedSeconds: number, record?: VoxelChangeListener, hardness = 0, onDirty?: (bounds: Bounds) => void): Bounds | null {
+  apply(volume: VolumeStore, center: Point3, radius: number, mode: BrushMode, strength: number, elapsedSeconds: number, record?: VoxelChangeListener, hardness = 0, onDirty?: (bounds: Bounds) => void, freeSpace = false): Bounds | null {
     if (![center.x,center.y,center.z,radius,strength,elapsedSeconds].every(Number.isFinite) || radius <= 0 || strength <= 0 || elapsedSeconds <= 0) return null;
     const dt = Math.min(elapsedSeconds, 0.1); // Avoid a giant dab after backgrounding the browser.
     const from = this.previous ?? center;
@@ -18,7 +19,7 @@ export class ClayStroke {
     let dirty: Bounds | null = null;
     for (let i=1; i<=steps; i++) {
       const t=i/steps;
-      const changed=volume.brush({x:from.x+(center.x-from.x)*t,y:from.y+(center.y-from.y)*t,z:from.z+(center.z-from.z)*t},radius,mode,amount,record,hardness);
+      const changed=volume.brush({x:from.x+(center.x-from.x)*t,y:from.y+(center.y-from.y)*t,z:from.z+(center.z-from.z)*t},radius,mode,amount,record,hardness,freeSpace,strength);
       dirty=mergeBounds(dirty,changed);if(changed)onDirty?.(changed);
     }
     this.previous = {...center};

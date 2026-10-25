@@ -105,15 +105,27 @@ export class SDFVolume implements VolumeStore {
   }
   /** Compact C1 falloff. Smooth uses a Jacobi pass, never partially updated neighbors.
    * For Smooth, amount is an interpolation coefficient clamped to [0,1].
-   * For Add/Subtract, amount is displacement in world units, clamped for stability.
+   * Legacy Add/Subtract use bounded displacement. Free-space Add/Subtract construct
+   * a radius-sized sphere with strength/hardness controlling interior field depth.
    */
-  brush(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0): Bounds | null {
-    if (![center.x, center.y, center.z, radius, amount, hardness].every(Number.isFinite) || radius <= 0 || amount <= 0) return null;
+  brush(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1): Bounds | null {
+    if (![center.x, center.y, center.z, radius, amount, hardness, strength].every(Number.isFinite) || radius <= 0 || amount <= 0 || (freeSpace && strength <= 0)) return null;
     amount = Math.min(amount, mode === 'smooth' ? 1 : this.step * 0.5);
     const n = this.resolution;
     const lo = (v: number) => Math.max(1, Math.floor((v - radius + this.extent) / this.step));
     const hi = (v: number) => Math.min(n - 2, Math.ceil((v + radius + this.extent) / this.step));
     const bounds: Bounds = { min: [lo(center.x),lo(center.y),lo(center.z)], max: [hi(center.x),hi(center.y),hi(center.z)] };
+    // Empty-space erase/smooth must not churn positive fields, history or meshes.
+    // Include a neighbor halo for Smooth's diffusion kernel.
+    if(freeSpace && mode !== 'add') {
+      let material=false;
+      const halo=mode==='smooth'?1:0;
+      for(let z=Math.max(0,bounds.min[2]-halo);z<=Math.min(n-1,bounds.max[2]+halo)&&!material;z++)
+       for(let y=Math.max(0,bounds.min[1]-halo);y<=Math.min(n-1,bounds.max[1]+halo)&&!material;y++)
+        for(let x=Math.max(0,bounds.min[0]-halo);x<=Math.min(n-1,bounds.max[0]+halo);x++)
+         if(this.values[this.index(x,y,z)]<=0){material=true;break;}
+      if(!material)return null;
+    }
     let changed = false;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++) for (let y = bounds.min[1]; y <= bounds.max[1]; y++) for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
       const i = this.index(x,y,z);
@@ -127,6 +139,12 @@ export class SDFVolume implements VolumeStore {
         if (mode === 'smooth') {
           const average = (this.values[i-1]+this.values[i+1]+this.values[i-n]+this.values[i+n]+this.values[i-n*n]+this.values[i+n*n]) / 6;
           next += (average - next) * amount * falloff;
+        } else if(freeSpace) {
+          // Constructive clay: union/difference with an applicator sphere. Its
+          // zero set is radius-sized even in a large positive (empty) field.
+          // Strength/hardness control interior field depth, not dwell time to seed.
+          const field=(d-1)*radius*Math.max(.001,Math.min(1,strength))*(.25+.75*Math.max(0,Math.min(1,hardness)));
+          next=mode==='add'?Math.min(next,field):Math.max(next,-field);
         } else next += (mode === 'add' ? -1 : 1) * amount * falloff;
       }
       // Bounded fields remain finite even through prolonged repeated strokes.
