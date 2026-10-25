@@ -1,9 +1,11 @@
+import {requireLegacyCubicGrid} from './volume-store';
 import type { VolumeStore } from './volume-store';
 import { SDFVolume } from './sdf';
 export const DEFAULT_RESOLUTION=64;
 export const MAX_RESOLUTION=192;
 /** Trilinear resampling in unchanged world bounds. This changes topology/detail and starts new history. */
 export function resampleVolume(source: VolumeStore, resolution: number): SDFVolume {
+  requireLegacyCubicGrid(source,'Resolution resampling');
   if(!Number.isInteger(resolution)||resolution<3||resolution>MAX_RESOLUTION)throw new Error('Resolution must be an integer from 3 to 192.');
   const target=new SDFVolume(resolution,source.extent),n=source.resolution;
   // Resampling is a whole-volume operation: borrow once, or request one packed region.

@@ -1,3 +1,4 @@
+import {volumeLabel} from './volume-store';
 import {EditorToolState} from './editor-tool-state';
 import {countVisibleMeshes} from './xr-performance';
 import {XRExperience} from './xr-experience';
@@ -69,7 +70,7 @@ function syncStats() {
     const s=layers.composite.stats;ui.meshInfo(s?.triangles??0,s?.resolution??0,true);
     ui.performance(s?`COMPOSITE SAMPLE ${s.samplingMs.toFixed(1)} ms · MESH ${s.meshingMs.toFixed(1)} ms · ${s.chunks}/${s.totalChunks} CHUNKS`:'COMPOSITE PENDING');
   }else{
-    ui.meshInfo(triangles,runtime.layer.volume.resolution);
+    ui.meshInfo(triangles,volumeLabel(runtime.layer.volume));
     ui.performance(`BRUSH ${runtime.brushMs.toFixed(1)} ms (AVG ${(runtime.brushTotal/Math.max(1,runtime.brushFrames)).toFixed(1)}) · MESH ${runtime.lastMeshMs.toFixed(1)} ms · ${runtime.lastChanged}/${runtime.totalChunks} CHUNKS`);
   }
   ui.history(layers.undoCount,layers.redoCount,loadingProject||xrBlocked());
@@ -322,7 +323,7 @@ let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
  tools:editorTools,layers:()=>layers,historyChanged:()=>{cursor.visible=false;refresh();},
- sculptureInfo:()=>({activeResolution:`${layers.active.layer.volume.resolution}³`,resolutions:layers.project.layerStack.layers.map(layer=>`${layer.volume.resolution}³`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
+ sculptureInfo:()=>({activeResolution:volumeLabel(layers.active.layer.volume),resolutions:layers.project.layerStack.layers.map(layer=>`${volumeLabel(layer.volume)}`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
  canEnter:()=>!loadingProject&&!ui.modalOpen&&(!booleanPreview||!layers.composite.pending),hidden:[shapeGhost.group,cursor,grid],
  lockDesktop:blocked=>{
   if(blocked===desktopLocked)return;desktopLocked=blocked;
@@ -366,7 +367,7 @@ renderer.setAnimationLoop((now,frame)=>{
       cursor.material.color.set(ui.mode==='add'?'#435d2c':ui.mode==='subtract'?'#a04b36':'#426ca0');cursor.material.opacity=0.4+ui.strength*0.6;
       if(layers.drawing) {
         try{layers.applyStroke(hit.point,ui.radius,ui.mode,ui.strength,dt,ui.hardness);ui.status(`${ui.mode} · ${runtime.layer.name} · ${Math.round(ui.strength*100)}%`);}
-        catch(error){stop();ui.status(message(error));}
+        catch(error){layers.cancelStroke();stop();ui.status(message(error));}
       }
     }else layers.breakStrokePath();
     if(layers.drawing&&now-lastRebuild>=1000/30){runtime.rebuild();syncStats();lastRebuild=performance.now();}

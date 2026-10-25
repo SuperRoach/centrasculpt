@@ -18,14 +18,21 @@ export class XRClayStroke implements XRStrokeInteraction {
  private readonly hits:Intersection<Object3D>[]=[];
  private readonly line:Line;private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly local=new Vector3();private readonly inverse=new Matrix4();private readonly parentInverse=new Matrix4();private readonly anchor=new Matrix4();
  private boundsVolume:VolumeStore|null=null;private bounds:VolumeBounds|null=null;private placementNote='';private capturedPlacement:'free'|'surface'='free';
+ private processingMs=0;private processingMeasured=false;
  private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastMesh=0;private lastPreview:unknown=null;private previewLength=0;
  constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
  get active():boolean{return this.session.active;}
  get feedback():string{if(this.placementNote)return this.placementNote;const label=this.tools.active==='smooth'?'Smooth':'Clay';return this.session.phase==='committing'?`${label}: applying the preview · one undo action`:this.session.phase==='drawing'?this.session.buffered?`${label} preview · release trigger to apply`:`${label}: freehand`:this.message;}
  cancel():void{this.message='';this.placementNote='';this.cursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
+  const metrics=this.layers().metrics,wasActive=this.active,start=metrics.enabled?performance.now():0;
+  if(!wasActive){this.processingMs=0;this.processingMeasured=metrics.enabled;}
+  if(!metrics.enabled)this.processingMeasured=false;
+  try{this.step(tool,pose,time,enabled,gripPose);}finally{if(metrics.enabled&&this.processingMeasured&&(wasActive||this.active)){this.processingMs+=performance.now()-start;if(!this.active)metrics.xrStroke.add(this.processingMs);}}
+ }
+ private step(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const dt=this.lastFrame!==null?Math.min(.05,Math.max(0,(time-this.lastFrame)/1000)):1/90;this.lastFrame=time;
-  const mode=this.tools.active,layers=this.layers(),placement=this.tools.path.placement;
+  const mode=this.tools.active,layers=this.layers(),placement=this.tools.path.placement,canGrow=this.tools.port.settings().mode==='add';
   if(placement==='free'&&gripPose)pose=gripPose;
   const valid=enabled&&(mode==='clay'||mode==='smooth')&&tool?.role==='tool'&&tool.connected&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&layers.viewMode==='separate'&&layers.project.layerStack.layers.some(l=>l.id===layers.project.activeLayerId)&&layers.active.layer.editable;
   if(!valid||this.active&&(tool!.connectionId!==this.owner||mode!==this.capturedTool||placement!==this.capturedPlacement)){this.cancel();return;}
@@ -40,12 +47,12 @@ export class XRClayStroke implements XRStrokeInteraction {
     this.local.copy(this.raycaster.ray.origin).addScaledVector(this.direction,CLAY_TIP_REACH_METRES).applyMatrix4(this.inverse);hasTarget=true;
     if(this.boundsVolume!==runtime.volume){this.boundsVolume=runtime.volume;this.bounds=runtime.volume.bounds;}
     const b=this.bounds!;
-    if(this.local.x<b.min[0]||this.local.x>b.max[0]||this.local.y<b.min[1]||this.local.y>b.max[1]||this.local.z<b.min[2]||this.local.z>b.max[2]){this.cancel();this.cursor.show(runtime.surface.group,this.local,radius,false,false);this.placementNote='Outside layer volume · move the brush inside';return;}
+    if(!canGrow&&(this.local.x<b.min[0]||this.local.x>b.max[0]||this.local.y<b.min[1]||this.local.y>b.max[1]||this.local.z<b.min[2]||this.local.z>b.max[2])){this.cancel();this.cursor.show(runtime.surface.group,this.local,radius,false,false);this.placementNote='Outside layer volume · move the brush inside';return;}
    }else{
     this.hits.length=0;this.raycaster.intersectObject(runtime.surface.group,true,this.hits);const hit=this.hits[0];
     if(hit){this.local.copy(hit.point).applyMatrix4(this.inverse);hasTarget=true;}
    }
-   const nearBounds=placement==='free'&&this.bounds&&[this.local.x,this.local.y,this.local.z].some((v,i)=>v-radius<this.bounds!.min[i]+runtime.volume.step||v+radius>this.bounds!.max[i]-runtime.volume.step);
+   const nearBounds=!canGrow&&placement==='free'&&this.bounds&&[this.local.x,this.local.y,this.local.z].some((v,i)=>v-radius<this.bounds!.min[i]+runtime.volume.step||v+radius>this.bounds!.max[i]-runtime.volume.step);
    if(nearBounds)this.placementNote='Near layer bounds · brush will be clipped';
    if(hasTarget)this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',!nearBounds);else this.cursor.hide();
    if(!this.active&&!tool!.buttons.trigger.pressed){this.armed=true;return;}

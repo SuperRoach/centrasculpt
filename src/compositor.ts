@@ -15,16 +15,16 @@ export function combineSdf(a:number,b:number,operation:LayerOperation):number {
 /** Prepared inverse matrix and borrowed READ-ONLY grid. No source grid is resampled or written. */
 export function prepareLayerSampler(layer:SdfLayer):(x:number,y:number,z:number)=>number {
   const m=transformMatrix(layer.transform).invert().elements,scale=uniformScale(layer.transform);
-  const v=layer.volume,n=v.resolution,e=v.extent,h=v.step,data=v.getDenseView();
-  const at=(x:number,y:number,z:number)=>data?data[x+n*(y+n*z)]:v.readVoxel(v.index(x,y,z));
+  const v=layer.volume,[nx,ny,nz]=v.dimensions,bounds=v.bounds,h=v.step,data=v.getDenseView();
+  const at=(x:number,y:number,z:number)=>data?data[x+nx*(y+ny*z)]:v.readVoxel(v.index(x,y,z));
   return (wx,wy,wz)=>{
     const x=m[0]*wx+m[4]*wy+m[8]*wz+m[12],y=m[1]*wx+m[5]*wy+m[9]*wz+m[13],z=m[2]*wx+m[6]*wy+m[10]*wz+m[14];
-    const gx=Math.max(0,Math.min(n-1,(x+e)/h)),gy=Math.max(0,Math.min(n-1,(y+e)/h)),gz=Math.max(0,Math.min(n-1,(z+e)/h));
-    const ix=Math.min(n-2,Math.floor(gx)),iy=Math.min(n-2,Math.floor(gy)),iz=Math.min(n-2,Math.floor(gz)),tx=gx-ix,ty=gy-iy,tz=gz-iz;
+    const gx=Math.max(0,Math.min(nx-1,(x-bounds.min[0])/h)),gy=Math.max(0,Math.min(ny-1,(y-bounds.min[1])/h)),gz=Math.max(0,Math.min(nz-1,(z-bounds.min[2])/h));
+    const ix=Math.min(nx-2,Math.floor(gx)),iy=Math.min(ny-2,Math.floor(gy)),iz=Math.min(nz-2,Math.floor(gz)),tx=gx-ix,ty=gy-iy,tz=gz-iz;
     const a=at(ix,iy,iz)*(1-tx)+at(ix+1,iy,iz)*tx,b=at(ix,iy+1,iz)*(1-tx)+at(ix+1,iy+1,iz)*tx;
     const c=at(ix,iy,iz+1)*(1-tx)+at(ix+1,iy,iz+1)*tx,d=at(ix,iy+1,iz+1)*(1-tx)+at(ix+1,iy+1,iz+1)*tx;
     const value=(a*(1-ty)+b*ty)*(1-tz)+(c*(1-ty)+d*ty)*tz;
-    const outside=Math.hypot(Math.max(0,Math.abs(x)-e),Math.max(0,Math.abs(y)-e),Math.max(0,Math.abs(z)-e));
+    const outside=Math.hypot(Math.max(0,bounds.min[0]-x,x-bounds.max[0]),Math.max(0,bounds.min[1]-y,y-bounds.max[1]),Math.max(0,bounds.min[2]-z,z-bounds.max[2]));
     // Explicit positive exterior extension, continuous with the positive boundary.
     // Clamping alone would incorrectly leave constant-distance slabs outside the volume.
     return (outside>0?Math.max(h*1e-6,value)+outside:value)*scale;
@@ -74,7 +74,7 @@ export class BooleanComposite {
   stats:CompositeStats|null=null;
   constructor(readonly project:SculptProject,private readonly material:Material,private cap=192,private readonly exportMaterial:Material=material){this.group.name='Boolean Preview';}
   setQuality(cap:number):void {if(![64,128,192].includes(cap))throw new Error('Choose a composite cap of 64³, 128³ or 192³.');if(cap!==this.cap){this.cap=cap;this.invalidate();}}
-  private metadataKey():string {return JSON.stringify(this.project.layerStack.layers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent]));}
+  private metadataKey():string {return JSON.stringify(this.project.layerStack.layers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent,l.volume.dimensions,l.volume.bounds]));}
   syncMetadata():void {const key=this.metadataKey();if(key!==this.fingerprint){this.fingerprint=key;this.invalidate();}}
   invalidate():void {this.full=true;this.regions=[];this.version++;this.lastEdit=performance.now();}
   invalidateLayer(layer:SdfLayer,bounds?:Bounds|null):void {
@@ -82,7 +82,7 @@ export class BooleanComposite {
     if(!bounds||!this.layout){this.invalidate();return;}
     const matrix=transformMatrix(layer.transform),lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],point=new Vector3();
     for(const x of [bounds.min[0]-1,bounds.max[0]+1])for(const y of [bounds.min[1]-1,bounds.max[1]+1])for(const z of [bounds.min[2]-1,bounds.max[2]+1]){
-      point.set(layer.volume.coordinate(x),layer.volume.coordinate(y),layer.volume.coordinate(z)).applyMatrix4(matrix);
+      point.set(layer.volume.coordinate(x,0),layer.volume.coordinate(y,1),layer.volume.coordinate(z,2)).applyMatrix4(matrix);
       point.toArray().forEach((v,i)=>{lo[i]=Math.min(lo[i],v);hi[i]=Math.max(hi[i],v);});
     }
     const {center,extent,resolution:n}=this.layout,h=2*extent/(n-1);

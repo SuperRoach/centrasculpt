@@ -1,3 +1,8 @@
+import {volumeSampleCount} from './volume-store';
+import {planDenseGrowth,prepareDenseGrowth,DENSE_GROWTH_LIMITS} from './dense-growth';
+import type {DenseGrowthLimits} from './dense-growth';
+import {prepareShape} from './shape-library';
+import {validateShapeDefinition} from './shapes';
 import {SculptMetrics} from './sculpt-metrics';
 import {applyRenderStyle} from './render-style';
 import {prepareStamp} from './shape-stamp';
@@ -27,6 +32,7 @@ export class LayerRuntime {
   readonly history: SculptHistory;
   readonly material: MeshStandardMaterial;
   metrics?:SculptMetrics;
+  expansions=0;lastExpansionMs=0;
   triangles=0;
   lastMeshMs=0;
   lastChanged=0;
@@ -34,7 +40,7 @@ export class LayerRuntime {
   brushMs=0;
   brushTotal=0;
   brushFrames=0;
-  constructor(readonly layer: SdfLayer,neutral: MeshStandardMaterial,readonly volume=layer.volume,deferMesh=false) {
+  constructor(readonly layer: SdfLayer,neutral: MeshStandardMaterial,public volume=layer.volume,deferMesh=false) {
     this.material=neutral.clone();this.surface=new ChunkSurface(this.material);
     this.surface.group.userData.layerId=layer.id;
     this.mesher=new IncrementalMesher(volume);
@@ -69,6 +75,8 @@ export class IndependentLayers {
   private past: TimelineEntry[]=[];
   private future: TimelineEntry[]=[];
   private transformSession:{layerId:string;before:VolumeTransform}|null=null;
+  growthLimits:Partial<DenseGrowthLimits>={};
+  private strokePoint:Point3|null=null;
   private strokeLayer: string|null=null;
   private readonly stroke=new ClayStroke();
   constructor(readonly project: SculptProject,readonly display=new LayerDisplayPreferences()) {
@@ -79,8 +87,8 @@ export class IndependentLayers {
     catch(error){this.dispose();throw error;}
   }
   /** Lower bound: current source grids+scratch, source geometry and retained payloads.
-   * Excludes pending history Maps, derived CSG, retired Bake, JS/GPU overhead. */
-  get trackedBytes():number{let bytes=0;for(const r of this.runtimes.values()){bytes+=r.volume.resolution**3*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}return bytes;}
+   * Includes retained Bake runtimes; excludes pending Maps, derived CSG and JS/GPU overhead. */
+  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}return bytes;}
   get pendingChunks():number{let count=0;for(const r of this.runtimes.values())count+=r.mesher.pendingChunks;return count;}
   get active(): LayerRuntime {return this.runtime(this.project.activeLayerId);}
   runtime(id: string): LayerRuntime {const runtime=this.runtimes.get(id);if(!runtime)throw new Error('Layer runtime does not exist.');return runtime;}
@@ -100,7 +108,7 @@ export class IndependentLayers {
   private assertCapacity(additional=0,replacing?:string,extraLayers=0,reactivating?:string): void {
     const layers=this.project.layerStack.layers;
     const held=new Set<LayerRuntime>();for(const entry of this.future)if(entry.kind==='bake'&&!this.runtimes.has(entry.layerId)&&entry.layerId!==reactivating)held.add(entry.runtime);
-    const samples=layers.reduce((sum,layer)=>sum+(layer.id===replacing?0:layer.volume.resolution**3),0)+additional+[...held].reduce((sum,r)=>sum+r.volume.resolution**3,0);
+    const samples=layers.reduce((sum,layer)=>sum+(layer.id===replacing?0:volumeSampleCount(layer.volume)),0)+additional+[...held].reduce((sum,r)=>sum+volumeSampleCount(r.volume),0);
     if(layers.length+extraLayers>MAX_PROJECT_LAYERS)throw new Error('Maximum of 8 independent layers reached.');
     if(samples>MAX_PROJECT_VOXELS)throw new Error('Project voxel budget exceeded. Explicitly reduce a layer resolution or delete a layer; existing layers were kept.');
   }
@@ -119,11 +127,23 @@ export class IndependentLayers {
       group.updateWorldMatrix(true,true);
     }
   }
+  /** Preallocate every throwing stage, then publish store/history/mesh together.
+   * Undo and cancellation retain harmless capacity but replay exact voxel values. */
+  private growRuntime(runtime:LayerRuntime,footprint:import('./volume-store').VolumeBounds):boolean{
+    if(!(runtime.volume instanceof SDFVolume))throw new Error('Automatic growth requires a dense source.');
+    const expansionStart=performance.now(),source=runtime.volume,options={...this.growthLimits},plan=planDenseGrowth(source,footprint,options);if(!plan)return false;
+    this.assertCapacity(plan.samples,runtime.layer.id);
+    const otherTracked=this.trackedBytes-volumeSampleCount(source)*8,remapEstimate=runtime.history.memoryBytes/3+runtime.history.pendingMemoryEstimate*1.5;
+    if(plan.transientStorageBytes+otherTracked+remapEstimate>(options.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes))throw new Error('Volume growth exceeds the storage and history safety estimate. Existing sculpture kept.');
+    const result=prepareDenseGrowth(source,footprint,options),next=result.volume;
+    const publishHistory=runtime.history.prepareVolumeRebind(next),publishMesh=runtime.mesher.prepareRebindVolume(next);
+    publishMesh();publishHistory();runtime.volume=runtime.layer.volume=next;runtime.totalChunks=runtime.mesher.allocatedChunks;runtime.history.pendingBudgetBytes=Math.max(0,(options.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.expansions++;runtime.lastExpansionMs=performance.now()-expansionStart;this.composite.invalidateLayer(runtime.layer);return true;
+  }
   select(id: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.select(id);}
   beginStroke(): void {
     if(this.transformSession)throw new Error('Finish the transform before sculpting.');
     if(this.strokeLayer)throw new Error('Finish the current stroke first.');
-    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.stroke.reset();this.metrics.beginStroke();
+    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
   }
   applyStroke(worldPoint: Point3,radius: number,mode: BrushMode,strength: number,dt: number,hardness: number): Bounds|null {
     if(!this.strokeLayer)return null;const layer=this.runtime(this.strokeLayer).layer;return this.applyStrokeLocal(toLocal(worldPoint,layer.transform),radius/uniformScale(layer.transform),mode,strength,dt,hardness);
@@ -132,20 +152,26 @@ export class IndependentLayers {
   applyStrokeLocal(point:Point3,radius:number,mode:BrushMode,strength:number,dt:number,hardness:number,freeSpace=false):Bounds|null {
     if(!this.strokeLayer)return null;
     const runtime=this.editableRuntime(this.strokeLayer);
+    if(![point.x,point.y,point.z,radius,strength,dt,hardness].every(Number.isFinite)||radius<=0||strength<=0||dt<=0)return null;
     const start=performance.now();
+    if(mode==='add'&&Number.isFinite(radius)&&radius>0&&[point.x,point.y,point.z].every(Number.isFinite)){
+      const previous=this.strokePoint??point,now=[point.x,point.y,point.z],before=[previous.x,previous.y,previous.z];
+      this.growRuntime(runtime,{min:now.map((v,a)=>Math.min(v,before[a])-radius) as [number,number,number],max:now.map((v,a)=>Math.max(v,before[a])+radius) as [number,number,number]});
+    }
     const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace);
-    this.composite.invalidateLayer(runtime.layer,dirty);
+    this.strokePoint={...point};this.composite.invalidateLayer(runtime.layer,dirty);
     runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;this.metrics.record('brush',runtime.brushMs);return dirty;
   }
-  breakStrokePath(): void {this.stroke.reset();}
+  breakStrokePath(): void {this.stroke.reset();this.strokePoint=null;}
   finishStroke(): void {
     if(!this.strokeLayer)return;
-    const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();
-    if(runtime.history.commit())this.recordCommit(runtime.layer.id);
+    const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;
+    let committed=false;try{committed=runtime.history.commit();}catch(error){this.cancelStroke();throw error;}
+    this.strokeLayer=null;this.stroke.reset();this.strokePoint=null;if(committed)this.recordCommit(runtime.layer.id);
     const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
   cancelStroke():void {
-    if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();
+    if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();this.strokePoint=null;
     const dirty=runtime.history.cancel((index,before,after)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0)));this.composite.invalidateLayer(runtime.layer,dirty);const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
   private recordCommit(id: string): void {
@@ -200,7 +226,11 @@ export class IndependentLayers {
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
   stampShape(value:unknown):boolean {
     this.assertAvailable();this.finishStroke();this.finishTransform();
-    const runtime=this.editableRuntime(this.project.activeLayerId),start=performance.now(),patch=prepareStamp(runtime.layer,value);
+    const runtime=this.editableRuntime(this.project.activeLayerId),start=performance.now(),definition=validateShapeDefinition(value);
+    if(definition.targetLayerId!==runtime.layer.id)throw new Error('Stamp must target the active layer.');
+    if(definition.operation==='add')this.growRuntime(runtime,prepareShape(definition).worldBounds);
+    const remaining=(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes-runtime.history.pendingMemoryEstimate;
+    const patch=prepareStamp(runtime.layer,definition,Math.max(0,Math.floor(remaining)));
     if(!patch.indices.length){this.lastStampStats={evaluationMs:patch.evaluationMs,scanned:patch.scanned,evaluated:patch.evaluated,meshingMs:0,totalMs:performance.now()-start,changedVoxels:0,chunks:0,totalChunks:runtime.totalChunks};return false;}
     // Allocate the exact history snapshots before source mutation; preparation owns
     // the patch, so no Map-based stroke recorder is needed for these unique indices.
@@ -217,8 +247,9 @@ export class IndependentLayers {
     return true;
   }
   resetActive(): void {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);runtime.history.begin('reset');runtime.layer.volume.reset(runtime.history.record);
-    if(runtime.history.commit())this.recordCommit(runtime.layer.id);runtime.mesher.invalidate();runtime.rebuild();this.composite.invalidateLayer(runtime.layer);
+    this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin('reset');
+    try{runtime.layer.volume.reset(runtime.history.record);if(runtime.history.commit())this.recordCommit(runtime.layer.id);}catch(error){runtime.history.cancel();runtime.mesher.invalidate();runtime.rebuild();this.composite.invalidateLayer(runtime.layer);throw error;}
+    runtime.mesher.invalidate();runtime.rebuild();this.composite.invalidateLayer(runtime.layer);
   }
   private uniqueName(base: string): string {
     const names=new Set(this.project.layerStack.layers.map(l=>l.name));let result=base.slice(0,128),suffix=2;
@@ -232,9 +263,9 @@ export class IndependentLayers {
     const runtime=new LayerRuntime(layer,this.neutral);this.project.layerStack.insert(layer);this.install(runtime);this.syncPresentation();return layer;
   }
   duplicate(id: string): SdfLayer {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const source=this.project.layerStack.get(id),n=source.volume.resolution;this.assertCapacity(n**3,undefined,1);
-    const volume=new SDFVolume(n,source.volume.extent),dense=source.volume.getDenseView();
-    volume.values.set(dense??source.volume.readRegion({min:[0,0,0],max:[n-1,n-1,n-1]}).values);
+    this.finishStroke();this.finishTransform();const source=this.project.layerStack.get(id),n=source.volume.resolution;this.assertCapacity(volumeSampleCount(source.volume),undefined,1);
+    const volume=new SDFVolume(n,source.volume.extent,false,{dimensions:source.volume.dimensions,latticeMin:source.volume.latticeMin??[0,0,0]}),dense=source.volume.getDenseView();
+    volume.values.set(dense??source.volume.readRegion({min:[0,0,0],max:source.volume.dimensions.map(n=>n-1) as [number,number,number]}).values);
     const {id:unused,...metadata}=source.metadata();void unused;
     const layer=new SdfLayer(volume,{...metadata,name:this.uniqueName(`${source.name.slice(0,123)} copy`)}),runtime=new LayerRuntime(layer,this.neutral);
     const index=this.project.layerStack.layers.findIndex(l=>l.id===id);this.project.layerStack.insert(layer,index+1);this.install(runtime);this.syncPresentation();return layer;
@@ -296,7 +327,7 @@ export class IndependentLayers {
   private replayBake(entry:BakeEntry,redo:boolean):void {
     const stack=this.project.layerStack;
     if(redo){
-      this.assertCapacity(entry.runtime.volume.resolution**3,undefined,1,entry.layerId);
+      this.assertCapacity(volumeSampleCount(entry.runtime.volume),undefined,1,entry.layerId);
       stack.insert(entry.runtime.layer,Math.min(entry.index,stack.layers.length));this.install(entry.runtime);this.restoreBakeState(entry.after);
     }else{
       if(stack.layers.length===1)throw new Error('Cannot undo Bake after all original layers were deleted. Keep at least one other layer.');

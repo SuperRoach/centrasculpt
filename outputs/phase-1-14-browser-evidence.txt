@@ -1,0 +1,195 @@
+Browser tab: 1, Title: "Centra Sculpt", URL: "http://localhost:5173/?xrEmulate=quest3".
+1 AXWebArea Centra Sculpt, URL: localhost:5173/?xrEmulate=quest3
+	2 container app
+		3 container
+			4 link Description: Centra Sculpt home, Value: localhost:5173/
+			5 button Exit VR, Help: VR active · Tool Hand edits the selected layer · use headset system controls to exit., ID: enter-vr
+		6 container
+			166 container
+				167 button (expanded) VR / WEBXR DIAGNOSTICS, Secondary Actions: Collapse
+					168 text VR / WEBXR DIAGNOSTICS
+				193 text EMULATED QUEST 3 · VR active · Tool Hand edits the selected layer · use headset system controls to exit.
+				194 text Session: presenting · Secure context: yes · WebXR API: available · Blend: opaque
+				171 text DOMINANT TOOL HAND
+				172 pop up button (collapsed, settable) DOMINANT TOOL HAND, Value: Right tool / Left support, ID: xr-tool-hand, Secondary Actions: Expand
+					173 menu
+						174 (selected) Right tool / Left support
+						175 Left tool / Right support
+				176 checkbox (settable, integer) Description: Show in-headset diagnostics, Value: 1, ID: xr-show-diagnostics
+				177 text CONTROLLER DISPLAY
+				178 pop up button (collapsed, settable) CONTROLLER DISPLAY, Value: Realistic · fallback indicators, ID: xr-controller-display, Secondary Actions: Expand
+					179 menu
+						180 (selected) Realistic · fallback indicators
+						181 Simple indicators
+						182 Minimal tool indicators
+				183 text CONTROL HINTS
+				184 pop up button (collapsed, settable) CONTROL HINTS, Value: On demand · point at card / touch stick, ID: xr-hints, Secondary Actions: Expand
+					185 menu
+						186 Hidden
+						187 (selected) On demand · point at card / touch stick
+						188 Always visible
+				189 checkbox (disabled, settable, integer) Description: Subtle controller haptics, Value: 1, ID: xr-haptics
+				190 checkbox (settable, integer) Description: Show VR performance, Value: 1, ID: xr-show-performance
+				191 button Reset Workspace View, ID: xr-reset-workspace
+				192 text In Transform Layer mode, Tool grip moves/rotates the selected visible unlocked layer in Separate Layers. Support grip moves workspace. Both grips rotate/scale workspace. Release commits layer changes; tracking loss cancels. In Transform Layer, point at a visible layer and tap trigger to select it; locked layers can be inspected. Mint bounds mark selection; blue bounds mark hover. Layers Palette handles overlapping/empty layers. Reset Layer Transform in Options asks for confirmation and changes the saved layer, not workspace navigation. Support stick: Left Undo · Right Redo · hold Up Tool Wheel · hold Down Layers. Point with Tool Hand and tap trigger. Selecting a tool opens its Options; release stick to dismiss. Centre to rearm; shortcuts pause during grabs/strokes. Tool stick Up/Down sizes Clay, Smooth and Stamp while idle; centre after menus/grabs/strokes. Clay places at the Tool tip in free space by default; choose Surface follow in Clay Options if desired. Smooth and Subtract use the same tip and leave empty space unchanged. Create an Empty clay volume on desktop for floating strokes. Amber warns of layer bounds. Hold Support trigger for alternate Smooth (configurable in Options); release restores the previous brush and settings after any active Tool stroke finishes. Menus/grips take priority; release and re-press after interruption. Hold Tool trigger for Clay/Smooth. Shape Stamp follows the wrist; tap trigger once and release to rearm. Amber warns when the shape crosses layer bounds; Add is blocked until it fits. Steady / Straight Line preview while held and apply after release.
+				204 text EMULATOR · 120.0 FPS · interval 8.34 ms · p95 9.40 ms · JS render 0.50 ms · 40130 tracked frames · idle · input/debug 0.000 ms · 0.3827 m / model unit
+				205 text left/support: tracked · quest-touch · model ready meta-quest-touch-plus · trigger 0.00 · grip 0.00 · stick 0.00,0.00 | right/tool: tracked · quest-touch · model ready meta-quest-touch-plus · trigger 0.00 · grip 0.00 · stick 0.00,0.00
+				206 text Last frame: 76 draw calls · 63,088 rendered triangles · active 64³ · visible meshes 32 layer / 0 composite · peak 9.80 ms · median 8.30 · p99 9.80 ms · spikes 0 recent / 0 session · clay radius 0.220 · brush 0.00 ms · remesh 0.00 ms · dirty 0 / replay 0
+			9 button (collapsed) ◇ SHAPE LIBRARY Stamp once, Secondary Actions: Expand
+				10 text ◇ SHAPE LIBRARY
+				11 text Stamp once
+			12 container
+				13 text SCULPT BRUSH
+				14 checkbox (disabled) ＋ Add, Value: 1, ID: add
+					15 text ＋
+					16 text Add
+				17 checkbox (disabled) − Subtract, Value: 0, ID: subtract
+					18 text −
+					19 text Subtract
+				20 checkbox (disabled) ≈ Smooth, Value: 0, ID: smooth
+					21 text ≈
+					22 text Smooth
+				23 text BRUSH RADIUS · WORLD
+				24 text 0.220
+				25 slider (disabled, settable, float) BRUSH RADIUS · WORLD, Value: 0.2199999988079071, Details: 0.22, ID: radius
+				26 text Fine detail Broad strokes BRUSH STRENGTH
+				27 text 35%
+				28 slider (disabled, settable, float) BRUSH STRENGTH, Value: 0.3499999940395355, Details: 0.35, ID: strength
+				29 text Gentle Strong BRUSH HARDNESS
+				30 text 0%
+				31 slider (disabled, settable, integer) BRUSH HARDNESS, Value: 0, ID: hardness
+				32 text Soft clay Sharp edge · Smooth unchanged VOXEL RESOLUTION
+				33 pop up button (disabled, collapsed, settable) VOXEL RESOLUTION, Value: 64³ · Default, ID: resolution, Secondary Actions: Expand
+					34 menu
+						35 (selected) 64³ · Default
+						36 128³ · Fine
+						37 192³ · High memory
+				38 button (disabled) Resample, ID: apply-resolution
+				39 text Active layer only. Resampling clears its voxel history; transform history remains. Lower resolutions lose detail; 192³ may pause briefly.
+			40 button (disabled) ↶ Undo, Help: Undo (Cmd/Ctrl+Z), ID: undo
+			41 button (disabled) ↷ Redo, Help: Redo (Cmd/Ctrl+Shift+Z), ID: redo
+			198 text 0 undo · 0 redo
+			43 button (disabled) Save Project, ID: save-project
+			44 button (disabled) Open Project, ID: open-project
+			45 button (disabled) Export Separate Layers ↗, ID: export
+				46 text Export Separate Layers ↗
+			48 button (disabled) Export Boolean Result ↗, ID: export-boolean
+			49 button (disabled) ↺   Reset sphere, ID: reset
+			50 text Export your current mesh for your next step.
+			51 container viewport
+				52 button (disabled) Description: Cycle rendering style, Help: Cycle Normal, Matte and Glossy (I), ID: cycle-render-style
+				53 text PERSPECTIVE
+				54 text Ready to sculpt
+				55 container
+					199 text 31,536 TRIANGLES · ACTIVE 64³ SAMPLES
+					200 text BRUSH 0.0 ms (AVG 0.0) · MESH 63.5 ms · 64/64 CHUNKS
+				59 container Viewport tool wheels
+					60 container
+						61 button (disabled, collapsed) Description: Sculpt tools, Secondary Actions: Expand
+						201 text Brush
+					63 container
+						64 button (disabled, collapsed) Description: Layer transforms, Secondary Actions: Expand
+						202 text Layer · Move
+			66 text INDEPENDENT VOLUMES
+			67 heading Layers, Value: 2
+				68 text Layers
+			69 text Sources stay independent. Boolean Preview evaluates visible layers from top to bottom; the first visible layer initializes the result.
+			70 text SURFACE VIEW
+			71 pop up button (disabled, collapsed, settable) SURFACE VIEW, Value: Separate Layers, ID: composition-mode, Secondary Actions: Expand
+				72 menu
+					73 (selected) Separate Layers
+					74 Boolean Preview
+			75 text COMPOSITE QUALITY CAP
+			76 pop up button (disabled, collapsed, settable) COMPOSITE QUALITY CAP, Value: 192³ · Detail, ID: composite-quality, Secondary Actions: Expand
+				77 menu
+					78 64³ · Fast
+					79 128³ · Balanced
+					80 (selected) 192³ · Detail
+			81 text Separate Layers · source volumes unchanged.
+			82 text RENDERING STYLE
+			83 pop up button (disabled, collapsed, settable) RENDERING STYLE, Value: Normal · Clay, ID: render-style, Secondary Actions: Expand
+				84 menu
+					85 (selected) Normal · Clay
+					86 Matte · Soft reflections
+					87 Glossy · Surface inspection
+			88 text Viewport only. Matte has soft reflections; Glossy reveals finer surface changes. Press I to cycle; GLB exports keep neutral clay materials.
+			89 text LAYER DISPLAY COLOURS
+			90 pop up button (disabled, collapsed, settable) LAYER DISPLAY COLOURS, Value: Clay, ID: viewport-mode, Secondary Actions: Expand
+				91 menu
+					92 (selected) Clay
+					93 Layer Colours
+			94 pop up button (disabled, collapsed, settable) Description: New layer resolution, Value: 64³, ID: new-layer-resolution, Secondary Actions: Expand
+				95 menu
+					96 (selected) 64³
+					97 128³
+					98 192³
+			99 pop up button (disabled, collapsed, settable) Description: New layer contents, Value: Empty clay volume, ID: new-layer-contents, Secondary Actions: Expand
+				100 menu
+					101 (selected) Empty clay volume
+					102 Starter sphere
+			103 button (disabled) ＋ New layer, ID: new-layer
+			104 button (disabled) Bake / Merge visible layers…, ID: bake-layers
+			105 container
+				106 text ACTIVE LAYER TOOLS
+				107 checkbox (disabled) Sculpt (B), Value: 1
+				108 checkbox (disabled) Move (W), Value: 0
+				109 checkbox (disabled) Rotate (E), Value: 0
+				110 checkbox (disabled) Scale (R), Value: 0
+				111 text GIZMO SPACE
+				112 pop up button (disabled, collapsed, settable) GIZMO SPACE, Value: World, ID: transform-space, Secondary Actions: Expand
+					113 menu
+						114 (selected) World
+						115 Local
+			116 container Description: Layers, ID: layer-list
+				117 checkbox (disabled) Description: Select Base, Value: 1
+				118 color well (disabled, settable) Description: Viewport colour for Base, Value: #aabd8d
+				119 text field (disabled) Description: Rename Base, Value: Base
+				120 pop up button (disabled, collapsed, settable) Description: Boolean operation for Base, Value: Add / Union, Secondary Actions: Expand
+					121 menu
+						122 (selected) Add / Union
+						123 Subtract / Difference
+						124 Intersect
+				125 text 1 · Initializes result (operation ignored)
+				126 button (disabled) Hide Base
+				127 button (disabled) Lock Base
+				128 button (disabled) Move Base up
+				129 button (disabled) Move Base down
+				130 button (disabled) Duplicate Base
+				131 button (disabled) Description: Delete Base, Help: Keep at least one layer
+			132 container
+				133 text ACTIVE LAYER NUMERIC TRANSFORM
+				134 container Position · project/world units
+					135 text Position · project/world units
+					136 container
+						137 text X
+						138 stepper (disabled, settable, integer) Description: Position X, Value: 0
+					139 container
+						140 text Y
+						141 stepper (disabled, settable, integer) Description: Position Y, Value: 0
+					142 container
+						143 text Z
+						144 stepper (disabled, settable, integer) Description: Position Z, Value: 0
+				145 container Rotation · XYZ degrees
+					146 text Rotation · XYZ degrees
+					147 container
+						148 text X
+						149 stepper (disabled, settable, integer) Description: Rotation X degrees, Value: 0
+					150 container
+						151 text Y
+						152 stepper (disabled, settable, integer) Description: Rotation Y degrees, Value: 0
+					153 container
+						154 text Z
+						155 stepper (disabled, settable, integer) Description: Rotation Z degrees, Value: 0
+				156 text UNIFORM SCALE
+				157 stepper (disabled, settable, integer) Description: Uniform scale, Value: 1, ID: uniform-scale
+				158 button (disabled) Reset Transform, ID: reset-transform
+				159 text All scale handles are uniform. Fields are absolute project coordinates; space changes gizmo axes. Brush radius stays in world units.
+			160 text Select a layer to edit its resolution in the brush panel. Layer colours and display mode are saved with the project. Both GLB exports use neutral materials. Boolean Preview is neutral; layer colours apply in Separate Layers.
+		161 container
+			162 text A little curiosity. Infinite possibilities. CENTRA SCULPT · YOUR CREATIVE SPACE
+	163 container
+		164 image
+		165 button Enter XR
+	203 image
+
+The focused UI element is 5 button Exit VR, Help: VR active · Tool Hand edits the selected layer · use headset system controls to exit., ID: enter-vr

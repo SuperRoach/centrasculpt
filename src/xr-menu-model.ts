@@ -1,3 +1,4 @@
+import {volumeLabel} from './volume-store';
 import {EDITOR_TOOLS} from './editor-tool-state';
 import type {EditorToolState,EditorTool} from './editor-tool-state';
 import type {XRMenuRequest} from './xr-support-shortcuts';
@@ -23,7 +24,7 @@ export class XRMenuModel {
   }else if(this.page==='layers'){
    const layers=this.tools.port.layers();labels.push({text:'Select layer',x:48,y:192},{text:'Visibility',x:728,y:192},{text:'Lock',x:944,y:192});
    layers.project.layerStack.layers.forEach((layer,i)=>{const y=216+i*94,active=layer.id===layers.project.activeLayerId;
-    add(`select:${layer.id}`,layer.name,40,y,664,82,active,this.tools.busy,`${active?'✓ Active · ':''}${layer.volume.resolution}³ · ${layer.operation==='union'?'Union':layer.operation==='difference'?'Difference':'Intersect'}`);
+    add(`select:${layer.id}`,layer.name,40,y,664,82,active,this.tools.busy,`${active?'✓ Active · ':''}${volumeLabel(layer.volume)} · ${layer.operation==='union'?'Union':layer.operation==='difference'?'Difference':'Intersect'}`);
     buttons[buttons.length-1].colour=layers.display.colour(layers.project.id,layer.id,layer.order);
     add(`visible:${layer.id}`,layer.visible?'Visible':'Hidden',720,y,176,82,layer.visible,this.tools.busy);
     add(`locked:${layer.id}`,layer.locked?'Locked':'Unlocked',912,y,200,82,layer.locked,this.tools.busy);

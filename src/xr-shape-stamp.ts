@@ -36,15 +36,14 @@ export class XRShapeStamp implements XRStrokeInteraction {
    model.set({...d,targetLayerId:stack.activeLayerId,transform:{position:this.position.toArray(),rotation:[this.euler.x,this.euler.y,this.euler.z],scale:d.transform.scale}},stack);
    const definition=model.definition,box=transformedShapeBounds(localShapeBounds(definition.kind,definition.dimensions),transformMatrix(definition.transform)),volume=layers.active.volume,b=volume.bounds;
    const outside=box.min.some((v,i)=>v<=b.min[i]+volume.step||box.max[i]>=b.max[i]-volume.step);
-   this.ghost.sync();this.ghost.setWarning(outside);
+   this.ghost.sync();this.ghost.setWarning(outside&&definition.operation==='subtract');
    this.ghost.group.matrix.copy(surface.matrixWorld);if(this.ghost.group.parent){this.ghost.group.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.ghost.group.parent.matrixWorld).invert();this.ghost.group.matrix.premultiply(this.parentInverse);}this.ghost.group.updateWorldMatrix(false,true);
-   if(outside)this.message=definition.operation==='add'?'Stamp outside safe layer bounds · move or shrink to apply':'Subtract overlaps layer bounds · only existing material inside is affected';
+   if(outside)this.message=definition.operation==='add'?'Stamp · volume grows on commit':'Subtract overlaps layer bounds · only existing material inside is affected';
    else if(time>=this.until)this.message='Stamp · trigger once; release to rearm';
    if(!tool.buttons.trigger.pressed){this.held=false;this.armed=true;return;}
    const apply=this.armed&&!this.held&&tool.buttons.trigger.justPressed;this.armed=false;this.held=true;
    if(!apply)return;
-   if(outside&&definition.operation==='add')return;
-   const edited=layers.stampShape(definition);this.message=edited?outside?'Stamp applied · limited to existing material inside layer bounds':'Stamp applied · release trigger for next stamp':'No material changed · release trigger';this.until=time+900;if(edited)this.changed();
+   const edited=layers.stampShape(definition);this.message=edited?outside&&definition.operation==='subtract'?'Stamp applied · limited to existing material inside layer bounds':'Stamp applied · release trigger for next stamp':'No material changed · release trigger';this.until=time+900;if(edited)this.changed();
   }catch(error){this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+1500;}
  }
  dispose():void{this.cancel();this.ghost.dispose();}

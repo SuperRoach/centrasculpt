@@ -1,3 +1,4 @@
+import {volumeSampleCount} from './volume-store';
 import type { SculptProject } from './layers';
 import { validateName } from './layers';
 import { compositeLayout, prepareComposite } from './compositor';
@@ -15,7 +16,7 @@ export function planBake(project:SculptProject,resolution:number):BakePlan {
   if(!visible.length)throw new Error('Show at least one source layer before baking.');
   if(layers.length>=MAX_PROJECT_LAYERS)throw new Error('Bake needs room for a new layer (maximum 8). Original layers are never deleted.');
   if(!Number.isSafeInteger(Math.max(...layers.map(l=>l.order))+1))throw new Error('Layer ordering is outside the supported Bake range. Reorder sources before baking.');
-  const count=layers.reduce((sum,l)=>sum+l.volume.resolution**3,0)+resolution**3;
+  const count=layers.reduce((sum,l)=>sum+volumeSampleCount(l.volume),0)+resolution**3;
   if(count>MAX_PROJECT_VOXELS)throw new Error('Bake exceeds the project voxel budget, including hidden sources. Choose a lower output resolution; sources were kept.');
   const layout=compositeLayout(layers,resolution),scale=layout.extent/1.6;
   if(!Number.isFinite(scale)||scale<.001||scale>1000||layout.center.some(v=>!Number.isFinite(v)||Math.abs(v)>1000))throw new Error('Bake bounds exceed supported transform limits. Move/scale sources closer together before baking.');

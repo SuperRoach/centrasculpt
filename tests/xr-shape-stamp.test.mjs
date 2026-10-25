@@ -44,9 +44,8 @@ test('preview rotation and pose equal the committed kernel after tracking/worksp
  let captured;const original=f.layers.stampShape.bind(f.layers);f.layers.stampShape=value=>{captured=value;return original(value);};f.press(pose);assert.deepEqual(captured,definition);assert(f.volume.sampleLocal(local)<0);assert.equal(JSON.stringify(f.layers.active.layer.transform),transform);near(f.shape.definition.transform.scale[0],.8);
  }finally{f.dispose();}
 });
-test('bounds warning blocks Add atomically and consumes the press; Subtract explicitly warns about partial overlap',()=>{
- const f=fixture();try{const before=saveSculptProject(f.layers.project);f.release(poseAt(1.4));assert.match(f.stamp.feedback,/outside safe layer bounds/);const solid=f.stamp.ghost.group.children[0].children.find(o=>o.isMesh);assert.equal(solid.material.color.getHexString(),'e8b174');f.press(poseAt(1.4));assert.equal(f.layers.undoCount,0);assert.deepEqual(saveSculptProject(f.layers.project),before);f.update(poseAt());assert.equal(f.layers.undoCount,0,'moving inside while held cannot stamp');f.release();f.press();assert.equal(f.layers.undoCount,1);
- f.release(poseAt(1.4));f.tools.adjust('operation',1);f.update(poseAt(1.4));assert.match(f.stamp.feedback,/only existing material inside/);f.press(poseAt(1.4));assert.equal(f.layers.undoCount,1,'empty subtraction is no-op');
+test('outside Add grows on one press; held input never repeats and far Subtract never expands',()=>{
+ const f=fixture();try{f.release(poseAt(1.4));assert.match(f.stamp.feedback,/grows on commit/);f.press(poseAt(1.4));assert.equal(f.layers.undoCount,1);assert(f.layers.active.volume.bounds.max[0]>1.6);const after=saveSculptProject(f.layers.project);f.update(poseAt());assert.equal(f.layers.undoCount,1);assert.deepEqual(saveSculptProject(f.layers.project),after);f.release(poseAt(100));f.tools.adjust('operation',1);f.update(poseAt(100));assert.match(f.stamp.feedback,/only existing material inside/);const dimensions=f.layers.active.volume.dimensions;f.press(poseAt(100));assert.equal(f.layers.undoCount,1);assert.deepEqual(f.layers.active.volume.dimensions,dimensions);
  }finally{f.dispose();}
 });
 test('all four ghost geometries are cached, Add/Subtract colors differ and no preview is native data',()=>{

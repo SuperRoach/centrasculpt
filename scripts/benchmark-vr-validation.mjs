@@ -1,0 +1,5 @@
+import './compile-core.mjs';
+import {writeFileSync} from 'node:fs';
+import {runVRStress} from './vr-stress-scenarios.mjs';
+const results=[];for(const resolution of [64,128,192]){results.push(await runVRStress(resolution));console.log(`Completed ${resolution}³`);}
+const report={scope:'Deterministic Node CPU, 900 moving input samples at simulated 90 Hz, mesh every 9 samples, large brushes, Steady/Line replay, rotated repeated stamps, 20 cancel/undo cycles, native roundtrip/export. 64³ includes overlapping transformed Difference/export. CPU processing samples are NOT XR frame intervals; no browser/GPU/headset measurements. p95 requires >=20 and p99 >=100 samples. First/cold calls included; timings depend on host load. Wall includes assertions, save validation and allocations.',host:{platform:process.platform,arch:process.arch,node:process.version},results};writeFileSync('outputs/phase-1-14-stress-benchmark.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));

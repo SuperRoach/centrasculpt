@@ -8,17 +8,17 @@ export class TimingWindow {
 }
 export class SculptMetrics {
  enabled=false;
- readonly brush=new TimingWindow();readonly remesh=new TimingWindow();readonly path=new TimingWindow();readonly stroke=new TimingWindow();
+ readonly brush=new TimingWindow();readonly remesh=new TimingWindow();readonly path=new TimingWindow();readonly stroke=new TimingWindow();readonly xrStroke=new TimingWindow();
  private processing=0;private inStroke=false;
  trackedHighWaterBytes=0;heapHighWaterBytes=0;
  setEnabled(value:boolean):void{if(this.enabled===value)return;this.enabled=value;this.reset();}
- reset():void{for(const w of [this.brush,this.remesh,this.path,this.stroke])w.reset();this.processing=0;this.inStroke=false;this.trackedHighWaterBytes=this.heapHighWaterBytes=0;}
+ reset():void{for(const w of [this.brush,this.remesh,this.path,this.stroke,this.xrStroke])w.reset();this.processing=0;this.inStroke=false;this.trackedHighWaterBytes=this.heapHighWaterBytes=0;}
  beginStroke():void{this.inStroke=this.enabled;this.processing=0;}
  record(kind:'brush'|'remesh'|'path',ms:number):void{if(!this.enabled)return;this[kind].add(ms);if(this.inStroke&&Number.isFinite(ms)&&ms>=0)this.processing+=ms;}
  endStroke(overheadMs:number):void{if(this.enabled&&this.inStroke)this.stroke.add(this.processing+Math.max(0,overheadMs));this.inStroke=false;}
  memory(trackedBytes:number,heapBytes?:number):{trackedBytes:number;trackedHighWaterBytes:number;heapBytes:number|null;heapHighWaterBytes:number|null}{
   if(!Number.isFinite(trackedBytes)||trackedBytes<0)trackedBytes=0;
-  const heap=Number.isFinite(heapBytes)&&heapBytes!>=0?heapBytes!:null;
+  const heap=typeof heapBytes==='number'&&Number.isFinite(heapBytes)&&heapBytes>=0?heapBytes:null;
   this.trackedHighWaterBytes=Math.max(this.trackedHighWaterBytes,trackedBytes);if(heap!==null)this.heapHighWaterBytes=Math.max(this.heapHighWaterBytes,heap);
   return {trackedBytes,trackedHighWaterBytes:this.trackedHighWaterBytes,heapBytes:heap,heapHighWaterBytes:heap===null?null:this.heapHighWaterBytes};
  }

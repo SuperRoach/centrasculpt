@@ -1,3 +1,4 @@
+import {volumeLabel} from './volume-store';
 import {BRUSH_RADIUS_LIMITS} from './brush-settings';
 import type { RenderStyle } from './render-style';
 import './style.css';
@@ -129,7 +130,7 @@ export function createUI() {
     layerName(layer: SdfLayer) {
       const row=Array.from(list.children).find(node=>(node as HTMLElement).dataset.layerId===layer.id) as HTMLElement|undefined;
       if(!row)return;
-      const select=row.querySelector<HTMLButtonElement>('[data-action="select"]')!;select.textContent=`${layer.name} · ${layer.volume.resolution}³`;select.setAttribute('aria-label',`Select ${layer.name}`);
+      const select=row.querySelector<HTMLButtonElement>('[data-action="select"]')!;select.textContent=`${layer.name} · ${volumeLabel(layer.volume)}`;select.setAttribute('aria-label',`Select ${layer.name}`);
       row.querySelector<HTMLInputElement>('[data-action="rename"]')!.setAttribute('aria-label',`Rename ${layer.name}`);
       row.querySelector<HTMLInputElement>('[data-action="colour"]')!.setAttribute('aria-label',`Viewport colour for ${layer.name}`);
       row.querySelector<HTMLSelectElement>('[data-action="operation"]')!.setAttribute('aria-label',`Boolean operation for ${layer.name}`);
@@ -140,7 +141,7 @@ export function createUI() {
       for(const [index,layer] of layers.entries()) {
         const row=document.createElement('div');row.className=`layer-row${layer.id===activeId?' active':''}`;row.dataset.layerId=layer.id;
         const heading=document.createElement('div');heading.className='layer-heading';
-        const select=document.createElement('button');select.dataset.action='select';select.className='layer-select';select.textContent=`${layer.name} · ${layer.volume.resolution}³`;select.setAttribute('aria-label',`Select ${layer.name}`);select.setAttribute('aria-pressed',String(layer.id===activeId));heading.append(select);
+        const select=document.createElement('button');select.dataset.action='select';select.className='layer-select';select.textContent=`${layer.name} · ${volumeLabel(layer.volume)}`;select.setAttribute('aria-label',`Select ${layer.name}`);select.setAttribute('aria-pressed',String(layer.id===activeId));heading.append(select);
         const picker=document.createElement('input');picker.type='color';picker.dataset.action='colour';picker.value=colour(layer);picker.setAttribute('aria-label',`Viewport colour for ${layer.name}`);heading.append(picker);row.append(heading);
         const name=document.createElement('input');name.type='text';name.value=layer.name;name.maxLength=128;name.dataset.action='rename';name.setAttribute('aria-label',`Rename ${layer.name}`);row.append(name);
         const operation=document.createElement('select');operation.dataset.action='operation';operation.setAttribute('aria-label',`Boolean operation for ${layer.name}`);
@@ -190,5 +191,5 @@ export function createUI() {
       const element=document.getElementById('project-message')!;
       element.textContent=text; element.classList.toggle('error',error); element.setAttribute('role',error?'alert':'status');
     },
-    get strength() { return Number(strength.value); }, performance(text: string) { document.getElementById('rebuild-info')!.textContent = text; }, viewport: document.getElementById('viewport')!, get mode() { return mode; }, get radius() { return Number(radius.value); }, status(text: string) { document.getElementById('status')!.textContent = text; }, meshInfo(triangles: number, resolution: number,composite=false) { document.getElementById('mesh-info')!.textContent = `${triangles.toLocaleString()} TRIANGLES · ACTIVE ${resolution}³ SAMPLES`;if(composite)document.getElementById('mesh-info')!.textContent=`${triangles.toLocaleString()} TRIANGLES · COMPOSITE ${resolution||'…'}³ SAMPLES`; } };
+    get strength() { return Number(strength.value); }, performance(text: string) { document.getElementById('rebuild-info')!.textContent = text; }, viewport: document.getElementById('viewport')!, get mode() { return mode; }, get radius() { return Number(radius.value); }, status(text: string) { document.getElementById('status')!.textContent = text; }, meshInfo(triangles: number, resolution: number|string,composite=false) { document.getElementById('mesh-info')!.textContent = `${triangles.toLocaleString()} TRIANGLES · ACTIVE ${typeof resolution==='number'?`${resolution}³`:resolution} SAMPLES`;if(composite)document.getElementById('mesh-info')!.textContent=`${triangles.toLocaleString()} TRIANGLES · COMPOSITE ${resolution||'…'}³ SAMPLES`; } };
 }

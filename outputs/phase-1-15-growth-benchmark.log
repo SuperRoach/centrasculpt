@@ -1,0 +1,416 @@
+{
+  "scope": "Phase 1.15 storage/mesher microbenchmark. Node CPU, synchronous typed-array allocation/copy, exact-source validation, empty-chunk scan and standalone kernels at original 64/128/192 voxel spacing. Three successive +/-X attempts, 30 brush calls per actual growth, remesh every third. This workload excludes app coordinator/history/v4 save and VR automatic expansion timing; no browser or physical Quest frame timings. Storage budget estimates exclude histories, JS/geometry/GPU and transient GC overlap from older generations; cold calls and uncontrolled host load. No percentile claim below 20/100 samples.",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.8.1"
+  },
+  "results": [
+    {
+      "resolution": 64,
+      "rows": [
+        {
+          "target": 1.8,
+          "oldSamples": 262144,
+          "newSamples": 397312,
+          "dimensions": [
+            97,
+            64,
+            64
+          ],
+          "latticeMin": [
+            0,
+            0,
+            0
+          ],
+          "step": 0.050793650793650794,
+          "allocationAndCopy": {
+            "allocationMs": 0.053541999999993095,
+            "copyMs": 3.064458000000002,
+            "totalMs": 3.242208000000005
+          },
+          "storageMiB": 3.03125,
+          "transientStorageMiB": 5.03125,
+          "rebind": {
+            "reusedChunks": 64,
+            "addedChunks": 32,
+            "dirtyChunks": 0,
+            "validationMs": 6.8104999999999905
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.01783299999999599,
+            "p95Ms": 0.14604100000002518,
+            "p99Ms": null,
+            "maxMs": 0.4462080000000128
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 4.581208000000004,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 5.211833000000013
+          },
+          "pendingChunks": 0
+        },
+        {
+          "target": -1.8,
+          "oldSamples": 397312,
+          "newSamples": 528384,
+          "dimensions": [
+            129,
+            64,
+            64
+          ],
+          "latticeMin": [
+            -32,
+            0,
+            0
+          ],
+          "step": 0.050793650793650794,
+          "allocationAndCopy": {
+            "allocationMs": 0.022708999999963453,
+            "copyMs": 1.9244170000000054,
+            "totalMs": 1.9757920000000126
+          },
+          "storageMiB": 4.03125,
+          "transientStorageMiB": 7.0625,
+          "rebind": {
+            "reusedChunks": 96,
+            "addedChunks": 32,
+            "dirtyChunks": 0,
+            "validationMs": 6.796207999999979
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.017874999999946795,
+            "p95Ms": 0.02512500000000273,
+            "p99Ms": null,
+            "maxMs": 0.051791999999977634
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 5.648541000000023,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 6.642208000000039
+          },
+          "pendingChunks": 0
+        },
+        {
+          "target": 2.5,
+          "noGrowth": true
+        }
+      ],
+      "final": {
+        "dimensions": [
+          129,
+          64,
+          64
+        ],
+        "bounds": {
+          "min": [
+            -3.2253968253968255,
+            -1.6,
+            -1.6
+          ],
+          "max": [
+            3.2761904761904765,
+            1.6,
+            1.6
+          ]
+        },
+        "samples": 528384,
+        "storageBytes": 4227072,
+        "voxelSpacing": 0.050793650793650794,
+        "expansions": 2,
+        "lastExpansionMs": 1.9757920000000126
+      },
+      "hardLimit": "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced."
+    },
+    {
+      "resolution": 128,
+      "rows": [
+        {
+          "target": 1.8,
+          "oldSamples": 2097152,
+          "newSamples": 2899968,
+          "dimensions": [
+            177,
+            128,
+            128
+          ],
+          "latticeMin": [
+            0,
+            0,
+            0
+          ],
+          "step": 0.02519685039370079,
+          "allocationAndCopy": {
+            "allocationMs": 0.04187500000000455,
+            "copyMs": 12.714000000000055,
+            "totalMs": 12.79995800000006
+          },
+          "storageMiB": 22.125,
+          "transientStorageMiB": 38.125,
+          "rebind": {
+            "reusedChunks": 512,
+            "addedChunks": 192,
+            "dirtyChunks": 0,
+            "validationMs": 26.673084000000017
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.09933300000000145,
+            "p95Ms": 0.15991700000006404,
+            "p99Ms": null,
+            "maxMs": 0.19854099999997743
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 11.466042000000016,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 16.01758300000006
+          },
+          "pendingChunks": 0
+        },
+        {
+          "target": -1.8,
+          "oldSamples": 2899968,
+          "newSamples": 3686400,
+          "dimensions": [
+            225,
+            128,
+            128
+          ],
+          "latticeMin": [
+            -48,
+            0,
+            0
+          ],
+          "step": 0.02519685039370079,
+          "allocationAndCopy": {
+            "allocationMs": 0.17674999999997,
+            "copyMs": 15.204375000000027,
+            "totalMs": 15.414292000000046
+          },
+          "storageMiB": 28.125,
+          "transientStorageMiB": 50.25,
+          "rebind": {
+            "reusedChunks": 704,
+            "addedChunks": 192,
+            "dirtyChunks": 0,
+            "validationMs": 19.08699999999999
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.10037499999998545,
+            "p95Ms": 0.12437500000010004,
+            "p99Ms": null,
+            "maxMs": 0.1674999999999045
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 12.033458999999993,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 15.68425000000002
+          },
+          "pendingChunks": 0
+        },
+        {
+          "target": 2.5,
+          "noGrowth": true
+        }
+      ],
+      "final": {
+        "dimensions": [
+          225,
+          128,
+          128
+        ],
+        "bounds": {
+          "min": [
+            -2.8094488188976383,
+            -1.6,
+            -1.6
+          ],
+          "max": [
+            2.8346456692913393,
+            1.6,
+            1.6
+          ]
+        },
+        "samples": 3686400,
+        "storageBytes": 29491200,
+        "voxelSpacing": 0.02519685039370079,
+        "expansions": 2,
+        "lastExpansionMs": 15.414292000000046
+      },
+      "hardLimit": "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced."
+    },
+    {
+      "resolution": 192,
+      "rows": [
+        {
+          "target": 1.8,
+          "oldSamples": 7077888,
+          "newSamples": 8884224,
+          "dimensions": [
+            241,
+            192,
+            192
+          ],
+          "latticeMin": [
+            0,
+            0,
+            0
+          ],
+          "step": 0.016753926701570682,
+          "allocationAndCopy": {
+            "allocationMs": 0.14362499999992906,
+            "copyMs": 33.33616699999993,
+            "totalMs": 33.508749999999964
+          },
+          "storageMiB": 67.78125,
+          "transientStorageMiB": 121.78125,
+          "rebind": {
+            "reusedChunks": 1728,
+            "addedChunks": 432,
+            "dirtyChunks": 0,
+            "validationMs": 85.18870900000002
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.28533299999980954,
+            "p95Ms": 0.47004100000003746,
+            "p99Ms": null,
+            "maxMs": 0.49345800000037343
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 24.38591699999961,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 27.632834000000003
+          },
+          "pendingChunks": 0
+        },
+        {
+          "target": -1.8,
+          "oldSamples": 8884224,
+          "newSamples": 10653696,
+          "dimensions": [
+            289,
+            192,
+            192
+          ],
+          "latticeMin": [
+            -48,
+            0,
+            0
+          ],
+          "step": 0.016753926701570682,
+          "allocationAndCopy": {
+            "allocationMs": 0.16629199999988487,
+            "copyMs": 32.34950000000026,
+            "totalMs": 32.53358299999991
+          },
+          "storageMiB": 81.28125,
+          "transientStorageMiB": 149.0625,
+          "rebind": {
+            "reusedChunks": 2160,
+            "addedChunks": 432,
+            "dirtyChunks": 0,
+            "validationMs": 90.07524999999987
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.29179199999998673,
+            "p95Ms": 0.37075000000004366,
+            "p99Ms": null,
+            "maxMs": 0.46908399999983885
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 24.178750000000036,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 26.833624999999756
+          },
+          "pendingChunks": 0
+        },
+        {
+          "target": 2.5,
+          "oldSamples": 10653696,
+          "newSamples": 12423168,
+          "dimensions": [
+            337,
+            192,
+            192
+          ],
+          "latticeMin": [
+            -48,
+            0,
+            0
+          ],
+          "step": 0.016753926701570682,
+          "allocationAndCopy": {
+            "allocationMs": 0.10158300000011877,
+            "copyMs": 32.310665999999856,
+            "totalMs": 32.42458399999987
+          },
+          "storageMiB": 94.78125,
+          "transientStorageMiB": 176.0625,
+          "rebind": {
+            "reusedChunks": 2592,
+            "addedChunks": 432,
+            "dirtyChunks": 0,
+            "validationMs": 93.37300000000005
+          },
+          "brush": {
+            "samples": 30,
+            "medianMs": 0.30337499999996,
+            "p95Ms": 0.4082499999999527,
+            "p99Ms": null,
+            "maxMs": 0.42708300000003874
+          },
+          "remesh": {
+            "samples": 10,
+            "medianMs": 24.270125000000007,
+            "p95Ms": null,
+            "p99Ms": null,
+            "maxMs": 27.185375000000022
+          },
+          "pendingChunks": 0
+        }
+      ],
+      "final": {
+        "dimensions": [
+          337,
+          192,
+          192
+        ],
+        "bounds": {
+          "min": [
+            -2.404188481675393,
+            -1.6,
+            -1.6
+          ],
+          "max": [
+            3.2251308900523568,
+            1.6,
+            1.6
+          ]
+        },
+        "samples": 12423168,
+        "storageBytes": 99385344,
+        "voxelSpacing": 0.016753926701570682,
+        "expansions": 3,
+        "lastExpansionMs": 32.42458399999987
+      },
+      "hardLimit": "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced."
+    }
+  ]
+}

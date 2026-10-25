@@ -1,0 +1,242 @@
+Browser tab: 2, Title: "Centra Sculpt", URL: "http://localhost:5173/".
+0 AXWebArea Centra Sculpt, URL: localhost:5173/
+	1 container app
+		2 container
+			3 link Description: Centra Sculpt home, Value: localhost:5173/
+			4 text A SPACE TO SHAPE
+			5 button (disabled) VR unavailable, ID: enter-vr, Help: No immersive-vr device/runtime available. Check the connected headset, active OpenXR runtime and browser support, or configure an emulator.
+			6 text LOCAL STUDIO
+		7 container
+			8 text YOUR TOOLKIT
+			9 heading Make room for an idea., Value: 1
+				10 text Make room
+				11 text for an idea.
+			12 container
+				13 text Build up. Carve away.
+				14 text See where the form takes you.
+			15 button (collapsed) VR / WEBXR DIAGNOSTICS, Secondary Actions: Expand
+				16 text VR / WEBXR DIAGNOSTICS
+			174 container shape-library
+				175 button (expanded) ◇ SHAPE LIBRARY Stamp once, Secondary Actions: Collapse
+					176 text ◇ SHAPE LIBRARY
+					177 text Stamp once
+				178 checkbox Description: Sphere, Value: 0
+				179 checkbox Description: Cube / Box, Value: 1
+				180 checkbox Description: Triangular Prism, Value: 0
+				181 checkbox Description: Square Pyramid, Value: 0
+				247 text A solid rectangular box with independent width, height and depth.
+				183 checkbox (settable, integer) Description: Show ghost preview, Value: 1, ID: show-shape
+				184 checkbox (settable, integer) Description: Follow pointer on visible surfaces, Value: 0, ID: shape-follow
+				185 checkbox ✓ Move preview (G), Value: 1, ID: move-shape
+				186 checkbox ↻ Rotate stamp (T), Value: 0, ID: rotate-shape
+				187 button Stamp once at preview, ID: stamp-shape
+				188 checkbox Description: Shape Add, Value: 1
+				189 checkbox Description: Shape Subtract, Value: 0
+				190 container Dimensions · shape-local units
+					191 text Dimensions · shape-local units
+					192 container
+						193 text X / Diameter
+						194 stepper (settable, float) Description: Shape width or diameter, Value: 0.800000011920929, Details: 0.8
+					195 container
+						196 text Height Y
+						197 stepper (settable, float) Description: Shape height, Value: 0.800000011920929, Details: 0.8
+					198 container
+						199 text Depth Z
+						200 stepper (settable, float) Description: Shape depth, Value: 0.800000011920929, Details: 0.8
+				201 text GHOST POSE SPACE
+				202 pop up button (collapsed, settable) GHOST POSE SPACE, Value: Layer local, ID: shape-space, Secondary Actions: Expand
+					203 menu
+						204 (selected) Layer local
+						205 World
+				206 container Ghost position XYZ
+					207 text Ghost position XYZ
+					208 container
+						209 text X
+						210 stepper (settable, float) Description: Shape position X, Value: 2.5
+					211 container
+						212 text Y
+						213 stepper (settable, integer) Description: Shape position Y, Value: 0
+					214 container
+						215 text Z
+						216 stepper (settable, integer) Description: Shape position Z, Value: 0
+				217 container Ghost rotation · XYZ degrees
+					218 text Ghost rotation · XYZ degrees
+					219 container
+						220 text X
+						221 stepper (settable, integer) Description: Shape rotation X degrees, Value: 0
+					222 container
+						223 text Y
+						224 stepper (settable, integer) Description: Shape rotation Y degrees, Value: 0
+					225 container
+						226 text Z
+						227 stepper (settable, integer) Description: Shape rotation Z degrees, Value: 0
+				228 text GHOST UNIFORM SCALE
+				229 stepper (settable, integer) Description: Shape uniform scale, Value: 1, ID: shape-scale
+				230 button Reset ghost pose, ID: reset-shape-pose
+				248 text Target: Base · 113×64×64. Pose is relative to this layer.
+				249 text Local bounds: [-0.40, -0.40, -0.40] to [0.40, 0.40, 0.40].
+				250 text Move is active. Drag an arrow or plane handle, then Apply stamp. G hides the handles.
+				251 text Preview update 0.000 ms · 2/4 cached shapes
+				235 text Teal = Add · Rust = Subtract. Move the pointer over a visible surface, then left-click once to stamp. Dragging never repeats stamps. Press T or Rotate stamp to freeze placement and rotate the ghost with rings. Press T again to finish, then click or Apply stamp. Use pose space for local/world axes. With Follow pointer off, Move preview (G) lets you drag arrows/planes anywhere in layer coordinates; XYZ fields also work. Move activates automatically with Follow pointer off. Use Apply stamp while the handles are idle; dragging never stamps. G optionally hides the handles. Add stamps automatically grow the layer within its storage budget. Subtract does not allocate new empty space. Detail is limited by its voxel spacing. Ghosts are excluded from Boolean Preview, Bake and exports. Brushing and layer gizmos pause while the ghost is enabled. Hide it or press Escape to resume. Right drag / middle drag / wheel still control the camera.
+			20 container
+				21 text SCULPT BRUSH
+				22 checkbox ＋ Add, Value: 1, ID: add
+					23 text ＋
+					24 text Add
+				25 checkbox − Subtract, Value: 0, ID: subtract
+					26 text −
+					27 text Subtract
+				28 checkbox ≈ Smooth, Value: 0, ID: smooth
+					29 text ≈
+					30 text Smooth
+				31 text BRUSH RADIUS · WORLD
+				32 text 0.220
+				33 slider (settable, float) BRUSH RADIUS · WORLD, Value: 0.2199999988079071, Details: 0.22, ID: radius
+				34 text Fine detail Broad strokes BRUSH STRENGTH
+				35 text 35%
+				36 slider (settable, float) BRUSH STRENGTH, Value: 0.3499999940395355, Details: 0.35, ID: strength
+				37 text Gentle Strong BRUSH HARDNESS
+				38 text 0%
+				39 slider (settable, integer) BRUSH HARDNESS, Value: 0, ID: hardness
+				40 text Soft clay Sharp edge · Smooth unchanged VOXEL RESOLUTION
+				41 pop up button (collapsed, settable) VOXEL RESOLUTION, Value: 64³ · Default, ID: resolution, Secondary Actions: Expand
+					42 menu
+						43 (selected) 64³ · Default
+						44 128³ · Fine
+						45 192³ · High memory
+				46 button Resample, ID: apply-resolution
+				47 text Active layer only. Resampling clears its voxel history; transform history remains. Lower resolutions lose detail; 192³ may pause briefly.
+			48 button (collapsed) CONTROLS & SHORTCUTS, Secondary Actions: Expand
+				49 text CONTROLS & SHORTCUTS
+			50 button ↶ Undo, Help: Undo (Cmd/Ctrl+Z), ID: undo
+			51 button (disabled) ↷ Redo, Help: Redo (Cmd/Ctrl+Shift+Z), ID: redo
+			252 text 1 undo · 0 redo
+			53 button Save Project, ID: save-project
+			54 button Open Project, ID: open-project
+			253 text Stamp applied · 217,680 voxels · evaluate 20.0 ms · mesh 16.5 ms · total 71.3 ms · 12/112 chunks
+			55 button Export Separate Layers ↗, ID: export
+				56 text Export Separate Layers
+				57 text ↗
+			58 button Export Boolean Result ↗, ID: export-boolean
+			59 button ↺   Reset sphere, ID: reset
+			60 text Export your current mesh for your next step.
+			61 container viewport
+				62 button Description: Cycle rendering style, Help: Cycle Normal, Matte and Glossy (I), ID: cycle-render-style
+				63 container
+					64 text PERSPECTIVE / SDF VOLUME
+				254 text Shape stamped · one undo action
+				66 container
+					255 text 43,440 TRIANGLES · ACTIVE 113×64×64 SAMPLES
+					256 text BRUSH 0.0 ms (AVG 0.0) · MESH 16.4 ms · 12/112 CHUNKS
+				240 container
+					257 text MOVE · APPLY WHEN READY
+					242 checkbox Description: Move preview in viewport, Value: 1, ID: move-shape-overlay
+					243 checkbox Description: Rotate stamp in viewport, Value: 0, ID: rotate-shape-overlay
+					244 button Apply stamp, ID: stamp-shape-overlay
+				69 image
+				70 container Viewport tool wheels
+					71 container
+						72 button (collapsed) Description: Sculpt tools, Secondary Actions: Expand
+						245 text Boolean
+					74 container
+						75 button (collapsed) Description: Layer transforms, Secondary Actions: Expand
+						246 text Layer · Move
+			77 text INDEPENDENT VOLUMES
+			78 heading Layers, Value: 2
+				79 text Layers
+			80 text Sources stay independent. Boolean Preview evaluates visible layers from top to bottom; the first visible layer initializes the result.
+			81 text SURFACE VIEW
+			82 pop up button (collapsed, settable) SURFACE VIEW, Value: Separate Layers, ID: composition-mode, Secondary Actions: Expand
+				83 menu
+					84 (selected) Separate Layers
+					85 Boolean Preview
+			86 text COMPOSITE QUALITY CAP
+			87 pop up button (collapsed, settable) COMPOSITE QUALITY CAP, Value: 192³ · Detail, ID: composite-quality, Secondary Actions: Expand
+				88 menu
+					89 64³ · Fast
+					90 128³ · Balanced
+					91 (selected) 192³ · Detail
+			258 text Separate Layers · source volumes unchanged.
+			93 text RENDERING STYLE
+			94 pop up button (collapsed, settable) RENDERING STYLE, Value: Normal · Clay, ID: render-style, Secondary Actions: Expand
+				95 menu
+					96 (selected) Normal · Clay
+					97 Matte · Soft reflections
+					98 Glossy · Surface inspection
+			99 text Viewport only. Matte has soft reflections; Glossy reveals finer surface changes. Press I to cycle; GLB exports keep neutral clay materials.
+			100 text LAYER DISPLAY COLOURS
+			101 pop up button (collapsed, settable) LAYER DISPLAY COLOURS, Value: Clay, ID: viewport-mode, Secondary Actions: Expand
+				102 menu
+					103 (selected) Clay
+					104 Layer Colours
+			105 pop up button (collapsed, settable) Description: New layer resolution, Value: 64³, ID: new-layer-resolution, Secondary Actions: Expand
+				106 menu
+					107 (selected) 64³
+					108 128³
+					109 192³
+			110 pop up button (collapsed, settable) Description: New layer contents, Value: Empty clay volume, ID: new-layer-contents, Secondary Actions: Expand
+				111 menu
+					112 (selected) Empty clay volume
+					113 Starter sphere
+			114 button ＋ New layer, ID: new-layer
+			115 button Bake / Merge visible layers…, ID: bake-layers
+			116 container
+				117 text ACTIVE LAYER TOOLS
+				118 checkbox Sculpt (B), Value: 1
+				119 checkbox Move (W), Value: 0
+				120 checkbox Rotate (E), Value: 0
+				121 checkbox Scale (R), Value: 0
+				122 text GIZMO SPACE
+				123 pop up button (collapsed, settable) GIZMO SPACE, Value: World, ID: transform-space, Secondary Actions: Expand
+					124 menu
+						125 (selected) World
+						126 Local
+			127 container Description: Layers, ID: layer-list
+				259 checkbox Description: Select Base, Value: 1
+				260 color well (settable) Description: Viewport colour for Base, Value: #aabd8d
+				261 text field (settable) Description: Rename Base, Value: Base
+				262 pop up button (collapsed, settable) Description: Boolean operation for Base, Value: Add / Union, Secondary Actions: Expand
+					263 menu
+						264 (selected) Add / Union
+						265 Subtract / Difference
+						266 Intersect
+				267 text 1 · Initializes result (operation ignored)
+				268 button Hide Base
+				269 button Lock Base
+				270 button (disabled) Move Base up
+				271 button (disabled) Move Base down
+				272 button Duplicate Base
+				273 button (disabled) Description: Delete Base, Help: Keep at least one layer
+			143 container
+				144 text ACTIVE LAYER NUMERIC TRANSFORM
+				145 container Position · project/world units
+					146 text Position · project/world units
+					147 container
+						148 text X
+						149 stepper (settable, integer) Description: Position X, Value: 0
+					150 container
+						151 text Y
+						152 stepper (settable, integer) Description: Position Y, Value: 0
+					153 container
+						154 text Z
+						155 stepper (settable, integer) Description: Position Z, Value: 0
+				156 container Rotation · XYZ degrees
+					157 text Rotation · XYZ degrees
+					158 container
+						159 text X
+						160 stepper (settable, integer) Description: Rotation X degrees, Value: 0
+					161 container
+						162 text Y
+						163 stepper (settable, integer) Description: Rotation Y degrees, Value: 0
+					164 container
+						165 text Z
+						166 stepper (settable, integer) Description: Rotation Z degrees, Value: 0
+				167 text UNIFORM SCALE
+				168 stepper (settable, integer) Description: Uniform scale, Value: 1, ID: uniform-scale
+				169 button Reset Transform, ID: reset-transform
+				274 text All scale handles are uniform. Fields are absolute project coordinates; space changes gizmo axes. Brush radius stays in world units.
+			171 text Select a layer to edit its resolution in the brush panel. Layer colours and display mode are saved with the project. Both GLB exports use neutral materials. Boolean Preview is neutral; layer colours apply in Separate Layers.
+		172 container
+			173 text A little curiosity. Infinite possibilities. CENTRA SCULPT · YOUR CREATIVE SPACE
+
+The focused UI element is 187 button Stamp once at preview, ID: stamp-shape
