@@ -1,0 +1,148 @@
+{
+  "browserBrushChangedVoxels": [
+    {
+      "id": "08eda458-a90d-4261-984c-042acf93dda0",
+      "name": "Base",
+      "changedVoxels": 346
+    },
+    {
+      "id": "92e2655b-621a-41fb-9d9f-030d0025da07",
+      "name": "Layer 2",
+      "changedVoxels": 0
+    }
+  ],
+  "browserBrushUndoRestoresAllSourcesExactly": true,
+  "sourceDataAndMetadataUnchangedAfterBrowserModeSwitchesAndUndo": true,
+  "nativeBytesIdentical": true,
+  "nativeVersion": 3,
+  "sourceDetails": [
+    {
+      "id": "08eda458-a90d-4261-984c-042acf93dda0",
+      "name": "Base",
+      "resolution": 64,
+      "operation": "union",
+      "order": 0,
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "changedVoxels": 0
+    },
+    {
+      "id": "92e2655b-621a-41fb-9d9f-030d0025da07",
+      "name": "Layer 2",
+      "resolution": 128,
+      "operation": "difference",
+      "order": 1,
+      "transform": {
+        "position": [
+          0.55,
+          0,
+          0.4
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          0.7,
+          0.7,
+          0.7
+        ]
+      },
+      "changedVoxels": 0
+    }
+  ],
+  "viewportPreferencesExcluded": true,
+  "separateTransformMatricesMatch": true,
+  "separate": {
+    "nodeCount": 2,
+    "triangles": 159840,
+    "nodes": [
+      {
+        "name": "Base",
+        "extras": {
+          "layerId": "08eda458-a90d-4261-984c-042acf93dda0"
+        },
+        "mesh": 0
+      },
+      {
+        "matrix": [
+          0.7,
+          0,
+          0,
+          0,
+          0,
+          0.7,
+          0,
+          0,
+          0,
+          0,
+          0.7,
+          0,
+          0.55,
+          0,
+          0.4,
+          1
+        ],
+        "name": "Layer 2",
+        "extras": {
+          "layerId": "92e2655b-621a-41fb-9d9f-030d0025da07"
+        },
+        "mesh": 1
+      }
+    ],
+    "materials": [
+      {
+        "pbrMetallicRoughness": {
+          "baseColorFactor": [
+            0.4286904966038916,
+            0.508881320845802,
+            0.29613827078752575,
+            1
+          ],
+          "metallicFactor": 0.03,
+          "roughnessFactor": 0.68
+        }
+      }
+    ]
+  },
+  "composite": {
+    "nodeCount": 1,
+    "triangles": 277396,
+    "nodes": [
+      {
+        "name": "Boolean Result",
+        "mesh": 0
+      }
+    ],
+    "materials": [
+      {
+        "pbrMetallicRoughness": {
+          "baseColorFactor": [
+            0.4286904966038916,
+            0.508881320845802,
+            0.29613827078752575,
+            1
+          ],
+          "metallicFactor": 0.03,
+          "roughnessFactor": 0.68
+        }
+      }
+    ]
+  }
+}

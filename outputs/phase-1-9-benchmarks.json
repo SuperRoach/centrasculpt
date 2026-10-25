@@ -1,0 +1,55 @@
+{
+  "description": "Explicit SDF Bake of ordered 64³ Union Base and rotated/translated/uniformly scaled 128³ Difference cutter. Outputs exactly 64³/128³/192³ with padded bounds. Sampling and meshing CPU timings exclude cooperative yields; total includes yields/validation/commit, excludes initial source mesh preparation and preview regeneration. No GPU/render/UI/picking included. Undo/redo retains original destination arrays and chunk geometry, with one transaction.",
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "rows": [
+    {
+      "outputResolution": 64,
+      "baseResolution": 64,
+      "cutterResolution": 128,
+      "samplingMs": 32.48,
+      "meshingMs": 51.71,
+      "totalMs": 115.47,
+      "triangles": 22140,
+      "worldVoxelSize": 0.06191,
+      "newGridAndScratchMiB": 2,
+      "projectGridsAndScratchMiB": 20,
+      "undoMs": 0.62,
+      "redoMs": 0.24,
+      "sourceUnchanged": true,
+      "reusedVoxelAndGeometryOnRedo": true
+    },
+    {
+      "outputResolution": 128,
+      "baseResolution": 64,
+      "cutterResolution": 128,
+      "samplingMs": 140.34,
+      "meshingMs": 229.33,
+      "totalMs": 486.73,
+      "triangles": 96892,
+      "worldVoxelSize": 0.02969,
+      "newGridAndScratchMiB": 16,
+      "projectGridsAndScratchMiB": 34,
+      "undoMs": 0.07,
+      "redoMs": 0.07,
+      "sourceUnchanged": true,
+      "reusedVoxelAndGeometryOnRedo": true
+    },
+    {
+      "outputResolution": 192,
+      "baseResolution": 64,
+      "cutterResolution": 128,
+      "samplingMs": 389.54,
+      "meshingMs": 676.4,
+      "totalMs": 1390.83,
+      "triangles": 224616,
+      "worldVoxelSize": 0.01953,
+      "newGridAndScratchMiB": 54,
+      "projectGridsAndScratchMiB": 72,
+      "undoMs": 0.06,
+      "redoMs": 0.06,
+      "sourceUnchanged": true,
+      "reusedVoxelAndGeometryOnRedo": true
+    }
+  ]
+}

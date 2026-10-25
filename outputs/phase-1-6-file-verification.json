@@ -1,0 +1,51 @@
+{
+  "nativeVersion": 3,
+  "layers": [
+    {
+      "id": "59d443a3-495c-4a52-8287-0c3287923723",
+      "name": "Fine detail",
+      "resolution": [
+        192,
+        192,
+        192
+      ],
+      "visible": true,
+      "locked": true,
+      "order": 0
+    },
+    {
+      "id": "62066a83-ab6c-4d4d-b886-adc6eee31cff",
+      "name": "Base",
+      "resolution": [
+        64,
+        64,
+        64
+      ],
+      "visible": true,
+      "locked": false,
+      "order": 1
+    }
+  ],
+  "nativeHasViewportFields": false,
+  "glbMeshCount": 2,
+  "glbLayerNodes": [
+    {
+      "name": "Fine detail",
+      "layerId": "59d443a3-495c-4a52-8287-0c3287923723",
+      "mesh": 0
+    },
+    {
+      "name": "Base",
+      "layerId": "62066a83-ab6c-4d4d-b886-adc6eee31cff",
+      "mesh": 1
+    }
+  ],
+  "glbMaterials": [
+    [
+      0.4286904966038916,
+      0.508881320845802,
+      0.29613827078752575,
+      1
+    ]
+  ]
+}

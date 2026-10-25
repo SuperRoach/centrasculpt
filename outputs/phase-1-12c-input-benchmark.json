@@ -1,0 +1,19 @@
+{
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "description": "Warm Node CPU benchmark, two Quest-profile fake sources. Core polling and controller bridge with real Three geometry/visual state. No headset, GPU, browser canvas painting, debug hit test or rendering included; browser input/debug timing covers those CPU paths separately.",
+  "core": {
+    "medianMsPerFrame": 0.0002105875000000026,
+    "minMsPerFrame": 0.000194074999999998,
+    "maxBatchMeanMsPerFrame": 0.0003646165999999994,
+    "framesPerBatch": 10000,
+    "batches": 9
+  },
+  "bridge": {
+    "medianMsPerFrame": 0.0004272125000000017,
+    "minMsPerFrame": 0.0004126167000000009,
+    "maxBatchMeanMsPerFrame": 0.0004918875000000015,
+    "framesPerBatch": 10000,
+    "batches": 9
+  }
+}

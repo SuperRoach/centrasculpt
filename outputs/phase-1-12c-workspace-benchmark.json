@@ -1,0 +1,8 @@
+{
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "description": "Warm CPU benchmark of anchored rigid workspace delta and scene TRS update with preallocated poses, 9 batches of 10,000 frames. Empty workspace: excludes descendant traversal, controllers/models, hints/canvas, rendering/GPU and SDF. Integration tests separately verify no remesh and source/native/export invariance.",
+  "medianMsPerFrame": 0.00013808329999999956,
+  "minMsPerFrame": 0.00013290000000000076,
+  "maxBatchMeanMsPerFrame": 0.0002578458000000012
+}

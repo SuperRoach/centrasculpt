@@ -1,0 +1,11 @@
+{
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "description": "Synthetic 10-second / 900-frame 90 Hz UI scheduler using no-op canvas drawing. Counts update requests, not GPU texture uploads or physical headset performance. 90 Hz is a test input, not a device assumption.",
+  "stationaryDebugPaints": 1,
+  "stationaryHintVersionIncrements": 1,
+  "disabledPerformancePaints": 0,
+  "enabledPerformancePaints": 20,
+  "debugSchedulerCpuMs": 0.24350000000004002,
+  "textDrawCalls": 203
+}

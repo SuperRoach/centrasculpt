@@ -1,0 +1,49 @@
+{
+  "description": "CPU only on this machine. Active 128³ layer plus independent 64³ Base. Four cold analytic preview geometry builds, then 2000 validated dimension/operation/pose updates per primitive with unchanged geometry identity. Prepared world-distance kernels sampled 20000 times each; idle synchronization 10000 times. Includes model validation/clone/matrix updates; excludes DOM, rendering, GPU, picking and frame guarantees.",
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "rows": [
+    {
+      "kind": "sphere",
+      "coldGeometryAndPoseMs": 1.0676,
+      "warmPreviewMeanMs": 0.0046,
+      "kernelPrepareMs": 0.2269,
+      "worldDistanceMeanMicroseconds": 0.103,
+      "geometryReused": true,
+      "sampleChecksum": 26259.25
+    },
+    {
+      "kind": "box",
+      "coldGeometryAndPoseMs": 0.5043,
+      "warmPreviewMeanMs": 0.0027,
+      "kernelPrepareMs": 0.0733,
+      "worldDistanceMeanMicroseconds": 0.115,
+      "geometryReused": true,
+      "sampleChecksum": 22845.86
+    },
+    {
+      "kind": "triangular-prism",
+      "coldGeometryAndPoseMs": 0.1237,
+      "warmPreviewMeanMs": 0.0024,
+      "kernelPrepareMs": 0.1555,
+      "worldDistanceMeanMicroseconds": 0.34,
+      "geometryReused": true,
+      "sampleChecksum": 27153.53
+    },
+    {
+      "kind": "pyramid",
+      "coldGeometryAndPoseMs": 0.1356,
+      "warmPreviewMeanMs": 0.0024,
+      "kernelPrepareMs": 0.0513,
+      "worldDistanceMeanMicroseconds": 0.238,
+      "geometryReused": true,
+      "sampleChecksum": 27226.75
+    }
+  ],
+  "idleMeanMs": 0.0008,
+  "idleNoops": 10000,
+  "cachedShapes": 4,
+  "geometryBuilds": 4,
+  "sourceDataAndGeometryUnchanged": true,
+  "projectHistoryUnchanged": true
+}

@@ -1,0 +1,6 @@
+{
+  "medianMsPerFrame": 0.0002105083400000001,
+  "framesPerBatch": 50000,
+  "batches": 10,
+  "scope": "Warm Node empty workspace dual-navigation only; excludes renderer, descendants, input, models, GPU and Quest hardware"
+}

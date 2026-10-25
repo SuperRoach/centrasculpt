@@ -1,0 +1,58 @@
+{
+  "layers": [
+    {
+      "id": "fc53c7c9-d7e3-4b86-ba2b-12c5ea1f430f",
+      "name": "Base",
+      "resolution": 64,
+      "changedVoxels": 0,
+      "metadataUnchanged": true
+    },
+    {
+      "id": "9a43f35b-d348-4cfb-a624-78cdd7fb40e1",
+      "name": "Layer 2",
+      "resolution": 128,
+      "changedVoxels": 41569,
+      "metadataUnchanged": true
+    }
+  ],
+  "activeLayerIdPreserved": true,
+  "displayPreferencesSaved": {
+    "mode": "clay",
+    "colours": {
+      "fc53c7c9-d7e3-4b86-ba2b-12c5ea1f430f": "#aabd8d",
+      "9a43f35b-d348-4cfb-a624-78cdd7fb40e1": "#d68d70"
+    }
+  },
+  "glbs": [
+    {
+      "path": "/Users/brettjames/Downloads/form-sculpture (6).glb",
+      "nodes": 1,
+      "triangles": 131596,
+      "materials": 1,
+      "neutralOpaque": true,
+      "ghostAbsent": true
+    },
+    {
+      "path": "/Users/brettjames/Downloads/form-boolean-result (3).glb",
+      "nodes": 1,
+      "triangles": 131596,
+      "materials": 1,
+      "neutralOpaque": true,
+      "ghostAbsent": true
+    }
+  ],
+  "nativeOpenSaveByteIdentical": true,
+  "numericStamp": {
+    "changedVoxels": 18234,
+    "chunks": 22,
+    "totalChunks": 512,
+    "totalMs": 102.5,
+    "undoRestoredPriorTriangles": 131596
+  },
+  "lockedTargetStampDisabled": true,
+  "pointerDragDidNotRepeat": true,
+  "shortcutsVerified": [
+    "Cmd+Z",
+    "Cmd+Shift+Z"
+  ]
+}

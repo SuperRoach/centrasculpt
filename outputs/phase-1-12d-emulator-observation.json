@@ -1,0 +1,8 @@
+{
+  "date": "2026-10-25",
+  "environment": "Mac / Meta IWER emulator; not physical Quest",
+  "controllers": "left/support: tracked · quest-touch · model ready meta-quest-touch-plus · trigger 0.00 · grip 0.00 · stick 0.00,0.00 | right/tool: tracked · quest-touch · model ready meta-quest-touch-plus · trigger 0.00 · grip 0.00 · stick 0.00,0.00",
+  "history": "0 undo · 0 redo",
+  "metrics": "EMULATOR · 120.0 FPS · interval 8.33 ms · p95 9.30 ms · JS render 0.20 ms · 13735 tracked frames · idle · input/debug 0.000 ms · 0.3827 m / model unit",
+  "render": "Last frame: 94 draw calls · 80,964 rendered triangles · active 64³ · visible meshes 32 layer / 0 composite · peak 11.10 ms · spikes 1"
+}

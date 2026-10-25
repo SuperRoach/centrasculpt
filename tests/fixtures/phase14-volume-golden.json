@@ -1,0 +1,179 @@
+{
+  "description": "Float32 SHA256 golden values generated from the protected Phase 1.4 SDF implementation before Phase 1.5; fixed center (0.12,-0.08,0.8), radius .31, hardness .65, displacement .012 or Smooth coefficient .4.",
+  "cases": [
+    {
+      "resolution": 17,
+      "extent": 1.6,
+      "stages": [
+        {
+          "operation": "initial",
+          "hash": "c3e4e68c06df3b8acd0dba2235ea26f0a0fb0c2740b76dc3e558b993acfbe50c"
+        },
+        {
+          "operation": "add",
+          "hash": "bbf26b1e227cdced65e1bfa2facad37fbe70481ddb174bd17547781c6a50a193",
+          "bounds": {
+            "min": [
+              7,
+              6,
+              10
+            ],
+            "max": [
+              11,
+              10,
+              14
+            ]
+          }
+        },
+        {
+          "operation": "subtract",
+          "hash": "6f6d473c5aad1d9e918428d61727ecb62064bdd5088f3b7ab7d3d25084f25ac8",
+          "bounds": {
+            "min": [
+              7,
+              6,
+              10
+            ],
+            "max": [
+              11,
+              10,
+              14
+            ]
+          }
+        },
+        {
+          "operation": "smooth",
+          "hash": "33923463543d045989332ea1d6ce01e5c768359dc2f88984b91e8bd54e9ac16f",
+          "bounds": {
+            "min": [
+              7,
+              6,
+              10
+            ],
+            "max": [
+              11,
+              10,
+              14
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "resolution": 33,
+      "extent": 1.6,
+      "stages": [
+        {
+          "operation": "initial",
+          "hash": "fb0ca481f8b349547edede668d503c0a7185c47fffb4bb95276b715805ddc644"
+        },
+        {
+          "operation": "add",
+          "hash": "ce50c948b6d3edf1d85a7b651e8915526a7b8d0273793db26c1cb7b5be69dcec",
+          "bounds": {
+            "min": [
+              14,
+              12,
+              20
+            ],
+            "max": [
+              21,
+              19,
+              28
+            ]
+          }
+        },
+        {
+          "operation": "subtract",
+          "hash": "6ca5081e4a7fbda227cd15735c441771383974fd19ad9774499e341fd1bd5842",
+          "bounds": {
+            "min": [
+              14,
+              12,
+              20
+            ],
+            "max": [
+              21,
+              19,
+              28
+            ]
+          }
+        },
+        {
+          "operation": "smooth",
+          "hash": "224b2ade01e18eb12e394debf070e02550d284cd8e663532112bd478a9aad611",
+          "bounds": {
+            "min": [
+              14,
+              12,
+              20
+            ],
+            "max": [
+              21,
+              19,
+              28
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "resolution": 64,
+      "extent": 1.6,
+      "stages": [
+        {
+          "operation": "initial",
+          "hash": "7d46729baa7eb92168333096d6f6eb7a84bfb376b953ae4ffec7ca91bc77e0c5"
+        },
+        {
+          "operation": "add",
+          "hash": "9a0132bba432a5e6f8e958fcc34c9ca05e1172d3bb8251c0a50e27a91a5d59fb",
+          "bounds": {
+            "min": [
+              27,
+              23,
+              41
+            ],
+            "max": [
+              40,
+              37,
+              54
+            ]
+          }
+        },
+        {
+          "operation": "subtract",
+          "hash": "a407f15529e47b6d73b7c61c9b7fd480758e6346884456b496ed1f7a4302a50c",
+          "bounds": {
+            "min": [
+              27,
+              23,
+              41
+            ],
+            "max": [
+              40,
+              37,
+              54
+            ]
+          }
+        },
+        {
+          "operation": "smooth",
+          "hash": "3dbbda6596df04ed74dc9d5ac36391a97fb34acaae5d95aa39633dda3be2e519",
+          "bounds": {
+            "min": [
+              27,
+              23,
+              41
+            ],
+            "max": [
+              40,
+              37,
+              54
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

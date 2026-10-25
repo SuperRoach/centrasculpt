@@ -1,0 +1,43 @@
+{
+  "description": "CPU only; 16³-cell chunks; radius 0.22, strength 0.35, hardness 0.5; stationary pole stroke, dt 1/60; includes sparse history recording, excludes render/GPU upload and UI. Full meshing is first-run per resolution. Local and brush values are warm-run medians.",
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "rows": [
+    {
+      "resolution": 64,
+      "triangles": 31536,
+      "fullMeshMs": 75.3,
+      "localMeshMedianMs": 15.3,
+      "brushMedianMs": 0.1,
+      "smoothMedianMs": 0.09,
+      "changedChunks": 8,
+      "totalChunks": 64,
+      "resampleFrom64Ms": 12.5,
+      "denseSdfAndScratchMiB": 2
+    },
+    {
+      "resolution": 128,
+      "triangles": 128304,
+      "fullMeshMs": 252.2,
+      "localMeshMedianMs": 11.6,
+      "brushMedianMs": 0.45,
+      "smoothMedianMs": 0.42,
+      "changedChunks": 8,
+      "totalChunks": 512,
+      "resampleFrom64Ms": 65.6,
+      "denseSdfAndScratchMiB": 16
+    },
+    {
+      "resolution": 192,
+      "triangles": 290352,
+      "fullMeshMs": 710.3,
+      "localMeshMedianMs": 12.6,
+      "brushMedianMs": 1.56,
+      "smoothMedianMs": 1.56,
+      "changedChunks": 12,
+      "totalChunks": 1728,
+      "resampleFrom64Ms": 213.4,
+      "denseSdfAndScratchMiB": 54
+    }
+  ]
+}

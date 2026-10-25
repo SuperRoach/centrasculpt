@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdirSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {generateKeyPairSync} from 'node:crypto';
+import {loadTlsConfig} from '../scripts/tls-config.mjs';
+mkdirSync('work',{recursive:true});const directory=mkdtempSync('work/xr-tls-test-'),cert=`${directory}/cert.pem`,key=`${directory}/key.pem`;
+const generated=spawnSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','2','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1'],{stdio:'ignore'});
+assert.equal(generated.status,0,'OpenSSL must generate an isolated test certificate');
+test.after(()=>rmSync(directory,{recursive:true,force:true}));
+test('HTTPS config loads a matching current keypair and supports explicit paths',()=>{const options=loadTlsConfig({CENTRA_TLS_CERT:cert,CENTRA_TLS_KEY:key});assert(options.cert.equals(readFileSync(cert)));assert(options.key.equals(readFileSync(key)));});
+test('HTTPS setup fails clearly for missing/malformed/mismatched certificates instead of silently using HTTP',()=>{assert.throws(()=>loadTlsConfig({},()=>{throw new Error('No certificate file');}),/HTTPS setup failed.*QUEST_WEBXR/);assert.throws(()=>loadTlsConfig({},()=>Buffer.from('bad')),/HTTPS setup failed/);const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048,privateKeyEncoding:{type:'pkcs8',format:'pem'},publicKeyEncoding:{type:'spki',format:'pem'}});assert.throws(()=>loadTlsConfig({CENTRA_TLS_CERT:'cert',CENTRA_TLS_KEY:'key'},path=>path==='cert'?readFileSync(cert):Buffer.from(privateKey)),/do not match/);});
+test('expired TLS certificates are rejected',()=>{const now=Date.now;try{Date.now=()=>now()+10*86400000;assert.throws(()=>loadTlsConfig({CENTRA_TLS_CERT:cert,CENTRA_TLS_KEY:key}),/not currently valid/);}finally{Date.now=now;}});

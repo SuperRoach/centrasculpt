@@ -1,0 +1,22 @@
+# Phase 1.12c — completion report
+
+1. **Changed:** Support-grip workspace translation/rotation with release persistence; animated profile-selected controller models via Three XRControllerModelFactory; Realistic/Simple/Minimal display modes; Hidden/On-demand/Always contextual hints and in-headset/mirror controls. Existing neutral grey and desktop features preserved.
+2. **Technical decisions:** Frozen rigid world-pose delta `G(t) × inverse(G0) × W0`, converted through the workspace parent. Only Workspace Root changes; tracking/controllers remain outside it. No SDF resampling, geometry creation, layer metadata write, sculpting undo, native-file or GLB coordinate change. Grabs cancel safely on tracking/disconnect/role/session interruption. Exit restores desktop; next entry fits afresh. Async profile/hand model caching, timeouts, stale-load guards and generic indicators keep input independent from assets.
+3. **Verification:** `npm run build` passed; `npm test` **232 passed / 0 failed / 0 skipped** (16 new tests). Covers rigid pivot/parent math, Support and grip edges, release, interruptions, Tool/both-grip non-actions, modes/cache/fallback, actual factory missing-asset/timeout/disposal paths, native/history/geometry/exports and reset policy. Emulator loaded matching **meta-quest-touch-plus** models for both hands, switched all display modes and hint settings, exited/re-entered with cached models, and returned to desktop with Save enabled, 31,536 unchanged source triangles and 0 history. No browser console errors. Prior physical phases 1.12a/1.12b success is user-reported; **no new Phase 1.12c physical Quest test by Codex**.
+4. **Performance:** Empty-workspace anchored transform Node benchmark **~0.00014 ms/frame**, excluding descendants, models/hints/rendering/GPU/hardware. Polling/visual bridge ~0.00021 / 0.00043 ms under the existing benchmark's exclusions. Source local meshes **15.1 / 11.4 / 11.8 ms** at 64³/128³/192³, versus prior 15.0 / 11.5 / 12.3 ms (uncontrolled variation). Grabs never schedule extraction and leave descendant traversal to normal rendering. Production JS **837.21 kB / 224.44 kB gzip**, +99.68 / +27.86 kB for model/loader support; existing Vite size warning remains. Emulator ~120 FPS is not Quest performance.
+5. **Limitations:** First realistic asset load requires CDN access; missing/slow assets use indicators with a 10-second timeout. Generic/older profiles are not asserted to be exact Quest 3 models. No offline asset bundle/haptics or editable help placement. Hardware navigation feel, model animations, readability, first-upload spikes and GPU/thermal behavior need Quest acceptance. Settings/navigation are not serialized. No layer grabbing, two-hand manipulation, controller sculpt/stamp, stick sizing, trays, locomotion or deformation.
+6. **Next:** Execute the physical checklist, then Phase 1.12d Tool-grip selected-unlocked-layer metadata gestures with explicit coordinate conversion, ownership, cancellation and one undo transaction per drag. Phase 1.13 should introduce shared role/action intent routing and measured frame budgets for the specifically authorized VR editing scope. No automatic layer merges or voxel resampling for navigation.
+
+## Launch and physical checklist
+
+Launch unchanged: `npm run dev`, using the existing Quest secure origin. Authorized USB route: `adb reverse tcp:5173 tcp:5173`, Quest Browser `http://localhost:5173/`. Trusted wireless HTTPS: `npm run dev:https`, port 5174.
+
+Hold Support grip (left by default), move/rotate, release. Use the debug card footer or mirrored selects to change Models/Hints. See `VR_WORKSPACE.md` for the eleven-step hardware checklist, mathematical/session policy, asset details and next-phase plan.
+
+## Files
+
+New: `src/workspace-grab.ts`, `src/controller-models.ts`, `src/controller-model-provider.ts`, `src/xr-actions.ts`, `src/xr-hints.ts`, `tests/workspace-grab.test.mjs`, `scripts/benchmark-workspace.mjs`, `docs/VR_WORKSPACE.md`.
+
+Updated: `src/xr-controllers.ts`, `src/xr-diagnostics.ts`, `src/xr-experience.ts`, `src/main.ts`, `scripts/compile-core.mjs`, `README.md`, `docs/VR_CONTROLLERS.md`, `docs/DEVELOPMENT_STATUS.md`. No dependencies added.
+
+No Git repository is available. `before-phase-1-12c.tar.gz` plus SHA-256 is the verified pre-change source checkpoint. No original source deleted. Evidence: build/test logs, three benchmark JSONs, `phase-1-12c-realistic-hints.png`, `phase-1-12c-simple.png`; complete handover `phase-1-12c-development-status.md`.

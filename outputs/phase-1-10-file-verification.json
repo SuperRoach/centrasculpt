@@ -1,0 +1,70 @@
+{
+  "nativeVersion": 3,
+  "nativeBytesBeforeAfterIdentical": true,
+  "savedPhase19DataPreserved": true,
+  "layers": [
+    {
+      "id": "08eda458-a90d-4261-984c-042acf93dda0",
+      "name": "Base",
+      "resolution": 64,
+      "changedVoxels": 0,
+      "changedFromSavedPhase19": 0,
+      "metadataUnchanged": true,
+      "voxelSHA256": "7d46729baa7eb92168333096d6f6eb7a84bfb376b953ae4ffec7ca91bc77e0c5"
+    },
+    {
+      "id": "92e2655b-621a-41fb-9d9f-030d0025da07",
+      "name": "Layer 2",
+      "resolution": 128,
+      "changedVoxels": 0,
+      "changedFromSavedPhase19": 0,
+      "metadataUnchanged": true,
+      "voxelSHA256": "f5aea14808a8f23b72f0d0036502419950286cf8ae44eb58ac3798f542fbe8b8"
+    },
+    {
+      "id": "3e158894-b35a-43d6-a801-5415037c2af6",
+      "name": "Baked subtraction",
+      "resolution": 128,
+      "changedVoxels": 0,
+      "changedFromSavedPhase19": 0,
+      "metadataUnchanged": true,
+      "voxelSHA256": "c6a923370ba05b5865d93b82e4e93d6fddfd006765a557dcbf34a122cee1896e"
+    }
+  ],
+  "previewMetadataExcluded": true,
+  "browserHistoryObserved": "0 undo \u00b7 0 redo",
+  "browserGeometryCacheObserved": "4/4 cached shapes",
+  "browserSculptTrianglesUnchanged": 121172,
+  "separate": {
+    "nodes": [
+      {
+        "name": "Baked subtraction",
+        "layerId": "3e158894-b35a-43d6-a801-5415037c2af6"
+      }
+    ],
+    "triangles": 121172,
+    "materialCount": 1,
+    "ghostExcluded": true
+  },
+  "composite": {
+    "nodes": [
+      {
+        "name": "Boolean Result"
+      }
+    ],
+    "triangles": 121172,
+    "materialCount": 1,
+    "ghostExcluded": true
+  },
+  "browserObserved": {
+    "allFourPrimitivesSelected": true,
+    "rectangularDimensionsAndRotationEdited": true,
+    "squarePyramidAxesLinked": true,
+    "addSubtractColoursDistinct": true,
+    "worldPoseEditedOnTransformedLayer": true,
+    "heldViewportClickAndWDidNotEditProject": true,
+    "hiddenAndLockedTargetsDisabledPreview": true,
+    "escapeHidPreview": true,
+    "successfulImportClearedPreviewState": true
+  }
+}

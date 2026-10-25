@@ -1,0 +1,147 @@
+{
+  "nativeVersion": 3,
+  "sources": [
+    {
+      "id": "08eda458-a90d-4261-984c-042acf93dda0",
+      "name": "Base",
+      "resolution": 64,
+      "sourceDataUnchanged": true,
+      "sourceMetadataUnchangedExceptVisibility": true,
+      "hiddenAfterBake": true
+    },
+    {
+      "id": "92e2655b-621a-41fb-9d9f-030d0025da07",
+      "name": "Layer 2",
+      "resolution": 128,
+      "sourceDataUnchanged": true,
+      "sourceMetadataUnchangedExceptVisibility": true,
+      "hiddenAfterBake": true
+    }
+  ],
+  "bakedLayer": {
+    "id": "3e158894-b35a-43d6-a801-5415037c2af6",
+    "name": "Baked subtraction",
+    "transform": {
+      "position": [
+        0.03499999999999992,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1.0551067073170732,
+        1.0551067073170732,
+        1.0551067073170732
+      ]
+    },
+    "visible": true,
+    "locked": false,
+    "operation": "union",
+    "order": 2,
+    "resolution": 128,
+    "bounds": {
+      "min": [
+        -1.6531707317073174,
+        -1.6881707317073174,
+        -1.6881707317073174
+      ],
+      "max": [
+        1.7231707317073173,
+        1.6881707317073174,
+        1.6881707317073174
+      ]
+    }
+  },
+  "maximumDestinationSampleError": 0,
+  "brushChanges": [
+    {
+      "id": "08eda458-a90d-4261-984c-042acf93dda0",
+      "name": "Base",
+      "changedVoxels": 0
+    },
+    {
+      "id": "92e2655b-621a-41fb-9d9f-030d0025da07",
+      "name": "Layer 2",
+      "changedVoxels": 0
+    },
+    {
+      "id": "3e158894-b35a-43d6-a801-5415037c2af6",
+      "name": "Baked subtraction",
+      "changedVoxels": 2759
+    }
+  ],
+  "nativeRoundTripDataAndMetadataExact": true,
+  "nativeRoundTripBytesIdentical": true,
+  "viewportPreferencesExcluded": true,
+  "separate": {
+    "nodes": [
+      {
+        "matrix": [
+          1.0551067073170732,
+          0,
+          0,
+          0,
+          0,
+          1.0551067073170732,
+          0,
+          0,
+          0,
+          0,
+          1.0551067073170732,
+          0,
+          0.03499999999999992,
+          0,
+          0,
+          1
+        ],
+        "name": "Baked subtraction",
+        "extras": {
+          "layerId": "3e158894-b35a-43d6-a801-5415037c2af6"
+        },
+        "mesh": 0
+      }
+    ],
+    "triangles": 121172,
+    "materials": [
+      {
+        "pbrMetallicRoughness": {
+          "baseColorFactor": [
+            0.4286904966038916,
+            0.508881320845802,
+            0.29613827078752575,
+            1
+          ],
+          "metallicFactor": 0.03,
+          "roughnessFactor": 0.68
+        }
+      }
+    ]
+  },
+  "composite": {
+    "nodes": [
+      {
+        "name": "Boolean Result",
+        "mesh": 0
+      }
+    ],
+    "triangles": 121172,
+    "materials": [
+      {
+        "pbrMetallicRoughness": {
+          "baseColorFactor": [
+            0.4286904966038916,
+            0.508881320845802,
+            0.29613827078752575,
+            1
+          ],
+          "metallicFactor": 0.03,
+          "roughnessFactor": 0.68
+        }
+      }
+    ]
+  }
+}

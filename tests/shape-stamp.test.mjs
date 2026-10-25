@@ -1,0 +1,65 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {Vector3} from 'three';
+import {GLTFExporter} from 'three/addons/exporters/GLTFExporter.js';
+import {SDFVolume} from '../work/test-build/sdf.mjs';
+import {createBaseProject} from '../work/test-build/layers.mjs';
+import {IndependentLayers} from '../work/test-build/independent-layers.mjs';
+import {IncrementalMesher} from '../work/test-build/mesh.mjs';
+import {defineShape,SHAPE_KINDS} from '../work/test-build/shapes.mjs';
+import {prepareShape} from '../work/test-build/shape-library.mjs';
+import {prepareStamp} from '../work/test-build/shape-stamp.mjs';
+import {ShapePreviewModel} from '../work/test-build/shape-preview.mjs';
+import {placeShapeOnSurface,StampClickGesture} from '../work/test-build/shape-placement.mjs';
+import {identityTransform,transformMatrix} from '../work/test-build/transform.mjs';
+import {saveSculptProject,openSculptProject} from '../work/test-build/project.mjs';
+const settings={mode:'add',radius:.22,strength:.35,hardness:.5,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}};
+const create=(n=25)=>new IndependentLayers(createBaseProject(new SDFVolume(n),settings));
+const definition=(c,kind='box',operation='subtract',position=[0,0,.75])=>defineShape({kind,operation,targetLayerId:c.project.activeLayerId,dimensions:[.65,.65,.65],transform:{position,rotation:[.2,.35,.1],scale:[.9,.9,.9]}});
+function exact(c,d,before){const p=prepareShape(d),v=c.active.volume,n=v.resolution;let mismatch=0,changes=0;for(let z=0;z<n;z++)for(let y=0;y<n;y++)for(let x=0;x<n;x++){const i=v.index(x,y,z),s=p.sampleWorld({x:v.coordinate(x),y:v.coordinate(y),z:v.coordinate(z)}),expected=Math.fround(d.operation==='add'?Math.min(before[i],s):Math.max(before[i],-s));if(expected!==v.readVoxel(i))mismatch++;if(before[i]!==v.readVoxel(i))changes++;}assert.equal(mismatch,0,'all voxels equal exact CSG, including far-field');assert(changes>0);}
+function fullMeshMatches(c){const ref=new IncrementalMesher(c.active.volume);try{const full=ref.rebuildChunks();for(const update of full.updates){const current=c.active.surface.group.children.find(mesh=>mesh.name===`Chunk ${update.id}`),count=update.geometry.getAttribute('position').count;if(!count){assert(!current);continue;}assert(current);for(const attribute of ['position','normal'])assert.deepEqual(current.geometry.getAttribute(attribute).array,update.geometry.getAttribute(attribute).array);}}finally{ref.dispose();}}
+for(const kind of SHAPE_KINDS)for(const operation of ['add','subtract'])test(`${kind} ${operation} is exact Float32 min/max at every voxel and one history action`,()=>{
+ const c=create();try{const before=c.active.volume.values.slice(),d=definition(c,kind,operation);assert(c.stampShape(d));exact(c,d,before);assert.equal(c.undoCount,1);assert.equal(c.active.history.nextUndo.kind,'shape-stamp');fullMeshMatches(c);const after=c.active.volume.values.slice();c.undo();assert.deepEqual(c.active.volume.values,before);c.undo(true);assert.deepEqual(c.active.volume.values,after);fullMeshMatches(c);}finally{c.dispose();}
+});
+test('stamp planning is read-only and bounds include every changed sample, including outside the geometric AABB',()=>{
+ const c=create(),v=c.active.volume,before=v.values.slice(),d=definition(c,'box','add',[.8,0,0]);try{const patch=prepareStamp(c.active.layer,d),shape=prepareShape(d);assert.deepEqual(v.values,before);assert.equal(c.undoCount,0);assert(patch.evaluated<patch.scanned);assert(patch.indices.length>0);let outside=false;for(const i of patch.indices){const xyz=[i%v.resolution,Math.floor(i/v.resolution)%v.resolution,Math.floor(i/v.resolution**2)];assert(xyz.every((x,axis)=>x>=patch.bounds.min[axis]&&x<=patch.bounds.max[axis]));if(xyz.some((x,axis)=>v.coordinate(x)<shape.worldBounds.min[axis]||v.coordinate(x)>shape.worldBounds.max[axis]))outside=true;}assert(outside);}finally{c.dispose();}
+});
+test('transformed active target uses local distances, preserves other layers and metadata',()=>{
+ const c=create(),a=c.active.layer,aBytes=a.volume.values.slice(),aGeometry=c.active.surface.group.children.map(m=>m.geometry),b=c.create(64);try{c.setActiveTransform({position:[2,-.3,1],rotation:[.4,.2,-.3],scale:[1.7,1.7,1.7]});c.setOperation(b.id,'difference');const metadata=c.project.layerStack.layers.map(l=>l.metadata()),before=b.volume.values.slice(),d=definition(c,'pyramid','subtract');c.stampShape(d);exact(c,d,before);assert.deepEqual(c.project.layerStack.layers.map(l=>l.metadata()),metadata);assert.deepEqual(a.volume.values,aBytes);assert.deepEqual(c.runtime(a.id).surface.group.children.map(m=>m.geometry),aGeometry);const after=b.volume.values.slice();c.select(a.id);assert.equal(c.undo(),b.id);assert.deepEqual(b.volume.values,before);assert.deepEqual(a.volume.values,aBytes);c.undo(true);assert.deepEqual(b.volume.values,after);}finally{c.dispose();}
+});
+for(const resolution of [64,128,192])test(`${resolution}³ stamping retains resolution and local remeshing agrees with full reference`,()=>{
+ const c=create(resolution),before=c.active.volume.values.slice(),geometries=new Map(c.active.surface.group.children.map(m=>[m.name,m.geometry]));try{const d=definition(c,'box','subtract',[.25,.2,.72]);c.stampShape(d);assert.equal(c.active.volume.resolution,resolution);assert.equal(c.active.volume.step,3.2/(resolution-1));assert(c.lastStampStats.chunks<c.lastStampStats.totalChunks);assert(c.active.surface.group.children.some(m=>geometries.get(m.name)===m.geometry));fullMeshMatches(c);c.undo();assert.deepEqual(c.active.volume.values,before);assert(c.active.lastChanged<c.active.totalChunks);}finally{c.dispose();}
+});
+test('hidden locked stale targets invalid scales and clipped Add stamps fail without voxel or history mutation',()=>{
+ const c=create(),a=c.active.layer,b=c.create(64);try{const d=definition(c),before=b.volume.values.slice();c.setFlag(b.id,'locked',true);assert.throws(()=>c.stampShape(d),/locked/);c.setFlag(b.id,'locked',false);c.setFlag(b.id,'visible',false);assert.throws(()=>c.stampShape(d),/hidden/);c.setFlag(b.id,'visible',true);assert.throws(()=>c.stampShape({...d,targetLayerId:a.id}),/active/);assert.throws(()=>c.stampShape(definition(c,'box','add',[1.5,0,0])),/bounds/);assert.throws(()=>c.stampShape({...d,transform:{...d.transform,scale:[1,2,1]}}),/uniform/);assert.deepEqual(b.volume.values,before);assert.equal(c.undoCount,0);}finally{c.dispose();}
+});
+test('separate clicks are separate actions, identical/no-op stamps retain redo, new edits invalidate redo',()=>{
+ const c=create();try{const d=definition(c);c.stampShape(d);const first=c.active.volume.values.slice();assert.equal(c.stampShape(d),false);assert.equal(c.undoCount,1);const second=definition(c,'sphere','subtract',[.45,0,.65]);c.stampShape(second);assert.equal(c.undoCount,2);c.undo();assert.deepEqual(c.active.volume.values,first);assert.equal(c.redoCount,1);assert.equal(c.stampShape(d),false);assert.equal(c.redoCount,1);c.stampShape(definition(c,'pyramid','subtract',[-.4,0,.65]));assert.equal(c.redoCount,0);assert.equal(c.undoCount,2);}finally{c.dispose();}
+});
+test('fully external Subtract is a no-op and disconnected Add remains a real volume',()=>{
+ const c=create();try{assert.equal(c.stampShape(definition(c,'sphere','subtract',[4,0,0])),false);assert.equal(c.undoCount,0);const d=definition(c,'sphere','add',[1.15,0,0]);d.dimensions=[.25,.25,.25];c.stampShape(d);assert(c.active.volume.sampleLocal({x:1.15,y:0,z:0})<0);assert(c.active.volume.sampleLocal({x:1,y:.35,z:0})>0);fullMeshMatches(c);}finally{c.dispose();}
+});
+test('surface placement on transformed layers preserves all shape settings without editing data',()=>{
+ const c=create(),stack=c.project.layerStack,model=new ShapePreviewModel(stack.activeLayerId);try{c.setActiveTransform({position:[2,1,-1],rotation:[.3,-.2,.5],scale:[1.4,1.4,1.4]});const d=definition(c,'triangular-prism'),before=c.active.volume.values.slice();model.set(d,stack);const world=new Vector3(.2,.1,.7).applyMatrix4(transformMatrix(c.active.layer.transform));placeShapeOnSurface(model,stack,world);const result=model.definition;assert(result.transform.position.every((v,i)=>Math.abs(v-[.2,.1,.7][i])<1e-12));assert.deepEqual(result.transform.rotation,d.transform.rotation);assert.deepEqual(result.transform.scale,d.transform.scale);assert.deepEqual(result.dimensions,d.dimensions);assert.deepEqual(c.active.volume.values,before);}finally{c.dispose();}
+});
+test('click placement emits once, never repeats on dragging, camera buttons, cancellation or target change',()=>{
+ const c=create(),d=definition(c),gesture=new StampClickGesture();try{assert(gesture.begin(1,0,10,10,d));d.dimensions[0]=1;const frozen=gesture.complete(1,0,11,10,c.project.activeLayerId);assert.equal(frozen.dimensions[0],.65);assert.equal(gesture.complete(1,0,11,10,c.project.activeLayerId),null);gesture.begin(1,0,0,0,d);gesture.move(1,30,0,1);assert.equal(gesture.complete(1,0,0,0,c.project.activeLayerId),null);gesture.begin(1,0,0,0,d);gesture.begin(2,2,0,0,d);assert.equal(gesture.complete(1,0,0,0,c.project.activeLayerId),null);gesture.begin(1,0,0,0,d);gesture.cancel();assert.equal(gesture.complete(1,0,0,0,c.project.activeLayerId),null);gesture.begin(1,0,0,0,d);assert.equal(gesture.complete(1,0,0,0,'different-layer'),null);}finally{c.dispose();}
+});
+test('stamp changes invalidate Boolean preview and survive native round trips, neutral binary GLBs and subsequent brushes',async()=>{
+ const c=create(),a=c.active.layer,b=c.create(64);try{c.setOperation(b.id,'difference');c.setActiveTransform({position:[.3,0,0],rotation:[0,.2,0],scale:[.8,.8,.8]});await c.composite.flush();assert.equal(c.composite.pending,false);c.stampShape(definition(c,'box','subtract'));assert(c.composite.pending);await c.composite.flush();assert.equal(c.composite.pending,false);
+ const preferences=c.display.snapshot(c.project.id,c.project.layerStack.layers);preferences.colours[a.id]='#123456';const buffer=saveSculptProject(c.project,preferences),loaded=openSculptProject(buffer);assert.deepEqual(loaded.displayPreferences,preferences);for(const l of c.project.layerStack.layers)assert.deepEqual(loaded.layerStack.get(l.id).volume.getDenseView(),l.volume.values);assert(!new TextDecoder().decode(new Uint8Array(buffer,16,new DataView(buffer).getUint32(12,true))).includes('ghost'));
+ const reader=globalThis.FileReader;globalThis.FileReader=class{readAsArrayBuffer(blob){blob.arrayBuffer().then(buffer=>{this.result=buffer;this.onloadend?.();});}};
+ try{for(const group of [c.exportGroup(),c.composite.exportGroup()]){try{const binary=await new GLTFExporter().parseAsync(group,{binary:true}),view=new DataView(binary),json=JSON.parse(new TextDecoder().decode(new Uint8Array(binary,20,view.getUint32(12,true))));assert(json.meshes.length>0);assert(json.nodes.every(n=>!n.name?.includes('Ghost')));assert(json.materials.every(m=>m.alphaMode!=='BLEND'));}finally{group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});}}}finally{globalThis.FileReader=reader;}
+ const other=a.volume.values.slice(),before=b.volume.values.slice();c.beginStroke();c.applyStroke(new Vector3(0,0,.85).applyMatrix4(transformMatrix(b.transform)),.3,'add',.5,1/30,.5);c.finishStroke();assert.notDeepEqual(b.volume.values,before);assert.deepEqual(a.volume.values,other);
+ }finally{c.dispose();}
+});
+test('Add creates chunk surfaces in an empty volume; subtraction can empty it and replay both operations',()=>{
+ const project=createBaseProject(new SDFVolume(33),settings);project.activeLayer.volume.values.fill(1);const c=new IndependentLayers(project);try{assert.equal(c.active.triangles,0);const before=c.active.volume.values.slice(),add=definition(c,'box','add',[0,0,0]);assert(c.stampShape(add));assert(c.active.triangles>0);fullMeshMatches(c);assert.equal(c.active.history.memoryBytes,c.lastStampStats.changedVoxels*12);const populated=c.active.volume.values.slice();const subtract={...add,operation:'subtract',dimensions:[1,1,1]};c.stampShape(subtract);assert.equal(c.active.triangles,0);fullMeshMatches(c);c.undo();assert.deepEqual(c.active.volume.values,populated);fullMeshMatches(c);c.undo();assert.deepEqual(c.active.volume.values,before);assert.equal(c.active.triangles,0);}finally{c.dispose();}
+});
+test('oversized subtract rejects all staged changes before modifying data or invalidating redo',()=>{
+ const c=create();try{c.stampShape(definition(c));c.undo();const before=c.active.volume.values.slice(),d=definition(c,'sphere','subtract',[0,0,0]);d.dimensions=[100,100,100];assert.throws(()=>c.stampShape(d),/distance|boundary/);assert.deepEqual(c.active.volume.values,before);assert.equal(c.undoCount,0);assert.equal(c.redoCount,1);assert.equal(c.active.history.active,false);}finally{c.dispose();}
+});
+
+test('stamp gestures reject simultaneous camera buttons and secondary touch pointers',()=>{
+ const c=create(),g=new StampClickGesture(),d=definition(c);try{assert.equal(g.begin(1,0,0,0,d,3,true),false);assert.equal(g.complete(1,0,0,0,c.project.activeLayerId),null);assert.equal(g.begin(2,0,0,0,d,1,false),false);assert.equal(g.complete(2,0,0,0,c.project.activeLayerId),null);}finally{c.dispose();}
+});
