@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8"><title>Clay field quality comparison</title>
+<style>body{margin:0;background:#303a3d;color:#fff;font:13px system-ui}h1,p{margin:12px 16px}h1{font-size:19px}main{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}.tile{position:relative;background:#e9e9e3}.tile canvas{width:100%;display:block}.tile span{position:absolute;bottom:6px;left:8px;color:#263638;font-size:11px}p{font-size:11px;color:#c7d3d5}</style>
+<h1>Clay: stored field before / corrected / analytic reference</h1><p>Actual extracted meshes, desktop WebGL. Same material and lights per row. New strokes only; no smoothing or subdivision.</p><main></main>
+<script type="module">
+import * as THREE from 'three';
+import {SDFVolume as Before} from '/work/test-build/sdf-precision-baseline.mjs';
+import {ClayStroke as OldStroke} from '/work/test-build/stroke-precision-baseline.mjs';
+import {SDFVolume as After} from '/work/test-build/sdf.mjs';
+import {ClayStroke as NewStroke} from '/work/test-build/stroke.mjs';
+import {IncrementalMesher} from '/work/test-build/mesh.mjs';
+for(const [n,capsule] of [[64,false],[64,true],[128,false]])for(const kind of ['Before','Corrected','Reference']){
+ const v=new (kind==='Before'?Before:After)(n,1.6,false);v.values.fill(6.4);const radius=.14,offset={x:.013,y:.019,z:.007};
+ if(kind==='Reference'){const [nx,ny,nz]=v.dimensions;for(let z=0;z<nz;z++)for(let y=0;y<ny;y++)for(let x=0;x<nx;x++)v.values[v.index(x,y,z)]=Math.hypot(Math.max(Math.abs(v.coordinate(x)-offset.x)-(capsule?.25:0),0),v.coordinate(y)-offset.y,v.coordinate(z)-offset.z)-radius;}
+ else{const stroke=new (kind==='Before'?OldStroke:NewStroke)();for(let i=0;i<(capsule?9:1);i++)stroke.apply(v,{x:offset.x+(capsule?-.25+.5*i/8:0),y:offset.y,z:offset.z},radius,'add',.35,1/90,undefined,.6,undefined,true);}
+ const tile=document.createElement('div');tile.className='tile';const span=document.createElement('span');span.textContent=`${n}³ ${capsule?'stroke':'dab'} · ${kind}`;const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(420,200);renderer.setPixelRatio(1);renderer.outputColorSpace=THREE.SRGBColorSpace;tile.append(renderer.domElement,span);document.querySelector('main').append(tile);
+ const scene=new THREE.Scene();scene.background=new THREE.Color('#e9e9e3');scene.add(new THREE.HemisphereLight(0xffffff,0x687267,2.7));const light=new THREE.DirectionalLight(0xfff4df,3.4);light.position.set(-3,5,4);scene.add(light);const fill=new THREE.DirectionalLight(0xd6eaff,1.4);fill.position.set(4,1,-2);scene.add(fill);
+ const camera=new THREE.PerspectiveCamera(38,420/200,.01,10);camera.position.set(.3,.22,capsule?1.5:.85);camera.lookAt(0,0,0);const material=new THREE.MeshStandardMaterial({color:n===64?'#86c2dc':'#ed9871',roughness:.68,metalness:.03}),mesher=new IncrementalMesher(v,16);
+ for(const u of mesher.rebuildChunks().updates)if(u.geometry.getAttribute('position').count)scene.add(new THREE.Mesh(u.geometry,material));renderer.render(scene,camera);
+}
+</script>

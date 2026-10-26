@@ -7,7 +7,7 @@ import {SHAPE_KINDS,SHAPE_METADATA} from './shapes';
 import type {ShapeKind} from './shapes';
 import type {SculptSettings} from './project';
 import type {EditorMode} from './interaction';
-import {copyTransform,hasUniformScale,identityTransform} from './transform';
+import {copyTransform,hasUniformScale,identityTransform,uniformScale} from './transform';
 export type EditorTool='clay'|'smooth'|'stamp'|'transform'|'move';
 export const EDITOR_TOOLS=Object.freeze([
  {id:'clay',label:'Clay',detail:'Add / subtract',enabled:true,layerGrab:false,sizing:'brush-radius'},
@@ -25,7 +25,7 @@ export type EditorToolPort={layers:()=>IndependentLayers;shape:ShapePreviewModel
 export class EditorToolState {
  alternateTool:'off'|'clay'|'smooth'='smooth';
  private moveSelected=false;private previewOwner:{cancel:()=>void}|null=null;
- readonly move={precision:false,interaction:'translate' as 'translate'|'rotate'|'twist',axis:'free' as 'free'|'x'|'y'|'z',angularStrength:1,angleClamp:120,radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
+ readonly move={snap:0 as 0|15|45|90,precision:false,interaction:'translate' as 'translate'|'rotate'|'twist',axis:'free' as 'free'|'x'|'y'|'z',angularStrength:1,angleClamp:120,radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
  get brushRadius():number{return this.active==='move'?this.move.radius:this.port.settings().radius;}
  beginPreview(owner:{cancel:()=>void}):void{if(this.busy)throw new Error('Finish the current interaction first.');this.previewOwner=owner;}
  endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
@@ -48,17 +48,25 @@ export class EditorToolState {
  resetLayerTransform(id:string):void{this.assertIdle();const l=this.port.layers();if(this.active!=='transform'||id!==l.project.activeLayerId)throw new Error('Reset cancelled: selected layer changed.');l.setActiveTransform(identityTransform());this.port.changed();}
  private assertIdle():void{if(this.busy)throw new Error('Finish the current interaction first.');}
  private declarations():Declaration[]{
-  const p=this.port,l=p.layers(),settings=p.settings(),active=this.active,options:Declaration[]=[];
+  const p=this.port,l=p.layers(),settings=p.settings(),active=this.active,options:Declaration[]=[],mirrorOptions:Declaration[]=[];
   const brush=(id:'radius'|'strength'|'hardness',label:string,min:number,max:number,step:number)=>options.push({id,label,read:()=>settings[id],write:v=>p.setSettings({...p.settings(),[id]:v}),min,max,step,format:v=>id==='radius'?Number(v).toFixed(3):`${Math.round(Number(v)*100)}%`});
+  if(active==='clay'||active==='smooth'||active==='stamp'){
+   const mirror=l.symmetry;
+   mirrorOptions.push({id:'symmetry',label:'Mirror symmetry · layer local',read:()=>mirror.enabled?'on':'off',write:v=>mirror.enabled=v==='on',choices:['off','on'],disabled:!l.active.layer.editable},
+    {id:'symmetry-axis',label:'Mirror plane normal',read:()=>mirror.axis,write:v=>mirror.axis=v as typeof mirror.axis,choices:['x','y','z'],disabled:!l.active.layer.editable},
+    {id:'symmetry-offset',label:'Mirror plane offset',read:()=>mirror.offset,write:v=>mirror.offset=Number(v),min:-100,max:100,step:.05,disabled:!l.active.layer.editable});
+  }
   if(active==='clay'||active==='smooth'){
    if(active==='clay')options.push({id:'operation',label:'Clay operation',read:()=>settings.mode,write:v=>p.setSettings({...p.settings(),mode:v as 'add'|'subtract'}),choices:['add','subtract'],names:['Add','Subtract']});
    options.push({id:'placement',label:'Placement',read:()=>this.path.placement,write:v=>this.path.placement=v as 'free'|'surface',choices:['free','surface'],names:['Free space','Surface follow']});
    brush('radius','Brush radius',BRUSH_RADIUS_LIMITS.min,BRUSH_RADIUS_LIMITS.max,.02);brush('strength',active==='smooth'?'Smoothing strength':'Strength',.01,1,.05);
-   if(active==='clay'){brush('hardness','Hardness',0,1,.05);options.push({id:'steady',label:'Steady',read:()=>this.path.steady,write:v=>this.path.steady=Number(v),min:0,max:100,step:5,format:v=>`${v}%`,disabled:this.path.straightLine,slider:true},{id:'straight-line',label:'Straight Line',read:()=>this.path.straightLine?'on':'off',write:v=>this.path.straightLine=v==='on',choices:['off','on'],names:['Off','On']});options.push({id:'spacing',label:'Stroke spacing',read:()=> 'Automatic',disabled:true});}
+   if(active==='clay'){brush('hardness','Hardness',0,1,.05);options.push({id:'steady',label:'Steady',read:()=>this.path.steady,write:v=>this.path.steady=Number(v),min:0,max:100,step:5,format:v=>`${v}%`,disabled:this.path.straightLine,slider:true},{id:'straight-line',label:'Straight Line',read:()=>this.path.straightLine?'on':'off',write:v=>this.path.straightLine=v==='on',choices:['off','on'],names:['Off','On']});options.push({id:'line-axis',label:'Straight Line axis · layer local',read:()=>this.path.axis,write:v=>this.path.axis=v as typeof this.path.axis,choices:['free','x','y','z'],disabled:!this.path.straightLine});options.push({id:'spacing',label:'Stroke spacing',read:()=> 'Automatic',disabled:true});}
+   options.push({id:'quality',label:'Geometry quality',read:()=>{const v=l.active.volume;return `Radius ${(settings.radius/uniformScale(l.active.layer.transform)/v.step).toFixed(1)} voxels · finer new layers: 128³ / 192³`;},disabled:true});
    options.push({id:'application',label:'VR strokes',read:()=>this.path.placement==='free'?'Tool trigger · free space':'Tool trigger · surface',disabled:true});
   }
   if(active==='move'){
    options.push({id:'move-interaction',label:'Move gesture',read:()=>this.move.interaction,write:v=>this.move.interaction=v as typeof this.move.interaction,choices:['translate','rotate','twist'],names:['Translate','Rotate region','Twist region']});
+   options.push({id:'move-translation-axis',label:'Axis constraint · layer local',read:()=>this.move.axis,write:v=>this.move.axis=v as typeof this.move.axis,choices:['free','x','y','z']},{id:'move-snap',label:'Rotation snap · degrees',read:()=>String(this.move.snap),write:v=>this.move.snap=Number(v) as typeof this.move.snap,choices:['0','15','45','90'],names:['Off','15°','45°','90°'],disabled:this.move.interaction==='translate'});
    if(this.move.interaction!=='translate')options.push({id:'move-axis',label:'Rotation axis · layer local',read:()=>this.move.axis,write:v=>this.move.axis=v as typeof this.move.axis,choices:['free','x','y','z'],names:['Wrist axis','X','Y','Z']},
     {id:'move-angular-strength',label:'Wrist sensitivity',read:()=>this.move.angularStrength,write:v=>this.move.angularStrength=Number(v),min:.1,max:2,step:.1},
     {id:'move-angle-clamp',label:'Angle limit · degrees',read:()=>this.move.angleClamp,write:v=>this.move.angleClamp=Number(v),min:15,max:180,step:15},
@@ -90,6 +98,7 @@ export class EditorToolState {
    options.push({id:'selected-layer',label:'Selected layer',read:()=>l.active.layer.name,disabled:true},{id:'workspace-note',label:'Workspace / layer',read:()=> 'Support/both = view; Tool = saved layer',disabled:true},{id:'reset-layer',label:'Reset Layer Transform…',read:()=> 'Position 0 · rotation 0 · scale 1',action:'reset-layer',disabled:!editable});
    options.push({id:'grip',label:'Tool grip',read:()=>l.transforming?'Moving / rotating · release grip':l.viewMode!=='separate'?'Use Separate Layers':!editable?'Show / unlock layer':!hasUniformScale(t)?'Uniform layer scale required':'Move + wrist rotate',disabled:true});
   }
+  options.push(...mirrorOptions);
   options.push({id:'alternate-tool',label:'Support trigger alternate',read:()=>this.alternateTool,write:v=>this.alternateTool=v as 'off'|'clay'|'smooth',choices:['off','smooth','clay'],names:['Off','Smooth','Clay']});
   return options;
  }

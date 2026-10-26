@@ -1,3 +1,7 @@
+import {uniformScale} from './transform';
+import {ClayStrokeSession} from './clay-stroke-session';
+import {XRBrushPreview} from './xr-brush-preview';
+import {reflectPoint} from './sdf';
 import {volumeLabel} from './volume-store';
 import {EditorToolState} from './editor-tool-state';
 import {countVisibleMeshes} from './xr-performance';
@@ -81,8 +85,9 @@ function refresh() {
   ui.layerRows(layers.project.layerStack.layers,layers.project.activeLayerId,layer=>display.colour(layers.project.id,layer.id,layer.order));
   ui.resolution(layers.active.layer.volume.resolution);syncRenderStyle();ui.viewportMode(display.mode);syncTransformUI();transformTools?.sync();
 }
-function stopSculpt() {
-  const captured=activePointer;activePointer=null;input.end('sculpt');controls.enabled=input.cameraEnabled;layers.finishStroke();syncStats();lastRebuild=performance.now();
+const desktopStroke=new ClayStrokeSession(()=>layers,()=>refresh());
+function stopSculpt(commit=false) {
+  const captured=activePointer;activePointer=null;input.end('sculpt');controls.enabled=input.cameraEnabled;if(desktopStroke.active){if(desktopStroke.phase==='drawing'&&(commit||!desktopStroke.buffered))desktopStroke.end();else if(!commit)desktopStroke.cancel();}else layers.finishStroke();syncStats();lastRebuild=performance.now();
   if(captured!==null&&renderer.domElement.hasPointerCapture(captured))renderer.domElement.releasePointerCapture(captured);
 }
 function stop(){stampClick.cancel();ghostRotation?.finish();transformTools?.finish();stopSculpt();}
@@ -140,16 +145,16 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     if(e.button!==0){stampClick.cancel();return;}
     updatePointer(e);try{if(placePointerShape()&&stampClick.begin(e.pointerId,e.button,e.clientX,e.clientY,shapeGhost.model.definition,e.buttons,e.isPrimary))renderer.domElement.setPointerCapture(e.pointerId);}catch(error){ui.status(message(error));}return;
   }
-  if(e.button!==0||activePointer!==null||!input.canSculpt(layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked()||shapeGhost.model.enabled))return;
-  try {layers.beginStroke();if(!input.beginSculpt(layers.active.layer.editable,loadingProject)){layers.finishStroke();return;}updatePointer(e);activePointer=e.pointerId;controls.enabled=input.cameraEnabled;renderer.domElement.setPointerCapture(e.pointerId);}
-  catch(error){input.end('sculpt');controls.enabled=input.cameraEnabled;ui.status(message(error));}
+  if(e.button!==0||desktopStroke.active||activePointer!==null||!input.canSculpt(layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked()||shapeGhost.model.enabled))return;
+  try {desktopStroke.begin(ui.settings,editorTools!.path,performance.now());if(!input.beginSculpt(layers.active.layer.editable,loadingProject)){desktopStroke.cancel();return;}updatePointer(e);activePointer=e.pointerId;controls.enabled=input.cameraEnabled;renderer.domElement.setPointerCapture(e.pointerId);}
+  catch(error){desktopStroke.cancel();input.end('sculpt');controls.enabled=input.cameraEnabled;ui.status(message(error));}
 });
 renderer.domElement.addEventListener('pointerup',event=>{
   const rect=renderer.domElement.getBoundingClientRect();if(event.buttons!==0||event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)stampClick.cancel();
   const definition=stampClick.complete(event.pointerId,event.button,event.clientX,event.clientY,layers.project.activeLayerId);
-  if(definition)applyShapeStamp(definition);stop();
+  if(definition)applyShapeStamp(definition);if(activePointer!==null)stopSculpt(true);else if(!desktopStroke.active)stop();
 });
-for(const event of ['pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,stop);
+renderer.domElement.addEventListener('pointercancel',stop);renderer.domElement.addEventListener('lostpointercapture',()=>{if(activePointer!==null)stop();});
 window.addEventListener('blur',stop);
 function changeHistory(redo:boolean) {
   if(loadingProject||ui.modalOpen||xrBlocked())return;
@@ -320,6 +325,11 @@ editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settin
  selectTool:tool=>{if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
 });
+const precisionPanel=document.createElement('details');precisionPanel.className='precision-settings';const precisionTitle=document.createElement('summary');precisionTitle.textContent='PRECISION · SHARED TOOL SETTINGS';const precisionOptions=document.createElement('div');precisionPanel.append(precisionTitle,precisionOptions);document.querySelector('#radius')!.closest('section')!.append(precisionPanel);
+let precisionKey='';
+function syncPrecisionOptions(){const options=editorTools!.options(),key=JSON.stringify(options);if(key===precisionKey)return;precisionKey=key;precisionOptions.replaceChildren();for(const o of options){const row=document.createElement('p'),label=document.createElement('span');label.textContent=`${o.label}: ${o.value} `;row.append(label);if(o.increase||o.decrease)for(const direction of [-1,1] as const){const button=document.createElement('button');button.type='button';button.textContent=direction===1?'＋':'−';button.setAttribute('aria-label',`${direction===1?'Increase':'Decrease'} ${o.label}`);button.disabled=o.disabled||!(direction===1?o.increase:o.decrease);button.onclick=()=>{try{editorTools!.adjust(o.id,direction);syncPrecisionOptions();}catch(error){ui.status(message(error));}};row.append(button);}precisionOptions.append(row);}}
+const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);
+const desktopPathGeometry=new THREE.BufferGeometry(),desktopPathMaterial=new THREE.LineBasicMaterial({color:'#267c78',depthTest:false});const desktopPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopMirrorPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopPaths=new THREE.Group();desktopPaths.matrixAutoUpdate=false;desktopPaths.add(desktopPath,desktopMirrorPath);scene.add(desktopPaths);
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
@@ -354,6 +364,7 @@ function pollComposite(now:number):void{
 renderer.setAnimationLoop((now,frame)=>{
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
+    desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
     const cpuStart=performance.now();if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
     if(!xrExperience!.controllers.grab?.active&&!xrExperience!.controllers.layerGrab?.active)pollComposite(now);
     renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
@@ -361,21 +372,26 @@ renderer.setAnimationLoop((now,frame)=>{
   xrExperience?.refreshButton();
   const dt=Math.min((now-previous)/1000,0.05);previous=now;if(input.cameraEnabled)controls.update();
   const runtime=layers.active;
+  if(desktopStroke.phase==='committing')try{desktopStroke.pump();}catch(error){desktopStroke.cancel();ui.status(message(error));}
   if(pointerInside&&input.canSculpt(runtime.layer.editable,loadingProject||ui.modalOpen||xrBlocked()||shapeGhost.model.enabled)&&hasUniformScale(runtime.layer.transform)) {
     raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObject(booleanPreview?layers.composite.group:runtime.surface.group,true)[0];cursor.visible=!!hit;
     if(hit&&hit.face) {
       normal.copy(hit.normal??hit.face.normal).applyNormalMatrix(normalMatrix.getNormalMatrix(hit.object.matrixWorld));cursor.position.copy(hit.point).addScaledVector(normal,0.006);
       cursor.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),normal);cursor.scale.setScalar(ui.radius);
       cursor.material.color.set(ui.mode==='add'?'#435d2c':ui.mode==='subtract'?'#a04b36':'#426ca0');cursor.material.opacity=0.4+ui.strength*0.6;
-      if(layers.drawing) {
-        try{layers.applyStroke(hit.point,ui.radius,ui.mode,ui.strength,dt,ui.hardness);ui.status(`${ui.mode} · ${runtime.layer.name} · ${Math.round(ui.strength*100)}%`);}
-        catch(error){layers.cancelStroke();stop();ui.status(message(error));}
+      if(desktopStroke.phase==='drawing') {
+        try{runtime.surface.group.updateWorldMatrix(true,false);const local=hit.point.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopStroke.sample(local,now);ui.status(`${ui.mode} · ${runtime.layer.name} · ${Math.round(ui.strength*100)}%`);}
+        catch(error){desktopStroke.cancel();stop();ui.status(message(error));}
       }
     }else layers.breakStrokePath();
     if(layers.drawing&&now-lastRebuild>=1000/30){runtime.rebuild();syncStats();lastRebuild=performance.now();}
   }else{cursor.visible=false;layers.breakStrokePath();}
+  syncPrecisionOptions();
+  desktopMirrorCursor.hide();if(cursor.visible&&layers.symmetry.enabled){runtime.surface.group.updateWorldMatrix(true,false);const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopMirrorCursor.show(runtime.surface.group,reflectPoint(p,layers.symmetry),ui.radius/uniformScale(runtime.layer.transform),ui.mode==='smooth');}
+  desktopPaths.visible=desktopStroke.active&&desktopStroke.preview.length>0;if(desktopPaths.visible){desktopPathGeometry.setFromPoints(desktopStroke.preview.map(p=>new THREE.Vector3(p.x,p.y,p.z)));desktopPaths.matrix.copy(runtime.surface.group.matrixWorld);const m=layers.symmetry;desktopMirrorPath.visible=m.enabled;desktopMirrorPath.scale.set(1,1,1);desktopMirrorPath.position.set(0,0,0);if(m.enabled){desktopMirrorPath.scale[m.axis]=-1;desktopMirrorPath.position[m.axis]=2*m.offset;}}
   pollComposite(now);
   if(ghostRotation){ghostRotation.space=document.querySelector<HTMLSelectElement>('#shape-space')!.value==='world'?'world':'local';ghostRotation.sync();}
+  shapeGhost.mirror=layers.symmetry;
   shapeGhost.sync(loadingProject||ui.modalOpen||xrBlocked());shapeLibraryUI.refresh();syncViewportTools();
   renderer.render(scene,camera);
 });

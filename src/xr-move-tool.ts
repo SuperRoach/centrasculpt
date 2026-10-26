@@ -9,7 +9,7 @@ import type {VolumeStore} from './volume-store';
 import {uniformScale} from './transform';
 import {XRBrushPreview} from './xr-brush-preview';
 import {MoveMeshPreview} from './move-mesh-preview';
-export type MovePreviewCapture=Readonly<{projectId:string;layerId:string;volume:VolumeStore;surfaceRevision:number;nativeTransform:readonly number[];target:readonly number[];worldMatrix:readonly number[];controllerPose:readonly number[];radius:number;falloff:number;strength:number;stiffness:number;mode:'preview'|'non-elastic'|'elastic';interaction:'translate'|'rotate'|'twist';axis:'free'|'x'|'y'|'z';angularStrength:number;angleClamp:number;precision:boolean}>;
+export type MovePreviewCapture=Readonly<{projectId:string;layerId:string;volume:VolumeStore;surfaceRevision:number;nativeTransform:readonly number[];target:readonly number[];worldMatrix:readonly number[];controllerPose:readonly number[];radius:number;falloff:number;strength:number;stiffness:number;mode:'preview'|'non-elastic'|'elastic';interaction:'translate'|'rotate'|'twist';axis:'free'|'x'|'y'|'z';angularStrength:number;angleClamp:number;precision:boolean;snap:number}>;
 /** Surface targeting and noncumulative preview in a frozen layer frame.
  * Release delegates one atomic persistent command to IndependentLayers. */
 export class XRMoveTool implements XRStrokeInteraction {
@@ -81,7 +81,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   if(tool!.buttons.trigger.pressed)this.armed=false;if(!start)return;
   this.capturedLayers=l;this.runtime=runtime;this.owner=tool!.connectionId;
   this.anchor.copy(surface.matrixWorld);this.poseRotation.multiplyMatrices(this.inverse,pose!).extractRotation(this.poseRotation);this.startRotation.setFromRotationMatrix(this.poseRotation);this.controllerStart.setFromMatrixPosition(pose!).applyMatrix4(this.inverse);
-  this.capture=Object.freeze({projectId:l.project.id,layerId:runtime.layer.id,volume:runtime.volume,surfaceRevision:runtime.surface.revision,nativeTransform:Object.freeze([...runtime.layer.transform.position,...runtime.layer.transform.rotation,...runtime.layer.transform.scale]),target:Object.freeze(this.center.toArray()),worldMatrix:Object.freeze(this.anchor.toArray()),controllerPose:Object.freeze(pose!.toArray()),radius,falloff:this.tools.move.falloff,strength:this.tools.move.strength,stiffness:this.tools.move.stiffness,mode:this.tools.move.mode==='preview'?'preview':this.tools.move.interaction==='translate'?this.tools.move.mode:'non-elastic',interaction:this.tools.move.interaction,axis:this.tools.move.axis,angularStrength:this.tools.move.angularStrength,angleClamp:this.tools.move.angleClamp,precision:this.tools.move.precision});
+  this.capture=Object.freeze({projectId:l.project.id,layerId:runtime.layer.id,volume:runtime.volume,surfaceRevision:runtime.surface.revision,nativeTransform:Object.freeze([...runtime.layer.transform.position,...runtime.layer.transform.rotation,...runtime.layer.transform.scale]),target:Object.freeze(this.center.toArray()),worldMatrix:Object.freeze(this.anchor.toArray()),controllerPose:Object.freeze(pose!.toArray()),radius,falloff:this.tools.move.falloff,strength:this.tools.move.strength,stiffness:this.tools.move.stiffness,mode:this.tools.move.mode==='preview'?'preview':this.tools.move.interaction==='translate'?this.tools.move.mode:'non-elastic',interaction:this.tools.move.interaction,axis:this.tools.move.axis,angularStrength:this.tools.move.angularStrength,angleClamp:this.tools.move.angleClamp,precision:this.tools.move.precision,snap:this.tools.move.snap});
   this.tools.beginPreview(this);l.beginPreview(this);
   this.preview.begin(surface,this.center,radius,this.capture.falloff,this.capture.strength,undefined,runtime.surface.spatial,this.capture.mode==='elastic'?'elastic':'non-elastic',this.capture.stiffness);
   surface.getWorldScale(this.worldScale);this.gesture.capture(this.capture.precision,1/this.worldScale.x);
@@ -89,10 +89,10 @@ export class XRMoveTool implements XRStrokeInteraction {
  }
  private updatePose(pose:Matrix4):void{
   const capture=this.capture!;
-  if(capture.interaction==='translate'){this.preview.update(this.gesture.translation(this.displacement,this.filteredDisplacement));return;}
+  if(capture.interaction==='translate'){this.preview.update(this.gesture.translation(this.displacement,this.filteredDisplacement,capture.axis));return;}
   this.poseRotation.multiplyMatrices(this.inverse,pose).extractRotation(this.poseRotation);
   this.wristRotation.setFromRotationMatrix(this.poseRotation).multiply(this.inverseStartRotation.copy(this.startRotation).invert()).normalize();
-  this.gesture.rotation(this.wristRotation,capture.axis,capture.angularStrength,capture.angleClamp);
+  this.gesture.rotation(this.wristRotation,capture.axis,capture.angularStrength,capture.angleClamp,capture.snap);
   this.preview.setRotation(this.gesture.axis,this.gesture.angle,capture.interaction);
  }
  private startCommit(l:IndependentLayers,time:number):void{

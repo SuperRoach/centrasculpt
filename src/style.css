@@ -36,3 +36,8 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 .new-layer-controls #new-layer-contents{grid-column:1 / -1;grid-row:1;width:100%}
 .new-layer-controls #new-layer-resolution{grid-column:1;grid-row:2}
 .new-layer-controls #new-layer{grid-column:2;grid-row:2}
+
+.precision-settings { margin-top: 18px; border-top: 1px solid #daddd3; padding-top: 12px; }
+.precision-settings summary { cursor: pointer; font-size: 11px; letter-spacing: .08em; }
+.precision-settings p { font-size: 12px; line-height: 1.5; }
+.precision-settings button { min-width: 32px; min-height: 32px; margin-left: 4px; }

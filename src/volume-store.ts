@@ -1,4 +1,4 @@
-import type { Bounds, BrushMode, Point3, VoxelChangeListener } from './sdf';
+import type { Bounds, BrushMode, Point3, VoxelChangeListener, MirrorPlane } from './sdf';
 import type { Vec3, VolumeTransform } from './transform';
 export type VolumeRegion = {bounds: Bounds; dimensions: Vec3; values: Float32Array};
 export type VolumeBounds = {min: Vec3; max: Vec3};
@@ -29,7 +29,7 @@ export interface VolumeStore {
   worldBounds(transform?: VolumeTransform): VolumeBounds;
   normalAt(point: readonly number[]): Vec3;
   reset(record?: VoxelChangeListener): void;
-  brush(center: Point3,radius: number,mode: BrushMode,amount: number,record?: VoxelChangeListener,hardness?: number, freeSpace?: boolean, strength?: number): Bounds | null;
+  brush(center: Point3,radius: number,mode: BrushMode,amount: number,record?: VoxelChangeListener,hardness?: number, freeSpace?: boolean, strength?: number, start?:Point3, mirror?:MirrorPlane): Bounds | null;
 }
 
 export function volumeSampleCount(volume:VolumeStore):number{return volume.dimensions.reduce((a,b)=>a*b,1);}

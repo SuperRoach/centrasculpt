@@ -12,6 +12,8 @@ import {applyRenderStyle} from './render-style';
 import {prepareStamp} from './shape-stamp';
 import { Group, MeshStandardMaterial } from 'three';
 import type { Bounds, BrushMode, Point3 } from './sdf';
+import {reflectPoint,validateMirrorPlane} from './sdf';
+import type {MirrorPlane} from './sdf';
 import { SDFVolume } from './sdf';
 import { SdfLayer, validateName, assertIndependentLayerVolumes } from './layers';
 import type { SculptProject } from './layers';
@@ -88,6 +90,8 @@ export class IndependentLayers {
   private future: TimelineEntry[]=[];
   private transformSession:{layerId:string;before:VolumeTransform}|null=null;
   growthLimits:Partial<DenseGrowthLimits>={};
+  readonly symmetry:MirrorPlane={enabled:false,axis:'x',offset:0};
+  private strokeMirror:MirrorPlane={enabled:false,axis:'x',offset:0};
   private strokePoint:Point3|null=null;
   private strokeLayer: string|null=null;
   private readonly stroke=new ClayStroke();
@@ -153,9 +157,10 @@ export class IndependentLayers {
   }
   select(id: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.select(id);}
   beginStroke(): void {
+    validateMirrorPlane(this.symmetry);
     if(this.transformSession)throw new Error('Finish the transform before sculpting.');
     if(this.strokeLayer)throw new Error('Finish the current stroke first.');
-    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
+    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.strokeMirror={...this.symmetry};this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
   }
   applyStroke(worldPoint: Point3,radius: number,mode: BrushMode,strength: number,dt: number,hardness: number): Bounds|null {
     if(!this.strokeLayer)return null;const layer=this.runtime(this.strokeLayer).layer;return this.applyStrokeLocal(toLocal(worldPoint,layer.transform),radius/uniformScale(layer.transform),mode,strength,dt,hardness);
@@ -168,9 +173,11 @@ export class IndependentLayers {
     const start=performance.now();
     if(mode==='add'&&Number.isFinite(radius)&&radius>0&&[point.x,point.y,point.z].every(Number.isFinite)){
       const previous=this.strokePoint??point,now=[point.x,point.y,point.z],before=[previous.x,previous.y,previous.z];
+      const points=[point,previous];if(this.strokeMirror.enabled)points.push(reflectPoint(point,this.strokeMirror),reflectPoint(previous,this.strokeMirror));
+      for(let a=0;a<3;a++){now[a]=Math.max(...points.map(p=>[p.x,p.y,p.z][a]));before[a]=Math.min(...points.map(p=>[p.x,p.y,p.z][a]));}
       this.growRuntime(runtime,{min:now.map((v,a)=>Math.min(v,before[a])-radius) as [number,number,number],max:now.map((v,a)=>Math.max(v,before[a])+radius) as [number,number,number]});
     }
-    const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace);
+    const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace,this.strokeMirror);
     this.strokePoint={...point};this.composite.invalidateLayer(runtime.layer,dirty);
     runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;this.metrics.record('brush',runtime.brushMs);return dirty;
   }
@@ -237,12 +244,13 @@ export class IndependentLayers {
   }
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
   stampShape(value:unknown):boolean {
+    validateMirrorPlane(this.symmetry);
     this.assertAvailable();this.finishStroke();this.finishTransform();
     const runtime=this.editableRuntime(this.project.activeLayerId),start=performance.now(),definition=validateShapeDefinition(value);
     if(definition.targetLayerId!==runtime.layer.id)throw new Error('Stamp must target the active layer.');
-    if(definition.operation==='add')this.growRuntime(runtime,prepareShape(definition).worldBounds);
+    if(definition.operation==='add'){const box=prepareShape(definition).worldBounds;if(this.symmetry.enabled){const a='xyz'.indexOf(this.symmetry.axis),lo=box.min[a],hi=box.max[a];box.min[a]=Math.min(lo,2*this.symmetry.offset-hi);box.max[a]=Math.max(hi,2*this.symmetry.offset-lo);}this.growRuntime(runtime,box);}
     const remaining=(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes-runtime.history.pendingMemoryEstimate;
-    const patch=prepareStamp(runtime.layer,definition,Math.max(0,Math.floor(remaining)));
+    const patch=prepareStamp(runtime.layer,definition,Math.max(0,Math.floor(remaining)),this.symmetry);
     if(!patch.indices.length){this.lastStampStats={evaluationMs:patch.evaluationMs,scanned:patch.scanned,evaluated:patch.evaluated,meshingMs:0,totalMs:performance.now()-start,changedVoxels:0,chunks:0,totalChunks:runtime.totalChunks};return false;}
     // Allocate the exact history snapshots before source mutation; preparation owns
     // the patch, so no Map-based stroke recorder is needed for these unique indices.

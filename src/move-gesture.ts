@@ -8,8 +8,8 @@ export class MoveGesture {
  capture(precision:boolean,localUnitsPerMeter:number):void{this.gain=precision?.25:1;this.threshold=.0003*localUnitsPerMeter;this.previous.set(0,0,0);this.previousAngle=0;this.hasAxis=false;this.priorAxis.set(0,1,0);this.axis.set(0,1,0);this.angle=0;}
  /** Identity outside twice the noise floor, C1 transition, exact zero at rest. */
  private response(value:number,threshold:number):number{const magnitude=Math.abs(value);if(magnitude<=threshold)return 0;if(magnitude>=threshold*2)return value;const t=(magnitude-threshold)/threshold;return value*t*t*(3-2*t);}
- translation(delta:Vector3,out:Vector3):Vector3{const length=delta.length();return length?out.copy(delta).multiplyScalar(this.gain*this.response(length,this.threshold)/length):out.set(0,0,0);}
- rotation(delta:Quaternion,lock:'free'|'x'|'y'|'z',strength:number,limitDegrees:number):void{
+ translation(delta:Vector3,out:Vector3,lock:'free'|'x'|'y'|'z'='free'):Vector3{out.copy(delta);if(lock!=='free')for(const a of ['x','y','z'] as const)if(a!==lock)out[a]=0;const length=out.length();return length?out.multiplyScalar(this.gain*this.response(length,this.threshold)/length):out.set(0,0,0);}
+ rotation(delta:Quaternion,lock:'free'|'x'|'y'|'z',strength:number,limitDegrees:number,snapDegrees=0):void{
   const q=this.q.copy(delta).normalize();if(q.w<0)q.set(-q.x,-q.y,-q.z,-q.w);
   let angle:number;
   if(lock==='free'){
@@ -27,5 +27,6 @@ export class MoveGesture {
   }
   const limit=limitDegrees*Math.PI/180;
   this.angle=Math.max(-limit,Math.min(limit,this.response(angle,.2*Math.PI/180)*strength*this.gain));
+  if(snapDegrees>0){const step=snapDegrees*Math.PI/180;this.angle=Math.sign(this.angle)*Math.min(Math.floor(limit/step)*step,Math.round(Math.abs(this.angle)/step)*step);}
  }
 }

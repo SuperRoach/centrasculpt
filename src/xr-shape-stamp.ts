@@ -38,12 +38,13 @@ export class XRShapeStamp implements XRStrokeInteraction {
    const model=this.tools.port.shape,d=model.definition;
    model.set({...d,targetLayerId:stack.activeLayerId,transform:{position:this.position.toArray(),rotation:[this.euler.x,this.euler.y,this.euler.z],scale:d.transform.scale}},stack);
    const definition=model.definition,box=transformedShapeBounds(localShapeBounds(definition.kind,definition.dimensions),transformMatrix(definition.transform)),volume=layers.active.volume,b=volume.bounds;
+   if(layers.symmetry.enabled){const a='xyz'.indexOf(layers.symmetry.axis),lo=box.min[a],hi=box.max[a];box.min[a]=Math.min(lo,2*layers.symmetry.offset-hi);box.max[a]=Math.max(hi,2*layers.symmetry.offset-lo);}
    const outside=box.min.some((v,i)=>v<=b.min[i]+volume.step||box.max[i]>=b.max[i]-volume.step);
    // Cheap storage admission check before the trigger. A preview may
    // otherwise advertise growth that the fixed-detail dense limits cannot fit.
    let growthError='';
    if(outside&&definition.operation==='add'&&volume instanceof SDFVolume)try{planDenseGrowth(volume,box,layers.growthLimits);}catch(error){growthError=error instanceof Error?error.message:'Stamp growth exceeds available storage.';}
-   this.ghost.sync();this.ghost.setWarning(!!growthError||outside&&definition.operation==='subtract');
+   this.ghost.mirror=layers.symmetry;this.ghost.sync();this.ghost.setWarning(!!growthError||outside&&definition.operation==='subtract');
    this.ghost.group.matrix.copy(surface.matrixWorld);if(this.ghost.group.parent){this.ghost.group.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.ghost.group.parent.matrixWorld).invert();this.ghost.group.matrix.premultiply(this.parentInverse);}this.ghost.group.updateWorldMatrix(false,true);
    if(growthError)this.message=growthError;
    else if(time<this.failureUntil){/* Keep a failed commit readable while the ghost moves. */}

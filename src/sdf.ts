@@ -4,6 +4,9 @@ import type { Vec3, VolumeTransform } from './transform';
 import { Vector3 } from 'three';
 export type VoxelChangeListener = (index: number, before: number, after: number) => void;
 export type BrushMode = 'add' | 'subtract' | 'smooth';
+export type MirrorPlane = {enabled:boolean;axis: 'x'|'y'|'z';offset:number};
+export function validateMirrorPlane(plane:MirrorPlane):void{if(typeof plane.enabled!=='boolean'||!['x','y','z'].includes(plane.axis)||!Number.isFinite(plane.offset))throw new Error('Invalid mirror plane.');}
+export function reflectPoint(p:Point3,plane:MirrorPlane):Point3{return {...p,[plane.axis]:2*plane.offset-p[plane.axis]};}
 export type Point3 = { x: number; y: number; z: number };
 /** Inclusive sample bounds. */
 export type Bounds = { min: [number, number, number]; max: [number, number, number] };
@@ -120,13 +123,18 @@ export class SDFVolume implements VolumeStore {
    * Legacy Add/Subtract use bounded displacement. Free-space Add/Subtract construct
    * a radius-sized sphere with strength/hardness controlling interior field depth.
    */
-  brush(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1): Bounds | null {
+  brush(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1, start:Point3=center, mirror?:MirrorPlane): Bounds | null {
     if (![center.x, center.y, center.z, radius, amount, hardness, strength].every(Number.isFinite) || radius <= 0 || amount <= 0 || (freeSpace && strength <= 0)) return null;
     amount = Math.min(amount, mode === 'smooth' ? 1 : this.step * 0.5);
     const [nx,ny,nz] = this.shape;
-    const lo = (v: number,a:number) => Math.max(1, Math.floor((v - radius + this.extent) / this.step-this.minimum[a]));
-    const hi = (v: number,a:number) => Math.min(this.shape[a] - 2, Math.ceil((v + radius + this.extent) / this.step-this.minimum[a]));
-    const bounds: Bounds = { min: [lo(center.x,0),lo(center.y,1),lo(center.z,2)], max: [hi(center.x,0),hi(center.y,1),hi(center.z,2)] };
+    if(![start.x,start.y,start.z].every(Number.isFinite)||mirror&&(!['x','y','z'].includes(mirror.axis)||!Number.isFinite(mirror.offset)))throw new Error('Invalid brush trajectory/plane.');
+    const reflected=mirror?.enabled?reflectPoint(center,mirror):center, reflectedStart=mirror?.enabled?reflectPoint(start,mirror):start;
+    // A complete exterior band is essential for correct zero crossings and gradients.
+    const padding=radius+(freeSpace&&mode!=='smooth'?this.step*2:0);
+    const low=[0,1,2].map((a)=>Math.min(...[center,start,reflected,reflectedStart].map(p=>[p.x,p.y,p.z][a])));
+    const high=[0,1,2].map((a)=>Math.max(...[center,start,reflected,reflectedStart].map(p=>[p.x,p.y,p.z][a])));
+    const bounds:Bounds={min:low.map((v,a)=>Math.max(1,Math.floor((v-padding+this.extent)/this.step-this.minimum[a]))) as Bounds['min'],max:high.map((v,a)=>Math.min(this.shape[a]-2,Math.ceil((v+padding+this.extent)/this.step-this.minimum[a]))) as Bounds['max']};
+    const distance=(px:number,py:number,pz:number,a:Point3,b:Point3)=>{const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,length=dx*dx+dy*dy+dz*dz,t=length?Math.max(0,Math.min(1,((px-a.x)*dx+(py-a.y)*dy+(pz-a.z)*dz)/length)):0;return Math.hypot(px-a.x-t*dx,py-a.y-t*dy,pz-a.z-t*dz);};
     // Empty-space erase/smooth must not churn positive fields, history or meshes.
     // Include a neighbor halo for Smooth's diffusion kernel.
     if(freeSpace && mode !== 'add') {
@@ -141,9 +149,10 @@ export class SDFVolume implements VolumeStore {
     let changed = false;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++) for (let y = bounds.min[1]; y <= bounds.max[1]; y++) for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
       const i = this.index(x,y,z);
-      const d = Math.hypot(this.coordinate(x,0) - center.x, this.coordinate(y,1) - center.y, this.coordinate(z,2) - center.z) / radius;
+      const px=this.coordinate(x,0),py=this.coordinate(y,1),pz=this.coordinate(z,2);
+      const d=Math.min(distance(px,py,pz,start,center),mirror?.enabled?distance(px,py,pz,reflectedStart,reflected):Infinity)/radius;
       let next = this.values[i];
-      if (d < 1) {
+      if (d < 1 || freeSpace&&mode!=='smooth') {
         // Smooth always retains its original gentle diffusion kernel.
         const inner = mode === 'smooth' ? 0 : Math.max(0,Math.min(1,hardness))*0.9;
         const t = Math.max(0,(d-inner)/(1-inner));

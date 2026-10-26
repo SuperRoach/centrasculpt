@@ -55,3 +55,10 @@ test('Steady and Straight Line retain their values and 3D endpoints; changing pl
 test('free applicator uses tracked grip pose rather than independently pointing aim ray; Add near old bounds stays ready to grow',()=>{
  const f=setup(true);try{const aim=new Matrix4().makeTranslation(0,0,8),grip=poseAt(.2,.3);f.stroke.update(f.tool,aim,0,true,grip);press(f.tool);f.stroke.update(f.tool,aim,16,true,grip);near(f.stroke.session.raw[0].x,.2);near(f.stroke.session.raw[0].y,.3);near(f.stroke.session.raw[0].z,0);assert(f.volume.sampleLocal({x:.2,y:.3,z:0})<0);f.stroke.cancel();release(f.tool);f.stroke.update(f.tool,aim,32,true,poseAt(1.5));assert.doesNotMatch(f.stroke.feedback,/clipped/);assert.notEqual(f.stroke.cursor.mesh.material.color.getHexString(),'e8b174');}finally{f.dispose();}
 });
+test('mirrored XR brush and trajectory previews match a layer-local constrained stroke and cancel on lost tracking',()=>{
+ const f=setup(true);try{f.layers.symmetry.enabled=true;f.layers.symmetry.axis='x';f.layers.symmetry.offset=.1;f.tools.path.straightLine=true;f.tools.path.axis='y';
+ f.stroke.update(f.tool,poseAt(.6,.1),0,true);assert(f.stroke.mirrorCursor.group.visible);near(new Vector3().setFromMatrixPosition(f.stroke.mirrorCursor.group.matrixWorld).x,-.4);
+ press(f.tool);f.stroke.update(f.tool,poseAt(.6,.1),16,true);f.tool.buttons.trigger.justPressed=false;f.stroke.update(f.tool,poseAt(.9,.3,.2),64,true);assert(f.stroke.session.preview.every(p=>Math.abs(p.x-.6)<1e-8&&Math.abs(p.z)<1e-8));assert(f.stroke.preview.children.some(o=>o.visible&&o.scale.x===-1));assert.equal(f.layers.undoCount,0);
+ f.tool.tracked=false;f.stroke.update(f.tool,poseAt(.9,.3,.2),80,true);assert(!f.stroke.active);assert(!f.stroke.mirrorCursor.group.visible);assert.equal(f.layers.undoCount,0);assert(f.layers.active.volume.values.every(v=>v>0));
+ }finally{f.dispose();}
+});

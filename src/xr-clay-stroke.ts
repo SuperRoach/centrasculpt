@@ -1,3 +1,4 @@
+import {reflectPoint} from './sdf';
 import {BufferGeometry,Float32BufferAttribute,Group,Line,LineBasicMaterial,Matrix4,Raycaster,Vector3} from 'three';
 import type {Intersection,Object3D} from 'three';
 import type {XRControllerState} from './xr-input';
@@ -12,18 +13,18 @@ export interface XRStrokeInteraction {readonly active:boolean;readonly feedback?
 /** Grip-relative free-space Clay/Smooth by default; optional surface follow. All path filtering/transaction work is device-independent. */
 export class XRClayStroke implements XRStrokeInteraction {
  readonly controllerRaw:{position:number[];direction:number[];time:number}[]=[];
- readonly cursor:XRBrushPreview;
+ readonly cursor:XRBrushPreview;readonly mirrorCursor:XRBrushPreview;
  readonly session:ClayStrokeSession;readonly preview=new Group();message='';
  private readonly geometry=new BufferGeometry();private readonly positions=new Float32BufferAttribute(new Float32Array(16384*3),3);private readonly material=new LineBasicMaterial({color:'#9de6cf',depthTest:false,transparent:true,opacity:.9,toneMapped:false});
  private readonly hits:Intersection<Object3D>[]=[];
- private readonly line:Line;private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly local=new Vector3();private readonly inverse=new Matrix4();private readonly parentInverse=new Matrix4();private readonly anchor=new Matrix4();
+ private readonly line:Line;private readonly mirrorLine:Line;private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly local=new Vector3();private readonly inverse=new Matrix4();private readonly parentInverse=new Matrix4();private readonly anchor=new Matrix4();
  private boundsVolume:VolumeStore|null=null;private bounds:VolumeBounds|null=null;private placementNote='';private capturedPlacement:'free'|'surface'='free';
  private processingMs=0;private processingMeasured=false;
  private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastMesh=0;private lastPreview:unknown=null;private previewLength=0;
- constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
+ constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
  get active():boolean{return this.session.active;}
  get feedback():string{if(this.placementNote)return this.placementNote;const label=this.tools.active==='smooth'?'Smooth':'Clay';return this.session.phase==='committing'?`${label}: applying the preview · one undo action`:this.session.phase==='drawing'?this.session.buffered?`${label} preview · release trigger to apply`:`${label}: freehand`:this.message;}
- cancel():void{this.message='';this.placementNote='';this.cursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
+ cancel():void{this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const metrics=this.layers().metrics,wasActive=this.active,start=metrics.enabled?performance.now():0;
   if(!wasActive){this.processingMs=0;this.processingMeasured=metrics.enabled;}
@@ -52,9 +53,11 @@ export class XRClayStroke implements XRStrokeInteraction {
     this.hits.length=0;this.raycaster.intersectObject(runtime.surface.group,true,this.hits);const hit=this.hits[0];
     if(hit){this.local.copy(hit.point).applyMatrix4(this.inverse);hasTarget=true;}
    }
+   if(hasTarget&&this.active){const projected=this.session.projectPoint(this.local);this.local.set(projected.x,projected.y,projected.z);}
    const nearBounds=!canGrow&&placement==='free'&&this.bounds&&[this.local.x,this.local.y,this.local.z].some((v,i)=>v-radius<this.bounds!.min[i]+runtime.volume.step||v+radius>this.bounds!.max[i]-runtime.volume.step);
    if(nearBounds)this.placementNote='Near layer bounds · brush will be clipped';
    if(hasTarget)this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',!nearBounds);else this.cursor.hide();
+   if(hasTarget&&layers.symmetry.enabled)this.mirrorCursor.show(runtime.surface.group,reflectPoint(this.local,layers.symmetry),radius,mode==='smooth',!nearBounds);else this.mirrorCursor.hide();
    if(!this.active&&!tool!.buttons.trigger.pressed){this.armed=true;return;}
    if(!this.active&&(!this.armed||!tool!.buttons.trigger.justPressed||!tool!.buttons.trigger.pressed))return;
    if(this.active&&!tool!.buttons.trigger.pressed){if(this.session.buffered&&hasTarget){this.recordController(time);this.session.sample(this.local,time);}this.session.end();this.armed=true;this.paint();return;}
@@ -67,7 +70,8 @@ export class XRClayStroke implements XRStrokeInteraction {
  private paint():void{
   this.preview.visible=this.active&&this.session.preview.length>0;if(!this.preview.visible)return;
   if(this.lastPreview!==this.session.preview||this.previewLength!==this.session.preview.length){this.lastPreview=this.session.preview;this.previewLength=this.session.preview.length;this.session.preview.forEach((p,i)=>this.positions.setXYZ(i,p.x,p.y,p.z));this.positions.needsUpdate=true;this.geometry.setDrawRange(0,this.session.preview.length);}
+  const mirror=this.layers().symmetry;this.mirrorLine.visible=mirror.enabled;this.mirrorLine.scale.set(1,1,1);this.mirrorLine.position.set(0,0,0);if(mirror.enabled){this.mirrorLine.scale[mirror.axis]=-1;this.mirrorLine.position[mirror.axis]=2*mirror.offset;}
   this.preview.matrix.copy(this.anchor);if(this.preview.parent){this.preview.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.preview.parent.matrixWorld).invert();this.preview.matrix.premultiply(this.parentInverse);}this.preview.updateWorldMatrix(false,false);
  }
- dispose():void{this.cancel();this.cursor.dispose();this.preview.removeFromParent();this.geometry.dispose();this.material.dispose();}
+ dispose():void{this.cancel();this.cursor.dispose();this.mirrorCursor.dispose();this.preview.removeFromParent();this.geometry.dispose();this.material.dispose();}
 }

@@ -1,7 +1,7 @@
 import type {Point3} from './sdf';
 export type PathPoint=Point3&{t:number};
 export const CLAY_TIP_REACH_METRES=.12;
-export class ClayPathControls {steady=0;straightLine=false;placement:'free'|'surface'='free';}
+export class ClayPathControls {steady=0;straightLine=false;axis:'free'|'x'|'y'|'z'='free';placement:'free'|'surface'='free';}
 const lerp=(a:PathPoint,b:PathPoint,u:number):PathPoint=>({x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u,t:a.t+(b.t-a.t)*u});
 const distance=(a:Point3,b:Point3)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 /** Spatially uniform, nonnegative local averaging: smooth the trajectory, never the SDF.

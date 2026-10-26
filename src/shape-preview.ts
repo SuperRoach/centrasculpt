@@ -1,3 +1,4 @@
+import type {MirrorPlane} from './sdf';
 import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshStandardMaterial, LineSegments, LineBasicMaterial, EdgesGeometry, SphereGeometry, Euler, Quaternion, Vector3 } from 'three';
 import type { LayerStack } from './layers';
 import { defineShape, validateShapeDefinition, shapeStampIntent, SHAPE_METADATA } from './shapes';
@@ -81,26 +82,31 @@ export class ShapeGhost implements ShapePreviewPort {
   readonly group=new Group();
   readonly model:ShapePreviewModel;
   private readonly pose=new Group();
+  private readonly mirrorPose=new Group();
+  mirror?:MirrorPlane;
   private readonly cache=new Map<ShapeKind,GeometryPair>();
   private readonly solidMaterial=new MeshStandardMaterial({color:0x38a09a,transparent:true,opacity:.18,roughness:.55,depthWrite:false});
   private readonly edgeMaterial=new LineBasicMaterial({color:0x267c78,transparent:true,opacity:.65,depthWrite:false,depthTest:false});
+  private mirrorSolid:Mesh|null=null;private mirrorEdges:LineSegments|null=null;
   private solid:Mesh|null=null;
   private edges:LineSegments|null=null;
   private kind:ShapeKind|null=null;
   private key='';
   stats={updates:0,totalMs:0,lastMs:0,geometryBuilds:0};
-  constructor(private readonly stack:()=>LayerStack,model?:ShapePreviewModel){this.model=model??new ShapePreviewModel(stack().activeLayerId);this.group.name='Shape Ghost · not project geometry';this.group.userData.previewOnly=true;this.group.matrixAutoUpdate=false;this.pose.matrixAutoUpdate=false;this.group.add(this.pose);this.group.visible=false;}
+  constructor(private readonly stack:()=>LayerStack,model?:ShapePreviewModel){this.model=model??new ShapePreviewModel(stack().activeLayerId);this.group.name='Shape Ghost · not project geometry';this.group.userData.previewOnly=true;this.group.matrixAutoUpdate=false;this.pose.matrixAutoUpdate=false;this.mirrorPose.matrixAutoUpdate=false;this.group.add(this.pose,this.mirrorPose);this.group.visible=false;}
   preview(definition:Readonly<ShapeDefinition>):void {this.model.set(definition,this.stack());this.model.setEnabled(true,this.stack());this.sync();}
   clear():void {this.model.setEnabled(false,this.stack());this.sync();}
   sync(busy=false):boolean {
     const stack=this.stack();this.model.sync(stack);const layer=stack.active,d=this.model.definition;
-    const key=JSON.stringify([d,this.model.enabled,busy,layer.id,layer.visible,layer.locked,layer.transform]);if(key===this.key)return false;this.key=key;
+    const key=JSON.stringify([d,this.mirror,this.model.enabled,busy,layer.id,layer.visible,layer.locked,layer.transform]);if(key===this.key)return false;this.key=key;
     const start=performance.now();this.group.visible=this.model.enabled&&!busy&&!this.model.availability(stack);
     if(this.group.visible){
       if(this.kind!==d.kind){let geometry=this.cache.get(d.kind);if(!geometry){geometry=createPreviewGeometry(d.kind);this.cache.set(d.kind,geometry);this.stats.geometryBuilds++;}
-        if(!this.solid){this.solid=new Mesh(geometry.solid,this.solidMaterial);this.edges=new LineSegments(geometry.edges,this.edgeMaterial);this.solid.raycast=()=>{};this.edges.raycast=()=>{};this.pose.add(this.solid,this.edges);}
-        else{this.solid.geometry=geometry.solid;this.edges!.geometry=geometry.edges;}this.kind=d.kind;
+        if(!this.solid){this.solid=new Mesh(geometry.solid,this.solidMaterial);this.edges=new LineSegments(geometry.edges,this.edgeMaterial);this.solid.raycast=()=>{};this.edges.raycast=()=>{};this.pose.add(this.solid,this.edges);this.mirrorSolid=this.solid.clone();this.mirrorEdges=this.edges.clone();this.mirrorSolid.raycast=()=>{};this.mirrorEdges.raycast=()=>{};this.mirrorPose.add(this.mirrorSolid,this.mirrorEdges);}
+        else{this.solid.geometry=geometry.solid;this.edges!.geometry=geometry.edges;this.mirrorSolid!.geometry=geometry.solid;this.mirrorEdges!.geometry=geometry.edges;}this.kind=d.kind;
       }
+      this.mirrorPose.visible=!!this.mirror?.enabled;
+      if(this.mirror?.enabled){const a='xyz'.indexOf(this.mirror.axis),scale=[1,1,1];scale[a]=-1;this.mirrorPose.matrix.makeScale(scale[0],scale[1],scale[2]);this.mirrorPose.matrix.elements[12+a]=2*this.mirror.offset;this.mirrorPose.matrix.multiply(transformMatrix(d.transform));this.mirrorSolid!.scale.fromArray(d.dimensions);this.mirrorEdges!.scale.fromArray(d.dimensions);}
       this.group.matrix.copy(transformMatrix(layer.transform));this.pose.matrix.copy(transformMatrix(d.transform));this.solid!.scale.fromArray(d.dimensions);this.edges!.scale.fromArray(d.dimensions);
       this.solidMaterial.color.set(d.operation==='add'?'#38a09a':'#cb624d');this.edgeMaterial.color.set(d.operation==='add'?'#267c78':'#a83f2c');this.edges!.renderOrder=20;this.group.updateWorldMatrix(true,true);
     }
