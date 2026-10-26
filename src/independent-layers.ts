@@ -1,4 +1,5 @@
-import {copyMoveVolume,reconstructMove,MoveWork} from './deformation-reconstruction';
+import {reconstructMoveAsync} from './move-worker-client';
+import {copyMoveVolume,MoveWork} from './deformation-reconstruction';
 import type {MoveProgress} from './deformation-reconstruction';
 import {RadialMoveField} from './move-field';
 import {volumeSampleCount} from './volume-store';
@@ -58,7 +59,7 @@ export class LayerRuntime {
   }
   dispose(): void {this.mesher.dispose();this.material.dispose();this.surface.group.clear();this.surface.spatial.clear();}
 }
-export type MoveCommitStats={wallMs:number;cpuMs:number;meshingMs:number;changedVoxels:number;sampled:number;indexBytes:number;patchBytes:number;estimatedPeakBytes:number;maxSliceMs:number;dirtyChunks:number;grew:boolean;slices:number};
+export type MoveCommitStats={backend:'worker'|'cooperative';waitMs:number;slicePercentiles:{p50:number;p95:number;p99:number};wallMs:number;cpuMs:number;meshingMs:number;changedVoxels:number;sampled:number;indexBytes:number;patchBytes:number;estimatedPeakBytes:number;maxSliceMs:number;dirtyChunks:number;grew:boolean;slices:number};
 type BakeState={ids:string[];orders:Record<string,number>;visibility:Record<string,boolean>;activeId:string;view:SurfaceView};
 type BakeEntry={kind:'bake';layerId:string;runtime:LayerRuntime;before:BakeState;after:BakeState;index:number};
 type TimelineEntry=BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
@@ -394,7 +395,7 @@ export class IndependentLayers {
     const guard=()=>!this.disposed&&this.previewOwner===owner&&this.project.id===project&&this.active===runtime&&runtime.volume===source&&runtime.layer.volume===source&&runtime.surface===sourceSurface&&sourceSurface.revision===revision&&runtime.layer.editable&&sameTransform(runtime.layer.transform,transform)&&this.viewMode==='separate'&&externalGuard();
     const work=new MoveWork(signal,guard);let mesher:IncrementalMesher|undefined,stagedSurface:ChunkSurface|undefined;
     try{
-      const next=await copyMoveVolume(source,layout,work,progress),result=await reconstructMove(sourceSurface.group,next,field,work,available,progress),patch=result.patch;
+      const next=await copyMoveVolume(source,layout,work,progress),result=await reconstructMoveAsync(sourceSurface.group,next,field,work,available,progress),patch=result.patch;
       if(!patch.indices.length)return false;
       const patchBytes=patch.indices.buffer.byteLength+patch.before.buffer.byteLength+patch.after.buffer.byteLength;
       const retainedStaging=candidateStorage+result.indexBytes+patchBytes+patch.indices.length*12+runtime.history.memoryBytes/3;
@@ -408,7 +409,7 @@ export class IndependentLayers {
       stagedSurface=new ChunkSurface(runtime.material);stagedSurface.group.name=sourceSurface.group.name;stagedSurface.group.userData={...sourceSurface.group.userData};stagedSurface.group.visible=sourceSurface.group.visible;stagedSurface.group.position.copy(sourceSurface.group.position);stagedSurface.group.quaternion.copy(sourceSurface.group.quaternion);stagedSurface.group.scale.copy(sourceSurface.group.scale);stagedSurface.group.renderOrder=sourceSurface.group.renderOrder;stagedSurface.update(mesher.snapshotUpdates());stagedSurface.revision=revision+1;
       const invalidateComposite=this.composite.prepareInvalidation(),adopt=mesher.prepareAdoptionFrom(sourceMesher),entry:TimelineEntry={kind:'voxels',layerId:runtime.layer.id};let past=[...this.past,entry],excess=past.filter(e=>e.kind==='voxels'&&e.layerId===runtime.layer.id).length-history.undoCount;past=past.filter(e=>{if(e.kind==='voxels'&&e.layerId===runtime.layer.id&&excess>0){excess--;return false;}return true;});
       const discarded=this.future.filter(e=>e.kind==='bake'&&!this.runtimes.has(e.layerId)),future:TimelineEntry[]=[],slot=this.group.children.indexOf(sourceSurface.group);if(slot<0)throw new Error('Move source is no longer displayed.');
-      const stats:MoveCommitStats={wallMs:performance.now()-start,cpuMs:work.measuredCPU,maxSliceMs:work.maxSliceMs,meshingMs:meshMs,changedVoxels:patch.indices.length,sampled:result.sampled,indexBytes:result.indexBytes,patchBytes,estimatedPeakBytes:base+this.moveStagingBytes,dirtyChunks,grew:!!plan,slices:work.slices};
+      const stats:MoveCommitStats={backend:work.backend,waitMs:work.waitMs,slicePercentiles:work.slicePercentiles,wallMs:performance.now()-start,cpuMs:work.measuredCPU,maxSliceMs:work.maxSliceMs,meshingMs:meshMs,changedVoxels:patch.indices.length,sampled:result.sampled,indexBytes:result.indexBytes,patchBytes,estimatedPeakBytes:base+Math.max(this.moveStagingBytes,candidateStorage+work.workerSnapshotBytes+result.indexBytes+patchBytes),dirtyChunks,grew:!!plan,slices:work.slices};
       work.check();beforePublish();work.check();
       // All arrays, history remaps, mesh extraction, display index and timeline
       // allocations precede this synchronous publication. No await below.

@@ -8,12 +8,15 @@ export type MovePatch={indices:Uint32Array;before:Float32Array;after:Float32Arra
 /** Cooperates on elapsed work, not every sample. Each individual triangle/chunk
  * query is synchronous; cancellation/source checks run before every yielded slice. */
 export class MoveWork {
- private deadline=performance.now()+3;cpuMs=0;private maxSlice=0;private since=performance.now();slices=0;
+ private deadline=performance.now()+3;cpuMs=0;private maxSlice=0;private since=performance.now();slices=0;private durations:number[]=[];
+ get slicePercentiles(){const a=[...this.durations].sort((a,b)=>a-b);const p=(q:number)=>a.length?a[Math.min(a.length-1,Math.ceil(a.length*q)-1)]:0;return {p50:p(.5),p95:p(.95),p99:p(.99)};}
+ async wait<T>(pending:Promise<T>):Promise<T>{const start=performance.now(),elapsed=start-this.since;this.cpuMs+=elapsed;this.maxSlice=Math.max(this.maxSlice,elapsed);this.durations.push(elapsed);try{return await pending;}finally{const end=performance.now();this.since=end;this.deadline=end+3;this.waitMs+=end-start;}}
+ waitMs=0;backend:'worker'|'cooperative'='cooperative';workerSnapshotBytes=0;
  constructor(readonly signal:AbortSignal,private readonly guard:()=>boolean){}
  get maxSliceMs():number{return Math.max(this.maxSlice,performance.now()-this.since);}
  get measuredCPU():number{return this.cpuMs+performance.now()-this.since;}
  check():void{if(this.signal.aborted||!this.guard())throw new Error('Move cancelled · source or session changed.');}
- async pause(force=false):Promise<void>{const now=performance.now();if(!force&&now<this.deadline){if(this.signal.aborted)throw new Error('Move cancelled · source or session changed.');return;}this.check();const elapsed=performance.now()-this.since;this.cpuMs+=elapsed;this.maxSlice=Math.max(this.maxSlice,elapsed);this.slices++;await new Promise<void>(resolve=>setTimeout(resolve,0));this.check();this.since=performance.now();this.deadline=this.since+3;}
+ async pause(force=false):Promise<void>{const now=performance.now();if(!force&&now<this.deadline){if(this.signal.aborted)throw new Error('Move cancelled · source or session changed.');return;}this.check();const elapsed=performance.now()-this.since;this.cpuMs+=elapsed;this.maxSlice=Math.max(this.maxSlice,elapsed);this.durations.push(elapsed);this.slices++;await new Promise<void>(resolve=>setTimeout(resolve,0));this.check();this.since=performance.now();this.deadline=this.since+3;}
 }
 export async function copyMoveVolume(source:SDFVolume,layout:{dimensions:[number,number,number];latticeMin:[number,number,number]},work:MoveWork,progress:(p:MoveProgress)=>void):Promise<SDFVolume>{
  const next=new SDFVolume(source.resolution,source.extent,false,layout),offset=source.latticeMin.map((v,a)=>v-layout.latticeMin[a]),[nx,ny,nz]=source.dimensions;

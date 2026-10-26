@@ -1,0 +1,1378 @@
+{
+  "scope": "Actual XRMoveTool on Mac Node with synthetic grip poses and worker_threads browser-worker adapter. 240 held updates per case; no renderer, headset or GPU timing. One commit per case, no release percentiles. .2 model influence radius, .12/.01/.08 hand translation or .8-radian Y wrist turn. Preview error samples original mesh vertices warped by the captured field, then absolute committed trilinear SDF sample divided by lattice step; this is not a Hausdorff/volume error bound. Process memory counters are checkpoints, not peaks.",
+  "host": {
+    "node": "v26.8.1",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "rows": [
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "non-elastic",
+      "precision": false,
+      "preparationMs": 1.8932920000000024,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.006041999999979453,
+        "p95Ms": 0.02375000000000682,
+        "p99Ms": 0.071124999999995,
+        "maxMs": 0.1665830000000028
+      },
+      "releaseWallMs": 100.51883299999997,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 70.81566699999999,
+        "slicePercentiles": {
+          "p50": 4.021875000000023,
+          "p95": 6.354874999999993,
+          "p99": 6.354874999999993
+        },
+        "wallMs": 99.75745799999999,
+        "cpuMs": 24.74879100000004,
+        "maxSliceMs": 6.354874999999993,
+        "meshingMs": 20.915708999999936,
+        "changedVoxels": 1382,
+        "sampled": 4896,
+        "indexBytes": 1489584,
+        "patchBytes": 58752,
+        "estimatedPeakBytes": 11245680,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 4
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.031223312330080466,
+        "p95": 0.1777040988031136,
+        "max": 0.29546090259310065
+      },
+      "memoryBefore": {
+        "rss": 187154432,
+        "heapTotal": 59588608,
+        "heapUsed": 25040832,
+        "external": 35703694,
+        "arrayBuffers": 13734228
+      },
+      "memoryAfter": {
+        "rss": 216416256,
+        "heapTotal": 61521920,
+        "heapUsed": 41582224,
+        "external": 39267518,
+        "arrayBuffers": 17239260
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "non-elastic",
+      "precision": true,
+      "preparationMs": 0.7920409999999833,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0026659999999765205,
+        "p95Ms": 0.006375000000048203,
+        "p99Ms": 0.010457999999971435,
+        "maxMs": 0.019667000000026746
+      },
+      "releaseWallMs": 94.289375,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 68.40920899999998,
+        "slicePercentiles": {
+          "p50": 3.0913329999999632,
+          "p95": 7.183042,
+          "p99": 7.183042
+        },
+        "wallMs": 94.07245800000004,
+        "cpuMs": 20.669457000000023,
+        "maxSliceMs": 7.183042,
+        "meshingMs": 17.747125000000096,
+        "changedVoxels": 982,
+        "sampled": 4352,
+        "indexBytes": 1489584,
+        "patchBytes": 52224,
+        "estimatedPeakBytes": 11239152,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 4
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.00523550480854689,
+        "p95": 0.043900372979421884,
+        "max": 0.06762933399601165
+      },
+      "memoryBefore": {
+        "rss": 222347264,
+        "heapTotal": 65945600,
+        "heapUsed": 47637608,
+        "external": 43318550,
+        "arrayBuffers": 21290292
+      },
+      "memoryAfter": {
+        "rss": 217661440,
+        "heapTotal": 63455232,
+        "heapUsed": 33867936,
+        "external": 30071107,
+        "arrayBuffers": 8049377
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "elastic",
+      "precision": false,
+      "preparationMs": 1.8282920000000331,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.002375000000029104,
+        "p95Ms": 0.005499999999983629,
+        "p99Ms": 0.010999999999967258,
+        "maxMs": 0.01245799999992414
+      },
+      "releaseWallMs": 140.99924999999996,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 119.68904200000009,
+        "slicePercentiles": {
+          "p50": 3.1419159999999238,
+          "p95": 7.5634169999999585,
+          "p99": 7.5634169999999585
+        },
+        "wallMs": 140.829209,
+        "cpuMs": 17.433583,
+        "maxSliceMs": 7.5634169999999585,
+        "meshingMs": 14.798125000000027,
+        "changedVoxels": 1720,
+        "sampled": 10648,
+        "indexBytes": 1489584,
+        "patchBytes": 127776,
+        "estimatedPeakBytes": 11314704,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 3
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.007459296987333326,
+        "p95": 0.2543189724674694,
+        "max": 0.3602930827760058
+      },
+      "memoryBefore": {
+        "rss": 246579200,
+        "heapTotal": 97435648,
+        "heapUsed": 59348376,
+        "external": 34817515,
+        "arrayBuffers": 12795785
+      },
+      "memoryAfter": {
+        "rss": 264454144,
+        "heapTotal": 99827712,
+        "heapUsed": 41638072,
+        "external": 38081563,
+        "arrayBuffers": 15932057
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "elastic",
+      "precision": true,
+      "preparationMs": 0.12350000000003547,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0018750000000409273,
+        "p95Ms": 0.00233299999990777,
+        "p99Ms": 0.005791000000044733,
+        "maxMs": 0.011999999999943611
+      },
+      "releaseWallMs": 99.45583399999998,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 78.76112499999999,
+        "slicePercentiles": {
+          "p50": 3.3240839999999707,
+          "p95": 7.491874999999936,
+          "p99": 7.491874999999936
+        },
+        "wallMs": 99.301917,
+        "cpuMs": 16.714376000000016,
+        "maxSliceMs": 7.491874999999936,
+        "meshingMs": 15.09716700000024,
+        "changedVoxels": 975,
+        "sampled": 5508,
+        "indexBytes": 1489584,
+        "patchBytes": 66096,
+        "estimatedPeakBytes": 11253024,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 3
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.001294090702185904,
+        "p95": 0.05550256063523031,
+        "max": 0.10865344889689778
+      },
+      "memoryBefore": {
+        "rss": 266076160,
+        "heapTotal": 100220928,
+        "heapUsed": 42350088,
+        "external": 42126547,
+        "arrayBuffers": 19977041
+      },
+      "memoryAfter": {
+        "rss": 265256960,
+        "heapTotal": 90521600,
+        "heapUsed": 26621832,
+        "external": 30080575,
+        "arrayBuffers": 8044973
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "rotate",
+      "precision": false,
+      "preparationMs": 0.10629199999993943,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0031669999999621723,
+        "p95Ms": 0.007334000000014385,
+        "p99Ms": 0.01804200000003675,
+        "maxMs": 0.038209000000051674
+      },
+      "releaseWallMs": 87.06849999999997,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 68.483792,
+        "slicePercentiles": {
+          "p50": 3.093291000000022,
+          "p95": 7.155834000000027,
+          "p99": 7.155834000000027
+        },
+        "wallMs": 86.92575000000011,
+        "cpuMs": 15.904500000000098,
+        "maxSliceMs": 7.155834000000027,
+        "meshingMs": 14.353543000000286,
+        "changedVoxels": 983,
+        "sampled": 4096,
+        "indexBytes": 1489584,
+        "patchBytes": 49152,
+        "estimatedPeakBytes": 11236080,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 3
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.008260508211555797,
+        "p95": 0.05539712882027669,
+        "max": 0.12806470327828967
+      },
+      "memoryBefore": {
+        "rss": 267059200,
+        "heapTotal": 91406336,
+        "heapUsed": 24421952,
+        "external": 34122391,
+        "arrayBuffers": 12086789
+      },
+      "memoryAfter": {
+        "rss": 268369920,
+        "heapTotal": 92684288,
+        "heapUsed": 28891680,
+        "external": 37655083,
+        "arrayBuffers": 15570329
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "rotate",
+      "precision": true,
+      "preparationMs": 0.7851249999999936,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0027079999999841675,
+        "p95Ms": 0.004249999999956344,
+        "p99Ms": 0.008332999999993262,
+        "maxMs": 0.012417000000027656
+      },
+      "releaseWallMs": 91.24708299999998,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 66.88224999999989,
+        "slicePercentiles": {
+          "p50": 4.108666000000085,
+          "p95": 4.890041999999994,
+          "p99": 4.890041999999994
+        },
+        "wallMs": 91.09770900000001,
+        "cpuMs": 19.409167000000025,
+        "maxSliceMs": 4.890041999999994,
+        "meshingMs": 17.9749589999999,
+        "changedVoxels": 976,
+        "sampled": 4096,
+        "indexBytes": 1489584,
+        "patchBytes": 49152,
+        "estimatedPeakBytes": 11236080,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 4
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.0017677199622136194,
+        "p95": 0.007116777207347621,
+        "max": 0.02280995280027853
+      },
+      "memoryBefore": {
+        "rss": 270155776,
+        "heapTotal": 93962240,
+        "heapUsed": 22453448,
+        "external": 41701507,
+        "arrayBuffers": 19616753
+      },
+      "memoryAfter": {
+        "rss": 267796480,
+        "heapTotal": 89014272,
+        "heapUsed": 38289032,
+        "external": 30062635,
+        "arrayBuffers": 8043977
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "twist",
+      "precision": false,
+      "preparationMs": 0.14075000000002547,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0027079999999841675,
+        "p95Ms": 0.004999999999881766,
+        "p99Ms": 0.010957999999845924,
+        "maxMs": 0.031624999999849024
+      },
+      "releaseWallMs": 85.78295800000001,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 66.82266700000014,
+        "slicePercentiles": {
+          "p50": 3.048708999999917,
+          "p95": 7.2052920000000995,
+          "p99": 7.2052920000000995
+        },
+        "wallMs": 85.57320800000002,
+        "cpuMs": 16.80333399999995,
+        "maxSliceMs": 7.2052920000000995,
+        "meshingMs": 15.331455000000233,
+        "changedVoxels": 982,
+        "sampled": 4096,
+        "indexBytes": 1489584,
+        "patchBytes": 49152,
+        "estimatedPeakBytes": 11236080,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 3
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.003138804840932473,
+        "p95": 0.01904230426155583,
+        "max": 0.044553016664158236
+      },
+      "memoryBefore": {
+        "rss": 269271040,
+        "heapTotal": 88424448,
+        "heapUsed": 41072720,
+        "external": 34121587,
+        "arrayBuffers": 12102929
+      },
+      "memoryAfter": {
+        "rss": 270319616,
+        "heapTotal": 90685440,
+        "heapUsed": 45872528,
+        "external": 37640587,
+        "arrayBuffers": 15572777
+      }
+    },
+    {
+      "resolution": 64,
+      "vertices": 94608,
+      "mode": "twist",
+      "precision": true,
+      "preparationMs": 0.13137499999993452,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0019170000000485743,
+        "p95Ms": 0.002624999999852662,
+        "p99Ms": 0.005333000000064203,
+        "maxMs": 0.010042000000112239
+      },
+      "releaseWallMs": 83.40187500000002,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 64.83404100000007,
+        "slicePercentiles": {
+          "p50": 3.194916999999805,
+          "p95": 5.989332999999988,
+          "p99": 5.989332999999988
+        },
+        "wallMs": 83.22529200000008,
+        "cpuMs": 15.771623999999974,
+        "maxSliceMs": 5.989332999999988,
+        "meshingMs": 14.397583999999824,
+        "changedVoxels": 977,
+        "sampled": 4096,
+        "indexBytes": 1489584,
+        "patchBytes": 49152,
+        "estimatedPeakBytes": 11236080,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 3
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 60,
+        "p50": 0.0008619529579248529,
+        "p95": 0.004423010435300959,
+        "max": 0.009987995577499135
+      },
+      "memoryBefore": {
+        "rss": 284491776,
+        "heapTotal": 97632256,
+        "heapUsed": 57388144,
+        "external": 34225915,
+        "arrayBuffers": 12207257
+      },
+      "memoryAfter": {
+        "rss": 285360128,
+        "heapTotal": 98418688,
+        "heapUsed": 36452152,
+        "external": 37395799,
+        "arrayBuffers": 15327989
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "non-elastic",
+      "precision": false,
+      "preparationMs": 0.05270799999993869,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0016249999998763087,
+        "p95Ms": 0.002250000000003638,
+        "p99Ms": 0.005208999999922526,
+        "maxMs": 0.01191700000003948
+      },
+      "releaseWallMs": 213.12075000000004,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 163.88183300000014,
+        "slicePercentiles": {
+          "p50": 4.13412500000004,
+          "p95": 5.82549999999992,
+          "p99": 5.82549999999992
+        },
+        "wallMs": 212.87929199999985,
+        "cpuMs": 39.47958399999993,
+        "maxSliceMs": 5.82549999999992,
+        "meshingMs": 35.16675099999975,
+        "changedVoxels": 5606,
+        "sampled": 14300,
+        "indexBytes": 4963512,
+        "patchBytes": 171600,
+        "estimatedPeakBytes": 51695208,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.020712848215830356,
+        "p95": 0.11287051555788842,
+        "max": 0.17016075820795767
+      },
+      "memoryBefore": {
+        "rss": 286474240,
+        "heapTotal": 98680832,
+        "heapUsed": 39387832,
+        "external": 56600655,
+        "arrayBuffers": 34532845
+      },
+      "memoryAfter": {
+        "rss": 301531136,
+        "heapTotal": 92110848,
+        "heapUsed": 33153264,
+        "external": 55514627,
+        "arrayBuffers": 33373521
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "non-elastic",
+      "precision": true,
+      "preparationMs": 0.3048750000000382,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0017080000000078144,
+        "p95Ms": 0.002124999999978172,
+        "p99Ms": 0.005415999999968335,
+        "maxMs": 0.009416000000101121
+      },
+      "releaseWallMs": 190.03487500000028,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 140.7790829999999,
+        "slicePercentiles": {
+          "p50": 4.131834000000254,
+          "p95": 5.799250000000029,
+          "p99": 5.799250000000029
+        },
+        "wallMs": 189.8444579999998,
+        "cpuMs": 39.57720999999992,
+        "maxSliceMs": 5.799250000000029,
+        "meshingMs": 34.98596000000043,
+        "changedVoxels": 3897,
+        "sampled": 11638,
+        "indexBytes": 4963512,
+        "patchBytes": 139656,
+        "estimatedPeakBytes": 51663264,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.006057415636126728,
+        "p95": 0.020746761867065307,
+        "max": 0.029979491327104684
+      },
+      "memoryBefore": {
+        "rss": 309411840,
+        "heapTotal": 92897280,
+        "heapUsed": 38975936,
+        "external": 74672683,
+        "arrayBuffers": 52531577
+      },
+      "memoryAfter": {
+        "rss": 326254592,
+        "heapTotal": 87654400,
+        "heapUsed": 32073640,
+        "external": 55445818,
+        "arrayBuffers": 33340341
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "elastic",
+      "precision": false,
+      "preparationMs": 0.2996669999997721,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0017499999999017746,
+        "p95Ms": 0.0019170000000485743,
+        "p99Ms": 0.002167000000099506,
+        "maxMs": 0.005125000000134605
+      },
+      "releaseWallMs": 371.7770410000003,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 322.8924999999999,
+        "slicePercentiles": {
+          "p50": 4.219500000000153,
+          "p95": 5.856874999999945,
+          "p99": 5.856874999999945
+        },
+        "wallMs": 371.5902500000002,
+        "cpuMs": 39.13433500000065,
+        "maxSliceMs": 5.856874999999945,
+        "meshingMs": 35.2004120000006,
+        "changedVoxels": 6504,
+        "sampled": 32768,
+        "indexBytes": 4963512,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 51916824,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.007303549396111828,
+        "p95": 0.0953943959547969,
+        "max": 0.23772107922869914
+      },
+      "memoryBefore": {
+        "rss": 328564736,
+        "heapTotal": 89849856,
+        "heapUsed": 37837544,
+        "external": 74603874,
+        "arrayBuffers": 52498397
+      },
+      "memoryAfter": {
+        "rss": 326123520,
+        "heapTotal": 87654400,
+        "heapUsed": 31706272,
+        "external": 56245318,
+        "arrayBuffers": 33315609
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "elastic",
+      "precision": true,
+      "preparationMs": 0.034333000000060565,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0016669999999976426,
+        "p95Ms": 0.0018340000001444423,
+        "p99Ms": 0.002292000000124972,
+        "maxMs": 0.005292000000281405
+      },
+      "releaseWallMs": 206.27895799999988,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 157.32387500000004,
+        "slicePercentiles": {
+          "p50": 4.199249999999665,
+          "p95": 4.709458999999697,
+          "p99": 4.709458999999697
+        },
+        "wallMs": 206.085333,
+        "cpuMs": 39.2292080000002,
+        "maxSliceMs": 4.709458999999697,
+        "meshingMs": 35.0378740000001,
+        "changedVoxels": 3895,
+        "sampled": 13824,
+        "indexBytes": 4963512,
+        "patchBytes": 165888,
+        "estimatedPeakBytes": 51689496,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.001306006688786169,
+        "p95": 0.0305584614671063,
+        "max": 0.05603737757883952
+      },
+      "memoryBefore": {
+        "rss": 328286208,
+        "heapTotal": 89325568,
+        "heapUsed": 36002040,
+        "external": 74895918,
+        "arrayBuffers": 52536881
+      },
+      "memoryAfter": {
+        "rss": 332464128,
+        "heapTotal": 88342528,
+        "heapUsed": 32494784,
+        "external": 55967674,
+        "arrayBuffers": 33274797
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "rotate",
+      "precision": false,
+      "preparationMs": 0.03449999999975262,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0014590000000680448,
+        "p95Ms": 0.0016669999999976426,
+        "p99Ms": 0.00204200000007404,
+        "maxMs": 0.011375000000043656
+      },
+      "releaseWallMs": 178.11195799999996,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 130.0612500000002,
+        "slicePercentiles": {
+          "p50": 4.192500000000109,
+          "p95": 4.725500000000011,
+          "p99": 4.725500000000011
+        },
+        "wallMs": 177.923542,
+        "cpuMs": 38.34245800000008,
+        "maxSliceMs": 4.725500000000011,
+        "meshingMs": 34.68212700000049,
+        "changedVoxels": 3566,
+        "sampled": 10648,
+        "indexBytes": 4963512,
+        "patchBytes": 127776,
+        "estimatedPeakBytes": 51651384,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.011473264137791896,
+        "p95": 0.05377317829473643,
+        "max": 0.08402203331449941
+      },
+      "memoryBefore": {
+        "rss": 335020032,
+        "heapTotal": 89718784,
+        "heapUsed": 36653656,
+        "external": 74627778,
+        "arrayBuffers": 52496069
+      },
+      "memoryAfter": {
+        "rss": 332496896,
+        "heapTotal": 88342528,
+        "heapUsed": 32493280,
+        "external": 55927342,
+        "arrayBuffers": 33271713
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "rotate",
+      "precision": true,
+      "preparationMs": 0.034874999999829015,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0014999999998508429,
+        "p95Ms": 0.0017499999999017746,
+        "p99Ms": 0.0027920000002268353,
+        "maxMs": 0.013500000000021828
+      },
+      "releaseWallMs": 178.98279100000036,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 131.1800000000003,
+        "slicePercentiles": {
+          "p50": 4.070999999999913,
+          "p95": 5.719625000000178,
+          "p99": 5.719625000000178
+        },
+        "wallMs": 178.80737499999987,
+        "cpuMs": 38.08771099999967,
+        "maxSliceMs": 5.719625000000178,
+        "meshingMs": 34.42579199999909,
+        "changedVoxels": 3550,
+        "sampled": 10648,
+        "indexBytes": 4963512,
+        "patchBytes": 127776,
+        "estimatedPeakBytes": 51651384,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.0020660989054307223,
+        "p95": 0.01282326674957828,
+        "max": 0.019026621011809526
+      },
+      "memoryBefore": {
+        "rss": 335052800,
+        "heapTotal": 89718784,
+        "heapUsed": 37116000,
+        "external": 74586582,
+        "arrayBuffers": 52492985
+      },
+      "memoryAfter": {
+        "rss": 332595200,
+        "heapTotal": 88342528,
+        "heapUsed": 32494360,
+        "external": 55920814,
+        "arrayBuffers": 33268353
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "twist",
+      "precision": false,
+      "preparationMs": 0.03525000000036016,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0015410000000883883,
+        "p95Ms": 0.0019159999997100385,
+        "p99Ms": 0.004582999999911408,
+        "maxMs": 0.013875000000098225
+      },
+      "releaseWallMs": 177.41700000000037,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 130.44970799999965,
+        "slicePercentiles": {
+          "p50": 4.078125,
+          "p95": 6.01208300000053,
+          "p99": 6.01208300000053
+        },
+        "wallMs": 177.22470899999962,
+        "cpuMs": 38.35433400000147,
+        "maxSliceMs": 6.01208300000053,
+        "meshingMs": 34.94008399999984,
+        "changedVoxels": 3546,
+        "sampled": 10648,
+        "indexBytes": 4963512,
+        "patchBytes": 127776,
+        "estimatedPeakBytes": 51651384,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.0033335712770430066,
+        "p95": 0.030390879986185504,
+        "max": 0.040950812388882415
+      },
+      "memoryBefore": {
+        "rss": 335151104,
+        "heapTotal": 89718784,
+        "heapUsed": 36161640,
+        "external": 74583222,
+        "arrayBuffers": 52489625
+      },
+      "memoryAfter": {
+        "rss": 332644352,
+        "heapTotal": 88342528,
+        "heapUsed": 32451344,
+        "external": 55925374,
+        "arrayBuffers": 33270609
+      }
+    },
+    {
+      "resolution": 114,
+      "vertices": 305640,
+      "mode": "twist",
+      "precision": true,
+      "preparationMs": 0.033457999999882304,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.001374999999825377,
+        "p95Ms": 0.001457999999729509,
+        "p99Ms": 0.0017909999996845727,
+        "maxMs": 0.003665999999611813
+      },
+      "releaseWallMs": 181.0571659999996,
+      "stats": {
+        "backend": "worker",
+        "waitMs": 132.38400000000001,
+        "slicePercentiles": {
+          "p50": 4.165917000000263,
+          "p95": 5.731999999999971,
+          "p99": 5.731999999999971
+        },
+        "wallMs": 180.8798340000003,
+        "cpuMs": 38.88900199999989,
+        "maxSliceMs": 5.731999999999971,
+        "meshingMs": 35.26133500000378,
+        "changedVoxels": 3543,
+        "sampled": 10648,
+        "indexBytes": 4963512,
+        "patchBytes": 127776,
+        "estimatedPeakBytes": 51651384,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 8
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.0009586924942089928,
+        "p95": 0.007195656121294422,
+        "max": 0.010996102657666075
+      },
+      "memoryBefore": {
+        "rss": 335200256,
+        "heapTotal": 89718784,
+        "heapUsed": 36584264,
+        "external": 74585478,
+        "arrayBuffers": 52491881
+      },
+      "memoryAfter": {
+        "rss": 332660736,
+        "heapTotal": 88342528,
+        "heapUsed": 32458976,
+        "external": 55920730,
+        "arrayBuffers": 33268269
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "non-elastic",
+      "precision": false,
+      "preparationMs": 0.09749999999985448,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0014169999994919635,
+        "p95Ms": 0.001833000000260654,
+        "p99Ms": 0.005624999999781721,
+        "maxMs": 0.022582999999940512
+      },
+      "releaseWallMs": 871.4549589999997,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003291999999419,
+          "p95": 3.7004580000002534,
+          "p99": 5.285624999999527
+        },
+        "wallMs": 871.1873749999995,
+        "cpuMs": 637.8065020000022,
+        "maxSliceMs": 6.31512500000008,
+        "meshingMs": 54.13141700000142,
+        "changedVoxels": 20819,
+        "sampled": 46332,
+        "indexBytes": 18025776,
+        "patchBytes": 555984,
+        "estimatedPeakBytes": 161318148,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 204
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.008706612071721435,
+        "p95": 0.03818709887029276,
+        "max": 0.06802673767823617
+      },
+      "memoryBefore": {
+        "rss": 366788608,
+        "heapTotal": 91324416,
+        "heapUsed": 40588776,
+        "external": 116798574,
+        "arrayBuffers": 94832753
+      },
+      "memoryAfter": {
+        "rss": 411942912,
+        "heapTotal": 90603520,
+        "heapUsed": 41444912,
+        "external": 184024378,
+        "arrayBuffers": 161520285
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "non-elastic",
+      "precision": true,
+      "preparationMs": 0.5969999999997526,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0011670000003505265,
+        "p95Ms": 0.0018329999993511592,
+        "p99Ms": 0.004791999999724794,
+        "maxMs": 0.007542000000285043
+      },
+      "releaseWallMs": 699.2708339999999,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0034169999998994,
+          "p95": 4.220041999999921,
+          "p99": 5.781584000000294
+        },
+        "wallMs": 699.0429169999998,
+        "cpuMs": 512.5285079999994,
+        "maxSliceMs": 6.415957999999591,
+        "meshingMs": 54.75408400000106,
+        "changedVoxels": 15259,
+        "sampled": 35904,
+        "indexBytes": 18025776,
+        "patchBytes": 430848,
+        "estimatedPeakBytes": 161089140,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 162
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.00321323772501211,
+        "p95": 0.014490661478667823,
+        "max": 0.02023680200938873
+      },
+      "memoryBefore": {
+        "rss": 445661184,
+        "heapTotal": 94994432,
+        "heapUsed": 52918048,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 470532096,
+        "heapTotal": 91389952,
+        "heapUsed": 33743048,
+        "external": 183601114,
+        "arrayBuffers": 161291277
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "elastic",
+      "precision": false,
+      "preparationMs": 1.221292000000176,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0014169999994919635,
+        "p95Ms": 0.0017920000009326031,
+        "p99Ms": 0.004083000001628534,
+        "maxMs": 0.009791999998924439
+      },
+      "releaseWallMs": 2018.8584169999995,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0029169999997976,
+          "p95": 3.123666999999841,
+          "p99": 4.574625000001106
+        },
+        "wallMs": 2018.634458999999,
+        "cpuMs": 1468.4668459999975,
+        "maxSliceMs": 6.899499999999534,
+        "meshingMs": 61.66550100000313,
+        "changedVoxels": 25422,
+        "sampled": 122500,
+        "indexBytes": 18025776,
+        "patchBytes": 1470000,
+        "estimatedPeakBytes": 162271560,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 481
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.002592694803448866,
+        "p95": 0.023324250623083905,
+        "max": 0.15539665200497446
+      },
+      "memoryBefore": {
+        "rss": 500908032,
+        "heapTotal": 92635136,
+        "heapUsed": 39583136,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 527532032,
+        "heapTotal": 91291648,
+        "heapUsed": 38140528,
+        "external": 184639246,
+        "arrayBuffers": 162473697
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "elastic",
+      "precision": true,
+      "preparationMs": 0.11033299999871815,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0011670000003505265,
+        "p95Ms": 0.001209000000017113,
+        "p99Ms": 0.001916999999593827,
+        "maxMs": 0.004958999999871594
+      },
+      "releaseWallMs": 783.4131249999991,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0031249999992724,
+          "p95": 4.189957999999024,
+          "p99": 5.047500000000582
+        },
+        "wallMs": 783.1913749999985,
+        "cpuMs": 573.6248249999862,
+        "maxSliceMs": 6.435625000000073,
+        "meshingMs": 54.25162299999647,
+        "changedVoxels": 16146,
+        "sampled": 46656,
+        "indexBytes": 18025776,
+        "patchBytes": 559872,
+        "estimatedPeakBytes": 161224200,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 182
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.0015670430129074483,
+        "p95": 0.02054050644357669,
+        "max": 0.04606006388537126
+      },
+      "memoryBefore": {
+        "rss": 531988480,
+        "heapTotal": 94830592,
+        "heapUsed": 42959056,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 491012096,
+        "heapTotal": 89948160,
+        "heapUsed": 38299120,
+        "external": 183766270,
+        "arrayBuffers": 161426337
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "rotate",
+      "precision": false,
+      "preparationMs": 0.07912500000020373,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0012920000008307397,
+        "p95Ms": 0.0014169999994919635,
+        "p99Ms": 0.0016250000007858034,
+        "maxMs": 0.0036249999993742676
+      },
+      "releaseWallMs": 643.7777080000014,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0038749999985157,
+          "p95": 4.214874999999665,
+          "p99": 5.148499999999331
+        },
+        "wallMs": 643.5548330000001,
+        "cpuMs": 475.6516699999993,
+        "maxSliceMs": 6.723125000000437,
+        "meshingMs": 54.742581000005885,
+        "changedVoxels": 14449,
+        "sampled": 32768,
+        "indexBytes": 18025776,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 161057340,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 150
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.00769363779931853,
+        "p95": 0.05317476121545356,
+        "max": 0.05976685067320172
+      },
+      "memoryBefore": {
+        "rss": 506642432,
+        "heapTotal": 97878016,
+        "heapUsed": 50406488,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 498827264,
+        "heapTotal": 91193344,
+        "heapUsed": 49785216,
+        "external": 183260866,
+        "arrayBuffers": 161295045
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "rotate",
+      "precision": true,
+      "preparationMs": 0.0931670000009035,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.001374999999825377,
+        "p95Ms": 0.0018749999999272404,
+        "p99Ms": 0.0073749999992287485,
+        "maxMs": 0.0154579999998532
+      },
+      "releaseWallMs": 604.5139999999992,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0043750000004366,
+          "p95": 4.297875000000204,
+          "p99": 5.007792000000336
+        },
+        "wallMs": 604.2825830000002,
+        "cpuMs": 442.3998400000037,
+        "maxSliceMs": 6.433542000000671,
+        "meshingMs": 54.57804300000316,
+        "changedVoxels": 14450,
+        "sampled": 32768,
+        "indexBytes": 18025776,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 161030856,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 139
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.0014715091706295777,
+        "p95": 0.004128093447724467,
+        "max": 0.007801271285756582
+      },
+      "memoryBefore": {
+        "rss": 504872960,
+        "heapTotal": 95846400,
+        "heapUsed": 28960800,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 498974720,
+        "heapTotal": 90800128,
+        "heapUsed": 34318552,
+        "external": 183542830,
+        "arrayBuffers": 161232993
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "twist",
+      "precision": false,
+      "preparationMs": 0.08324999999967986,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0012920000008307397,
+        "p95Ms": 0.0014169999994919635,
+        "p99Ms": 0.0017079999997804407,
+        "maxMs": 0.004249999999956344
+      },
+      "releaseWallMs": 631.2857079999994,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0043750000004366,
+          "p95": 4.173124999997526,
+          "p99": 5.132625000002008
+        },
+        "wallMs": 631.0609160000004,
+        "cpuMs": 466.0977930000008,
+        "maxSliceMs": 6.461417000002257,
+        "meshingMs": 53.59503600001699,
+        "changedVoxels": 14436,
+        "sampled": 32768,
+        "indexBytes": 18025776,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 161040768,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 147
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.002111451381308345,
+        "p95": 0.010541996768506404,
+        "max": 0.014522035131859711
+      },
+      "memoryBefore": {
+        "rss": 501858304,
+        "heapTotal": 92372992,
+        "heapUsed": 39916768,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 499417088,
+        "heapTotal": 90570752,
+        "heapUsed": 49481968,
+        "external": 183244294,
+        "arrayBuffers": 161278473
+      }
+    },
+    {
+      "resolution": 192,
+      "vertices": 1088784,
+      "mode": "twist",
+      "precision": true,
+      "preparationMs": 0.08187499999985448,
+      "preview": {
+        "samples": 240,
+        "p50Ms": 0.0013339999968593474,
+        "p95Ms": 0.0014170000031299423,
+        "p99Ms": 0.0016250000007858034,
+        "maxMs": 0.0038749999985157046
+      },
+      "releaseWallMs": 584.9688330000026,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0044589999997697,
+          "p95": 4.15400000000227,
+          "p99": 4.990000000001601
+        },
+        "wallMs": 584.7477089999993,
+        "cpuMs": 429.2066740000155,
+        "maxSliceMs": 6.492042000001675,
+        "meshingMs": 53.7679179999941,
+        "changedVoxels": 14434,
+        "sampled": 32768,
+        "indexBytes": 18025776,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 161030376,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 135
+      },
+      "heldAtRelease": true,
+      "previewSurfaceErrorVoxels": {
+        "samples": 128,
+        "p50": 0.0005998402265510117,
+        "p95": 0.0015279525701077832,
+        "max": 0.0038653569724676896
+      },
+      "memoryBefore": {
+        "rss": 503414784,
+        "heapTotal": 93945856,
+        "heapUsed": 23761216,
+        "external": 161569326,
+        "arrayBuffers": 139603505
+      },
+      "memoryAfter": {
+        "rss": 498892800,
+        "heapTotal": 89817088,
+        "heapUsed": 39482960,
+        "external": 183736606,
+        "arrayBuffers": 161232513
+      }
+    }
+  ]
+}

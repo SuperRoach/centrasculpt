@@ -1,3 +1,13 @@
+## Move precision — Phase 2.5
+
+In VR Move Options, **Precision** reduces hand/wrist sensitivity to one quarter. Translate, Rotate region and Twist region use the captured grip pose and fixed surface pivot; small tracking movements are suppressed. Three subtle influence rings and a point show the target, amber when locked. Support-trigger temporary Smooth now returns to Move with its settings intact. Release holds the preview while reconstruction completes, then commits one Undo action.
+
+Software/browser validation is complete; physical Quest 3 acceptance is pending. See [design, actual measurements and headset checklist](docs/VR_MOVE_PRECISION.md).
+
+## Efficient test runs
+
+Use `npm test -- move-worker` for a focused file, `npm run test:changed` for affected tests, and `npm test` for the full suite. Compilation is cached automatically. See [testing commands and validation policy](docs/TESTING.md).
+
 ## VR polish and performance — Phase 1.12d
 
 The direct Support-grip wrist grab is preserved. New subtle grip/release/tracking feedback, contextual realistic-mode rays and **Reset Workspace View** improve navigation. Reset restores the first tracked entry view without changing layers, voxels, saves or exports.

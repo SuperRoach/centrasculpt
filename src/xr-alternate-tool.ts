@@ -5,7 +5,7 @@ import type {XRControllerState} from './xr-input';
  * Tool trigger release; neither edge ever cancels or splits a stroke. */
 export class XRAlternateTool {
  private armed=false;private owner=0;
- private saved:{tool:'clay'|'smooth';settings:SculptSettings;path:{steady:number;straightLine:boolean;placement:'free'|'surface'}}|null=null;
+ private saved:{tool:'clay'|'smooth'|'move';settings:SculptSettings;path:{steady:number;straightLine:boolean;placement:'free'|'surface'}}|null=null;
  private wanted=false;
  constructor(readonly tools:EditorToolState){}
  get active():boolean{return !!this.saved;}
@@ -14,10 +14,10 @@ export class XRAlternateTool {
   const valid=enabled&&support?.connected&&support.tracked&&support.gripTracked&&support.role==='support';
   if(!valid||support!.connectionId!==this.owner){this.armed=false;this.wanted=false;this.owner=valid?support!.connectionId:0;}
   if(valid){const b=support!.buttons.trigger;if(!b.pressed){this.armed=true;this.wanted=false;}else if(this.armed&&b.justPressed){this.wanted=true;this.armed=false;}}
-  if(!this.saved&&(this.tools.alternateTool==='off'||this.tools.active===this.tools.alternateTool||this.tools.active!=='clay'&&this.tools.active!=='smooth'))this.wanted=false;
+  if(!this.saved&&(this.tools.alternateTool==='off'||this.tools.active===this.tools.alternateTool||this.tools.active!=='clay'&&this.tools.active!=='smooth'&&this.tools.active!=='move'))this.wanted=false;
   if(strokeActive||this.tools.busy||tool?.buttons.trigger.pressed||(tool?.buttons.trigger.rawValue??0)>=.45)return;
   if(this.saved&&!this.wanted)this.restore();
-  if(!this.saved&&this.wanted&&this.tools.alternateTool!=='off'&&(this.tools.active==='clay'||this.tools.active==='smooth')&&this.tools.active!==this.tools.alternateTool){
+  if(!this.saved&&this.wanted&&this.tools.alternateTool!=='off'&&(this.tools.active==='clay'||this.tools.active==='smooth'||this.tools.active==='move')&&this.tools.active!==this.tools.alternateTool){
    this.saved={tool:this.tools.active,settings:{...this.tools.port.settings()},path:{...this.tools.path}};
    this.tools.select(this.tools.alternateTool);
   }
