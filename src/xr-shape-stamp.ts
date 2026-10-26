@@ -6,13 +6,15 @@ import type {XRStrokeInteraction} from './xr-clay-stroke';
 import {ShapeGhost} from './shape-preview';
 import {localShapeBounds,transformedShapeBounds} from './shape-library';
 import {transformMatrix} from './transform';
+import {SDFVolume} from './sdf';
+import {planDenseGrowth} from './dense-growth';
 import {CLAY_TIP_REACH_METRES} from './clay-path';
 /** Discrete input adapter only. All voxel, history, meshing and export work remains
  * in IndependentLayers.stampShape, shared with desktop. Ghost lives outside sources. */
 export class XRShapeStamp implements XRStrokeInteraction {
  readonly ghost:ShapeGhost;
  private armed=false;private held=false;private owner=0;private target='';private project:unknown;
- private message='';private until=0;
+ private message='';private until=0;private failureUntil=0;
  private readonly inverse=new Matrix4();private readonly pose=new Matrix4();private readonly parentInverse=new Matrix4();
  private readonly position=new Vector3();private readonly direction=new Vector3();private readonly rotation=new Quaternion();private readonly scale=new Vector3();private readonly offset=new Quaternion();private readonly euler=new Euler();
  constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly changed:()=>void=()=>{}) {
@@ -20,11 +22,12 @@ export class XRShapeStamp implements XRStrokeInteraction {
  }
  get active():boolean{return this.held;}
  get feedback():string{return this.message;}
- cancel():void{this.armed=this.held=false;this.owner=0;this.target='';this.project=undefined;this.message='';this.ghost.group.visible=false;}
+ cancel():void{this.armed=this.held=false;this.owner=0;this.target='';this.project=undefined;this.message='';this.failureUntil=0;this.ghost.group.visible=false;}
  update(tool:XRControllerState|undefined,aim:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void {
   const layers=this.layers(),stack=layers.project.layerStack,pose=gripPose??aim;
   if(!enabled||this.tools.active!=='stamp'||this.tools.busy||layers.viewMode!=='separate'||!tool?.connected||tool.role!=='tool'||!tool.tracked||!tool.gripTracked||tool.buttons.grip.pressed||tool.buttons.grip.rawValue>=.45||!pose||!pose.elements.every(Number.isFinite)||Math.abs(pose.determinant())<1e-10||this.tools.port.shape.availability(stack)){this.cancel();return;}
   if(this.owner!==tool.connectionId||this.target!==stack.activeLayerId||this.project!==layers.project){this.cancel();this.owner=tool.connectionId;this.target=stack.activeLayerId;this.project=layers.project;}
+  const workStart=performance.now();
   try {
    const surface=layers.active.surface.group;surface.updateWorldMatrix(true,false);this.inverse.copy(surface.matrixWorld).invert();
    // Offset is physical XR metres; orientation is controller wrist composed with
@@ -36,15 +39,22 @@ export class XRShapeStamp implements XRStrokeInteraction {
    model.set({...d,targetLayerId:stack.activeLayerId,transform:{position:this.position.toArray(),rotation:[this.euler.x,this.euler.y,this.euler.z],scale:d.transform.scale}},stack);
    const definition=model.definition,box=transformedShapeBounds(localShapeBounds(definition.kind,definition.dimensions),transformMatrix(definition.transform)),volume=layers.active.volume,b=volume.bounds;
    const outside=box.min.some((v,i)=>v<=b.min[i]+volume.step||box.max[i]>=b.max[i]-volume.step);
-   this.ghost.sync();this.ghost.setWarning(outside&&definition.operation==='subtract');
+   // Cheap storage admission check before the trigger. A preview may
+   // otherwise advertise growth that the fixed-detail dense limits cannot fit.
+   let growthError='';
+   if(outside&&definition.operation==='add'&&volume instanceof SDFVolume)try{planDenseGrowth(volume,box,layers.growthLimits);}catch(error){growthError=error instanceof Error?error.message:'Stamp growth exceeds available storage.';}
+   this.ghost.sync();this.ghost.setWarning(!!growthError||outside&&definition.operation==='subtract');
    this.ghost.group.matrix.copy(surface.matrixWorld);if(this.ghost.group.parent){this.ghost.group.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.ghost.group.parent.matrixWorld).invert();this.ghost.group.matrix.premultiply(this.parentInverse);}this.ghost.group.updateWorldMatrix(false,true);
-   if(outside)this.message=definition.operation==='add'?'Stamp · volume grows on commit':'Subtract overlaps layer bounds · only existing material inside is affected';
+   if(growthError)this.message=growthError;
+   else if(time<this.failureUntil){/* Keep a failed commit readable while the ghost moves. */}
+   else if(outside)this.message=definition.operation==='add'?'Stamp · volume grows on commit':'Subtract overlaps layer bounds · only existing material inside is affected';
    else if(time>=this.until)this.message='Stamp · trigger once; release to rearm';
    if(!tool.buttons.trigger.pressed){this.held=false;this.armed=true;return;}
    const apply=this.armed&&!this.held&&tool.buttons.trigger.justPressed;this.armed=false;this.held=true;
    if(!apply)return;
-   const edited=layers.stampShape(definition);this.message=edited?outside&&definition.operation==='subtract'?'Stamp applied · limited to existing material inside layer bounds':'Stamp applied · release trigger for next stamp':'No material changed · release trigger';this.until=time+900;if(edited)this.changed();
-  }catch(error){this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+1500;}
+   if(growthError)throw new Error(growthError);
+   const edited=layers.stampShape(definition);this.failureUntil=0;this.message=edited?outside&&definition.operation==='subtract'?'Stamp applied · limited to existing material inside layer bounds':'Stamp applied · release trigger for next stamp':'No material changed · release trigger';this.until=time+900;if(edited)this.changed();
+  }catch(error){this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+(performance.now()-workStart)+5000;this.failureUntil=this.until;}
  }
  dispose():void{this.cancel();this.ghost.dispose();}
 }

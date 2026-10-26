@@ -1,6 +1,6 @@
 import {SDFVolume} from './sdf';
 import {assertExactDenseGrowth} from './dense-growth';
-import { BufferGeometry, Float32BufferAttribute } from 'three';
+import { BufferGeometry, BufferAttribute } from 'three';
 import type { VolumeStore } from './volume-store';
 import type { Bounds } from './sdf';
 type Point = [number, number, number] & { normal?: [number, number, number] };
@@ -11,6 +11,16 @@ const tetrahedra = [[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]]
 function extractRegion(volume: VolumeStore, bounds: Bounds): { positions: number[]; normals: number[] } {
   const positions: number[] = [], normals: number[] = [];
   const dense=volume.getDenseView(),zeroTolerance=volume.step*Number.EPSILON*32;
+  // Read every inclusive sample once before allocating per-cell intersections.
+  // No cached occupancy: trusted replay and direct dense writes remain valid.
+  let negative=false, exterior=false;
+  occupancy: for(let z=bounds.min[2];z<=bounds.max[2];z++)for(let y=bounds.min[1];y<=bounds.max[1];y++)for(let x=bounds.min[0];x<=bounds.max[0];x++){
+    const id=volume.index(x,y,z),v=dense?dense[id]:volume.readVoxel(id);
+    if(v < -zeroTolerance)negative=true;else exterior=true;
+    if(negative&&exterior)break occupancy;
+  }
+  if(!negative||!exterior)return {positions,normals};
+  const values=new Array<number>(8);
   function triangle(a: Point, b: Point, c: Point, outward: Point): void {
     const ab = b.map((v, i) => v - a[i]);
     const ac = c.map((v, i) => v - a[i]);
@@ -24,7 +34,7 @@ function extractRegion(volume: VolumeStore, bounds: Bounds): { positions: number
   for (let z=bounds.min[2]; z<bounds.max[2]; z++) for (let y=bounds.min[1]; y<bounds.max[1]; y++) for (let x=bounds.min[0]; x<bounds.max[0]; x++) {
     // Treat only machine-roundoff distances as zero, consistently in every cell.
     // Analytic planar SDFs can otherwise disagree in sign at an exact face.
-    const values = corners.map(c => {const index=volume.index(x+c[0],y+c[1],z+c[2]);return dense?dense[index]:volume.readVoxel(index);});
+    for(let i=0;i<8;i++){const c=corners[i],index=volume.index(x+c[0],y+c[1],z+c[2]);values[i]=dense?dense[index]:volume.readVoxel(index);}
     // Most cells in a thin sculpt are empty: keep that fast path free of
     // tolerance work and edge/gradient allocations.
     if (values.every(v => v >= 0)) continue;
@@ -63,8 +73,8 @@ function geometryFromRegions(regions: Iterable<{positions: number[]; normals: nu
   let offset = 0;
   for (const region of all) { positions.set(region.positions, offset); normals.set(region.normals, offset); offset += region.positions.length; }
   const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new Float32BufferAttribute(positions,3));
-  geometry.setAttribute('normal', new Float32BufferAttribute(normals,3));
+  geometry.setAttribute('position', new BufferAttribute(positions,3));
+  geometry.setAttribute('normal', new BufferAttribute(normals,3));
   geometry.computeBoundingSphere();
   return geometry;
 }
@@ -150,9 +160,11 @@ export class IncrementalMesher {
     const [nx,ny]=this.layout.dimensions,p=[index%nx,Math.floor(index/nx)%ny,Math.floor(index/(nx*ny))] as Point;
     this.visitAffected({min:p,max:p},id=>{if(signChanged||(this.chunks[id].geometry?.getAttribute('position').count??0)>0)this.dirty.add(id);});
   }
-  rebuildChunks(maxChunks=Infinity):{updates:ChunkUpdate[];stats:RebuildStats;triangles:number}|null{
+  rebuildChunks(maxChunks=Infinity,maxMilliseconds=Infinity):{updates:ChunkUpdate[];stats:RebuildStats;triangles:number}|null{
+    if(!(maxChunks>0)||!(maxMilliseconds>=0))throw new Error('Invalid meshing batch budget.');
+    if(this.disposed)throw new Error('Mesher is disposed.');
     if(!this.dirty.size)return null;this.editRevision++;const start=performance.now(),updates:ChunkUpdate[]=[];
-    for(const id of this.dirty){if(updates.length>=maxChunks)break;const chunk=this.chunks[id],geometry=geometryFromRegions([extractRegion(this.volume,chunk.bounds)]);
+    for(const id of this.dirty){if(updates.length>=maxChunks||(updates.length>0&&performance.now()-start>=maxMilliseconds))break;const chunk=this.chunks[id],geometry=geometryFromRegions([extractRegion(this.volume,chunk.bounds)]);
       this.triangleCount+=(geometry.getAttribute('position').count-(chunk.geometry?.getAttribute('position').count??0))/3;
       if(chunk.geometry){if(!this.borrowed.delete(chunk.geometry)){this.ownedBytes-=this.bytes(chunk.geometry);chunk.geometry.dispose();}}chunk.geometry=geometry;this.ownedBytes+=this.bytes(geometry);updates.push({id,bounds:chunk.bounds,geometry});this.dirty.delete(id);
     }
@@ -180,5 +192,5 @@ export class IncrementalMesher {
     const regions=this.chunks.filter(c=>c.geometry).map(c=>({positions:Array.from(c.geometry!.getAttribute('position').array),normals:Array.from(c.geometry!.getAttribute('normal').array)}));
     return {geometry:geometryFromRegions(regions),stats:result.stats};
   }
-  dispose():void{if(this.disposed)return;this.disposed=true;for(const c of this.chunks)if(c.geometry&&!this.borrowed.has(c.geometry))c.geometry.dispose();this.borrowed.clear();this.dirty.clear();this.ownedBytes=0;}
+  dispose():void{if(this.disposed)return;this.disposed=true;for(const c of this.chunks)if(c.geometry&&!this.borrowed.has(c.geometry))c.geometry.dispose();this.borrowed.clear();this.dirty.clear();this.chunks=[];this.layout.chunks=[];this.layout.lookup=new Int32Array(0);this.triangleCount=0;this.ownedBytes=0;}
 }

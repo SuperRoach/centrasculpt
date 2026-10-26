@@ -1,0 +1,147 @@
+{
+  "baselineRef": null,
+  "scope": "Mac Node CPU; one warmup, three timed runs; medians. Dense/geometry bytes are buffer accounting, not process peak or GPU memory. Local includes brush and remesh. No Quest tests.",
+  "node": "v26.8.1",
+  "rows": [
+    {
+      "kind": "empty-extended",
+      "samples": 1052672,
+      "denseBytes": 8421376,
+      "geometryBytes": 0,
+      "vertices": 0,
+      "chunks": 256,
+      "fullMs": 2.693833000000012,
+      "localMs": 0.04554200000001174,
+      "growthMs": 0,
+      "timings": [
+        {
+          "fullMs": 2.774957999999998,
+          "localMs": 0.06391700000000355,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 2.693833000000012,
+          "localMs": 0.04554200000001174,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 2.568792000000002,
+          "localMs": 0.03283300000001077,
+          "growthMs": 0
+        }
+      ]
+    },
+    {
+      "kind": "islands",
+      "samples": 1052672,
+      "denseBytes": 8421376,
+      "geometryBytes": 1509120,
+      "vertices": 62880,
+      "chunks": 256,
+      "fullMs": 24.990415999999982,
+      "localMs": 2.6698330000000396,
+      "growthMs": 0,
+      "timings": [
+        {
+          "fullMs": 26.280875000000037,
+          "localMs": 3.338833999999963,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 24.990415999999982,
+          "localMs": 2.6698330000000396,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 17.90154199999995,
+          "localMs": 2.597750000000019,
+          "growthMs": 0
+        }
+      ]
+    },
+    {
+      "kind": "large-sphere",
+      "samples": 2097152,
+      "denseBytes": 16777216,
+      "geometryBytes": 9242208,
+      "vertices": 385092,
+      "chunks": 512,
+      "fullMs": 92.15962499999989,
+      "localMs": 6.880917000000068,
+      "growthMs": 0,
+      "timings": [
+        {
+          "fullMs": 92.95516700000007,
+          "localMs": 6.880917000000068,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 92.15962499999989,
+          "localMs": 6.866833000000042,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 88.34295799999995,
+          "localMs": 6.9897920000000795,
+          "growthMs": 0
+        }
+      ]
+    },
+    {
+      "kind": "many-layers",
+      "samples": 2097152,
+      "denseBytes": 16777216,
+      "geometryBytes": 18164736,
+      "vertices": 756864,
+      "chunks": 512,
+      "fullMs": 180.82783400000017,
+      "localMs": 71.12925000000018,
+      "growthMs": 0,
+      "timings": [
+        {
+          "fullMs": 183.54154199999994,
+          "localMs": 71.12925000000018,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 180.16525000000001,
+          "localMs": 71.16870799999992,
+          "growthMs": 0
+        },
+        {
+          "fullMs": 180.82783400000017,
+          "localMs": 70.51987499999996,
+          "growthMs": 0
+        }
+      ]
+    },
+    {
+      "kind": "repeated-growth",
+      "samples": 921600,
+      "denseBytes": 7372800,
+      "geometryBytes": 2270592,
+      "vertices": 94608,
+      "chunks": 224,
+      "fullMs": 24.51929199999995,
+      "localMs": 8.985916000000088,
+      "growthMs": 8.7331250000002,
+      "timings": [
+        {
+          "fullMs": 26.665584000000308,
+          "localMs": 9.191000000000258,
+          "growthMs": 7.668291999999838
+        },
+        {
+          "fullMs": 24.51929199999995,
+          "localMs": 8.659708000000137,
+          "growthMs": 9.721999999999753
+        },
+        {
+          "fullMs": 24.06537500000013,
+          "localMs": 8.985916000000088,
+          "growthMs": 8.7331250000002
+        }
+      ]
+    }
+  ]
+}

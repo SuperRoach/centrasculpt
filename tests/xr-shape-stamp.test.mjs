@@ -20,7 +20,7 @@ import {openSculptProject,saveSculptProject} from '../work/test-build/project.mj
 const settings={mode:'add',radius:.14,strength:.35,hardness:.6,camera:{position:[2,2,3],target:[0,0,0]}};
 const near=(a,b,e=1e-7)=>assert(Math.abs(a-b)<e,`${a} != ${b}`);
 const poseAt=(x=0,y=0,z=0)=>new Matrix4().makeTranslation(x,y,z+.12);
-function fixture(){const volume=new SDFVolume(33,1.6,false);volume.values.fill(6.4);const layers=new IndependentLayers(createBaseProject(volume,settings)),shape=new ShapePreviewModel(layers.project.activeLayerId),root=new Group();let state={...settings},mode='sculpt',busy=false,changes=0;
+function fixture(resolution=33){const volume=new SDFVolume(resolution,1.6,false);volume.values.fill(6.4);const layers=new IndependentLayers(createBaseProject(volume,settings)),shape=new ShapePreviewModel(layers.project.activeLayerId),root=new Group();let state={...settings},mode='sculpt',busy=false,changes=0;
  const tools=new EditorToolState({layers:()=>layers,shape,settings:()=>state,setSettings:v=>state=v,mode:()=>mode,selectTool:t=>{shape.setEnabled(t==='stamp',layers.project.layerStack);mode='sculpt';state={...state,mode:t==='smooth'?'smooth':'add'};},selectTransform:m=>mode=m,busy:()=>busy,changed(){}});tools.select('stamp');
  const stamp=new XRShapeStamp(()=>layers,tools,root,()=>changes++),tool={role:'tool',handedness:'right',connectionId:1,connected:true,tracked:true,gripTracked:true,stick:{available:true,x:0,y:0},buttons:{grip:{pressed:false,rawValue:0},trigger:{pressed:false,justPressed:false,rawValue:0}}};let time=0;
  const update=(pose=poseAt(),enabled=true)=>stamp.update(tool,pose,time+=16,enabled,pose);
@@ -97,4 +97,18 @@ for(const hand of ['left','right'])test(`real input bridge routes ${hand} Stamp 
  axis(support,0,-1);assert(menus.active);grips[1].position.x=.8;press(tool,0,1);assert.equal(f.layers.undoCount,1);const scale=f.shape.definition.transform.scale[0];axis(tool,0,-1);near(f.shape.definition.transform.scale[0],scale);axis(support,0,0);update();assert.equal(f.layers.undoCount,1);press(tool,0,0);axis(tool,0,0);
  press(support,1,1);assert.equal(bridge.grab.state,'workspace-grab');press(tool,1,1);assert.equal(bridge.grab.state,'two-hand-grab');press(tool,0,1);assert.equal(f.layers.undoCount,1);press(support,1,0);press(tool,1,0);update();assert.equal(f.layers.undoCount,1);press(tool,0,0);update();press(tool,0,1);assert.equal(f.layers.undoCount,2);session.dispatchEvent(new Event('end'));assert(!f.stamp.ghost.group.visible);assert.equal(f.layers.undoCount,2,'completed stamps survive session termination');
  }finally{bridge.dispose();clay.dispose();f.dispose();}
+});
+
+test('maximum-scale pyramid at lowest UI resolution warns before trigger without growing or editing',()=>{
+ const f=fixture(64);try{f.tools.stampRotation.splice(0,3,.2,.35,.1);const d=f.shape.definition;f.shape.set({...d,kind:'pyramid',dimensions:[.8,.8,.8],transform:{...d.transform,scale:[10,10,10]}},f.layers.project.layerStack);
+ const v=f.layers.active.volume,before=v.values.slice();f.release(poseAt(0,0,.8));assert.match(f.stamp.feedback,/growth.*limit/i);f.press(poseAt(0,0,.8));for(let i=0;i<5;i++)f.update(poseAt(0,0,.8));assert.match(f.stamp.feedback,/growth.*limit/i);assert.equal(f.layers.active.volume,v);assert.deepEqual(v.values,before);assert.equal(f.layers.undoCount,0);assert.equal(f.changes,0);
+ // Shrink and release to retry through the normal discrete input path.
+ f.tools.setStampScale(1);f.release();f.press();assert.equal(f.layers.undoCount,1);assert.equal(f.changes,1);
+ }finally{f.dispose();}
+});
+test('commit rejection survives outside-growth hint, held trigger and release until retry',()=>{
+ const f=fixture();try{const original=f.layers.stampShape.bind(f.layers);let calls=0;f.layers.stampShape=()=>{calls++;throw Error('Stamp staging/history memory limit: shrink and retry');};
+ f.release(poseAt(1.4));f.press(poseAt(1.4));for(let i=0;i<10;i++)f.update(poseAt(1.4));assert.equal(calls,1);assert.match(f.stamp.feedback,/staging\/history/);f.release(poseAt(1.4));assert.match(f.stamp.feedback,/staging\/history/);assert.equal(f.layers.undoCount,0);
+ f.layers.stampShape=original;f.press(poseAt(1.4));assert.equal(f.layers.undoCount,1);assert.match(f.stamp.feedback,/Stamp applied/);
+ }finally{f.dispose();}
 });

@@ -51,13 +51,13 @@ export class LayerRuntime {
     this.history=new SculptHistory(volume,32*1024*1024,100,layer.id,()=>layer.editable);
     try{if(!deferMesh)this.rebuild();}catch(error){this.mesher.dispose();this.material.dispose();throw error;}
   }
-  rebuild(maxChunks=Infinity): boolean {
+  rebuild(maxChunks=Infinity,maxMilliseconds=Infinity): boolean {
     const measured=!!this.metrics?.enabled,start=measured?performance.now():0;
-    const update=this.mesher.rebuildChunks(maxChunks);if(!update)return false;
+    const update=this.mesher.rebuildChunks(maxChunks,maxMilliseconds);if(!update)return false;
     this.surface.update(update.updates);this.triangles=update.triangles;
     this.lastMeshMs=update.stats.milliseconds;this.lastChanged=update.stats.chunks;this.totalChunks=update.stats.totalChunks;if(measured)this.metrics!.record('remesh',performance.now()-start);return true;
   }
-  dispose(): void {this.mesher.dispose();this.material.dispose();this.surface.group.clear();this.surface.spatial.clear();}
+  dispose(): void {this.mesher.dispose();this.material.dispose();this.surface.clear();}
 }
 export type MoveCommitStats={backend:'worker'|'cooperative';waitMs:number;slicePercentiles:{p50:number;p95:number;p99:number};wallMs:number;cpuMs:number;meshingMs:number;changedVoxels:number;sampled:number;indexBytes:number;patchBytes:number;estimatedPeakBytes:number;maxSliceMs:number;dirtyChunks:number;grew:boolean;slices:number};
 type BakeState={ids:string[];orders:Record<string,number>;visibility:Record<string,boolean>;activeId:string;view:SurfaceView};
@@ -359,7 +359,7 @@ export class IndependentLayers {
       if(this.disposed)throw new Error('Bake cancelled: project closed.');
       const layer=new SdfLayer(volume,{name:this.uniqueName(validated.name),operation:'union',order:this.project.layerStack.layers.length,transform:{position:[...plan.center],rotation:[0,0,0],scale:[plan.scale,plan.scale,plan.scale]}});
       candidate=new LayerRuntime(layer,this.neutral,volume,true);let meshingMs=0,chunks=0;
-      while(candidate.rebuild(8)){
+      while(candidate.rebuild(8,3)){
         meshingMs+=candidate.lastMeshMs;chunks+=candidate.lastChanged;
         if(candidate.triangles>triangleBudget)throw new Error('Bake would exceed the project triangle budget, including preserved sources. Choose a lower resolution.');
         progress?.({stage:'meshing',completed:chunks,total:candidate.totalChunks});await yieldBake();checkBakeCancelled(signal);
@@ -419,9 +419,9 @@ export class IndependentLayers {
       this.past=past;this.future=future;this.lastMoveStats=stats;invalidateComposite();mesher=undefined;stagedSurface=undefined;
       // Source geometries still shared with the candidate changed ownership;
       // only superseded buffers are disposed. Cleanup cannot undo a publication.
-      try{sourceMesher.dispose();sourceSurface.group.clear();sourceSurface.spatial.clear();for(const e of discarded)if(e.kind==='bake'){e.runtime.dispose();this.display.remove(this.project.id,e.layerId);}}catch(error){console.warn('Move committed; deferred resource cleanup failed',error);}
+      try{sourceMesher.dispose();sourceSurface.clear();for(const e of discarded)if(e.kind==='bake'){e.runtime.dispose();this.display.remove(this.project.id,e.layerId);}}catch(error){console.warn('Move committed; deferred resource cleanup failed',error);}
       return true;
-    }finally{mesher?.dispose();stagedSurface?.group.clear();stagedSurface?.spatial.clear();this.moveStagingBytes=0;this.movePending=false;}
+    }finally{mesher?.dispose();stagedSurface?.clear();this.moveStagingBytes=0;this.movePending=false;}
   }
   exportGroup(): Group {
     this.finishStroke();this.finishTransform();const group=new Group();group.name=this.project.name;

@@ -1,0 +1,152 @@
+{
+  "baselineRef": "4a5bbf3386ba701826d695d5b77e065b3e550c36",
+  "scope": "Actual Mac Node cooperative Move, Boolean, Bake and codec calls; one observation per case, no percentile/speed guarantee. Tracked bytes exclude JS/GPU and derived Boolean. No Quest tests.",
+  "rows": [
+    {
+      "kind": "move",
+      "mode": "non-elastic",
+      "vertices": 384912,
+      "wallMs": 176.79325,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022500000000036,
+          "p95": 3.531749999999988,
+          "p99": 4.4575419999999895
+        },
+        "wallMs": 176.44312499999995,
+        "cpuMs": 129.64112699999976,
+        "maxSliceMs": 4.4575419999999895,
+        "meshingMs": 8.184249999999906,
+        "changedVoxels": 5393,
+        "sampled": 15000,
+        "indexBytes": 6046896,
+        "patchBytes": 180000,
+        "estimatedPeakBytes": 49827836,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 41
+      },
+      "trackedBytes": 26088748
+    },
+    {
+      "kind": "move",
+      "mode": "elastic",
+      "vertices": 384912,
+      "wallMs": 275.29329200000006,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0027090000000953,
+          "p95": 3.5916670000000295,
+          "p99": 4.852957999999944
+        },
+        "wallMs": 275.2317499999999,
+        "cpuMs": 201.93979200000035,
+        "maxSliceMs": 4.852957999999944,
+        "meshingMs": 12.821125000000166,
+        "changedVoxels": 5390,
+        "sampled": 21168,
+        "indexBytes": 6046896,
+        "patchBytes": 254016,
+        "estimatedPeakBytes": 49898360,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 64
+      },
+      "trackedBytes": 26085256
+    },
+    {
+      "kind": "move",
+      "mode": "rotate",
+      "vertices": 384912,
+      "wallMs": 210.49566700000014,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.005916999999954,
+          "p95": 3.785333000000037,
+          "p99": 5.137791000000107
+        },
+        "wallMs": 210.42149999999992,
+        "cpuMs": 154.48779000000013,
+        "maxSliceMs": 5.137791000000107,
+        "meshingMs": 13.229666999999836,
+        "changedVoxels": 4963,
+        "sampled": 13824,
+        "indexBytes": 6046896,
+        "patchBytes": 165888,
+        "estimatedPeakBytes": 49799060,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 48
+      },
+      "trackedBytes": 26074084
+    },
+    {
+      "kind": "move",
+      "mode": "twist",
+      "vertices": 384912,
+      "wallMs": 194.11249999999995,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0039999999999054,
+          "p95": 3.617791999999781,
+          "p99": 4.789208000000144
+        },
+        "wallMs": 194.062541,
+        "cpuMs": 143.0764969999998,
+        "maxSliceMs": 4.789208000000144,
+        "meshingMs": 12.652958000000126,
+        "changedVoxels": 4971,
+        "sampled": 13824,
+        "indexBytes": 6046896,
+        "patchBytes": 165888,
+        "estimatedPeakBytes": 49799732,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 45
+      },
+      "trackedBytes": 26074756
+    },
+    {
+      "kind": "eight-layer-save-load",
+      "saveMs": 42.90025000000014,
+      "loadMs": 22.050916000000143,
+      "fileBytes": 8392088,
+      "layers": 8,
+      "trackedBytes": 34941952
+    },
+    {
+      "kind": "boolean",
+      "samplingMs": 183.01237299999912,
+      "meshingMs": 302.23028800000156,
+      "elapsedMs": 682.572208,
+      "samples": 3176523,
+      "chunks": 1000,
+      "totalChunks": 1000,
+      "triangles": 138128,
+      "resolution": 147,
+      "step": 0.02518493214223896,
+      "capped": false,
+      "full": true
+    },
+    {
+      "kind": "bake",
+      "wallMs": 434.11625000000004,
+      "samplingMs": 128.11941399999705,
+      "meshingMs": 195.5376699999997,
+      "totalMs": 433.77649999999994,
+      "resolution": 128,
+      "triangles": 103328,
+      "worldStep": 0.029074899928390935,
+      "gridBytes": 16777216,
+      "trackedBytes": 54599680
+    }
+  ]
+}

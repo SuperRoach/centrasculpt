@@ -1,4 +1,4 @@
-import { BufferGeometry, Float32BufferAttribute, Group, Matrix3, Matrix4, Mesh, Vector3 } from 'three';
+import { BufferGeometry, BufferAttribute, Group, Matrix3, Matrix4, Mesh, Vector3 } from 'three';
 import type { Material } from 'three';
 import type { ChunkUpdate } from './mesh';
 import {ChunkSpatialIndex} from './chunk-spatial-index';
@@ -10,6 +10,7 @@ export class ChunkSurface {
   readonly spatial=new ChunkSpatialIndex();
   private readonly meshes = new Map<number,Mesh>();
   constructor(private readonly material: Material) { this.group.name='SDF Sculpture'; }
+  clear():void {this.group.clear();this.meshes.clear();this.spatial.clear();this.revision++;}
   update(updates: ChunkUpdate[]): void {
     if(updates.length)this.revision++;
     for(const {id,geometry} of updates) {
@@ -41,6 +42,6 @@ export function buildExportMesh(group: Group, material: Material, space: 'world'
     }
   }
   const geometry=new BufferGeometry();
-  geometry.setAttribute('position',new Float32BufferAttribute(positions,3));geometry.setAttribute('normal',new Float32BufferAttribute(normals,3));
+  geometry.setAttribute('position',new BufferAttribute(positions,3));geometry.setAttribute('normal',new BufferAttribute(normals,3));
   const mesh=new Mesh(geometry,material);mesh.name='SDF Sculpture';return mesh;
 }

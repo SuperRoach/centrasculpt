@@ -1,0 +1,188 @@
+{
+  "scope": "Mac Node single observations of actual synchronous Add pyramid stamps; rotated .2/.35/.1 radians, center [0,0,.8]. Size is effective dimension, equivalent to .8 dimension at scale 10 for size 8. 64 is lowest UI resolution; 32 is an internal diagnostic only. No new Quest timing measurements.",
+  "rows": [
+    {
+      "n": 64,
+      "size": 1,
+      "result": true,
+      "wallMs": 87.45554200000001,
+      "stats": {
+        "evaluationMs": 46.53975,
+        "meshingMs": 17.251082999999994,
+        "totalMs": 87.35391700000002,
+        "changedVoxels": 114381,
+        "scanned": 331776,
+        "evaluated": 188720,
+        "chunks": 14,
+        "totalChunks": 80
+      },
+      "dimensions": [
+        64,
+        64,
+        81
+      ]
+    },
+    {
+      "n": 64,
+      "size": 2,
+      "result": true,
+      "wallMs": 149.589,
+      "stats": {
+        "evaluationMs": 77.058875,
+        "meshingMs": 39.00916599999999,
+        "totalMs": 149.572209,
+        "changedVoxels": 262637,
+        "scanned": 397312,
+        "evaluated": 386820,
+        "chunks": 38,
+        "totalChunks": 96
+      },
+      "dimensions": [
+        64,
+        64,
+        97
+      ]
+    },
+    {
+      "n": 64,
+      "size": 3,
+      "result": true,
+      "wallMs": 589.817417,
+      "stats": {
+        "evaluationMs": 360.121041,
+        "meshingMs": 81.0992920000001,
+        "totalMs": 589.796209,
+        "changedVoxels": 1617813,
+        "scanned": 1880433,
+        "evaluated": 1880433,
+        "chunks": 70,
+        "totalChunks": 448
+      },
+      "dimensions": [
+        129,
+        129,
+        113
+      ]
+    },
+    {
+      "n": 64,
+      "size": 4,
+      "result": true,
+      "wallMs": 1292.716834,
+      "stats": {
+        "evaluationMs": 828.55575,
+        "meshingMs": 120.19095900000002,
+        "totalMs": 1292.6900830000002,
+        "changedVoxels": 3870838,
+        "scanned": 4173281,
+        "evaluated": 4173281,
+        "chunks": 129,
+        "totalChunks": 1000
+      },
+      "dimensions": [
+        161,
+        161,
+        161
+      ]
+    },
+    {
+      "n": 128,
+      "size": 1,
+      "result": true,
+      "wallMs": 310.27416700000003,
+      "stats": {
+        "evaluationMs": 252.97337500000003,
+        "meshingMs": 31.615957999999864,
+        "totalMs": 310.25820799999974,
+        "changedVoxels": 367845,
+        "scanned": 2097152,
+        "evaluated": 948992,
+        "chunks": 29,
+        "totalChunks": 512
+      },
+      "dimensions": [
+        128,
+        128,
+        128
+      ]
+    },
+    {
+      "n": 128,
+      "size": 2,
+      "result": true,
+      "wallMs": 830.108667,
+      "stats": {
+        "evaluationMs": 525.3258340000002,
+        "meshingMs": 118.84795799999984,
+        "totalMs": 830.0928749999998,
+        "changedVoxels": 1818510,
+        "scanned": 2899968,
+        "evaluated": 2815348,
+        "chunks": 125,
+        "totalChunks": 704
+      },
+      "dimensions": [
+        128,
+        128,
+        177
+      ]
+    },
+    {
+      "n": 128,
+      "size": 3,
+      "error": "Stamp exceeds the staging/history memory safety limit. Source voxels and redo were kept.",
+      "wallMs": 1745.321958,
+      "dimensions": [
+        225,
+        225,
+        209
+      ],
+      "undo": 0
+    },
+    {
+      "n": 128,
+      "size": 4,
+      "error": "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced.",
+      "wallMs": 0.07191599999987375,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "undo": 0
+    },
+    {
+      "n": 32,
+      "size": 8,
+      "result": true,
+      "wallMs": 1339.602416,
+      "stats": {
+        "evaluationMs": 872.650416,
+        "meshingMs": 143.68295799999987,
+        "totalMs": 1339.511708,
+        "changedVoxels": 3507068,
+        "scanned": 4588017,
+        "evaluated": 4588017,
+        "chunks": 124,
+        "totalChunks": 1100
+      },
+      "dimensions": [
+        161,
+        161,
+        177
+      ]
+    },
+    {
+      "n": 64,
+      "size": 8,
+      "error": "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced.",
+      "wallMs": 0.11283400000002075,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "undo": 0
+    }
+  ]
+}

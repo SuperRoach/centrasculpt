@@ -108,7 +108,7 @@ export class BooleanComposite {
     if(!this.pending)return false;
     const version=this.version,start=performance.now(),layout=compositeLayout(this.project.layerStack.layers,this.cap),key=JSON.stringify(layout),layoutChanged=key!==JSON.stringify(this.layout);
     const full=this.full||layoutChanged||!this.volume;
-    if(layoutChanged||!this.volume){this.mesher?.dispose();this.group.clear();this.volume=new SDFVolume(layout.resolution,layout.extent,false);this.mesher=new IncrementalMesher(this.volume);this.surface=new ChunkSurface(this.material);this.group.add(this.surface.group);this.group.position.fromArray(layout.center);this.layout=layout;}
+    if(layoutChanged||!this.volume){this.mesher?.dispose();this.surface?.clear();this.group.clear();this.volume=new SDFVolume(layout.resolution,layout.extent,false);this.mesher=new IncrementalMesher(this.volume);this.surface=new ChunkSurface(this.material);this.group.add(this.surface.group);this.group.position.fromArray(layout.center);this.layout=layout;}
     const volume=this.volume!,n=volume.resolution,evaluate=prepareComposite(this.project.layerStack.layers),regions=full?[{min:[0,0,0],max:[n-1,n-1,n-1]} as Bounds]:this.regions.map(r=>({min:[...r.min],max:[...r.max]} as Bounds));
     let samplingMs=0,samples=0;
     for(const region of regions)for(let z=region.min[2];z<=region.max[2];z++){
@@ -122,7 +122,7 @@ export class BooleanComposite {
     }
     if(full)this.mesher!.invalidate();else regions.forEach(r=>this.mesher!.invalidate(r));
     let meshingMs=0,chunks=0,totalChunks=0,triangles=0;
-    for(;;){const update=this.mesher!.rebuildChunks(8);if(!update)break;this.surface!.update(update.updates);meshingMs+=update.stats.milliseconds;chunks+=update.stats.chunks;totalChunks=update.stats.totalChunks;triangles=update.triangles;
+    for(;;){const update=this.mesher!.rebuildChunks(8,3);if(!update)break;this.surface!.update(update.updates);meshingMs+=update.stats.milliseconds;chunks+=update.stats.chunks;totalChunks=update.stats.totalChunks;triangles=update.triangles;
       if(triangles>1_000_000){this.group.visible=false;throw new Error('Boolean preview exceeds 1,000,000 triangles. Reduce composite quality or source complexity.');}
       await yieldUI();if(this.disposed||version!==this.version){this.full=true;return false;}
     }
@@ -134,5 +134,5 @@ export class BooleanComposite {
     const mesh=buildExportMesh(this.surface.group,this.exportMaterial,'local');mesh.geometry.applyMatrix4(this.group.matrix);if(!mesh.geometry.getAttribute('position').count){mesh.geometry.dispose();throw new Error('Boolean result is empty; no surface to export.');}
     const group=new Group();group.name=this.project.name;mesh.name='Boolean Result';group.add(mesh);return group;
   }
-  dispose():void {this.disposed=true;this.version++;this.mesher?.dispose();this.group.clear();}
+  dispose():void {this.disposed=true;this.version++;this.mesher?.dispose();this.surface?.clear();this.group.clear();this.mesher=null;this.surface=null;this.volume=null;this.layout=null;this.regions=[];}
 }
