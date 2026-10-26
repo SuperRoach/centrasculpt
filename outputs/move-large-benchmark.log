@@ -1,0 +1,541 @@
+{
+  "scope": "Node CPU, actual chunked SDF sphere sculptures (radius .85 at 114/160; radius .95 at supported initial resolution 192), not replicated vertices. No renderer, GPU, XR frame intervals or physical Quest measurements. 200 measured hover samples after 30 warmup; 20 grabs per radius, 80 measured held samples per grab. Memory is process-wide RSS/heap/external/arrayBuffers at GC checkpoints; allocator/mesher history included, not isolated preview peak. Local radius .25/.6 plus whole-sculpture stress radius 2 (beyond current UI sizing). 12ms preparation budget; failures retained, no skipped result passed off as success. Legacy copied from pre-change checkpoint. No preparation p99 from only 20 grabs.",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.8.1"
+  },
+  "rows": [
+    {
+      "target": 300000,
+      "vertices": 305640,
+      "resolution": 114,
+      "chunks": 74,
+      "indexNodes": 51,
+      "geometryBytes": 7335360,
+      "buildMs": 233.33225,
+      "indexedHoverCPU": {
+        "samples": 200,
+        "p50Ms": 0.11416699999995217,
+        "p95Ms": 0.13141700000005585,
+        "p99Ms": 0.14658299999996416,
+        "maxMs": 0.16099999999994452
+      },
+      "legacyUnindexedHoverCPU": {
+        "samples": 200,
+        "p50Ms": 0.11245800000006057,
+        "p95Ms": 0.12833399999999529,
+        "p99Ms": 0.1333750000000009,
+        "maxMs": 0.13599999999996726
+      },
+      "configs": [
+        {
+          "radius": 0.25,
+          "affectedVertices": 6269,
+          "candidateVertices": 26928,
+          "affectedChunks": 5,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.18445899999994708,
+            "p95Ms": 1.2262499999999363,
+            "p99Ms": null,
+            "maxMs": 1.5314170000000331
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.0012909999999237698,
+            "p95Ms": 0.0030839999999443535,
+            "p99Ms": 0.004583000000025095,
+            "maxMs": 0.016291999999907603
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0014580000000705695,
+            "p95Ms": 0.004250000000070031,
+            "p99Ms": null,
+            "maxMs": 0.025541999999973086
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": {
+              "samples": 1,
+              "p50Ms": 0.9560000000000173,
+              "p95Ms": null,
+              "p99Ms": null,
+              "maxMs": 0.9560000000000173
+            },
+            "error": ""
+          },
+          "activeMemory": {
+            "rss": 261668864,
+            "heapTotal": 92766208,
+            "heapUsed": 23525288,
+            "external": 41480874,
+            "arrayBuffers": 19373205
+          }
+        },
+        {
+          "radius": 0.6,
+          "affectedVertices": 37374,
+          "candidateVertices": 83076,
+          "affectedChunks": 17,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.2853330000000369,
+            "p95Ms": 0.39704200000005585,
+            "p99Ms": null,
+            "maxMs": 0.9798329999999851
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.001082999999994172,
+            "p95Ms": 0.0014590000000680448,
+            "p99Ms": 0.0015829999999823485,
+            "maxMs": 0.013374999999996362
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0012500000000272848,
+            "p95Ms": 0.004167000000052212,
+            "p99Ms": null,
+            "maxMs": 0.008458000000018728
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": {
+              "samples": 1,
+              "p50Ms": 1.362041999999974,
+              "p95Ms": null,
+              "p99Ms": null,
+              "maxMs": 1.362041999999974
+            },
+            "error": ""
+          },
+          "activeMemory": {
+            "rss": 262258688,
+            "heapTotal": 93028352,
+            "heapUsed": 23716528,
+            "external": 41480874,
+            "arrayBuffers": 19373205
+          }
+        },
+        {
+          "radius": 2,
+          "affectedVertices": 305640,
+          "candidateVertices": 305640,
+          "affectedChunks": 74,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.5926670000000058,
+            "p95Ms": 0.667709000000059,
+            "p99Ms": null,
+            "maxMs": 0.9205409999999574
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.0009169999999585343,
+            "p95Ms": 0.0013330000000451037,
+            "p99Ms": 0.0014999999999645297,
+            "maxMs": 0.013000000000033651
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.001958000000058746,
+            "p95Ms": 0.005750000000034561,
+            "p99Ms": null,
+            "maxMs": 0.009832999999957792
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": null,
+            "error": "Move preview vertex budget exceeded · reduce influence radius."
+          },
+          "activeMemory": {
+            "rss": 262373376,
+            "heapTotal": 93290496,
+            "heapUsed": 23789128,
+            "external": 41480874,
+            "arrayBuffers": 19373205
+          }
+        }
+      ],
+      "memory": {
+        "before": {
+          "rss": 256720896,
+          "heapTotal": 105873408,
+          "heapUsed": 22183288,
+          "external": 31321554,
+          "arrayBuffers": 156541
+        },
+        "afterBuild": {
+          "rss": 261554176,
+          "heapTotal": 93028352,
+          "heapUsed": 22989936,
+          "external": 41465490,
+          "arrayBuffers": 19357821
+        },
+        "afterPreview": {
+          "rss": 262389760,
+          "heapTotal": 93028352,
+          "heapUsed": 23798392,
+          "external": 41480874,
+          "arrayBuffers": 19373205
+        }
+      }
+    },
+    {
+      "target": 600000,
+      "vertices": 603072,
+      "resolution": 160,
+      "chunks": 128,
+      "indexNodes": 63,
+      "geometryBytes": 14473728,
+      "buildMs": 493.533042,
+      "indexedHoverCPU": {
+        "samples": 200,
+        "p50Ms": 0.11966600000005201,
+        "p95Ms": 0.14804099999992104,
+        "p99Ms": 0.20091699999989032,
+        "maxMs": 0.30479099999979553
+      },
+      "legacyUnindexedHoverCPU": {
+        "samples": 200,
+        "p50Ms": 0.12175000000002001,
+        "p95Ms": 0.15333399999985886,
+        "p99Ms": 0.21637500000019827,
+        "maxMs": 0.22304099999996652
+      },
+      "configs": [
+        {
+          "radius": 0.25,
+          "affectedVertices": 12912,
+          "candidateVertices": 29064,
+          "affectedChunks": 4,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.18045799999981682,
+            "p95Ms": 0.7396249999999327,
+            "p99Ms": null,
+            "maxMs": 1.489165999999841
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.001125000000001819,
+            "p95Ms": 0.0015000000000782165,
+            "p99Ms": 0.0017080000000078144,
+            "maxMs": 0.02504100000010112
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0008339999999407155,
+            "p95Ms": 0.0018749999999272404,
+            "p99Ms": null,
+            "maxMs": 0.002375000000029104
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": {
+              "samples": 1,
+              "p50Ms": 0.29420799999979863,
+              "p95Ms": null,
+              "p99Ms": null,
+              "maxMs": 0.29420799999979863
+            },
+            "error": ""
+          },
+          "activeMemory": {
+            "rss": 295829504,
+            "heapTotal": 93814784,
+            "heapUsed": 24637200,
+            "external": 81577954,
+            "arrayBuffers": 47429173
+          }
+        },
+        {
+          "radius": 0.6,
+          "affectedVertices": 74677,
+          "candidateVertices": 140040,
+          "affectedChunks": 28,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.35837500000002365,
+            "p95Ms": 0.43041699999980665,
+            "p99Ms": null,
+            "maxMs": 0.47524999999996
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.001125000000001819,
+            "p95Ms": 0.0014170000001740846,
+            "p99Ms": 0.0017919999997957348,
+            "maxMs": 0.016375000000152795
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0009999999999763531,
+            "p95Ms": 0.0016249999998763087,
+            "p99Ms": null,
+            "maxMs": 0.0019160000001647859
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": {
+              "samples": 1,
+              "p50Ms": 1.2684580000000096,
+              "p95Ms": null,
+              "p99Ms": null,
+              "maxMs": 1.2684580000000096
+            },
+            "error": ""
+          },
+          "activeMemory": {
+            "rss": 295829504,
+            "heapTotal": 93814784,
+            "heapUsed": 24693792,
+            "external": 69536842,
+            "arrayBuffers": 47429173
+          }
+        },
+        {
+          "radius": 2,
+          "affectedVertices": 603072,
+          "candidateVertices": 603072,
+          "affectedChunks": 128,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 1.0979999999999563,
+            "p95Ms": 1.1536670000000413,
+            "p99Ms": null,
+            "maxMs": 1.2286250000001928
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.0012080000001333246,
+            "p95Ms": 0.0014159999998355488,
+            "p99Ms": 0.0016249999998763087,
+            "maxMs": 0.004916999999977634
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0014579999999568827,
+            "p95Ms": 0.002165999999988344,
+            "p99Ms": null,
+            "maxMs": 0.004415999999991982
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": null,
+            "error": "Move preview vertex budget exceeded · reduce influence radius."
+          },
+          "activeMemory": {
+            "rss": 295845888,
+            "heapTotal": 93814784,
+            "heapUsed": 24743560,
+            "external": 69536842,
+            "arrayBuffers": 47429173
+          }
+        }
+      ],
+      "memory": {
+        "before": {
+          "rss": 262389760,
+          "heapTotal": 92504064,
+          "heapUsed": 22991096,
+          "external": 41480874,
+          "arrayBuffers": 19371157
+        },
+        "afterBuild": {
+          "rss": 295829504,
+          "heapTotal": 95649792,
+          "heapUsed": 24680760,
+          "external": 88736074,
+          "arrayBuffers": 59454901
+        },
+        "afterPreview": {
+          "rss": 295845888,
+          "heapTotal": 93814784,
+          "heapUsed": 24743896,
+          "external": 69536842,
+          "arrayBuffers": 47429173
+        }
+      }
+    },
+    {
+      "target": 1000000,
+      "vertices": 1088784,
+      "resolution": 192,
+      "chunks": 224,
+      "indexNodes": 127,
+      "geometryBytes": 26130816,
+      "buildMs": 857.4497499999998,
+      "indexedHoverCPU": {
+        "samples": 200,
+        "p50Ms": 0.10799999999971988,
+        "p95Ms": 0.11908300000004601,
+        "p99Ms": 0.1325419999998303,
+        "maxMs": 0.13954100000000835
+      },
+      "legacyUnindexedHoverCPU": {
+        "samples": 200,
+        "p50Ms": 0.11300000000028376,
+        "p95Ms": 0.1277909999998883,
+        "p99Ms": 0.14512500000000728,
+        "maxMs": 0.14933300000029703
+      },
+      "configs": [
+        {
+          "radius": 0.25,
+          "affectedVertices": 17932,
+          "candidateVertices": 27936,
+          "affectedChunks": 4,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.1708330000001297,
+            "p95Ms": 0.7595420000002377,
+            "p99Ms": null,
+            "maxMs": 1.4331250000000182
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.0010830000001078588,
+            "p95Ms": 0.0014160000000629225,
+            "p99Ms": 0.0015419999999721767,
+            "maxMs": 0.004167000000052212
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0007909999999355932,
+            "p95Ms": 0.0016669999999976426,
+            "p99Ms": null,
+            "maxMs": 0.002415999999811902
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": {
+              "samples": 1,
+              "p50Ms": 0.4584999999997308,
+              "p95Ms": null,
+              "p99Ms": null,
+              "maxMs": 0.4584999999997308
+            },
+            "error": ""
+          },
+          "activeMemory": {
+            "rss": 346030080,
+            "heapTotal": 94863360,
+            "heapUsed": 26140040,
+            "external": 137994306,
+            "arrayBuffers": 82944277
+          }
+        },
+        {
+          "radius": 0.6,
+          "affectedVertices": 109853,
+          "candidateVertices": 193020,
+          "affectedChunks": 36,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 0.43420800000012605,
+            "p95Ms": 0.5512080000003152,
+            "p99Ms": null,
+            "maxMs": 0.6153330000001915
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.0011250000002291927,
+            "p95Ms": 0.0014580000001842564,
+            "p99Ms": 0.0018749999999272404,
+            "maxMs": 0.022333000000344327
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.0009590000004209287,
+            "p95Ms": 0.0019170000000485743,
+            "p99Ms": null,
+            "maxMs": 0.0020829999998568383
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": {
+              "samples": 1,
+              "p50Ms": 1.5058340000000499,
+              "p95Ms": null,
+              "p99Ms": null,
+              "maxMs": 1.5058340000000499
+            },
+            "error": ""
+          },
+          "activeMemory": {
+            "rss": 346046464,
+            "heapTotal": 94863360,
+            "heapUsed": 26184504,
+            "external": 105051946,
+            "arrayBuffers": 82944277
+          }
+        },
+        {
+          "radius": 2,
+          "affectedVertices": 1088784,
+          "candidateVertices": 1088784,
+          "affectedChunks": 224,
+          "grab": {
+            "samples": 20,
+            "p50Ms": 1.9546669999999722,
+            "p95Ms": 2.0535409999997682,
+            "p99Ms": null,
+            "maxMs": 2.079417000000376
+          },
+          "heldCPU": {
+            "samples": 1600,
+            "p50Ms": 0.001291999999921245,
+            "p95Ms": 0.0014999999998508429,
+            "p99Ms": 0.002250000000003638,
+            "maxMs": 0.03379099999983737
+          },
+          "release": {
+            "samples": 20,
+            "p50Ms": 0.002375000000029104,
+            "p95Ms": 0.0037919999999758147,
+            "p99Ms": null,
+            "maxMs": 0.005124999999679858
+          },
+          "failures": [],
+          "legacy": {
+            "preparation": null,
+            "error": "Move preview vertex budget exceeded · reduce influence radius."
+          },
+          "activeMemory": {
+            "rss": 346144768,
+            "heapTotal": 94863360,
+            "heapUsed": 26237472,
+            "external": 105051946,
+            "arrayBuffers": 82944277
+          }
+        }
+      ],
+      "memory": {
+        "before": {
+          "rss": 295845888,
+          "heapTotal": 93814784,
+          "heapUsed": 23277424,
+          "external": 69536842,
+          "arrayBuffers": 47425173
+        },
+        "afterBuild": {
+          "rss": 346013696,
+          "heapTotal": 94863360,
+          "heapUsed": 26207448,
+          "external": 152305194,
+          "arrayBuffers": 115871253
+        },
+        "afterPreview": {
+          "rss": 346144768,
+          "heapTotal": 94863360,
+          "heapUsed": 26230712,
+          "external": 105051946,
+          "arrayBuffers": 82944277
+        }
+      }
+    }
+  ]
+}

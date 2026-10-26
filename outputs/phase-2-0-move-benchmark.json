@@ -1,0 +1,379 @@
+{
+  "scope": "Node CPU only. 5 grabs at each influence radius and initial resolution; 100 warmup + 1000 uniform-only updates per grab. Preparation includes candidate scan/material cloning. interaction.hover/held separately measure the complete XRMoveTool adapter with synthetic tracked poses (30 warmup + 180 samples): raycasts, matrix conversion, visuals and lock/validity checks included. Excludes GPU shader compilation/draw cost, XR input polling/canvas and physical headset frame intervals. Geometry/SDF never remeshed. p95/p99 withheld below 20/100 samples; no preparation tails from 5 grabs. Host load uncontrolled.",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.8.1"
+  },
+  "rows": [
+    {
+      "resolution": 64,
+      "radius": 0.12,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.7138340000000198,
+          "p95Ms": 0.9764169999999694,
+          "p99Ms": 1.3910419999999704,
+          "maxMs": 1.418207999999936
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.002334000000018932,
+          "p95Ms": 0.005875000000060027,
+          "p99Ms": 0.010667000000012195,
+          "maxMs": 0.047541000000023814
+        },
+        "grabMs": 1.6447910000000547,
+        "releaseMs": 0.038415999999983796
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.6047090000000139,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 3.173749999999984
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00008300000001781882,
+        "p95Ms": 0.0002089999999839165,
+        "p99Ms": 0.00033399999995253893,
+        "maxMs": 0.00745900000003985
+      },
+      "affectedVertices": 385,
+      "candidateVertices": 42588,
+      "affectedChunks": 4,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 64,
+      "radius": 0.3,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.7040829999999687,
+          "p95Ms": 0.7654580000000806,
+          "p99Ms": 0.941332999999986,
+          "maxMs": 1.1215839999999844
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0013749999999390639,
+          "p95Ms": 0.0015829999999823485,
+          "p99Ms": 0.003291999999987638,
+          "maxMs": 0.009249999999951797
+        },
+        "grabMs": 1.0257500000000164,
+        "releaseMs": 0.005332999999950516
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.3008749999999054,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.32179199999995944
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00004200000000764703,
+        "p95Ms": 0.00008400000001529406,
+        "p99Ms": 0.00008400000001529406,
+        "maxMs": 0.0183750000001055
+      },
+      "affectedVertices": 2839,
+      "candidateVertices": 42588,
+      "affectedChunks": 8,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 64,
+      "radius": 0.5,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.7150830000000497,
+          "p95Ms": 0.8221669999999222,
+          "p99Ms": 1.0795829999999569,
+          "maxMs": 1.178916000000072
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0014580000000705695,
+          "p95Ms": 0.0018749999999272404,
+          "p99Ms": 0.00895900000000438,
+          "maxMs": 0.019000000000005457
+        },
+        "grabMs": 0.9903329999999642,
+        "releaseMs": 0.006333999999924345
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.22024999999996453,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.2679170000000113
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00004200000000764703,
+        "p95Ms": 0.00004200000000764703,
+        "p99Ms": 0.00004200000000764703,
+        "maxMs": 0.0009579999999687061
+      },
+      "affectedVertices": 8034,
+      "candidateVertices": 42588,
+      "affectedChunks": 8,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 128,
+      "radius": 0.12,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.4527499999999236,
+          "p95Ms": 0.7762079999999969,
+          "p99Ms": 1.086999999999989,
+          "maxMs": 1.1816659999999501
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0013750000000527507,
+          "p95Ms": 0.0014590000000680448,
+          "p99Ms": 0.006457999999838648,
+          "maxMs": 0.007834000000002561
+        },
+        "grabMs": 0.7042080000001079,
+        "releaseMs": 0.004415999999991982
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.2192090000000917,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.7066670000001523
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.000041999999893960194,
+        "p95Ms": 0.00004200000012133387,
+        "p99Ms": 0.00008299999990413198,
+        "maxMs": 0.003249999999979991
+      },
+      "affectedVertices": 2074,
+      "candidateVertices": 30624,
+      "affectedChunks": 4,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 128,
+      "radius": 0.3,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.4527909999999338,
+          "p95Ms": 0.6684589999999844,
+          "p99Ms": 0.8795000000000073,
+          "maxMs": 0.9745829999999387
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0012920000001486187,
+          "p95Ms": 0.0016669999999976426,
+          "p99Ms": 0.002124999999978172,
+          "maxMs": 0.018291999999973996
+        },
+        "grabMs": 0.7235840000000735,
+        "releaseMs": 0.010665999999901032
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.1614999999999327,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.198917000000165
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00004100000001017179,
+        "p95Ms": 0.00004200000012133387,
+        "p99Ms": 0.00004200000012133387,
+        "maxMs": 0.00012500000002546585
+      },
+      "affectedVertices": 11462,
+      "candidateVertices": 30624,
+      "affectedChunks": 8,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 128,
+      "radius": 0.5,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.4455830000001697,
+          "p95Ms": 0.5560840000000553,
+          "p99Ms": 0.7532920000001013,
+          "maxMs": 0.8910829999999805
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0011669999998957792,
+          "p95Ms": 0.0015000000000782165,
+          "p99Ms": 0.005999999999858119,
+          "maxMs": 0.016624999999976353
+        },
+        "grabMs": 0.756832999999915,
+        "releaseMs": 0.006374999999934516
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.4748329999999896,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.8882909999999811
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00004100000001017179,
+        "p95Ms": 0.00004200000012133387,
+        "p99Ms": 0.00004200000012133387,
+        "maxMs": 0.009167000000161352
+      },
+      "affectedVertices": 33140,
+      "candidateVertices": 90528,
+      "affectedChunks": 16,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 192,
+      "radius": 0.12,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.32587499999999636,
+          "p95Ms": 0.39766699999972843,
+          "p99Ms": 0.5544589999999516,
+          "maxMs": 0.650916000000052
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0014160000000629225,
+          "p95Ms": 0.0015000000003055902,
+          "p99Ms": 0.0020409999997355044,
+          "maxMs": 0.008959000000231754
+        },
+        "grabMs": 0.6992909999999029,
+        "releaseMs": 0.0036250000002837623
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.12566700000024866,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.16433299999971496
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00004099999978279811,
+        "p95Ms": 0.00004200000012133387,
+        "p99Ms": 0.00008399999978792039,
+        "maxMs": 0.024834000000282686
+      },
+      "affectedVertices": 4268,
+      "candidateVertices": 28200,
+      "affectedChunks": 4,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 192,
+      "radius": 0.3,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.32749999999987267,
+          "p95Ms": 0.4115830000000642,
+          "p99Ms": 0.5230830000000424,
+          "maxMs": 0.565375000000131
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.000875000000178261,
+          "p95Ms": 0.0011249999997744453,
+          "p99Ms": 0.004333000000315224,
+          "maxMs": 0.007250000000112777
+        },
+        "grabMs": 0.7244170000003578,
+        "releaseMs": 0.002457999999933236
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.4314159999998992,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.6240419999999176
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0.00004099999978279811,
+        "p95Ms": 0.00004200000012133387,
+        "p99Ms": 0.00004200000012133387,
+        "maxMs": 0.0019999999999527063
+      },
+      "affectedVertices": 25823,
+      "candidateVertices": 94140,
+      "affectedChunks": 16,
+      "cachedMaterials": 1,
+      "rejected": ""
+    },
+    {
+      "resolution": 192,
+      "radius": 0.5,
+      "interaction": {
+        "hover": {
+          "samples": 180,
+          "medianMs": 0.3245420000002923,
+          "p95Ms": 0.3623330000000351,
+          "p99Ms": 0.48374999999987267,
+          "maxMs": 0.49983300000030795
+        },
+        "held": {
+          "samples": 180,
+          "medianMs": 0.0009169999998448475,
+          "p95Ms": 0.0009589999999661813,
+          "p99Ms": 0.00233299999990777,
+          "maxMs": 0.011790999999902851
+        },
+        "grabMs": 0.8067089999999553,
+        "releaseMs": 0.003333999999995285
+      },
+      "preparation": {
+        "samples": 5,
+        "medianMs": 0.401459000000159,
+        "p95Ms": null,
+        "p99Ms": null,
+        "maxMs": 0.47479100000009566
+      },
+      "update": {
+        "samples": 5000,
+        "medianMs": 0,
+        "p95Ms": 0.00004200000012133387,
+        "p99Ms": 0.00004200000012133387,
+        "maxMs": 0.0009170000002995948
+      },
+      "affectedVertices": 75282,
+      "candidateVertices": 135756,
+      "affectedChunks": 20,
+      "cachedMaterials": 1,
+      "rejected": ""
+    }
+  ]
+}

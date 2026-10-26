@@ -29,11 +29,11 @@ function rayPose(view,x,y){view.mesh.updateWorldMatrix(true,false);const target=
 function trigger(state,pressed){state.buttons.trigger={pressed,rawValue:pressed?1:0,justPressed:pressed};}
 test('Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly',()=>{
  const f=fixture();try{const {model,tools}=f;assert.equal(model.request,null);model.setRequest('tool-wheel');assert.equal(model.content().title,'TOOL WHEEL');assert(model.content().buttons.find(b=>b.id==='tool:clay').selected);
- for(const id of ['smooth','stamp','transform','clay']){model.activate(`tool:${id}`);assert.equal(tools.active,id);assert.equal(model.page,'tool-options');assert(model.content().title.includes('OPTIONS'));model.activate('tools');assert(model.content().buttons.find(b=>b.id===`tool:${id}`).selected);}
- model.activate('tool:move');assert.equal(tools.active,'clay');assert.equal(model.feedback,'Unavailable');model.setRequest(null);model.activate('tool:smooth');assert.equal(tools.active,'clay');assert.equal(model.hover,null);assert.equal(model.hit(576,280),null);assert.equal(f.layers.undoCount,0);
+ for(const id of ['smooth','stamp','transform','move','clay']){model.activate(`tool:${id}`);assert.equal(tools.active,id);assert.equal(model.page,'tool-options');assert(model.content().title.includes('OPTIONS'));model.activate('tools');assert(model.content().buttons.find(b=>b.id===`tool:${id}`).selected);}
+ model.activate('tool:move');assert.equal(tools.active,'move');assert.equal(model.feedback,'');model.activate('tools');model.activate('tool:clay');model.setRequest(null);model.activate('tool:smooth');assert.equal(tools.active,'clay');assert.equal(model.hover,null);assert.equal(model.hit(576,280),null);assert.equal(f.layers.undoCount,0);
  }finally{f.dispose();}
 });
-test('radial and rectangular hit tests align with every visible target, including disabled Move',()=>{
+test('radial and rectangular hit tests align with every visible target, including experimental Move',()=>{
  const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');for(const definition of EDITOR_TOOLS){const id=`tool:${definition.id}`;assert.equal(m.hit(...buttonPoint(m,id)),id);}
  assert.equal(m.hit(576,590),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1100,1050]])assert.equal(m.hit(...point),null);
  m.activate('options');for(const b of m.content().buttons)assert.equal(m.hit(...buttonPoint(m,b.id)),b.id);

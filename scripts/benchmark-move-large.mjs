@@ -1,0 +1,30 @@
+import './compile-core.mjs';
+import {writeFileSync,readFileSync} from 'node:fs';import ts from 'typescript';import assert from 'node:assert/strict';
+import {Group,Matrix4,Vector3,Raycaster} from 'three';
+import {IndependentLayers} from '../work/test-build/independent-layers.mjs';import {SDFVolume} from '../work/test-build/sdf.mjs';import {createBaseProject} from '../work/test-build/layers.mjs';import {XRMoveTool} from '../work/test-build/xr-move-tool.mjs';import {EditorToolState} from '../work/test-build/editor-tool-state.mjs';import {ShapePreviewModel} from '../work/test-build/shape-preview.mjs';import {MoveMeshPreview} from '../work/test-build/move-mesh-preview.mjs';
+// Profile the exact pre-change implementation preserved before modifying it.
+const old=readFileSync('scripts/fixtures/move-preview-before-spatial.txt','utf8').replace("'./move-field'","'./move-field.mjs'");writeFileSync('work/test-build/move-preview-legacy.mjs',ts.transpileModule(old,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);
+const {MoveMeshPreview:Legacy}=await import('../work/test-build/move-preview-legacy.mjs');
+const makeVolume=(n,target)=>{const v=new SDFVolume(n);if(target===1000000)for(let i=0;i<v.values.length;i++)v.values[i]-=.1;return v;};
+const summary=a=>{const b=[...a].sort((x,y)=>x-y),q=p=>b[Math.ceil(b.length*p)-1];return {samples:b.length,p50Ms:q(.5),p95Ms:b.length>=20?q(.95):null,p99Ms:b.length>=100?q(.99):null,maxMs:q(1)};},memory=()=>{global.gc?.();return process.memoryUsage();},settings={mode:'add',radius:.22,strength:.35,hardness:.5,camera:{position:[2,2,3],target:[0,0,0]}},rows=[];
+for(const [target,resolution] of [[300000,114],[600000,160],[1000000,192]]){
+ const before=memory(),buildStart=performance.now(),l=new IndependentLayers(createBaseProject(makeVolume(resolution,target),settings)),surface=l.active.surface,vertices=surface.group.children.reduce((n,m)=>n+m.geometry.attributes.position.count,0),buildMs=performance.now()-buildStart,afterBuild=memory();assert(vertices>=target);
+ const geometryBytes=surface.group.children.reduce((n,m)=>n+Object.values(m.geometry.attributes).reduce((sum,a)=>sum+a.array.byteLength,0),0),tools=new EditorToolState({layers:()=>l,shape:new ShapePreviewModel(l.project.activeLayerId),settings:()=>settings,setSettings(){},mode:()=> 'sculpt',selectTool(){},selectTransform(){},busy:()=>false,changed(){}});tools.select('move');tools.move.mode='preview';
+ const move=new XRMoveTool(()=>l,tools,new Group()),tool={role:'tool',connected:true,tracked:true,gripTracked:true,connectionId:1,buttons:{trigger:{pressed:false,rawValue:0,justPressed:false},grip:{pressed:false,rawValue:0}}},pose=new Matrix4().makeTranslation(0,0,1.5),grip=pose.clone();let time=0;
+ const hover=[],oldHover=[],ray=new Raycaster(new Vector3(0,0,1.5),new Vector3(0,0,-1),0,5),hits=[];
+ for(let i=0;i<230;i++){let t=performance.now();move.update(tool,pose,time+=11,true,grip);if(i>=30)hover.push(performance.now()-t);hits.length=0;t=performance.now();ray.intersectObject(surface.group,true,hits);if(i>=30)oldHover.push(performance.now()-t);}
+ const configs=[];
+ for(const radius of [.25,.6,2]){
+  tools.move.radius=radius;const prepare=[],held=[],release=[],failures=[],legacyPrepare=[];let legacyError='',affectedVertices=0,candidateVertices=0,affectedChunks=0,activeMemory;
+  const legacy=new Legacy();try{let t=performance.now();legacy.begin(surface.group,new Vector3(0,0,target===1000000?.95:.85),radius,2,1);legacyPrepare.push(performance.now()-t);}catch(e){legacyError=e.message;}finally{legacy.cancel();}
+  for(let grab=0;grab<20;grab++){
+   tool.buttons.trigger={pressed:false,rawValue:0,justPressed:false};move.update(tool,pose,time+=11,true,grip);tool.buttons.trigger={pressed:true,rawValue:1,justPressed:true};let t=performance.now();move.update(tool,pose,time+=11,true,grip);prepare.push(performance.now()-t);
+   if(!move.active){failures.push(move.feedback);continue;}affectedVertices=move.preview.affectedVertices;candidateVertices=move.preview.candidateVertices;affectedChunks=move.preview.affectedChunks;if(grab===0)activeMemory=memory();tool.buttons.trigger.justPressed=false;
+   for(let i=0;i<100;i++){grip.elements[12]=.04*Math.sin(i*.07);t=performance.now();move.update(tool,pose,time+=11,true,grip);if(i>=20)held.push(performance.now()-t);}
+   tool.buttons.trigger={pressed:false,rawValue:0,justPressed:false};t=performance.now();move.update(tool,pose,time+=11,true,grip);release.push(performance.now()-t);grip.copy(pose);
+  }
+  configs.push({radius,affectedVertices,candidateVertices,affectedChunks,grab:summary(prepare),heldCPU:held.length?summary(held):null,release:release.length?summary(release):null,failures,legacy:{preparation:legacyPrepare.length?summary(legacyPrepare):null,error:legacyError},activeMemory});
+ }
+ move.dispose();const afterPreview=memory();assert.equal(l.undoCount,0);assert.equal(l.active.expansions,0);rows.push({target,vertices,resolution,chunks:surface.spatial.chunks,indexNodes:surface.spatial.nodes,geometryBytes,buildMs,indexedHoverCPU:summary(hover),legacyUnindexedHoverCPU:summary(oldHover),configs,memory:{before,afterBuild,afterPreview}});l.dispose();
+}
+const report={scope:'Node CPU, actual chunked SDF sphere sculptures (radius .85 at 114/160; radius .95 at supported initial resolution 192), not replicated vertices. No renderer, GPU, XR frame intervals or physical Quest measurements. 200 measured hover samples after 30 warmup; 20 grabs per radius, 80 measured held samples per grab. Memory is process-wide RSS/heap/external/arrayBuffers at GC checkpoints; allocator/mesher history included, not isolated preview peak. Local radius .25/.6 plus whole-sculpture stress radius 2 (beyond current UI sizing). 12ms preparation budget; failures retained, no skipped result passed off as success. Legacy benchmark fixture is an exact copy from the pre-change checkpoint. No preparation p99 from only 20 grabs.',host:{platform:process.platform,arch:process.arch,node:process.version},rows};writeFileSync('outputs/move-large-benchmark.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));

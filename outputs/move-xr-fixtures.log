@@ -1,0 +1,4 @@
+300k: 5,926,883 bytes; native round-trip validated
+600k: 16,384,707 bytes; native round-trip validated
+1m: 28,312,255 bytes; native round-trip validated
+Quest URL: http://localhost:5173/work/quest-move-fixtures/index.html (existing USB forwarding required)

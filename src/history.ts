@@ -2,15 +2,15 @@ import {SDFVolume} from './sdf';
 import {assertExactDenseGrowth} from './dense-growth';
 import type { Bounds, VoxelChangeListener } from './sdf';
 import type { VolumeStore } from './volume-store';
-export type HistoryKind='stroke'|'reset'|'shape-stamp';
+export type HistoryKind='stroke'|'reset'|'shape-stamp'|'move';
 export type HistoryTransaction={layerId:string;kind:HistoryKind;changedVoxels:number};
 type Action = { layerId:string;kind:HistoryKind } & { indices: Uint32Array; before: Float32Array; after: Float32Array; bounds: Bounds };
 
 /** Sparse, exact Float32 deltas. Each voxel's original value is captured only once per action. */
 export class SculptHistory {
   private pending: Map<number, { before: number; after: number }> | null = null;
-  private readonly past: Action[] = [];
-  private readonly future: Action[] = [];
+  private past: Action[] = [];
+  private future: Action[] = [];
   private bytes = 0;
   private revision=0;
   private pendingKind: HistoryKind='stroke';
@@ -74,6 +74,21 @@ export class SculptHistory {
     if(!patch.bounds||patch.before.length!==patch.indices.length||patch.after.length!==patch.indices.length)throw new Error('Invalid staged history patch.');
     const action={indices:patch.indices.slice(),before:patch.before.slice(),after:patch.after.slice(),bounds:{min:[...patch.bounds.min],max:[...patch.bounds.max]} as Bounds,layerId:this.targetLayerId,kind};
     return this.retain(action);
+  }
+  /** Trusted atomic Move branch. Candidate is an exact lattice copy before
+   * patch application. No live history/store mutation until the returned publish. */
+  prepareMoveReplacement(next:SDFVolume,patch:{indices:Uint32Array;before:Float32Array;after:Float32Array;bounds:Bounds|null}):{publish:()=>void;undoCount:number}{
+    if(!(this.volume instanceof SDFVolume)||this.active||!this.canEdit())throw new Error('Move history target is unavailable.');
+    if(!patch.indices.length||!patch.bounds||patch.before.length!==patch.indices.length||patch.after.length!==patch.indices.length)throw new Error('Invalid Move history patch.');
+    const old=this.volume,revision=this.revision,oldMin=old.latticeMin,newMin=next.latticeMin,od=old.dimensions,nd=next.dimensions,offset=oldMin.map((v,a)=>v-newMin[a]);
+    if(next.step!==old.step||next.resolution!==old.resolution||next.extent!==old.extent||!offset.every((v,a)=>Number.isInteger(v)&&v>=0&&v+od[a]<=nd[a]))throw new Error('Move replacement must preserve the original lattice.');
+    for(let i=0;i<patch.indices.length;i++){const id=patch.indices[i];if(id>=next.values.length||i>0&&id<=patch.indices[i-1]||next.values[id]!==patch.before[i]||!Number.isFinite(patch.after[i])||Math.abs(patch.after[i])>Math.fround(next.extent*4))throw new Error('Move history patch is stale or invalid.');}
+    const same=offset.every(v=>v===0)&&nd.every((v,a)=>v===od[a]),remap=(id:number)=>next.index(id%od[0]+offset[0],Math.floor(id/od[0])%od[1]+offset[1],Math.floor(id/(od[0]*od[1]))+offset[2]);
+    const shift=(b:Bounds):Bounds=>({min:b.min.map((v,a)=>v+offset[a]) as [number,number,number],max:b.max.map((v,a)=>v+offset[a]) as [number,number,number]});
+    const past=this.past.map(a=>same?a:{...a,indices:a.indices.map(remap),bounds:shift(a.bounds)});
+    past.push({layerId:this.targetLayerId,kind:'move',indices:patch.indices.slice(),before:patch.before.slice(),after:patch.after.slice(),bounds:{min:[...patch.bounds.min],max:[...patch.bounds.max]}});
+    let bytes=past.reduce((n,a)=>n+a.indices.length*12,0);while(past.length>1&&(bytes>this.byteLimit||past.length>this.actionLimit))bytes-=past.shift()!.indices.length*12;
+    const future:Action[]=[];let used=false;return {undoCount:past.length,publish:()=>{if(used||this.revision!==revision||this.volume!==old||this.active||!this.canEdit())throw new Error('Stale Move history preparation.');used=true;this.volume=next;this.past=past;this.future=future;this.bytes=bytes;this.revision++;}};
   }
   private retain(action:Action):boolean {
     this.discardRedo();

@@ -65,6 +65,10 @@ type ChunkLayout={chunks:MeshChunk[];lookup:Int32Array;min:Point;max:Point;size:
 export class IncrementalMesher {
   private chunks:MeshChunk[]=[];
   private dirty=new Set<number>();
+  private borrowed=new Set<BufferGeometry>();
+  private ownedBytes=0;
+  get ownedGeometryBytes():number{return this.ownedBytes;}
+  private bytes(g:BufferGeometry):number{let n=0;for(const a of Object.values(g.attributes))n+=a.array.byteLength;return n+(g.index?.array.byteLength??0);}
   private layout:ChunkLayout;
   private disposed=false;private editRevision=0;
   private triangleCount=0;private rebuilds=0;private totalMilliseconds=0;
@@ -134,15 +138,31 @@ export class IncrementalMesher {
     if(!this.dirty.size)return null;this.editRevision++;const start=performance.now(),updates:ChunkUpdate[]=[];
     for(const id of this.dirty){if(updates.length>=maxChunks)break;const chunk=this.chunks[id],geometry=geometryFromRegions([extractRegion(this.volume,chunk.bounds)]);
       this.triangleCount+=(geometry.getAttribute('position').count-(chunk.geometry?.getAttribute('position').count??0))/3;
-      chunk.geometry?.dispose();chunk.geometry=geometry;updates.push({id,bounds:chunk.bounds,geometry});this.dirty.delete(id);
+      if(chunk.geometry){if(!this.borrowed.delete(chunk.geometry)){this.ownedBytes-=this.bytes(chunk.geometry);chunk.geometry.dispose();}}chunk.geometry=geometry;this.ownedBytes+=this.bytes(geometry);updates.push({id,bounds:chunk.bounds,geometry});this.dirty.delete(id);
     }
     const milliseconds=performance.now()-start;this.rebuilds++;this.totalMilliseconds+=milliseconds;
     return {updates,triangles:this.triangleCount,stats:{milliseconds,chunks:updates.length,totalChunks:this.chunks.length,rebuilds:this.rebuilds,averageMilliseconds:this.totalMilliseconds/this.rebuilds}};
   }
+  /** Isolated edit branch: retain unchanged chunk buffers, remesh only the patch.
+   * Borrowed buffers stay owned by the source until successful publication. */
+  forkEdit(next:SDFVolume,bounds:Bounds):IncrementalMesher{
+    if(this.disposed||this.dirty.size)throw new Error('Finish source meshing before Move.');
+    if(next.step!==this.volume.step)throw new Error('Move cannot resample source spacing.');
+    const fork=new IncrementalMesher(next,this.chunkSize);fork.layout=fork.buildLayout(next,this.chunks);fork.chunks=fork.layout.chunks;fork.dirty.clear();fork.triangleCount=this.triangleCount;
+    for(const chunk of fork.chunks)if(chunk.geometry)fork.borrowed.add(chunk.geometry);
+    fork.invalidate(bounds);
+    const before=this.volume.bounds,after=next.bounds;
+    for(let id=0;id<this.chunks.length;id++){const g=this.chunks[id].geometry;if(!g?.getAttribute('position').count)continue;if(!g.boundingBox)g.computeBoundingBox();const box=g.boundingBox!;for(let a=0;a<3;a++){if(after.min[a]<before.min[a]&&box.min.getComponent(a)<=before.min[a]+2*next.step||after.max[a]>before.max[a]&&box.max.getComponent(a)>=before.max[a]-2*next.step){fork.dirty.add(id);break;}}}
+    return fork;
+  }
+  snapshotUpdates():ChunkUpdate[]{return this.chunks.flatMap((c,id)=>c.geometry?[{id,bounds:c.bounds,geometry:c.geometry}]:[]);}
+  get triangles():number{return this.triangleCount;}
+  /** Preallocate ownership transfer; caller revalidates locks/source before invoking. */
+  prepareAdoptionFrom(source:IncrementalMesher):()=>void{const shared=new Set(source.borrowed),empty=new Set<BufferGeometry>();let adoptedBytes=0;for(const g of this.borrowed){shared.add(g);adoptedBytes+=this.bytes(g);}const total=this.ownedBytes+adoptedBytes;return ()=>{source.borrowed=shared;source.ownedBytes-=adoptedBytes;this.borrowed=empty;this.ownedBytes=total;};}
   rebuild():{geometry:BufferGeometry;stats:RebuildStats}|null{
     const result=this.rebuildChunks();if(!result)return null;
     const regions=this.chunks.filter(c=>c.geometry).map(c=>({positions:Array.from(c.geometry!.getAttribute('position').array),normals:Array.from(c.geometry!.getAttribute('normal').array)}));
     return {geometry:geometryFromRegions(regions),stats:result.stats};
   }
-  dispose():void{if(this.disposed)return;this.disposed=true;for(const c of this.chunks)c.geometry?.dispose();this.dirty.clear();}
+  dispose():void{if(this.disposed)return;this.disposed=true;for(const c of this.chunks)if(c.geometry&&!this.borrowed.has(c.geometry))c.geometry.dispose();this.borrowed.clear();this.dirty.clear();this.ownedBytes=0;}
 }

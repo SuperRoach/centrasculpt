@@ -3,7 +3,7 @@ import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,Quaternion,SRGBColorS
 import type {Object3D} from 'three';
 export type XRSculptureInfo={activeResolution:string;resolutions:string;layerMeshes:number;compositeMeshes:number};
 export function countVisibleMeshes(root:Object3D):number{let count=0;root.traverseVisible(object=>{if((object as Object3D&{isMesh?:boolean}).isMesh)count++;});return count;}
-export type XREditMetrics={allocation?:{dimensions:string;bounds:string;samples:number;chunks:number;storageBytes:number;expansions:number;lastMs:number};tool:string;radius:number;brush:TimingSummary;remesh:TimingSummary;path:TimingSummary;stroke:TimingSummary;xrStroke?:TimingSummary;pendingChunks:number;replayRemaining:number;memory:{trackedBytes:number;trackedHighWaterBytes:number;heapBytes:number|null;heapHighWaterBytes:number|null}};
+export type XREditMetrics={move?:{milliseconds:number;p95:number|null;vertices:number;chunks:number;active:boolean;committing?:boolean;commitMs?:number|null;commitVoxels?:number};allocation?:{dimensions:string;bounds:string;samples:number;chunks:number;storageBytes:number;expansions:number;lastMs:number};tool:string;radius:number;brush:TimingSummary;remesh:TimingSummary;path:TimingSummary;stroke:TimingSummary;xrStroke?:TimingSummary;pendingChunks:number;replayRemaining:number;memory:{trackedBytes:number;trackedHighWaterBytes:number;heapBytes:number|null;heapHighWaterBytes:number|null}};
 export type XRPerformanceSnapshot={medianMs?:number;p99Ms?:number|null;sampleCount?:number;recentSpikes?:number;edit?:XREditMetrics;fps:number;averageMs:number;latestMs:number;maxMs:number;p95Ms:number;spikes:number;cpuMs:number;inputMs:number;calls:number;triangles:number;sculpture:XRSculptureInfo};
 /** One cached texture, opt-in, refreshed at most twice/second. JS/callback counters are not GPU timings. */
 export class XRPerformancePanel {
@@ -25,8 +25,8 @@ export class XRPerformancePanel {
    `Spikes recent ${data.recentSpikes??data.spikes} / session ${data.spikes} · CPU ${ms(data.cpuMs)}`,
    `Input/debug ${data.inputMs.toFixed(3)} ms · calls ${data.calls}`,
    `Active ${data.sculpture.activeResolution} · ${data.triangles.toLocaleString()} triangles`];
-  if(data.edit){const e=data.edit;lines.push(`Tool ${e.tool} · radius ${e.radius.toFixed(3)} model units`,
-   `Brush last ${ms(e.brush.latest)} / p95 ${ms(e.brush.p95)} ms`,
+  if(data.edit){const e=data.edit;lines.push(e.tool==='move'&&e.move?`Move preview ${ms(e.move.milliseconds)} / p95 ${ms(e.move.p95)} ms · ${e.move.vertices} verts`:`Tool ${e.tool} · radius ${e.radius.toFixed(3)} model units`,
+   e.tool==='move'&&e.move?`Move commit ${e.move.committing?'working':ms(e.move.commitMs)} ms wall · ${e.move.commitVoxels??0} vox`:`Brush last ${ms(e.brush.latest)} / p95 ${ms(e.brush.p95)} ms`,
    `Remesh last ${ms(e.remesh.latest)} / p95 ${ms(e.remesh.p95)} ms`,
    `XR stroke CPU ${ms(e.xrStroke?.latest)} · components ${ms(e.stroke.latest)} ms`,
    `Dirty chunks ${e.pendingChunks} · replay dabs ${e.replayRemaining}`,

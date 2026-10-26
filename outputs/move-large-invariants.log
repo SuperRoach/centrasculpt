@@ -1,0 +1,9 @@
+✔ million-vertex supported SDF remains exact through Move, save/load, history, GLB export and expanded local preview (3218.654167ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3275.915291

@@ -1,0 +1,21 @@
+Browser tab: 1, Title: "Elastic Move validation", URL: "http://localhost:5173/scripts/persistent-move-browser.html?mode=elastic".
+1 AXWebArea Elastic Move validation, URL: localhost:5173/scripts/persistent-move-browser.html?mode=elastic
+	2 container
+		3 heading Move · Elastic · persistent SDF, Value: 1
+			4 text Move · Elastic · persistent SDF
+		5 text Left: original reference. Right: editable source. Hold/pull previews; release reconstructs and commits one Undo action.
+		6 button Grab surface, ID: grab
+		7 button (disabled) Pull region, ID: pull
+		8 button (disabled) Long pull / growth, ID: long
+		9 button (disabled) Release / commit, ID: commit
+		10 button Cancel, ID: cancel
+		11 button Undo, ID: undo
+		12 button (disabled) Redo, ID: redo
+		13 button Verify native/source, ID: verify
+	14 container
+		15 text Original reference Authoritative source / live preview
+	18 text Move elastic · target 0.00, 0.00, 0.90 · hold Tool trigger
+	17 text PASS · native round-trip true · committed source changed · 1 undo / 0 redo · shader errors 0
+	19 text 1588 affected vertices · 1 undo / 0 redo · 64×64×64 samples · {"wallMs":376.8999999910593,"cpuMs":161.3999999910593,"maxSliceMs":7.199999988079071,"meshingMs":16.900000005960464,"changedVoxels":3454,"sampled":18252,"indexBytes":1489584,"patchBytes":219024,"estimatedPeakBytes":9244840,"dirtyChunks":8,"grew":false,"slices":51}
+
+The focused UI element is 1 AXWebArea Elastic Move validation, URL: localhost:5173/scripts/persistent-move-browser.html?mode=elastic

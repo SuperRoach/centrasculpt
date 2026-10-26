@@ -1,0 +1,472 @@
+Browser tab: 6, Title: "Large sculpture Move profiling", URL: "http://localhost:5173/scripts/move-large-browser.html?pull=long".
+0 AXWebArea Large sculpture Move profiling, URL: localhost:5173/scripts/move-large-browser.html?pull=long
+	1 heading Large sculpture Move · preview-only profiling, Value: 1
+		2 text Large sculpture Move · preview-only profiling
+	3 text Actual SDF meshes at ≥300k, ≥600k and ≥1m vertices. Runs local radii 0.25 and 0.6. Reports browser requestAnimationFrame intervals, CPU update/render submission, first preview submission latency and available memory counters. This tests a flat browser window; immersive WebXR timing and GPU memory are not measured.
+	4 button Run all sizes, ID: run
+	5 button Download JSON, ID: download
+	6 text COMPLETE · 305,640 / 603,072 / 1,088,784 vertices · foreground throughout · shader errors 0
+	7 text {
+  "scope": "Foreground flat-window browser WebGL, one real SDF sphere (.85 radius at 114/160; .95 radius at supported initial resolution 192), 1000x420 pixels at pixel ratio 1. rAF intervals include browser scheduling and rendering, not XR frames. CPU render submission is not GPU completion; firstPreviewSubmissionMs is input-handler start through first render submission, not photons. Each hover/held phase 30 warmup + 180 measured frames. Memory counters are optional process JS heap snapshots, GPU memory unavailable. No gl.finish stalls. Any hidden-tab event invalidates results.",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+  "longPull": true,
+  "rows": [
+    {
+      "target": 300000,
+      "resolution": 114,
+      "vertices": 305640,
+      "chunks": 74,
+      "geometryBytes": 7335360,
+      "denseValuesAndScratchBytes": 11852352,
+      "memoryBefore": {
+        "usedJSHeapSize": 54569954,
+        "totalJSHeapSize": 76578882,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "configs": [
+        {
+          "radius": 0.25,
+          "hover": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000000182,
+              "p95Ms": 9.300000000000182,
+              "p99Ms": 9.400000000000091,
+              "maxMs": 9.400000000000091
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.20000000298023224,
+              "p95Ms": 0.30000001192092896,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            }
+          },
+          "grabCPUms": 3.2999999970197678,
+          "firstPreviewSubmissionMs": 10.5,
+          "active": true,
+          "warning": "Move · experimental preview only · pull controller; release restores",
+          "candidateVertices": 26928,
+          "affectedVertices": 6269,
+          "affectedChunks": 5,
+          "held": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000000182,
+              "p95Ms": 9.300000000000182,
+              "p99Ms": 9.399999999999636,
+              "maxMs": 9.399999999999636
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0,
+              "p95Ms": 0.10000000894069672,
+              "p99Ms": 0.20000000298023224,
+              "maxMs": 0.20000000298023224
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.20000000298023224,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.5,
+              "maxMs": 0.5999999940395355
+            }
+          },
+          "releaseSubmissionMs": 0.5,
+          "peakSampledJSHeapBytes": 54569954,
+          "memoryAfter": {
+            "usedJSHeapSize": 35974044,
+            "totalJSHeapSize": 69883060,
+            "jsHeapSizeLimit": 4395630592
+          },
+          "rendererMemory": {
+            "geometries": 76,
+            "textures": 0
+          }
+        },
+        {
+          "radius": 0.6,
+          "hover": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000000182,
+              "p95Ms": 9.300000000000182,
+              "p99Ms": 9.399999999999636,
+              "maxMs": 9.399999999999636
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.5,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.20000000298023224,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            }
+          },
+          "grabCPUms": 2.2999999970197678,
+          "firstPreviewSubmissionMs": 2.5,
+          "active": true,
+          "warning": "Move · experimental preview only · pull controller; release restores",
+          "candidateVertices": 83076,
+          "affectedVertices": 37374,
+          "affectedChunks": 17,
+          "held": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000001091,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.399999999999636,
+              "maxMs": 9.399999999999636
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.09999999403953552,
+              "p95Ms": 0.10000000894069672,
+              "p99Ms": 0.20000000298023224,
+              "maxMs": 0.20000000298023224
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.20000000298023224,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.5999999940395355,
+              "maxMs": 0.800000011920929
+            }
+          },
+          "releaseSubmissionMs": 0.20000000298023224,
+          "peakSampledJSHeapBytes": 44685968,
+          "memoryAfter": {
+            "usedJSHeapSize": 44685968,
+            "totalJSHeapSize": 70145204,
+            "jsHeapSizeLimit": 4395630592
+          },
+          "rendererMemory": {
+            "geometries": 76,
+            "textures": 0
+          }
+        }
+      ],
+      "noHistory": true,
+      "noExpansion": true
+    },
+    {
+      "target": 600000,
+      "resolution": 160,
+      "vertices": 603072,
+      "chunks": 128,
+      "geometryBytes": 14473728,
+      "denseValuesAndScratchBytes": 32768000,
+      "memoryBefore": {
+        "usedJSHeapSize": 89131478,
+        "totalJSHeapSize": 114239222,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "configs": [
+        {
+          "radius": 0.25,
+          "hover": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000001091,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.400000000001455,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.5,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.5,
+              "p99Ms": 0.5999999940395355,
+              "maxMs": 0.6000000089406967
+            }
+          },
+          "grabCPUms": 1.7999999970197678,
+          "firstPreviewSubmissionMs": 8.799999997019768,
+          "active": true,
+          "warning": "Move · experimental preview only · pull controller; release restores",
+          "candidateVertices": 29064,
+          "affectedVertices": 12912,
+          "affectedChunks": 4,
+          "held": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000001091,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.400000000001455,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.09999999403953552,
+              "p95Ms": 0.10000000894069672,
+              "p99Ms": 0.20000000298023224,
+              "maxMs": 0.20000000298023224
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.30000001192092896,
+              "p95Ms": 0.5999999940395355,
+              "p99Ms": 0.7000000029802322,
+              "maxMs": 0.7999999970197678
+            }
+          },
+          "releaseSubmissionMs": 0.20000000298023224,
+          "peakSampledJSHeapBytes": 89131478,
+          "memoryAfter": {
+            "usedJSHeapSize": 63757336,
+            "totalJSHeapSize": 98383148,
+            "jsHeapSizeLimit": 4395630592
+          },
+          "rendererMemory": {
+            "geometries": 130,
+            "textures": 0
+          }
+        },
+        {
+          "radius": 0.6,
+          "hover": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.300000000001091,
+              "p95Ms": 9.200000000000728,
+              "p99Ms": 9.300000000001091,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.5,
+              "p99Ms": 0.5999999940395355,
+              "maxMs": 0.6000000089406967
+            }
+          },
+          "grabCPUms": 1.2000000029802322,
+          "firstPreviewSubmissionMs": 1.5,
+          "active": true,
+          "warning": "Move · experimental preview only · pull controller; release restores",
+          "candidateVertices": 140040,
+          "affectedVertices": 74677,
+          "affectedChunks": 28,
+          "held": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.299999999999272,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.400000000001455,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0,
+              "p95Ms": 0.10000000894069672,
+              "p99Ms": 0.20000000298023224,
+              "maxMs": 0.20000000298023224
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.4000000059604645,
+              "p95Ms": 0.7000000029802322,
+              "p99Ms": 0.800000011920929,
+              "maxMs": 1
+            }
+          },
+          "releaseSubmissionMs": 0.09999999403953552,
+          "peakSampledJSHeapBytes": 72535372,
+          "memoryAfter": {
+            "usedJSHeapSize": 72535372,
+            "totalJSHeapSize": 98383148,
+            "jsHeapSizeLimit": 4395630592
+          },
+          "rendererMemory": {
+            "geometries": 130,
+            "textures": 0
+          }
+        }
+      ],
+      "noHistory": true,
+      "noExpansion": true
+    },
+    {
+      "target": 1000000,
+      "resolution": 192,
+      "vertices": 1088784,
+      "chunks": 224,
+      "geometryBytes": 26130816,
+      "denseValuesAndScratchBytes": 56623104,
+      "memoryBefore": {
+        "usedJSHeapSize": 151243642,
+        "totalJSHeapSize": 198296918,
+        "jsHeapSizeLimit": 4395630592
+      },
+      "configs": [
+        {
+          "radius": 0.25,
+          "hover": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.30000000000291,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.400000000001455,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.5,
+              "maxMs": 0.5
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.5,
+              "p95Ms": 0.7000000029802322,
+              "p99Ms": 1,
+              "maxMs": 1
+            }
+          },
+          "grabCPUms": 0.5999999940395355,
+          "firstPreviewSubmissionMs": 10.099999994039536,
+          "active": true,
+          "warning": "Move · experimental preview only · pull controller; release restores",
+          "candidateVertices": 27936,
+          "affectedVertices": 17932,
+          "affectedChunks": 4,
+          "held": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.30000000000291,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.400000000001455,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0,
+              "p95Ms": 0.10000000894069672,
+              "p99Ms": 0.20000000298023224,
+              "maxMs": 0.20000000298023224
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.5,
+              "p95Ms": 0.800000011920929,
+              "p99Ms": 1,
+              "maxMs": 1.199999988079071
+            }
+          },
+          "releaseSubmissionMs": 0.20000000298023224,
+          "peakSampledJSHeapBytes": 157560507,
+          "memoryAfter": {
+            "usedJSHeapSize": 143345064,
+            "totalJSHeapSize": 199088952,
+            "jsHeapSizeLimit": 4395630592
+          },
+          "rendererMemory": {
+            "geometries": 226,
+            "textures": 0
+          }
+        },
+        {
+          "radius": 0.6,
+          "hover": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.299999999999272,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.400000000001455,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0.29999999701976776,
+              "p95Ms": 0.4000000059604645,
+              "p99Ms": 0.4000000059604645,
+              "maxMs": 0.4000000059604645
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.4000000059604645,
+              "p95Ms": 0.6000000089406967,
+              "p99Ms": 0.9000000059604645,
+              "maxMs": 1
+            }
+          },
+          "grabCPUms": 0.9000000059604645,
+          "firstPreviewSubmissionMs": 1.2000000029802322,
+          "active": true,
+          "warning": "Move · experimental preview only · pull controller; release restores",
+          "candidateVertices": 193020,
+          "affectedVertices": 109853,
+          "affectedChunks": 36,
+          "held": {
+            "frameIntervals": {
+              "samples": 180,
+              "p50Ms": 8.30000000000291,
+              "p95Ms": 9.299999999999272,
+              "p99Ms": 9.399999999997817,
+              "maxMs": 9.400000000001455
+            },
+            "updateCPU": {
+              "samples": 180,
+              "p50Ms": 0,
+              "p95Ms": 0.10000000894069672,
+              "p99Ms": 0.19999998807907104,
+              "maxMs": 0.20000000298023224
+            },
+            "renderSubmissionCPU": {
+              "samples": 180,
+              "p50Ms": 0.4000000059604645,
+              "p95Ms": 0.7000000029802322,
+              "p99Ms": 1,
+              "maxMs": 1
+            }
+          },
+          "releaseSubmissionMs": 0.29999999701976776,
+          "peakSampledJSHeapBytes": 157647664,
+          "memoryAfter": {
+            "usedJSHeapSize": 157647664,
+            "totalJSHeapSize": 200137528,
+            "jsHeapSizeLimit": 4395630592
+          },
+          "rendererMemory": {
+            "geometries": 226,
+            "textures": 0
+          }
+        }
+      ],
+      "noHistory": true,
+      "noExpansion": true
+    }
+  ],
+  "hidden": false,
+  "shaderErrors": 0
+}
+
+The focused UI element is 0 AXWebArea Large sculpture Move profiling, URL: localhost:5173/scripts/move-large-browser.html?pull=long

@@ -76,6 +76,8 @@ export class BooleanComposite {
   setQuality(cap:number):void {if(![64,128,192].includes(cap))throw new Error('Choose a composite cap of 64³, 128³ or 192³.');if(cap!==this.cap){this.cap=cap;this.invalidate();}}
   private metadataKey():string {return JSON.stringify(this.project.layerStack.layers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent,l.volume.dimensions,l.volume.bounds]));}
   syncMetadata():void {const key=this.metadataKey();if(key!==this.fingerprint){this.fingerprint=key;this.invalidate();}}
+  /** Allocate cache invalidation before an atomic source publication. */
+  prepareInvalidation():()=>void{const regions:Bounds[]=[];return ()=>{this.full=true;this.regions=regions;this.version++;this.lastEdit=performance.now();};}
   invalidate():void {this.full=true;this.regions=[];this.version++;this.lastEdit=performance.now();}
   invalidateLayer(layer:SdfLayer,bounds?:Bounds|null):void {
     if(bounds===null||!layer.visible)return;

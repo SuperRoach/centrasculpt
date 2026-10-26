@@ -50,11 +50,12 @@ export class XRShapeStamp implements XRStrokeInteraction {
 }
 /** Shared controller arbitration sees one interaction, including Stamp's held-trigger latch. */
 export class XRToolInteraction implements XRStrokeInteraction {
- constructor(private readonly tools:EditorToolState,private readonly clay:XRStrokeInteraction,private readonly stamp:XRStrokeInteraction){}
- get active():boolean{return this.clay.active||this.stamp.active;}
- get feedback():string{return (this.tools.active==='stamp'?this.stamp:this.clay).feedback??'';}
- cancel():void{this.clay.cancel();this.stamp.cancel();}
+ constructor(private readonly tools:EditorToolState,private readonly clay:XRStrokeInteraction,private readonly stamp:XRStrokeInteraction,private readonly move?:XRStrokeInteraction){}
+ private get current():XRStrokeInteraction|undefined{return this.tools.active==='move'?this.move:this.tools.active==='stamp'?this.stamp:this.clay;}
+ get active():boolean{return this.clay.active||this.stamp.active||!!this.move?.active;}
+ get feedback():string{return this.current?.feedback??'';}
+ cancel():void{this.clay.cancel();this.stamp.cancel();this.move?.cancel();}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
-  const stamp=this.tools.active==='stamp',active=stamp?this.stamp:this.clay,inactive=stamp?this.clay:this.stamp;inactive.cancel();active.update(tool,pose,time,enabled,gripPose);
+  const current=this.current;if(this.clay!==current)this.clay.cancel();if(this.stamp!==current)this.stamp.cancel();if(this.move&&this.move!==current)this.move.cancel();current?.update(tool,pose,time,enabled,gripPose);
  }
 }

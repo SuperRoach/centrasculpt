@@ -1,0 +1,61 @@
+import {Matrix4,Mesh,MeshStandardMaterial,Sphere,Vector3} from 'three';
+import type {Group,Material,BufferGeometry} from 'three';
+import {RadialMoveField} from './move-field';
+export const MAX_MOVE_PREVIEW_VERTICES=300000;
+const identity=new Matrix4();
+/** GLSL mirrors RadialMoveField. Source attributes are NEVER written or uploaded.
+ * The same layer-local function on duplicate boundary vertices prevents seams. */
+export const MOVE_PREVIEW_GLSL=`
+uniform vec3 moveCenter;
+uniform vec3 moveDelta;
+uniform float moveRadius;
+uniform float moveExponent;
+float moveWeight(vec3 p) {float q=dot(p-moveCenter,p-moveCenter)/(moveRadius*moveRadius);return pow(max(0.0,1.0-q),moveExponent);}
+vec3 moveGradient(vec3 p) {float q=dot(p-moveCenter,p-moveCenter)/(moveRadius*moveRadius);return q>=1.0?vec3(0.0):-2.0*moveExponent*pow(max(0.0,1.0-q),moveExponent-1.0)*(p-moveCenter)/(moveRadius*moveRadius);}
+`;
+type Binding={mesh:Mesh;material:Material|Material[];preview:MeshStandardMaterial;culled:boolean;geometry:BufferGeometry};
+export class MoveMeshPreview {
+ readonly field=new RadialMoveField();
+ affectedVertices=0;candidateVertices=0;affectedChunks=0;preparationMs=0;
+ private bindings:Binding[]=[];
+ private readonly materials=new Map<MeshStandardMaterial,MeshStandardMaterial>();
+ private readonly point=new Vector3();private readonly influence=new Sphere();
+ readonly uniforms={moveCenter:{value:this.field.center},moveDelta:{value:this.field.delta},moveRadius:{value:.3},moveExponent:{value:3}};
+ get active():boolean{return this.bindings.length>0;}
+ get cachedMaterials():number{return this.materials.size;}
+ begin(surface:Group,center:Vector3,radius:number,falloff:number,strength:number,maxVertices=MAX_MOVE_PREVIEW_VERTICES):void{
+  this.restore();this.field.capture(center,radius,falloff,strength);this.uniforms.moveRadius.value=radius;this.uniforms.moveExponent.value=falloff+1;
+  const start=performance.now(),chosen:{mesh:Mesh;material:MeshStandardMaterial}[]=[];let candidates=0,affected=0;
+  this.influence.center.copy(center);this.influence.radius=radius;
+  try{
+   for(const object of surface.children){if(!(object instanceof Mesh)||!object.visible)continue;const mesh=object,p=mesh.geometry.getAttribute('position');if(!p?.count)continue;
+    mesh.updateMatrix();if(!mesh.matrix.equals(identity))throw new Error('Move requires layer-local chunk geometry.');
+    // Chunk extraction already builds bounding spheres; no SDF reads or full remesh.
+    const sphere=mesh.geometry.boundingSphere;if(sphere&&!sphere.intersectsSphere(this.influence))continue;
+    if(candidates+p.count>maxVertices)throw new Error('Move preview vertex budget exceeded · reduce influence radius.');candidates+=p.count;
+    if(!(mesh.material instanceof MeshStandardMaterial))throw new Error('Move preview requires the existing sculpt material.');
+    let count=0;for(let i=0;i<p.count;i++){this.point.fromBufferAttribute(p,i);if(this.point.distanceToSquared(center)<radius*radius)count++;}
+    if(count){affected+=count;chosen.push({mesh,material:mesh.material});}
+   }
+   if(!affected)throw new Error('No vertices inside Move influence · increase radius.');
+   const staged=chosen.map(({mesh,material})=>{
+    let preview=this.materials.get(material);
+    if(!preview){preview=material.clone();preview.name='Experimental Move preview · render only';
+     preview.onBeforeCompile=shader=>{Object.assign(shader.uniforms,this.uniforms);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+MOVE_PREVIEW_GLSL).replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nvec3 moveG=moveGradient(position);\nobjectNormal=normalize(objectNormal-moveG*dot(moveDelta,objectNormal)/max(0.05,1.0+dot(moveG,moveDelta)));`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed += moveDelta*moveWeight(position);');};
+     preview.customProgramCacheKey=()=> 'centra-move-preview-v1';this.materials.set(material,preview);
+    }
+    return {mesh,material:mesh.material,preview,culled:mesh.frustumCulled,geometry:mesh.geometry};
+   });
+   // Publish only after all validation/scans/material allocation succeeded.
+   this.bindings=staged;for(const b of staged){b.mesh.material=b.preview;b.mesh.frustumCulled=false;}
+   this.candidateVertices=candidates;this.affectedVertices=affected;this.affectedChunks=staged.length;
+  }catch(error){this.cancel();throw error;}finally{this.preparationMs=performance.now()-start;}
+ }
+ valid():boolean{for(const b of this.bindings)if(b.mesh.geometry!==b.geometry||b.mesh.material!==b.preview)return false;return true;}
+ update(displacement:Vector3):void{this.field.setDisplacement(displacement);}
+ /** Release restores exact material references/culling; cached shader clones can
+  * be reused on the next grab. Tool/session cancellation releases that cache. */
+ restore():void{for(const b of this.bindings){b.mesh.material=b.material;b.mesh.frustumCulled=b.culled;}this.bindings=[];this.field.delta.set(0,0,0);}
+ cancel():void{this.restore();for(const m of this.materials.values())m.dispose();this.materials.clear();this.affectedVertices=this.candidateVertices=this.affectedChunks=0;}
+ dispose():void{this.cancel();}
+}

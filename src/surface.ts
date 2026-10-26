@@ -1,11 +1,13 @@
 import { BufferGeometry, Float32BufferAttribute, Group, Matrix3, Matrix4, Mesh, Vector3 } from 'three';
 import type { Material } from 'three';
 import type { ChunkUpdate } from './mesh';
+import {ChunkSpatialIndex} from './chunk-spatial-index';
 
 /** One draw mesh per nonempty chunk. Only updated chunks get new GPU attributes. */
 export class ChunkSurface {
   readonly group = new Group();
   revision=0;
+  readonly spatial=new ChunkSpatialIndex();
   private readonly meshes = new Map<number,Mesh>();
   constructor(private readonly material: Material) { this.group.name='SDF Sculpture'; }
   update(updates: ChunkUpdate[]): void {
@@ -19,6 +21,7 @@ export class ChunkSurface {
       if(mesh) mesh.geometry=geometry;
       else {mesh=new Mesh(geometry,this.material);mesh.name=`Chunk ${id}`;this.meshes.set(id,mesh);this.group.add(mesh);}
     }
+    if(updates.length)this.spatial.rebuild(this.meshes.values());
   }
 }
 /** Flatten every visible chunk into one world-space export mesh, including smooth normals. */

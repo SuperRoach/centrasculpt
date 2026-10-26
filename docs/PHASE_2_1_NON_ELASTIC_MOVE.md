@@ -1,0 +1,11 @@
+# Phase 2.1 — Persistent Non-Elastic Move handover
+
+Implemented 2026-10-26; software checks passed, **physical Quest testing pending**. The user selected this missing prerequisite first and asked to stop for testing before Elastic. [Complete implementation, math, transactions, measured costs, limits and Quest checklist](VR_PERSISTENT_MOVE.md).
+
+The accepted compact radial/full-travel preview now has a default Non-Elastic commit mode. Release freezes the final pose, keeps the preview visible, prepares a same-spacing candidate and local distance reconstruction, stages exact history/remapped lattice indices plus dirty chunk meshes, then publishes one action atomically. Preview only remains an explicit option. Tracking/session/grip/tool/source interruptions abort an unfinished operation without source/history writes. Existing dense growth, independent transforms, native save/load and both GLB paths remain.
+
+Concrete API: `IndependentLayers.commitMove`, `MoveWork`, `copyMoveVolume`, `reconstructMove`, `TriangleDistanceIndex`, `SculptHistory.prepareMoveReplacement`, `IncrementalMesher.forkEdit` and ownership transfer. `deformation-contract.ts` is a reserved future worker/Elastic adapter boundary; it is not a second hidden implementation.
+
+**580 tests**, TypeScript/production build and whitespace checks pass. All eight Node commit cases passed through 1,088,784 vertices; the larger-radius million-vertex reconstruction took about 6.6 seconds on this Mac. Processing is cooperative and cancellable; worker offload, true headset timing and peak memory remain open. No hard global vertex gate was introduced. Local mesh reconstruction can lose sub-voxel detail or produce artifacts around extreme folds/overlaps; exact distance/volume preservation is not claimed.
+
+Next: run the linked Quest checklist and review commit delay/quality. Then separately implement Phase 2.2 regularised Kelvinlet field, normalization/material choices and matching preview/reconstruction semantics through this ownership/history pipeline. No Kelvinlet code or enabled Elastic option is included in Phase 2.1. Do not assume earlier preview hardware acceptance covers persistence. Unlimited/sparse storage stays future work; bounded dynamic SDF growth already exists.

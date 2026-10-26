@@ -1,0 +1,23 @@
+Browser tab: 3, Title: "Phase 2.0 Move preview validation", URL: "http://localhost:5173/scripts/move-preview-browser.html".
+0 AXWebArea Phase 2.0 Move preview validation, URL: localhost:5173/scripts/move-preview-browser.html
+	1 container
+		2 heading MOVE · EXPERIMENTAL PREVIEW ONLY, Value: 1
+			3 text MOVE · EXPERIMENTAL PREVIEW ONLY
+		4 text Left: authoritative baseline. Right: temporary radial preview. Release restores the original SDF surface; no undo action.
+		5 button Grab surface, ID: start
+		6 button (disabled) Pull region, ID: pull
+		7 button (disabled) Release / restore, ID: release
+		8 button Cancel / tracking loss, ID: cancel
+		9 text Influence
+		10 pop up button (collapsed, settable) Influence, Value: .5, ID: radius, Secondary Actions: Expand
+			11 menu
+				12 .2
+				13 .3
+				14 (selected) .5
+	15 container
+		16 text Authoritative baseline
+		20 text Move source · unchanged
+	21 text Move preview only · target 0.00, 0.00, 0.85 · hold Tool trigger | 8034 affected / 42588 candidate vertices · 8 chunks · update CPU 1.100 ms
+	19 text PASS · source/native bytes unchanged · history 0 undo / 0 redo · allocation unchanged true · shader no compile errors reported
+
+The focused UI element is 0 AXWebArea Phase 2.0 Move preview validation, URL: localhost:5173/scripts/move-preview-browser.html

@@ -121,13 +121,14 @@ renderer.domElement.addEventListener('pointermove',event=>{
 function syncViewportTools():void {
   viewportTools?.sync(shapeGhost.model.enabled?'boolean':ui.mode==='smooth'?'smooth':'brush',input.mode,layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked());
 }
+let editorTools:EditorToolState|undefined;
 function chooseWorkspace(tool:WorkspaceTool,fromXR=false):void {
-  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;stop();
+  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;editorTools?.clearMoveSelection();stop();
   shapeLibraryUI.setOpen(tool==='boolean',fromXR);if(tool!=='boolean')ui.selectBrushTool(tool);transformTools!.setMode('sculpt');
   syncTransformUI();cursor.visible=false;ui.status(tool==='boolean'?'Boolean shapes · position and click once to stamp':`${tool==='smooth'?'Smooth':'Brush'} tool · ${layers.active.layer.name}`);
 }
 function chooseLayerMode(mode:EditorMode,fromXR=false):void {
-  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;stop();shapeLibraryUI.setOpen(false,fromXR);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.active.layer.name}`);
+  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;editorTools?.clearMoveSelection();stop();shapeLibraryUI.setOpen(false,fromXR);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.active.layer.name}`);
 }
 viewportTools=createViewportTools(ui.viewport,chooseWorkspace,chooseLayerMode);
 syncViewportTools();
@@ -286,8 +287,8 @@ document.getElementById('save-project')!.addEventListener('click',()=>{
 });
 const projectFile=document.querySelector<HTMLInputElement>('#project-file')!;
 document.getElementById('open-project')!.addEventListener('click',()=>{if(loadingProject||xrBlocked())return;stop();projectFile.value='';projectFile.click();});
-projectFile.addEventListener('change',async()=>{
-  const file=projectFile.files?.[0];if(!file||loadingProject||xrBlocked())return;
+async function openProjectFile(file:File):Promise<void>{
+  if(loadingProject||xrBlocked())return;
   stop();loadingProject=true;ui.projectBusy(true);syncTransformUI();transformTools?.sync();ui.projectMessage('Validating all layer data…');
   try {
     if(file.size>MAX_PROJECT_BYTES)throw new Error('Project file exceeds the supported size limit.');
@@ -297,7 +298,8 @@ projectFile.addEventListener('change',async()=>{
     cursor.visible=false;pointerInside=false;lastRebuild=performance.now();ui.projectMessage(`Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`);ui.status('Project opened');
   }catch(error){ui.projectMessage(`Open failed: ${message(error)} Current project kept.`,true);}
   finally{loadingProject=false;refresh();ui.projectBusy(false);projectFile.value='';}
-});
+}
+projectFile.addEventListener('change',()=>{const file=projectFile.files?.[0];if(file)void openProjectFile(file);});
 async function exportGlb(composite:boolean) {
   if(loadingProject||xrBlocked())return;stop();loadingProject=true;ui.projectBusy(true);syncTransformUI();transformTools?.sync();
   let exported:THREE.Group|undefined;
@@ -314,7 +316,7 @@ async function exportGlb(composite:boolean) {
 }
 document.getElementById('export')!.addEventListener('click',()=>void exportGlb(false));
 document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb(true));
-const editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
+editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
  selectTool:tool=>{if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
 });
@@ -377,3 +379,16 @@ renderer.setAnimationLoop((now,frame)=>{
   shapeGhost.sync(loadingProject||ui.modalOpen||xrBlocked());shapeLibraryUI.refresh();syncViewportTools();
   renderer.render(scene,camera);
 });
+
+// Explicit development-only native fixtures bypass platform file-picker issues
+// during headset acceptance. Uses the same validated project-open path. Never
+// fetches arbitrary URLs and is removed from production builds by Vite.
+if(import.meta.env.DEV){
+ const fixture=new URLSearchParams(location.search).get('moveXRFixture');
+ if(fixture&&['300k','600k','1m'].includes(fixture))void(async()=>{
+  try{const name=`move-xr-${fixture}.form`,response=await fetch(`/work/quest-move-fixtures/${name}`);
+   if(!response.ok)throw new Error('Prepare Move XR fixtures first: node scripts/prepare-move-xr-fixtures.mjs');
+   await openProjectFile(new File([await response.arrayBuffer()],name,{type:'application/octet-stream'}));
+  }catch(error){ui.projectMessage(`Test fixture failed: ${message(error)}`,true);}
+ })();
+}

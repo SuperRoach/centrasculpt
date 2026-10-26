@@ -1,0 +1,322 @@
+94608 vertices radius 0.2: committed · 104.0 ms
+94608 vertices radius 0.4: committed · 258.9 ms
+305640 vertices radius 0.2: committed · 284.0 ms
+305640 vertices radius 0.4: committed · 1169.2 ms
+603072 vertices radius 0.2: committed · 562.1 ms
+603072 vertices radius 0.4: committed · 3357.4 ms
+1088784 vertices radius 0.2: committed · 1019.7 ms
+1088784 vertices radius 0.4: committed · 6581.3 ms
+{
+  "scope": "Node CPU and wall-time single commit per configuration, not XR/GPU timing. Real SDF sphere fixtures (192 uses radius .95 to exceed 1m vertices within native limits). Cooperative 3ms target slices with resumable 64-node distance-query traversal and synchronous individual chunk extraction; longestProgressGap is callback gap, not frame time. One observation per configuration, no operation percentile claim. Default memory/work guards, failures retained. Memory counters process-wide at optional GC checkpoints; estimatedPeakBytes is an accounting estimate, not measured process/GPU peak.",
+  "host": {
+    "node": "v26.8.1",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "rows": [
+    {
+      "resolution": 64,
+      "target": 0,
+      "vertices": 94608,
+      "radius": 0.2,
+      "committed": true,
+      "error": "",
+      "wallMs": 103.96166599999992,
+      "longestProgressGap": 12.621499999999969,
+      "stats": {
+        "wallMs": 103.54833399999995,
+        "cpuMs": 78.45104099999992,
+        "maxSliceMs": 9.79262499999993,
+        "meshingMs": 23.58158299999991,
+        "changedVoxels": 2709,
+        "sampled": 6460,
+        "indexBytes": 1489584,
+        "patchBytes": 77520,
+        "estimatedPeakBytes": 9099004,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 21
+      },
+      "memoryBefore": {
+        "rss": 284475392,
+        "heapTotal": 110067712,
+        "heapUsed": 22536448,
+        "external": 35637577,
+        "arrayBuffers": 4536061
+      },
+      "memoryAfter": {
+        "rss": 284835840,
+        "heapTotal": 92241920,
+        "heapUsed": 22373216,
+        "external": 30067426,
+        "arrayBuffers": 6678105
+      }
+    },
+    {
+      "resolution": 64,
+      "target": 0,
+      "vertices": 94608,
+      "radius": 0.4,
+      "committed": true,
+      "error": "",
+      "wallMs": 258.88416599999994,
+      "longestProgressGap": 18.42170800000008,
+      "stats": {
+        "wallMs": 258.80887499999994,
+        "cpuMs": 189.38916700000038,
+        "maxSliceMs": 6.860875000000078,
+        "meshingMs": 18.578708000000006,
+        "changedVoxels": 9677,
+        "sampled": 18144,
+        "indexBytes": 1489584,
+        "patchBytes": 217728,
+        "estimatedPeakBytes": 10461916,
+        "dirtyChunks": 12,
+        "grew": true,
+        "slices": 60
+      },
+      "memoryBefore": {
+        "rss": 284475392,
+        "heapTotal": 110067712,
+        "heapUsed": 22536448,
+        "external": 35637577,
+        "arrayBuffers": 4536061
+      },
+      "memoryAfter": {
+        "rss": 288161792,
+        "heapTotal": 92504064,
+        "heapUsed": 22462096,
+        "external": 35881262,
+        "arrayBuffers": 7857593
+      }
+    },
+    {
+      "resolution": 114,
+      "target": 300000,
+      "vertices": 305640,
+      "radius": 0.2,
+      "committed": true,
+      "error": "",
+      "wallMs": 283.98241700000017,
+      "longestProgressGap": 28.694083999999975,
+      "stats": {
+        "wallMs": 283.9103339999999,
+        "cpuMs": 211.14183199999957,
+        "maxSliceMs": 6.588917000000038,
+        "meshingMs": 40.2954150000005,
+        "changedVoxels": 9133,
+        "sampled": 18009,
+        "indexBytes": 4963512,
+        "patchBytes": 216108,
+        "estimatedPeakBytes": 38371776,
+        "dirtyChunks": 27,
+        "grew": false,
+        "slices": 64
+      },
+      "memoryBefore": {
+        "rss": 293126144,
+        "heapTotal": 92504064,
+        "heapUsed": 23223888,
+        "external": 49997170,
+        "arrayBuffers": 21454973
+      },
+      "memoryAfter": {
+        "rss": 303841280,
+        "heapTotal": 92766208,
+        "heapUsed": 23449136,
+        "external": 59673686,
+        "arrayBuffers": 31368441
+      }
+    },
+    {
+      "resolution": 114,
+      "target": 300000,
+      "vertices": 305640,
+      "radius": 0.4,
+      "committed": true,
+      "error": "",
+      "wallMs": 1169.2133340000003,
+      "longestProgressGap": 31.39716700000008,
+      "stats": {
+        "wallMs": 1169.105459,
+        "cpuMs": 850.7170860000006,
+        "maxSliceMs": 6.37133300000005,
+        "meshingMs": 49.300997000000734,
+        "changedVoxels": 39262,
+        "sampled": 65231,
+        "indexBytes": 4963512,
+        "patchBytes": 782772,
+        "estimatedPeakBytes": 39732964,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 276
+      },
+      "memoryBefore": {
+        "rss": 293126144,
+        "heapTotal": 92504064,
+        "heapUsed": 23223888,
+        "external": 49997170,
+        "arrayBuffers": 21454973
+      },
+      "memoryAfter": {
+        "rss": 310378496,
+        "heapTotal": 93290496,
+        "heapUsed": 23573032,
+        "external": 73702326,
+        "arrayBuffers": 31769157
+      }
+    },
+    {
+      "resolution": 160,
+      "target": 600000,
+      "vertices": 603072,
+      "radius": 0.2,
+      "committed": true,
+      "error": "",
+      "wallMs": 562.1052919999997,
+      "longestProgressGap": 47.01233400000001,
+      "stats": {
+        "wallMs": 562.0000409999998,
+        "cpuMs": 411.70416399999885,
+        "maxSliceMs": 6.883124999999836,
+        "meshingMs": 28.855834999999843,
+        "changedVoxels": 21104,
+        "sampled": 38570,
+        "indexBytes": 9814848,
+        "patchBytes": 462840,
+        "estimatedPeakBytes": 91884760,
+        "dirtyChunks": 24,
+        "grew": false,
+        "slices": 132
+      },
+      "memoryBefore": {
+        "rss": 329842688,
+        "heapTotal": 95911936,
+        "heapUsed": 24366816,
+        "external": 93061318,
+        "arrayBuffers": 71130013
+      },
+      "memoryAfter": {
+        "rss": 358891520,
+        "heapTotal": 94601216,
+        "heapUsed": 24619240,
+        "external": 114020318,
+        "arrayBuffers": 80534109
+      }
+    },
+    {
+      "resolution": 160,
+      "target": 600000,
+      "vertices": 603072,
+      "radius": 0.4,
+      "committed": true,
+      "error": "",
+      "wallMs": 3357.3596669999997,
+      "longestProgressGap": 43.9315830000005,
+      "stats": {
+        "wallMs": 3357.196208,
+        "cpuMs": 2436.0861970000033,
+        "maxSliceMs": 9.569542000000183,
+        "meshingMs": 69.63562900000306,
+        "changedVoxels": 98030,
+        "sampled": 156310,
+        "indexBytes": 9814848,
+        "patchBytes": 1875720,
+        "estimatedPeakBytes": 96754128,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 799
+      },
+      "memoryBefore": {
+        "rss": 329842688,
+        "heapTotal": 95911936,
+        "heapUsed": 24366816,
+        "external": 93061318,
+        "arrayBuffers": 71130013
+      },
+      "memoryAfter": {
+        "rss": 376864768,
+        "heapTotal": 94912512,
+        "heapUsed": 22373216,
+        "external": 141895721,
+        "arrayBuffers": 81536997
+      }
+    },
+    {
+      "resolution": 192,
+      "target": 1000000,
+      "vertices": 1088784,
+      "radius": 0.2,
+      "committed": true,
+      "error": "",
+      "wallMs": 1019.712125,
+      "longestProgressGap": 60.61987500000032,
+      "stats": {
+        "wallMs": 1019.5893749999996,
+        "cpuMs": 744.341465000005,
+        "maxSliceMs": 5.486249999999927,
+        "meshingMs": 66.25604100000055,
+        "changedVoxels": 35094,
+        "sampled": 61336,
+        "indexBytes": 18025776,
+        "patchBytes": 736032,
+        "estimatedPeakBytes": 161762232,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 239
+      },
+      "memoryBefore": {
+        "rss": 410533888,
+        "heapTotal": 93601792,
+        "heapUsed": 23676992,
+        "external": 137610553,
+        "arrayBuffers": 82928893
+      },
+      "memoryAfter": {
+        "rss": 461815808,
+        "heapTotal": 94650368,
+        "heapUsed": 23748096,
+        "external": 183858033,
+        "arrayBuffers": 140114821
+      }
+    },
+    {
+      "resolution": 192,
+      "target": 1000000,
+      "vertices": 1088784,
+      "radius": 0.4,
+      "committed": true,
+      "error": "",
+      "wallMs": 6581.284625,
+      "longestProgressGap": 66.63008300000001,
+      "stats": {
+        "wallMs": 6581.135041,
+        "cpuMs": 4768.660775999999,
+        "maxSliceMs": 6.51708299999882,
+        "meshingMs": 100.89329100000396,
+        "changedVoxels": 163140,
+        "sampled": 256360,
+        "indexBytes": 18025776,
+        "patchBytes": 3076320,
+        "estimatedPeakBytes": 177396000,
+        "dirtyChunks": 120,
+        "grew": true,
+        "slices": 1577
+      },
+      "memoryBefore": {
+        "rss": 410533888,
+        "heapTotal": 93601792,
+        "heapUsed": 23676992,
+        "external": 137610553,
+        "arrayBuffers": 82928893
+      },
+      "memoryAfter": {
+        "rss": 459358208,
+        "heapTotal": 95961088,
+        "heapUsed": 23856376,
+        "external": 237985217,
+        "arrayBuffers": 153272677
+      }
+    }
+  ]
+}

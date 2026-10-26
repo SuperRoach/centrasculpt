@@ -14,16 +14,22 @@ export const EDITOR_TOOLS=Object.freeze([
  {id:'smooth',label:'Smooth',detail:'Soften surfaces',enabled:true,layerGrab:false,sizing:'brush-radius'},
  {id:'stamp',label:'Shape Stamp',detail:'Shape settings',enabled:true,layerGrab:false,sizing:'shape-scale'},
  {id:'transform',label:'Transform Layer',detail:'Move / wrist rotate',enabled:true,layerGrab:true,sizing:null},
- {id:'move',label:'Move Tool',detail:'Phase 2',enabled:false,layerGrab:false,sizing:null},
+ {id:'move',label:'Move Tool',detail:'Surface deformation · release commits',enabled:true,layerGrab:false,sizing:'brush-radius'},
 ] as const);
 export function toolAllowsLayerGrab(tool:EditorTool):boolean{return EDITOR_TOOLS.some(t=>t.id===tool&&t.layerGrab);}
 export function toolSizingBinding(tool:EditorTool){return EDITOR_TOOLS.find(t=>t.id===tool)?.sizing??null;}
 export type ToolOption={id:string;label:string;value:string;decrease:boolean;increase:boolean;disabled:boolean;action?:string;slider?:{min:number;max:number;value:number}};
 type Declaration={id:string;label:string;read:()=>number|string;write?:(v:number|string)=>void;min?:number;max?:number;step?:number;choices?:readonly string[];names?:readonly string[];format?:(v:number|string)=>string;disabled?:boolean;action?:string;slider?:boolean};
 /** The port reads/writes the existing application state. There is no VR copy of tool values. */
-export type EditorToolPort={layers:()=>IndependentLayers;shape:ShapePreviewModel;settings:()=>SculptSettings;setSettings:(v:SculptSettings)=>void;mode:()=>EditorMode;selectTool:(tool:Exclude<EditorTool,'move'>)=>void;selectTransform:(mode:Exclude<EditorMode,'sculpt'>)=>void;busy:()=>boolean;changed:()=>void};
+export type EditorToolPort={layers:()=>IndependentLayers;shape:ShapePreviewModel;settings:()=>SculptSettings;setSettings:(v:SculptSettings)=>void;mode:()=>EditorMode;selectTool:(tool:EditorTool)=>void;selectTransform:(mode:Exclude<EditorMode,'sculpt'>)=>void;busy:()=>boolean;changed:()=>void};
 export class EditorToolState {
  alternateTool:'off'|'clay'|'smooth'='smooth';
+ private moveSelected=false;private previewOwner:{cancel:()=>void}|null=null;
+ readonly move={radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
+ get brushRadius():number{return this.active==='move'?this.move.radius:this.port.settings().radius;}
+ beginPreview(owner:{cancel:()=>void}):void{if(this.busy)throw new Error('Finish the current interaction first.');this.previewOwner=owner;}
+ endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
+ clearMoveSelection():void{this.previewOwner?.cancel();this.moveSelected=false;}
  readonly path=new ClayPathControls();
  readonly stampRotation:[number,number,number]=[0,0,0];
  constructor(readonly port:EditorToolPort){}
@@ -33,10 +39,10 @@ export class EditorToolState {
   const d=shape.definition,next=Math.max(.02,Math.min(10,value));if(Math.abs(next-d.transform.scale[0])<1e-12)return false;
   shape.set({...d,transform:{...d.transform,scale:[next,next,next]}},stack);return true;
  }
- get active():EditorTool{return this.port.shape.enabled?'stamp':this.port.mode()!=='sculpt'?'transform':this.port.settings().mode==='smooth'?'smooth':'clay';}
- get busy():boolean{const l=this.port.layers();return this.port.busy()||l.drawing||l.transforming;}
- setBrushRadius(value:number,current?:SculptSettings):boolean{if(this.busy||toolSizingBinding(this.active)!=='brush-radius'||!Number.isFinite(value))return false;const settings=current??this.port.settings(),radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(Math.abs(settings.radius-radius)<1e-12)return false;this.port.setSettings({...settings,radius});return true;}
- select(tool:EditorTool):void{if(this.busy)throw new Error('Finish the current interaction first.');if(!EDITOR_TOOLS.some(t=>t.id===tool&&t.enabled))throw new Error('Move Tool is planned for Phase 2.');this.port.selectTool(tool as Exclude<EditorTool,'move'>);this.port.changed();}
+ get active():EditorTool{return this.moveSelected&&!this.port.shape.enabled&&this.port.mode()==='sculpt'?'move':this.port.shape.enabled?'stamp':this.port.mode()!=='sculpt'?'transform':this.port.settings().mode==='smooth'?'smooth':'clay';}
+ get busy():boolean{const l=this.port.layers();return !!this.previewOwner||this.port.busy()||l.drawing||l.transforming||l.previewing||l.deforming;}
+ setBrushRadius(value:number,current?:SculptSettings):boolean{if(this.busy||toolSizingBinding(this.active)!=='brush-radius'||!Number.isFinite(value))return false;const settings=current??this.port.settings(),radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(Math.abs(this.brushRadius-radius)<1e-12)return false;if(this.active==='move')this.move.radius=radius;else this.port.setSettings({...settings,radius});return true;}
+ select(tool:EditorTool):void{const cancelled=!!this.previewOwner;this.previewOwner?.cancel();const l=this.port.layers(),onlyCancelledMove=cancelled&&l.deforming&&!this.previewOwner&&!l.previewing&&!l.drawing&&!l.transforming&&!this.port.busy();if(this.busy&&!onlyCancelledMove)throw new Error('Finish the current interaction first.');if(!EDITOR_TOOLS.some(t=>t.id===tool&&t.enabled))throw new Error('This tool is unavailable.');this.port.selectTool(tool);this.moveSelected=tool==='move';this.port.changed();}
  selectLayer(id:string):void{this.assertIdle();this.port.layers().select(id);this.port.shape.sync(this.port.layers().project.layerStack);this.port.changed();}
  toggleLayer(id:string,flag:'visible'|'locked'):void{this.assertIdle();const l=this.port.layers();l.setFlag(id,flag,!l.project.layerStack.get(id)[flag]);this.port.changed();}
  resetLayerTransform(id:string):void{this.assertIdle();const l=this.port.layers();if(this.active!=='transform'||id!==l.project.activeLayerId)throw new Error('Reset cancelled: selected layer changed.');l.setActiveTransform(identityTransform());this.port.changed();}
@@ -50,6 +56,14 @@ export class EditorToolState {
    brush('radius','Brush radius',BRUSH_RADIUS_LIMITS.min,BRUSH_RADIUS_LIMITS.max,.02);brush('strength',active==='smooth'?'Smoothing strength':'Strength',.01,1,.05);
    if(active==='clay'){brush('hardness','Hardness',0,1,.05);options.push({id:'steady',label:'Steady',read:()=>this.path.steady,write:v=>this.path.steady=Number(v),min:0,max:100,step:5,format:v=>`${v}%`,disabled:this.path.straightLine,slider:true},{id:'straight-line',label:'Straight Line',read:()=>this.path.straightLine?'on':'off',write:v=>this.path.straightLine=v==='on',choices:['off','on'],names:['Off','On']});options.push({id:'spacing',label:'Stroke spacing',read:()=> 'Automatic',disabled:true});}
    options.push({id:'application',label:'VR strokes',read:()=>this.path.placement==='free'?'Tool trigger · free space':'Tool trigger · surface',disabled:true});
+  }
+  if(active==='move'){
+   options.push({id:'move-mode',label:'Deformation Mode',read:()=>this.move.mode,write:v=>this.move.mode=v as 'preview'|'non-elastic'|'elastic',choices:['non-elastic','elastic','preview'],names:['Non-Elastic','Elastic','Preview only']},
+    {id:'move-radius',label:'Influence Radius',read:()=>this.move.radius,write:v=>this.move.radius=Number(v),min:BRUSH_RADIUS_LIMITS.min,max:BRUSH_RADIUS_LIMITS.max,step:.02,format:v=>Number(v).toFixed(3)},
+    {id:'move-falloff',label:'Falloff',read:()=>this.move.falloff,write:v=>this.move.falloff=Number(v),min:1,max:4,step:.5},
+    {id:'move-strength',label:'Move strength',read:()=>this.move.strength,write:v=>this.move.strength=Number(v),min:.01,max:1,step:.05},
+    {id:'move-stiffness',label:'Elastic stiffness',read:()=>this.move.stiffness,write:v=>this.move.stiffness=Number(v),min:.25,max:4,step:.25,disabled:this.move.mode!=='elastic'},
+    {id:'application',label:'Release / cancel',read:()=>this.move.mode==='preview'?'Restores SDF surface · no undo action':'Commit one action · cancel restores',disabled:true});
   }
   if(active==='stamp'){
    p.shape.sync(l.project.layerStack);const d=p.shape.definition,blocked=!!p.shape.availability(l.project.layerStack),set=(v:typeof d)=>p.shape.set(v,l.project.layerStack);

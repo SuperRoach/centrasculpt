@@ -1,0 +1,14 @@
+Browser tab: 1, Title: "Elastic CPU/GPU agreement", URL: "http://localhost:5173/scripts/elastic-kernel-browser.html".
+1 AXWebArea Elastic CPU/GPU agreement, URL: localhost:5173/scripts/elastic-kernel-browser.html
+	2 heading Elastic CPU/GPU agreement, Value: 1
+		3 text Elastic CPU/GPU agreement
+	4 text PASS {
+  "cases": 27,
+  "pointsPerCase": 300,
+  "maxPositionError": 2.7083810129959677e-7,
+  "maxNormalError": 0.0000019791800840068574,
+  "wallMs": 19.80000001192093,
+  "scope": "Desktop WebGL2 transform feedback; shared preview shader vs CPU positions and cofactor normals. No headset/frame-rate claim."
+}
+
+The focused UI element is 1 AXWebArea Elastic CPU/GPU agreement, URL: localhost:5173/scripts/elastic-kernel-browser.html

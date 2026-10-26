@@ -24,7 +24,7 @@ export class XRBrushSizing implements XRAnalogToolControl {
   const x=Math.max(-1,Math.min(1,tool.stick.x)),y=Math.max(-1,Math.min(1,tool.stick.y)),magnitude=Math.hypot(x,y);
   if(magnitude<=.12){this.armed=true;return false;}
   if(!this.armed||Math.abs(y)<=this.axisDeadZone||Math.abs(x)>Math.abs(y)*.75||dt===0)return false;
-  const axis=Math.sign(y)*(Math.abs(y)-this.axisDeadZone)/(1-this.axisDeadZone),settings=this.tools.port.settings(),current=settings.radius;
+  const axis=Math.sign(y)*(Math.abs(y)-this.axisDeadZone)/(1-this.axisDeadZone),settings=this.tools.port.settings(),current=this.tools.brushRadius;
   if(binding==='shape-scale') {
    const current=this.tools.port.shape.definition.transform.scale[0],scale=Math.max(.02,Math.min(10,current*Math.exp(-axis*this.rate*dt)));
    if(!this.tools.setStampScale(scale))return false;
@@ -32,6 +32,6 @@ export class XRBrushSizing implements XRAnalogToolControl {
   }
   const radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,current*Math.exp(-axis*this.rate*dt)));
   if(!this.tools.setBrushRadius(radius,settings))return false;
-  const shown=radius.toFixed(3);if(shown!==this.shownRadius||!this.feedback){this.feedback=`Radius ${shown}`;this.shownRadius=shown;}this.until=time+900;return true;
+  const shown=radius.toFixed(3);if(shown!==this.shownRadius||!this.feedback){this.feedback=`${mode==='move'?'Move influence':'Radius'} ${shown}`;this.shownRadius=shown;}this.until=time+900;return true;
  }
 }

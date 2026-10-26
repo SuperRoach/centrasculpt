@@ -1,0 +1,21 @@
+Browser tab: 7, Title: "Persistent Non-Elastic Move validation", URL: "http://localhost:5173/scripts/persistent-move-browser.html".
+0 AXWebArea Persistent Non-Elastic Move validation, URL: localhost:5173/scripts/persistent-move-browser.html
+	1 container
+		2 heading Move · Non-Elastic · persistent SDF, Value: 1
+			3 text Move · Non-Elastic · persistent SDF
+		4 text Left: original reference. Right: editable source. Hold/pull previews; release reconstructs and commits one Undo action.
+		5 button Grab surface, ID: grab
+		6 button (disabled) Pull region, ID: pull
+		7 button (disabled) Long pull / growth, ID: long
+		8 button (disabled) Release / commit, ID: commit
+		9 button Cancel, ID: cancel
+		10 button (disabled) Undo, ID: undo
+		11 button Redo, ID: redo
+		12 button Verify native/source, ID: verify
+	13 container
+		14 text Original reference Authoritative source / live preview
+	15 text Move Non-Elastic · target 0.00, 0.00, 0.85 · hold Tool trigger
+	16 text PASS · native round-trip true · original source exact · 0 undo / 1 redo · shader errors 0
+	17 text 1588 affected vertices · 0 undo / 1 redo · 64×64×64 samples · {"wallMs":328.5,"cpuMs":145.6999999731779,"meshingMs":18.799999967217445,"changedVoxels":3131,"sampled":7140,"indexBytes":1489584,"patchBytes":85680,"estimatedPeakBytes":10348324,"dirtyChunks":8,"grew":false,"slices":45}
+
+The focused UI element is 0 AXWebArea Persistent Non-Elastic Move validation, URL: localhost:5173/scripts/persistent-move-browser.html
