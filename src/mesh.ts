@@ -3,28 +3,44 @@ import {assertExactDenseGrowth} from './dense-growth';
 import { BufferGeometry, Float32BufferAttribute } from 'three';
 import type { VolumeStore } from './volume-store';
 import type { Bounds } from './sdf';
-type Point = [number, number, number];
+type Point = [number, number, number] & { normal?: [number, number, number] };
 const corners: Point[] = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
 // A consistent body diagonal gives matching triangulation on neighboring cube faces.
 const tetrahedra = [[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];
 /** Marching tetrahedra extracts the zero isosurface independently of rendering/UI. */
 function extractRegion(volume: VolumeStore, bounds: Bounds): { positions: number[]; normals: number[] } {
   const positions: number[] = [], normals: number[] = [];
-  const dense=volume.getDenseView();
+  const dense=volume.getDenseView(),zeroTolerance=volume.step*Number.EPSILON*32;
   function triangle(a: Point, b: Point, c: Point, outward: Point): void {
     const ab = b.map((v, i) => v - a[i]);
     const ac = c.map((v, i) => v - a[i]);
     const normal = [ab[1]*ac[2]-ab[2]*ac[1], ab[2]*ac[0]-ab[0]*ac[2], ab[0]*ac[1]-ab[1]*ac[0]];
+    // Exact-zero lattice intersections can collapse a tetrahedron to a line or
+    // point. Do not publish zero-area primitives (picking/export/reconstruction).
+    if (Math.hypot(...normal) <= volume.step * volume.step * 1e-12) return;
     const vertices = normal.reduce((s,v,i) => s + v*outward[i], 0) < 0 ? [a,c,b] : [a,b,c];
-    for (const vertex of vertices) { positions.push(...vertex); normals.push(...volume.normalAt(vertex)); }
+    for (const vertex of vertices) { positions.push(...vertex); normals.push(...(vertex.normal ??= volume.normalAt(vertex))); }
   }
   for (let z=bounds.min[2]; z<bounds.max[2]; z++) for (let y=bounds.min[1]; y<bounds.max[1]; y++) for (let x=bounds.min[0]; x<bounds.max[0]; x++) {
+    // Treat only machine-roundoff distances as zero, consistently in every cell.
+    // Analytic planar SDFs can otherwise disagree in sign at an exact face.
     const values = corners.map(c => {const index=volume.index(x+c[0],y+c[1],z+c[2]);return dense?dense[index]:volume.readVoxel(index);});
+    // Most cells in a thin sculpt are empty: keep that fast path free of
+    // tolerance work and edge/gradient allocations.
+    if (values.every(v => v >= 0)) continue;
+    for(let i=0;i<8;i++) if(Math.abs(values[i])<=zeroTolerance) values[i]=0;
     if (values.every(v => v >= 0) || values.every(v => v < 0)) continue;
     const points: Point[] = corners.map(c => [volume.coordinate(x+c[0],0),volume.coordinate(y+c[1],1),volume.coordinate(z+c[2],2)]);
+    // Corner order follows global linear sample order, so either cell sharing
+    // an edge performs precisely the same arithmetic, regardless of tet winding.
+    const indices=corners.map(c=>volume.index(x+c[0],y+c[1],z+c[2]));
+    const edges: (Point | undefined)[] = new Array(64);
     const edge = (a: number,b: number): Point => {
+      if(indices[a]>indices[b]) [a,b]=[b,a];
+      const key=a*8+b;
+      if(edges[key]) return edges[key]!;
       const t = values[a] / (values[a]-values[b]);
-      return points[a].map((v,i) => v + t*(points[b][i]-v)) as Point;
+      return edges[key] = t===0 ? points[a] : t===1 ? points[b] : points[a].map((v,i) => v + t*(points[b][i]-v)) as Point;
     };
     for (const tet of tetrahedra) {
       const inside = tet.filter(i => values[i] < 0), outside = tet.filter(i => values[i] >= 0);

@@ -1,0 +1,3749 @@
+{
+  "scope": "Mac Node cooperative actual persistent commits; three consecutive edits per fixture. Preview points: every seventh mesh vertex, first 512 with weight > .05, transformed by field. Error: abs committed trilinear SDF / step, not Hausdorff or cumulative ground truth. Small translations .02/0/.08, rotations .15 rad. No headset/frame results.",
+  "rows": [
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 43.11974999999998,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 63,
+      "previewMaxErrorVoxels": 0.11884201238077256,
+      "previewRmsErrorVoxels": 0.03608354346705138,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0112499999999898,
+          "p95": 5.980959000000013,
+          "p99": 5.980959000000013
+        },
+        "wallMs": 42.778458,
+        "cpuMs": 32.62141799999998,
+        "maxSliceMs": 5.980959000000013,
+        "meshingMs": 10.095166000000006,
+        "changedVoxels": 769,
+        "sampled": 2730,
+        "indexBytes": 380760,
+        "patchBytes": 32760,
+        "estimatedPeakBytes": 2151468,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 8
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 36.955749999999995,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 66,
+      "previewMaxErrorVoxels": 0.16528876544891313,
+      "previewRmsErrorVoxels": 0.05674780674915663,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003457999999995,
+          "p95": 3.6312499999999943,
+          "p99": 3.6312499999999943
+        },
+        "wallMs": 36.91104100000001,
+        "cpuMs": 27.04766600000002,
+        "maxSliceMs": 3.6312499999999943,
+        "meshingMs": 7.10899900000004,
+        "changedVoxels": 912,
+        "sampled": 2730,
+        "indexBytes": 381580,
+        "patchBytes": 32760,
+        "estimatedPeakBytes": 2447972,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 8
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 31.986874999999998,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 49,
+      "previewMaxErrorVoxels": 0.19935030246739638,
+      "previewRmsErrorVoxels": 0.06681329823498429,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0119169999999826,
+          "p95": 4.661916999999988,
+          "p99": 4.661916999999988
+        },
+        "wallMs": 31.95791699999998,
+        "cpuMs": 23.46620999999999,
+        "maxSliceMs": 4.661916999999988,
+        "meshingMs": 9.122124000000099,
+        "changedVoxels": 982,
+        "sampled": 2548,
+        "indexBytes": 382400,
+        "patchBytes": 30576,
+        "estimatedPeakBytes": 2465208,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 7
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 34.097916999999995,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 63,
+      "previewMaxErrorVoxels": 0.15351540930449833,
+      "previewRmsErrorVoxels": 0.03211257073156257,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.006916999999987,
+          "p95": 4.282083,
+          "p99": 4.282083
+        },
+        "wallMs": 34.07120900000001,
+        "cpuMs": 25.75487499999997,
+        "maxSliceMs": 4.282083,
+        "meshingMs": 7.774081999999964,
+        "changedVoxels": 770,
+        "sampled": 3600,
+        "indexBytes": 380760,
+        "patchBytes": 43200,
+        "estimatedPeakBytes": 2161344,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 7
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 31.419750000000022,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 55,
+      "previewMaxErrorVoxels": 0.25118204574018754,
+      "previewRmsErrorVoxels": 0.06414645742650397,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002834000000007,
+          "p95": 3.7705419999999776,
+          "p99": 3.7705419999999776
+        },
+        "wallMs": 31.38749999999999,
+        "cpuMs": 24.17895900000002,
+        "maxSliceMs": 3.7705419999999776,
+        "meshingMs": 6.221790999999939,
+        "changedVoxels": 746,
+        "sampled": 3600,
+        "indexBytes": 381252,
+        "patchBytes": 43200,
+        "estimatedPeakBytes": 2454092,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 7
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 30.39575000000002,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 39,
+      "previewMaxErrorVoxels": 0.29398866517012084,
+      "previewRmsErrorVoxels": 0.05946513243102707,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.004624999999976,
+          "p95": 3.488833999999997,
+          "p99": 3.488833999999997
+        },
+        "wallMs": 30.367584000000022,
+        "cpuMs": 21.929666999999938,
+        "maxSliceMs": 3.488833999999997,
+        "meshingMs": 5.047624999999982,
+        "changedVoxels": 839,
+        "sampled": 3375,
+        "indexBytes": 381580,
+        "patchBytes": 40500,
+        "estimatedPeakBytes": 2467652,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 7
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 21.19908300000003,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 63,
+      "previewMaxErrorVoxels": 0.02642124174801804,
+      "previewRmsErrorVoxels": 0.01086939720989623,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.1808749999999577,
+          "p95": 3.2691659999999843,
+          "p99": 3.2691659999999843
+        },
+        "wallMs": 21.176417000000015,
+        "cpuMs": 16.32878999999997,
+        "maxSliceMs": 3.2691659999999843,
+        "meshingMs": 4.5528340000000185,
+        "changedVoxels": 646,
+        "sampled": 2366,
+        "indexBytes": 380760,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 2144184,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 5
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 21.883834000000036,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 63,
+      "previewMaxErrorVoxels": 0.03692338429960723,
+      "previewRmsErrorVoxels": 0.013744953056691912,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0077499999999873,
+          "p95": 3.804417000000001,
+          "p99": 3.804417000000001
+        },
+        "wallMs": 21.851666999999964,
+        "cpuMs": 16.06704000000002,
+        "maxSliceMs": 3.804417000000001,
+        "meshingMs": 4.7809160000000475,
+        "changedVoxels": 628,
+        "sampled": 2366,
+        "indexBytes": 380760,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 2433088,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 5
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 20.339334000000008,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 64,
+      "previewMaxErrorVoxels": 0.04717570082259329,
+      "previewRmsErrorVoxels": 0.01679966682058204,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0007909999999924,
+          "p95": 3.4570830000000115,
+          "p99": 3.4570830000000115
+        },
+        "wallMs": 20.299624999999992,
+        "cpuMs": 15.555124000000035,
+        "maxSliceMs": 3.4570830000000115,
+        "meshingMs": 4.761083000000099,
+        "changedVoxels": 621,
+        "sampled": 2366,
+        "indexBytes": 380760,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 2443052,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 4
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 20.351374999999962,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 63,
+      "previewMaxErrorVoxels": 0.017584012057956528,
+      "previewRmsErrorVoxels": 0.008143605944668343,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.00258400000007,
+          "p95": 3.5734169999999494,
+          "p99": 3.5734169999999494
+        },
+        "wallMs": 20.3248329999999,
+        "cpuMs": 15.587000000000103,
+        "maxSliceMs": 3.5734169999999494,
+        "meshingMs": 4.622539999999958,
+        "changedVoxels": 639,
+        "sampled": 2366,
+        "indexBytes": 380760,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 2144100,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 4
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 21.50533299999995,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 63,
+      "previewMaxErrorVoxels": 0.02350806043134533,
+      "previewRmsErrorVoxels": 0.009357640814372164,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.00329099999999,
+          "p95": 3.437084000000027,
+          "p99": 3.437084000000027
+        },
+        "wallMs": 21.47679100000005,
+        "cpuMs": 15.60508300000015,
+        "maxSliceMs": 3.437084000000027,
+        "meshingMs": 4.654540999999881,
+        "changedVoxels": 625,
+        "sampled": 2366,
+        "indexBytes": 380760,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 2432940,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 5
+      }
+    },
+    {
+      "n": 33,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 20.023124999999936,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 64,
+      "previewMaxErrorVoxels": 0.02940317103361174,
+      "previewRmsErrorVoxels": 0.010810379089287437,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0031249999999545,
+          "p95": 3.304457999999954,
+          "p99": 3.304457999999954
+        },
+        "wallMs": 20.008375,
+        "cpuMs": 15.276165999999876,
+        "maxSliceMs": 3.304457999999954,
+        "meshingMs": 4.618000000000052,
+        "changedVoxels": 632,
+        "sampled": 2366,
+        "indexBytes": 380760,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 2443024,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 4
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 14.846125000000029,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 33,
+      "previewMaxErrorVoxels": 0.11405285505809605,
+      "previewRmsErrorVoxels": 0.05610548867934077,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0057919999999285,
+          "p95": 3.918708000000038,
+          "p99": 3.918708000000038
+        },
+        "wallMs": 14.82795800000008,
+        "cpuMs": 11.261041999999975,
+        "maxSliceMs": 3.918708000000038,
+        "meshingMs": 5.042332999999985,
+        "changedVoxels": 422,
+        "sampled": 2548,
+        "indexBytes": 117236,
+        "patchBytes": 30576,
+        "estimatedPeakBytes": 985916,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 3
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 14.971333999999956,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 75,
+      "previewMaxErrorVoxels": 0.13947028260453925,
+      "previewRmsErrorVoxels": 0.05057161270248532,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.00262500000008,
+          "p95": 3.2656670000000076,
+          "p99": 3.2656670000000076
+        },
+        "wallMs": 14.956291000000078,
+        "cpuMs": 11.389750000000163,
+        "maxSliceMs": 3.2656670000000076,
+        "meshingMs": 4.154458999999974,
+        "changedVoxels": 466,
+        "sampled": 2730,
+        "indexBytes": 123632,
+        "patchBytes": 32760,
+        "estimatedPeakBytes": 1290640,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 3
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 19.505249999999933,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 40,
+      "previewMaxErrorVoxels": 0.1406936557330909,
+      "previewRmsErrorVoxels": 0.05957973879260743,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.007249999999999,
+          "p95": 3.894042000000013,
+          "p99": 3.894042000000013
+        },
+        "wallMs": 19.49112500000001,
+        "cpuMs": 14.618166999999971,
+        "maxSliceMs": 3.894042000000013,
+        "meshingMs": 7.340207999999961,
+        "changedVoxels": 580,
+        "sampled": 2730,
+        "indexBytes": 122976,
+        "patchBytes": 32760,
+        "estimatedPeakBytes": 1578456,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 4
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 14.029457999999977,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 33,
+      "previewMaxErrorVoxels": 0.09863672811234586,
+      "previewRmsErrorVoxels": 0.050765858227798506,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.407165999999961,
+          "p95": 4.022207999999978,
+          "p99": 4.022207999999978
+        },
+        "wallMs": 14.014542000000006,
+        "cpuMs": 10.49258099999986,
+        "maxSliceMs": 4.022207999999978,
+        "meshingMs": 4.550583000000074,
+        "changedVoxels": 386,
+        "sampled": 3375,
+        "indexBytes": 117236,
+        "patchBytes": 40500,
+        "estimatedPeakBytes": 995696,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 3
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 18.207250000000045,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 78,
+      "previewMaxErrorVoxels": 0.09713301723020897,
+      "previewRmsErrorVoxels": 0.03403381832997592,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.013749999999959,
+          "p95": 3.4085830000000215,
+          "p99": 3.4085830000000215
+        },
+        "wallMs": 18.192833999999948,
+        "cpuMs": 13.365624000000139,
+        "maxSliceMs": 3.4085830000000215,
+        "meshingMs": 4.49712699999975,
+        "changedVoxels": 382,
+        "sampled": 3600,
+        "indexBytes": 123796,
+        "patchBytes": 43200,
+        "estimatedPeakBytes": 1301100,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 4
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 22.884374999999977,
+      "dimensions": [
+        33,
+        33,
+        65
+      ],
+      "step": 0.1,
+      "previewProbeCount": 32,
+      "previewMaxErrorVoxels": 0.12599491663151802,
+      "previewRmsErrorVoxels": 0.035764473640289625,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.02150000000006,
+          "p95": 4.677415999999994,
+          "p99": 4.677415999999994
+        },
+        "wallMs": 22.870832999999948,
+        "cpuMs": 17.809041000000093,
+        "maxSliceMs": 4.677415999999994,
+        "meshingMs": 9.890624000000003,
+        "changedVoxels": 416,
+        "sampled": 3600,
+        "indexBytes": 123632,
+        "patchBytes": 43200,
+        "estimatedPeakBytes": 1585952,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 5
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 9.456332999999972,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 33,
+      "previewMaxErrorVoxels": 0.09446328835451684,
+      "previewRmsErrorVoxels": 0.05720047995491232,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002958999999919,
+          "p95": 3.4400419999999485,
+          "p99": 3.4400419999999485
+        },
+        "wallMs": 9.443041999999991,
+        "cpuMs": 7.094625999999835,
+        "maxSliceMs": 3.4400419999999485,
+        "meshingMs": 2.4417490000000726,
+        "changedVoxels": 353,
+        "sampled": 2366,
+        "indexBytes": 117236,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 981752,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 2
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 9.926249999999982,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 77,
+      "previewMaxErrorVoxels": 0.07392881469754028,
+      "previewRmsErrorVoxels": 0.030037036433987214,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0067920000000186,
+          "p95": 3.2760419999999613,
+          "p99": 3.2760419999999613
+        },
+        "wallMs": 9.912499999999909,
+        "cpuMs": 7.532916999999884,
+        "maxSliceMs": 3.2760419999999613,
+        "meshingMs": 2.3638750000000073,
+        "changedVoxels": 334,
+        "sampled": 2366,
+        "indexBytes": 122976,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 1002992,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 2
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 9.600458000000003,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 77,
+      "previewMaxErrorVoxels": 0.08202201408743053,
+      "previewRmsErrorVoxels": 0.030207130884230497,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0031249999999545,
+          "p95": 3.6017499999999245,
+          "p99": 3.6017499999999245
+        },
+        "wallMs": 9.589166000000091,
+        "cpuMs": 7.236790999999812,
+        "maxSliceMs": 3.6017499999999245,
+        "meshingMs": 2.365289999999959,
+        "changedVoxels": 332,
+        "sampled": 2366,
+        "indexBytes": 122976,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 1008312,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 2
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 9.76983400000006,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 33,
+      "previewMaxErrorVoxels": 0.09085637723509885,
+      "previewRmsErrorVoxels": 0.05325259737140718,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0119999999999436,
+          "p95": 3.017166999999972,
+          "p99": 3.017166999999972
+        },
+        "wallMs": 9.756750000000011,
+        "cpuMs": 7.301207999999974,
+        "maxSliceMs": 3.017166999999972,
+        "meshingMs": 2.363209999999981,
+        "changedVoxels": 351,
+        "sampled": 2366,
+        "indexBytes": 117236,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 981728,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 2
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 9.754458,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 77,
+      "previewMaxErrorVoxels": 0.06580442363717175,
+      "previewRmsErrorVoxels": 0.02553578272269458,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.011665999999991,
+          "p95": 3.0184580000000096,
+          "p99": 3.0184580000000096
+        },
+        "wallMs": 9.741250000000036,
+        "cpuMs": 7.342248999999924,
+        "maxSliceMs": 3.0184580000000096,
+        "meshingMs": 2.3922489999999925,
+        "changedVoxels": 327,
+        "sampled": 2366,
+        "indexBytes": 122976,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 1002876,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 2
+      }
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 9.869332999999983,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "previewProbeCount": 77,
+      "previewMaxErrorVoxels": 0.06000363087166666,
+      "previewRmsErrorVoxels": 0.022079667838176015,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0020000000000664,
+          "p95": 3.2222920000000386,
+          "p99": 3.2222920000000386
+        },
+        "wallMs": 9.858958999999913,
+        "cpuMs": 7.477167000000122,
+        "maxSliceMs": 3.2222920000000386,
+        "meshingMs": 2.4076669999999467,
+        "changedVoxels": 324,
+        "sampled": 2366,
+        "indexBytes": 122976,
+        "patchBytes": 28392,
+        "estimatedPeakBytes": 1008072,
+        "dirtyChunks": 4,
+        "grew": false,
+        "slices": 2
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 100.05283399999996,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 262,
+      "previewMaxErrorVoxels": 0.09107196496520094,
+      "previewRmsErrorVoxels": 0.02923073707297644,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003417000000013,
+          "p95": 3.611833000000047,
+          "p99": 4.268707999999947
+        },
+        "wallMs": 100.01141599999994,
+        "cpuMs": 73.89266400000008,
+        "maxSliceMs": 4.268707999999947,
+        "meshingMs": 15.670791000000122,
+        "changedVoxels": 3236,
+        "sampled": 8400,
+        "indexBytes": 1489584,
+        "patchBytes": 100800,
+        "estimatedPeakBytes": 9123136,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 23
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 97.86495900000011,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 263,
+      "previewMaxErrorVoxels": 0.11679664793055831,
+      "previewRmsErrorVoxels": 0.0327307013334177,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002708999999868,
+          "p95": 5.210416999999779,
+          "p99": 5.918124999999918
+        },
+        "wallMs": 97.8352920000001,
+        "cpuMs": 73.91341599999919,
+        "maxSliceMs": 5.918124999999918,
+        "meshingMs": 14.525583000000324,
+        "changedVoxels": 3794,
+        "sampled": 8800,
+        "indexBytes": 1493520,
+        "patchBytes": 105600,
+        "estimatedPeakBytes": 9205032,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 22
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 95.52549999999997,
+      "dimensions": [
+        64,
+        64,
+        81
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 223,
+      "previewMaxErrorVoxels": 0.1900715418945338,
+      "previewRmsErrorVoxels": 0.05508744253125394,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0030420000000504,
+          "p95": 4.038707999999815,
+          "p99": 4.4284999999999854
+        },
+        "wallMs": 95.50133300000016,
+        "cpuMs": 70.36345899999992,
+        "maxSliceMs": 4.4284999999999854,
+        "meshingMs": 11.067749000000049,
+        "changedVoxels": 4156,
+        "sampled": 8400,
+        "indexBytes": 1497948,
+        "patchBytes": 100800,
+        "estimatedPeakBytes": 9844332,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 22
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 163.01954100000012,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 262,
+      "previewMaxErrorVoxels": 0.18761734699259552,
+      "previewRmsErrorVoxels": 0.03219940985755799,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002707999999984,
+          "p95": 3.6214169999998376,
+          "p99": 5.117334000000028
+        },
+        "wallMs": 162.99416599999995,
+        "cpuMs": 119.12112799999977,
+        "maxSliceMs": 5.117334000000028,
+        "meshingMs": 14.991252000000486,
+        "changedVoxels": 3271,
+        "sampled": 13248,
+        "indexBytes": 1489584,
+        "patchBytes": 158976,
+        "estimatedPeakBytes": 9177988,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 38
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 156.60737500000005,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 236,
+      "previewMaxErrorVoxels": 0.2728363426664167,
+      "previewRmsErrorVoxels": 0.04274487738513402,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002166999999872,
+          "p95": 4.736374999999953,
+          "p99": 4.810249999999996
+        },
+        "wallMs": 156.5808340000001,
+        "cpuMs": 113.24937599999953,
+        "maxSliceMs": 4.810249999999996,
+        "meshingMs": 11.252165999999534,
+        "changedVoxels": 3448,
+        "sampled": 13248,
+        "indexBytes": 1491388,
+        "patchBytes": 158976,
+        "estimatedPeakBytes": 9243468,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 36
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 166.24087499999996,
+      "dimensions": [
+        64,
+        64,
+        81
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 153,
+      "previewMaxErrorVoxels": 0.27206678727351635,
+      "previewRmsErrorVoxels": 0.06620449336366638,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0031249999999545,
+          "p95": 3.554499999999962,
+          "p99": 4.949541999999838
+        },
+        "wallMs": 166.212041,
+        "cpuMs": 122.27629399999933,
+        "maxSliceMs": 4.949541999999838,
+        "meshingMs": 15.253541999999698,
+        "changedVoxels": 3956,
+        "sampled": 13248,
+        "indexBytes": 1494832,
+        "patchBytes": 158976,
+        "estimatedPeakBytes": 9873872,
+        "dirtyChunks": 8,
+        "grew": true,
+        "slices": 39
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 96.79266600000005,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 262,
+      "previewMaxErrorVoxels": 0.012566609570261117,
+      "previewRmsErrorVoxels": 0.004105598848920667,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022500000000036,
+          "p95": 3.865500000000111,
+          "p99": 5.973792000000003
+        },
+        "wallMs": 96.76862499999993,
+        "cpuMs": 72.13133500000026,
+        "maxSliceMs": 5.973792000000003,
+        "meshingMs": 15.383497999999918,
+        "changedVoxels": 2882,
+        "sampled": 8000,
+        "indexBytes": 1489584,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 9106600,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 22
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 91.55620799999997,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 270,
+      "previewMaxErrorVoxels": 0.020681256172256614,
+      "previewRmsErrorVoxels": 0.006376382694571869,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022079999998823,
+          "p95": 5.546374999999898,
+          "p99": 5.946084000000155
+        },
+        "wallMs": 91.5288750000002,
+        "cpuMs": 68.49708199999941,
+        "maxSliceMs": 5.946084000000155,
+        "meshingMs": 15.027415000000474,
+        "changedVoxels": 2866,
+        "sampled": 8000,
+        "indexBytes": 1489256,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 9152192,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 20
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 88.33529199999975,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 270,
+      "previewMaxErrorVoxels": 0.033231943999722756,
+      "previewRmsErrorVoxels": 0.010246602218602048,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003584000000046,
+          "p95": 4.890125000000353,
+          "p99": 5.485874999999851
+        },
+        "wallMs": 88.3125829999999,
+        "cpuMs": 65.92429300000049,
+        "maxSliceMs": 5.485874999999851,
+        "meshingMs": 11.254709000000275,
+        "changedVoxels": 2846,
+        "sampled": 8000,
+        "indexBytes": 1489584,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 9198424,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 20
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 92.04487500000005,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 262,
+      "previewMaxErrorVoxels": 0.010528683334553413,
+      "previewRmsErrorVoxels": 0.0031663763598569596,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003707999999733,
+          "p95": 3.8542499999998654,
+          "p99": 5.100832999999966
+        },
+        "wallMs": 92.02179099999967,
+        "cpuMs": 68.34299699999929,
+        "maxSliceMs": 5.100832999999966,
+        "meshingMs": 15.516789999999673,
+        "changedVoxels": 2883,
+        "sampled": 8000,
+        "indexBytes": 1489584,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 9107188,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 21
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 86.8312920000003,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 263,
+      "previewMaxErrorVoxels": 0.010510541914380124,
+      "previewRmsErrorVoxels": 0.003924007961137371,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003041999999823,
+          "p95": 3.6686250000002474,
+          "p99": 4.841958999999861
+        },
+        "wallMs": 86.79299999999967,
+        "cpuMs": 64.22616699999935,
+        "maxSliceMs": 4.841958999999861,
+        "meshingMs": 11.522500999999465,
+        "changedVoxels": 2860,
+        "sampled": 8000,
+        "indexBytes": 1489584,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 9153040,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 20
+      }
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 87.06620799999973,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 268,
+      "previewMaxErrorVoxels": 0.015740681082853234,
+      "previewRmsErrorVoxels": 0.004768610771459373,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003791000000092,
+          "p95": 3.68783300000041,
+          "p99": 4.204457999999704
+        },
+        "wallMs": 87.04175000000032,
+        "cpuMs": 63.66341600000078,
+        "maxSliceMs": 4.204457999999704,
+        "meshingMs": 10.697748000000502,
+        "changedVoxels": 2846,
+        "sampled": 8000,
+        "indexBytes": 1489584,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 9198920,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 20
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 89.59087499999987,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 266,
+      "previewMaxErrorVoxels": 0.34442539496009905,
+      "previewRmsErrorVoxels": 0.1113147342225154,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0023339999997916,
+          "p95": 4.392834000000221,
+          "p99": 6.605457999999999
+        },
+        "wallMs": 89.57058299999971,
+        "cpuMs": 67.29883500000005,
+        "maxSliceMs": 6.605457999999999,
+        "meshingMs": 17.517958000001272,
+        "changedVoxels": 1881,
+        "sampled": 8400,
+        "indexBytes": 1916284,
+        "patchBytes": 100800,
+        "estimatedPeakBytes": 10225640,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 20
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 85.06383300000016,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 270,
+      "previewMaxErrorVoxels": 0.24531732485264815,
+      "previewRmsErrorVoxels": 0.08343902902446582,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0025829999999587,
+          "p95": 5.53229199999987,
+          "p99": 5.53229199999987
+        },
+        "wallMs": 85.04458299999988,
+        "cpuMs": 62.15970800000059,
+        "maxSliceMs": 5.53229199999987,
+        "meshingMs": 12.286417000000256,
+        "changedVoxels": 2362,
+        "sampled": 8800,
+        "indexBytes": 1919072,
+        "patchBytes": 105600,
+        "estimatedPeakBytes": 10279176,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 19
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 89.42875000000004,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 227,
+      "previewMaxErrorVoxels": 0.2287997840152964,
+      "previewRmsErrorVoxels": 0.07061899790083591,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002292000000125,
+          "p95": 5.70837500000016,
+          "p99": 5.70837500000016
+        },
+        "wallMs": 89.40529199999992,
+        "cpuMs": 67.59012600000142,
+        "maxSliceMs": 5.70837500000016,
+        "meshingMs": 19.632208000000446,
+        "changedVoxels": 2807,
+        "sampled": 8400,
+        "indexBytes": 1922024,
+        "patchBytes": 100800,
+        "estimatedPeakBytes": 10330828,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 19
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 103.23512500000015,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 266,
+      "previewMaxErrorVoxels": 0.4104842023481548,
+      "previewRmsErrorVoxels": 0.0927729906109139,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0019999999999527,
+          "p95": 4.368417000000136,
+          "p99": 7.985290999999961
+        },
+        "wallMs": 103.21641600000021,
+        "cpuMs": 77.46241700000064,
+        "maxSliceMs": 7.985290999999961,
+        "meshingMs": 17.063916000000063,
+        "changedVoxels": 1836,
+        "sampled": 13248,
+        "indexBytes": 1916284,
+        "patchBytes": 158976,
+        "estimatedPeakBytes": 10278092,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 23
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 106.17608399999972,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 231,
+      "previewMaxErrorVoxels": 0.16583740694431182,
+      "previewRmsErrorVoxels": 0.06270024723338323,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0023340000002463,
+          "p95": 4.994750000000295,
+          "p99": 5.41695800000025
+        },
+        "wallMs": 106.1574999999998,
+        "cpuMs": 77.68241900000112,
+        "maxSliceMs": 5.41695800000025,
+        "meshingMs": 12.224999000000025,
+        "changedVoxels": 1905,
+        "sampled": 13248,
+        "indexBytes": 1916120,
+        "patchBytes": 158976,
+        "estimatedPeakBytes": 10311012,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 24
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 108.19941599999993,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 174,
+      "previewMaxErrorVoxels": 0.17713586934757966,
+      "previewRmsErrorVoxels": 0.05114340378424441,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0020000000004075,
+          "p95": 3.5008750000001783,
+          "p99": 5.60537499999964
+        },
+        "wallMs": 108.17862500000001,
+        "cpuMs": 79.11262600000009,
+        "maxSliceMs": 5.60537499999964,
+        "meshingMs": 12.367167999999765,
+        "changedVoxels": 1945,
+        "sampled": 13248,
+        "indexBytes": 1917924,
+        "patchBytes": 158976,
+        "estimatedPeakBytes": 10349824,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 25
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 68.44716699999981,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 266,
+      "previewMaxErrorVoxels": 0.26406469825648227,
+      "previewRmsErrorVoxels": 0.07330381673996346,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003041999999823,
+          "p95": 5.409084000000348,
+          "p99": 5.409084000000348
+        },
+        "wallMs": 68.43016699999998,
+        "cpuMs": 50.890378000000965,
+        "maxSliceMs": 5.409084000000348,
+        "meshingMs": 11.910166000000117,
+        "changedVoxels": 1675,
+        "sampled": 8000,
+        "indexBytes": 1916284,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 10213472,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 15
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 71.94583299999977,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 270,
+      "previewMaxErrorVoxels": 0.17649046413171388,
+      "previewRmsErrorVoxels": 0.0593275510156941,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0035829999997077,
+          "p95": 5.448957999999948,
+          "p99": 5.448957999999948
+        },
+        "wallMs": 71.92875000000004,
+        "cpuMs": 53.028417999999874,
+        "maxSliceMs": 5.448957999999948,
+        "meshingMs": 12.123710000000301,
+        "changedVoxels": 1666,
+        "sampled": 8000,
+        "indexBytes": 1916284,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 10241028,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 16
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 80.70541700000012,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 273,
+      "previewMaxErrorVoxels": 0.1340156859642298,
+      "previewRmsErrorVoxels": 0.0540279504185072,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.003208000000086,
+          "p95": 6.290082999999868,
+          "p99": 6.290082999999868
+        },
+        "wallMs": 80.6880000000001,
+        "cpuMs": 60.569418000001406,
+        "maxSliceMs": 6.290082999999868,
+        "meshingMs": 17.247164999999313,
+        "changedVoxels": 1639,
+        "sampled": 8000,
+        "indexBytes": 1916776,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 10269004,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 18
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 76.65987499999983,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 266,
+      "previewMaxErrorVoxels": 0.23817131985243775,
+      "previewRmsErrorVoxels": 0.0650740598284043,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002375000000029,
+          "p95": 5.418291999999838,
+          "p99": 5.418291999999838
+        },
+        "wallMs": 76.64104100000031,
+        "cpuMs": 57.78179099999943,
+        "maxSliceMs": 5.418291999999838,
+        "meshingMs": 18.64983399999892,
+        "changedVoxels": 1655,
+        "sampled": 8000,
+        "indexBytes": 1916284,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 10213232,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 16
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 76.83795900000041,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 270,
+      "previewMaxErrorVoxels": 0.1451458385388332,
+      "previewRmsErrorVoxels": 0.04777156179545516,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002375000000029,
+          "p95": 5.51037499999984,
+          "p99": 5.51037499999984
+        },
+        "wallMs": 76.82425000000012,
+        "cpuMs": 57.034498999998505,
+        "maxSliceMs": 5.51037499999984,
+        "meshingMs": 16.949875000000247,
+        "changedVoxels": 1658,
+        "sampled": 8000,
+        "indexBytes": 1916284,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 10239748,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 17
+      }
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 71.96045799999956,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "previewProbeCount": 270,
+      "previewMaxErrorVoxels": 0.12379332079920069,
+      "previewRmsErrorVoxels": 0.044639500167756765,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.004667000000154,
+          "p95": 5.594208000000435,
+          "p99": 5.594208000000435
+        },
+        "wallMs": 71.94287499999973,
+        "cpuMs": 53.32729300000119,
+        "maxSliceMs": 5.594208000000435,
+        "meshingMs": 12.298166999999921,
+        "changedVoxels": 1651,
+        "sampled": 8000,
+        "indexBytes": 1916284,
+        "patchBytes": 96000,
+        "estimatedPeakBytes": 10266768,
+        "dirtyChunks": 8,
+        "grew": false,
+        "slices": 16
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 593.0067500000005,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.03536209984007835,
+      "previewRmsErrorVoxels": 0.011639281596144194,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022500000004584,
+          "p95": 3.330917000000227,
+          "p99": 4.474916000000121
+        },
+        "wallMs": 592.9667500000005,
+        "cpuMs": 431.6345880000026,
+        "maxSliceMs": 5.424332999999933,
+        "meshingMs": 38.430749000001924,
+        "changedVoxels": 19360,
+        "sampled": 36960,
+        "indexBytes": 6046896,
+        "patchBytes": 443520,
+        "estimatedPeakBytes": 51902000,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 140
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 580.5601660000002,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.060934461902505,
+      "previewRmsErrorVoxels": 0.019945494083188242,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0026660000003176,
+          "p95": 3.5196670000004815,
+          "p99": 4.630290999999488
+        },
+        "wallMs": 580.5100830000001,
+        "cpuMs": 423.19861799999853,
+        "maxSliceMs": 5.3272500000002765,
+        "meshingMs": 39.20904200000223,
+        "changedVoxels": 20443,
+        "sampled": 36960,
+        "indexBytes": 6065264,
+        "patchBytes": 443520,
+        "estimatedPeakBytes": 52309076,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 137
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 543.5542919999998,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.08414838503896122,
+      "previewRmsErrorVoxels": 0.024491741679164757,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002292000000125,
+          "p95": 3.2002089999996315,
+          "p99": 4.478624999999738
+        },
+        "wallMs": 543.5095419999998,
+        "cpuMs": 397.7298859999946,
+        "maxSliceMs": 4.510000000000218,
+        "meshingMs": 32.867919000002075,
+        "changedVoxels": 22306,
+        "sampled": 36960,
+        "indexBytes": 6084452,
+        "patchBytes": 443520,
+        "estimatedPeakBytes": 52751148,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 130
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 806.3218330000009,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.08703575560322512,
+      "previewRmsErrorVoxels": 0.01160759487272635,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0025419999992664,
+          "p95": 3.1512919999995574,
+          "p99": 4.805916999999681
+        },
+        "wallMs": 806.2789159999993,
+        "cpuMs": 588.7622639999927,
+        "maxSliceMs": 5.061249999999745,
+        "meshingMs": 38.073960999997325,
+        "changedVoxels": 20296,
+        "sampled": 54872,
+        "indexBytes": 6046896,
+        "patchBytes": 658464,
+        "estimatedPeakBytes": 52116368,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 193
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 881.8159170000008,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.2044955225377086,
+      "previewRmsErrorVoxels": 0.025800229738360648,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002124999999978,
+          "p95": 3.1509580000001733,
+          "p99": 3.7302080000008573
+        },
+        "wallMs": 881.7764999999999,
+        "cpuMs": 639.3014159999966,
+        "maxSliceMs": 5.274792000000161,
+        "meshingMs": 37.7962950000001,
+        "changedVoxels": 20446,
+        "sampled": 54872,
+        "indexBytes": 6058540,
+        "patchBytes": 658464,
+        "estimatedPeakBytes": 52498036,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 210
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 851.9160000000011,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.21179395960118907,
+      "previewRmsErrorVoxels": 0.04138623816657144,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002209000000221,
+          "p95": 3.1175419999999576,
+          "p99": 3.964250000000902
+        },
+        "wallMs": 851.8685839999998,
+        "cpuMs": 619.489958000011,
+        "maxSliceMs": 4.6322500000005675,
+        "meshingMs": 33.85108300000138,
+        "changedVoxels": 22640,
+        "sampled": 54872,
+        "indexBytes": 6071660,
+        "patchBytes": 658464,
+        "estimatedPeakBytes": 52904940,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 203
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 515.2237079999995,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.009359963605420853,
+      "previewRmsErrorVoxels": 0.0021195732538488122,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002416000001176,
+          "p95": 3.3388340000001335,
+          "p99": 4.425375000000713
+        },
+        "wallMs": 515.1662500000002,
+        "cpuMs": 374.9924179999871,
+        "maxSliceMs": 5.510166999998546,
+        "meshingMs": 38.10466099999576,
+        "changedVoxels": 16243,
+        "sampled": 32768,
+        "indexBytes": 6046896,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 51782612,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 121
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 492.2137910000001,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.011388344840341841,
+      "previewRmsErrorVoxels": 0.0034223539829019334,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 1.1638178938488149e-7,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002707999999984,
+          "p95": 3.6657909999994445,
+          "p99": 4.378125000001091
+        },
+        "wallMs": 492.17391600000155,
+        "cpuMs": 358.6780009999984,
+        "maxSliceMs": 4.730125000000044,
+        "meshingMs": 38.30349699999715,
+        "changedVoxels": 16210,
+        "sampled": 32768,
+        "indexBytes": 6047224,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 52043296,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 116
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 456.6424590000006,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.013464923709495811,
+      "previewRmsErrorVoxels": 0.004457964355490947,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002667000000656,
+          "p95": 3.2316249999985303,
+          "p99": 4.439834000000701
+        },
+        "wallMs": 456.60312499999964,
+        "cpuMs": 333.8682949999984,
+        "maxSliceMs": 4.683666999999332,
+        "meshingMs": 31.706208999996306,
+        "changedVoxels": 16181,
+        "sampled": 32768,
+        "indexBytes": 6047388,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 52306792,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 108
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 485.2465830000001,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.004834821843596786,
+      "previewRmsErrorVoxels": 0.001260354700818756,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002875000000131,
+          "p95": 3.572291000000405,
+          "p99": 4.750583999999435
+        },
+        "wallMs": 485.1976250000007,
+        "cpuMs": 353.0611620000127,
+        "maxSliceMs": 5.482249999999112,
+        "meshingMs": 38.77091300000393,
+        "changedVoxels": 16248,
+        "sampled": 32768,
+        "indexBytes": 6046896,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 51782384,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 113
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 466.40258299999914,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.004147644022370914,
+      "previewRmsErrorVoxels": 0.0014495486331412876,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0027499999996508,
+          "p95": 3.44116700000086,
+          "p99": 4.368959000001269
+        },
+        "wallMs": 466.3638749999991,
+        "cpuMs": 343.8701190000138,
+        "maxSliceMs": 5.442165999998906,
+        "meshingMs": 37.499746999996205,
+        "changedVoxels": 16200,
+        "sampled": 32768,
+        "indexBytes": 6047060,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 52042804,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 111
+      }
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 462.97562500000095,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.006421729262868982,
+      "previewRmsErrorVoxels": 0.001956537879048579,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0020839999997406,
+          "p95": 3.134667000000263,
+          "p99": 4.4939159999994445
+        },
+        "wallMs": 462.9345420000009,
+        "cpuMs": 336.892543999993,
+        "maxSliceMs": 4.6617499999993015,
+        "meshingMs": 31.983832999996594,
+        "changedVoxels": 16169,
+        "sampled": 32768,
+        "indexBytes": 6047388,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 52303112,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 109
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 455.1744580000013,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.22344749538935915,
+      "previewRmsErrorVoxels": 0.07059496125553912,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0024579999990237,
+          "p95": 3.1348330000000715,
+          "p99": 3.8693330000005517
+        },
+        "wallMs": 455.14041599999837,
+        "cpuMs": 329.8294550000028,
+        "maxSliceMs": 5.293582999998762,
+        "meshingMs": 12.851250000003347,
+        "changedVoxels": 12850,
+        "sampled": 36960,
+        "indexBytes": 7736148,
+        "patchBytes": 443520,
+        "estimatedPeakBytes": 53371724,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 108
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 492.75658399999884,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.3105733229109442,
+      "previewRmsErrorVoxels": 0.06345469559096799,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002416000001176,
+          "p95": 3.629750000000058,
+          "p99": 4.65545899999961
+        },
+        "wallMs": 492.71941699999843,
+        "cpuMs": 358.6688359999971,
+        "maxSliceMs": 5.172958000001017,
+        "meshingMs": 41.02174600000217,
+        "changedVoxels": 15083,
+        "sampled": 36960,
+        "indexBytes": 7744676,
+        "patchBytes": 443520,
+        "estimatedPeakBytes": 56341736,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 116
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 453.67816700000003,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.2555803660519153,
+      "previewRmsErrorVoxels": 0.05331624747186026,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0021250000008877,
+          "p95": 3.4833749999997963,
+          "p99": 4.362417000000278
+        },
+        "wallMs": 453.6415840000009,
+        "cpuMs": 332.784040999999,
+        "maxSliceMs": 6.516208999999435,
+        "meshingMs": 44.19175200000063,
+        "changedVoxels": 18236,
+        "sampled": 36960,
+        "indexBytes": 7759436,
+        "patchBytes": 443520,
+        "estimatedPeakBytes": 56689804,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 107
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 553.0215420000004,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.24773634684823218,
+      "previewRmsErrorVoxels": 0.06495880841056693,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002083000001221,
+          "p95": 3.120999999999185,
+          "p99": 3.6288339999991877
+        },
+        "wallMs": 552.9896669999998,
+        "cpuMs": 398.3524980000075,
+        "maxSliceMs": 5.005958000001556,
+        "meshingMs": 12.394290999989607,
+        "changedVoxels": 12626,
+        "sampled": 54872,
+        "indexBytes": 7736148,
+        "patchBytes": 658464,
+        "estimatedPeakBytes": 53573036,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 131
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 570.3978749999987,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.2746304808690668,
+      "previewRmsErrorVoxels": 0.052670623669598016,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.001958000000741,
+          "p95": 3.0750829999997222,
+          "p99": 4.038292000001093
+        },
+        "wallMs": 570.3554169999989,
+        "cpuMs": 414.69033399999535,
+        "maxSliceMs": 6.117624999998952,
+        "meshingMs": 10.689875000000029,
+        "changedVoxels": 12505,
+        "sampled": 54872,
+        "indexBytes": 7738444,
+        "patchBytes": 658464,
+        "estimatedPeakBytes": 53792600,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 136
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 603.1914170000018,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.37298166446923114,
+      "previewRmsErrorVoxels": 0.051316068133243645,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.001917000001413,
+          "p95": 3.2768750000032014,
+          "p99": 4.6117080000003625
+        },
+        "wallMs": 603.153459000001,
+        "cpuMs": 438.99566400001277,
+        "maxSliceMs": 5.674415999998018,
+        "meshingMs": 44.25928500001828,
+        "changedVoxels": 13751,
+        "sampled": 54872,
+        "indexBytes": 7745660,
+        "patchBytes": 658464,
+        "estimatedPeakBytes": 56726944,
+        "dirtyChunks": 48,
+        "grew": false,
+        "slices": 142
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 385.7396660000013,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.15800578772384172,
+      "previewRmsErrorVoxels": 0.05106418328885837,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0023330000003625,
+          "p95": 3.181124999999156,
+          "p99": 5.099167000000307
+        },
+        "wallMs": 385.6943749999991,
+        "cpuMs": 278.7037500000042,
+        "maxSliceMs": 5.099167000000307,
+        "meshingMs": 12.535792000002402,
+        "changedVoxels": 10985,
+        "sampled": 32768,
+        "indexBytes": 7736148,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 53285792,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 91
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 369.8542500000003,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.12739678489674908,
+      "previewRmsErrorVoxels": 0.04443883600907049,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0024169999996957,
+          "p95": 3.126541999998153,
+          "p99": 4.711583000000246
+        },
+        "wallMs": 369.8123330000017,
+        "cpuMs": 268.5440859999944,
+        "maxSliceMs": 4.711583000000246,
+        "meshingMs": 10.734749000010197,
+        "changedVoxels": 10879,
+        "sampled": 32768,
+        "indexBytes": 7737132,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 53468176,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 88
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 382.34600000000137,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.10666931076398614,
+      "previewRmsErrorVoxels": 0.03895641169653639,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0024169999996957,
+          "p95": 3.1381670000009763,
+          "p99": 4.582875000000058
+        },
+        "wallMs": 382.31424999999945,
+        "cpuMs": 278.0735809999933,
+        "maxSliceMs": 4.582875000000058,
+        "meshingMs": 9.230831000008038,
+        "changedVoxels": 10891,
+        "sampled": 32768,
+        "indexBytes": 7740084,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 53653688,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 91
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 360.9658339999987,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.11134458777747992,
+      "previewRmsErrorVoxels": 0.03600249711963056,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022079999980633,
+          "p95": 3.4115830000009737,
+          "p99": 5.448833999998897
+        },
+        "wallMs": 360.9278340000019,
+        "cpuMs": 263.60758200001874,
+        "maxSliceMs": 5.448833999998897,
+        "meshingMs": 12.589959000004455,
+        "changedVoxels": 10949,
+        "sampled": 32768,
+        "indexBytes": 7736148,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 53283632,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 85
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 323.53691700000127,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.08959091049467928,
+      "previewRmsErrorVoxels": 0.031758856586156556,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0019160000010743,
+          "p95": 3.164875000002212,
+          "p99": 5.279958999999508
+        },
+        "wallMs": 323.494834000001,
+        "cpuMs": 235.70853799999531,
+        "maxSliceMs": 5.279958999999508,
+        "meshingMs": 10.519250000001193,
+        "changedVoxels": 10877,
+        "sampled": 32768,
+        "indexBytes": 7736148,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 53459968,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 76
+      }
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 355.21212500000183,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.09721853091124716,
+      "previewRmsErrorVoxels": 0.02872410109392922,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002291000000696,
+          "p95": 3.1614579999986745,
+          "p99": 4.471125000000029
+        },
+        "wallMs": 355.16729099999793,
+        "cpuMs": 256.94808399999965,
+        "maxSliceMs": 4.471125000000029,
+        "meshingMs": 9.053122000008443,
+        "changedVoxels": 10844,
+        "sampled": 32768,
+        "indexBytes": 7737296,
+        "patchBytes": 393216,
+        "estimatedPeakBytes": 53637056,
+        "dirtyChunks": 12,
+        "grew": false,
+        "slices": 84
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 2000.6941250000018,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.01635026267503501,
+      "previewRmsErrorVoxels": 0.006428211738151401,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002375000000029,
+          "p95": 3.0852089999971213,
+          "p99": 4.034542000001238
+        },
+        "wallMs": 2000.6089580000007,
+        "cpuMs": 1446.3188280000068,
+        "maxSliceMs": 5.038375000000087,
+        "meshingMs": 50.862799999991694,
+        "changedVoxels": 55486,
+        "sampled": 95040,
+        "indexBytes": 15050160,
+        "patchBytes": 1140480,
+        "estimatedPeakBytes": 154275960,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 476
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 1926.0725840000014,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.03162221689700679,
+      "previewRmsErrorVoxels": 0.009754197898313279,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0024579999990237,
+          "p95": 3.0847079999985,
+          "p99": 4.220709000001079
+        },
+        "wallMs": 1925.9880830000002,
+        "cpuMs": 1397.8555469999555,
+        "maxSliceMs": 6.182833000002574,
+        "meshingMs": 48.856124999987514,
+        "changedVoxels": 58550,
+        "sampled": 95040,
+        "indexBytes": 15091324,
+        "patchBytes": 1140480,
+        "estimatedPeakBytes": 155195300,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 460
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 1875.746750000002,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.04408548088422134,
+      "previewRmsErrorVoxels": 0.012079511448599064,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0021250000027067,
+          "p95": 3.0924159999995027,
+          "p99": 4.295249999999214
+        },
+        "wallMs": 1875.6705419999998,
+        "cpuMs": 1359.8964119999873,
+        "maxSliceMs": 6.773791999999958,
+        "meshingMs": 49.15928700000586,
+        "changedVoxels": 63655,
+        "sampled": 97020,
+        "indexBytes": 15135768,
+        "patchBytes": 1164240,
+        "estimatedPeakBytes": 156434940,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 447
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 3167.8070000000007,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.026972704320813622,
+      "previewRmsErrorVoxels": 0.005056989308687556,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002291000000696,
+          "p95": 3.0188750000015716,
+          "p99": 3.768499999998312
+        },
+        "wallMs": 3167.714749999999,
+        "cpuMs": 2294.0110190000632,
+        "maxSliceMs": 5.277708000001439,
+        "meshingMs": 49.873334000003524,
+        "changedVoxels": 62286,
+        "sampled": 157464,
+        "indexBytes": 15050160,
+        "patchBytes": 1889568,
+        "estimatedPeakBytes": 155081592,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 758
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 3184.6939580000035,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.1011817893626498,
+      "previewRmsErrorVoxels": 0.013398448724104095,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002250000005006,
+          "p95": 3.014083000001847,
+          "p99": 3.2446249999993597
+        },
+        "wallMs": 3184.618583000003,
+        "cpuMs": 2307.796862999894,
+        "maxSliceMs": 5.391916000000492,
+        "meshingMs": 48.065331000005244,
+        "changedVoxels": 61243,
+        "sampled": 154548,
+        "indexBytes": 15077056,
+        "patchBytes": 1854576,
+        "estimatedPeakBytes": 155956756,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 764
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 3142.369458999994,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.1246462563724508,
+      "previewRmsErrorVoxels": 0.016003838340973218,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002208999998402,
+          "p95": 3.0095839999994496,
+          "p99": 3.680333000003884
+        },
+        "wallMs": 3142.287375,
+        "cpuMs": 2275.2703719998754,
+        "maxSliceMs": 6.426291999996465,
+        "meshingMs": 48.01395199997933,
+        "changedVoxels": 69002,
+        "sampled": 157464,
+        "indexBytes": 15104772,
+        "patchBytes": 1889568,
+        "estimatedPeakBytes": 157189804,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 752
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 1503.541833999996,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.0052084642452367375,
+      "previewRmsErrorVoxels": 0.002040613766161988,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022920000046724,
+          "p95": 3.1125409999949625,
+          "p99": 4.279125000000931
+        },
+        "wallMs": 1503.4411249999976,
+        "cpuMs": 1091.641594000088,
+        "maxSliceMs": 5.29133400000137,
+        "meshingMs": 50.52079200003209,
+        "changedVoxels": 47505,
+        "sampled": 85184,
+        "indexBytes": 15050160,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 153990204,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 358
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 1523.1947500000024,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.007958585652795367,
+      "previewRmsErrorVoxels": 0.0026971923690962737,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0023329999967245,
+          "p95": 3.0874580000017886,
+          "p99": 4.034625000000233
+        },
+        "wallMs": 1523.1170830000046,
+        "cpuMs": 1104.5035939999434,
+        "maxSliceMs": 5.106667000000016,
+        "meshingMs": 48.70121199998539,
+        "changedVoxels": 47447,
+        "sampled": 85184,
+        "indexBytes": 15050488,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 154756828,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 363
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 1578.089457999995,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.012062424549245838,
+      "previewRmsErrorVoxels": 0.003618807836913835,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0021250000063446,
+          "p95": 3.1335420000032173,
+          "p99": 4.395416999999725
+        },
+        "wallMs": 1578.0192500000048,
+        "cpuMs": 1149.0013380000892,
+        "maxSliceMs": 5.401333000001614,
+        "meshingMs": 50.03500399998302,
+        "changedVoxels": 47420,
+        "sampled": 85184,
+        "indexBytes": 15054096,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 155532512,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 377
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 1476.359166000002,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.002657389631337742,
+      "previewRmsErrorVoxels": 0.0010527170401230098,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022919999973965,
+          "p95": 3.0976250000021537,
+          "p99": 3.9600419999987935
+        },
+        "wallMs": 1476.2791249999937,
+        "cpuMs": 1075.9198250001064,
+        "maxSliceMs": 5.552833000001556,
+        "meshingMs": 51.363704000017606,
+        "changedVoxels": 47502,
+        "sampled": 85184,
+        "indexBytes": 15050160,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 153990744,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 353
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 1530.735041,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.003022308676940835,
+      "previewRmsErrorVoxels": 0.0011361679497210442,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022920000046724,
+          "p95": 3.1177499999976135,
+          "p99": 4.242500000000291
+        },
+        "wallMs": 1530.6659579999978,
+        "cpuMs": 1111.5440329999328,
+        "maxSliceMs": 5.312541999999667,
+        "meshingMs": 49.205416999982845,
+        "changedVoxels": 47441,
+        "sampled": 85184,
+        "indexBytes": 15050816,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 154752140,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 365
+      }
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 1556.5860829999947,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.0041368683995212764,
+      "previewRmsErrorVoxels": 0.0013589016467806594,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0024579999953858,
+          "p95": 3.1262920000008307,
+          "p99": 4.483916999997746
+        },
+        "wallMs": 1556.5063749999972,
+        "cpuMs": 1129.1298810000735,
+        "maxSliceMs": 5.488250000002154,
+        "meshingMs": 50.08700099997077,
+        "changedVoxels": 47386,
+        "sampled": 85184,
+        "indexBytes": 15050980,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 155512140,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 370
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 1,
+      "wallMs": 1316.0731250000026,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.23096872335671306,
+      "previewRmsErrorVoxels": 0.04856136044029105,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0022079999980633,
+          "p95": 3.1362500000032014,
+          "p99": 4.022375000000466
+        },
+        "wallMs": 1315.9997079999957,
+        "cpuMs": 957.4356730000145,
+        "maxSliceMs": 4.45154100000218,
+        "meshingMs": 42.978461000020616,
+        "changedVoxels": 39978,
+        "sampled": 95040,
+        "indexBytes": 17069164,
+        "patchBytes": 1140480,
+        "estimatedPeakBytes": 158974468,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 315
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 2,
+      "wallMs": 1473.175000000003,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.22449072413908086,
+      "previewRmsErrorVoxels": 0.03812232689502699,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.002375000003667,
+          "p95": 3.115417000000889,
+          "p99": 3.9010419999976875
+        },
+        "wallMs": 1473.1016670000026,
+        "cpuMs": 1071.2774710000085,
+        "maxSliceMs": 4.86491599999863,
+        "meshingMs": 45.39845800001058,
+        "changedVoxels": 46660,
+        "sampled": 95040,
+        "indexBytes": 17094420,
+        "patchBytes": 1140480,
+        "estimatedPeakBytes": 159821796,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 352
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "non-elastic",
+      "pass": 3,
+      "wallMs": 1380.6899170000033,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.20007068736913078,
+      "previewRmsErrorVoxels": 0.03771196124299907,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0025000000023283,
+          "p95": 3.1292079999984708,
+          "p99": 4.050458999998227
+        },
+        "wallMs": 1380.5557909999989,
+        "cpuMs": 1001.3539180000516,
+        "maxSliceMs": 5.7870419999962905,
+        "meshingMs": 45.54220599999826,
+        "changedVoxels": 55416,
+        "sampled": 97020,
+        "indexBytes": 17127384,
+        "patchBytes": 1164240,
+        "estimatedPeakBytes": 160857448,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 329
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 1,
+      "wallMs": 1689.6365409999999,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.23453377446013993,
+      "previewRmsErrorVoxels": 0.04399517765313929,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.001790999995137,
+          "p95": 3.096791000003577,
+          "p99": 3.836749999994936
+        },
+        "wallMs": 1689.565917,
+        "cpuMs": 1223.8892150000029,
+        "maxSliceMs": 5.585291999996116,
+        "meshingMs": 42.9456719999871,
+        "changedVoxels": 40478,
+        "sampled": 157464,
+        "indexBytes": 17069164,
+        "patchBytes": 1889568,
+        "estimatedPeakBytes": 159702484,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 403
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 2,
+      "wallMs": 1641.1707919999972,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.16656279347016018,
+      "previewRmsErrorVoxels": 0.03693749922692109,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.001958000000741,
+          "p95": 3.0620840000046883,
+          "p99": 3.985000000000582
+        },
+        "wallMs": 1641.1113750000004,
+        "cpuMs": 1194.316038999983,
+        "maxSliceMs": 5.300749999994878,
+        "meshingMs": 43.27358499998081,
+        "changedVoxels": 39367,
+        "sampled": 154548,
+        "indexBytes": 17079004,
+        "patchBytes": 1854576,
+        "estimatedPeakBytes": 160353984,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 393
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "elastic",
+      "pass": 3,
+      "wallMs": 1654.109040999996,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.26073131124770405,
+      "previewRmsErrorVoxels": 0.045707256350523924,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.001958000000741,
+          "p95": 3.114624999994703,
+          "p99": 4.34870800000499
+        },
+        "wallMs": 1654.0418749999953,
+        "cpuMs": 1200.1709520000877,
+        "maxSliceMs": 5.850542000000132,
+        "meshingMs": 44.46500199998991,
+        "changedVoxels": 45080,
+        "sampled": 154548,
+        "indexBytes": 17093272,
+        "patchBytes": 1854576,
+        "estimatedPeakBytes": 161121112,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 395
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 1,
+      "wallMs": 1062.8503340000025,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.18608299721682964,
+      "previewRmsErrorVoxels": 0.0396748893950283,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0019999999931315,
+          "p95": 3.087666999999783,
+          "p99": 4.192792000001646
+        },
+        "wallMs": 1062.777666000009,
+        "cpuMs": 769.9495870000683,
+        "maxSliceMs": 4.636833000011393,
+        "meshingMs": 43.82554200004961,
+        "changedVoxels": 35072,
+        "sampled": 85184,
+        "indexBytes": 17069164,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 158747212,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 253
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 2,
+      "wallMs": 1042.237792,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.15404978368998803,
+      "previewRmsErrorVoxels": 0.03479428132020577,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0017920000100276,
+          "p95": 3.143666000003577,
+          "p99": 4.232124999994994
+        },
+        "wallMs": 1042.1679589999985,
+        "cpuMs": 759.6654919998837,
+        "maxSliceMs": 5.912208000008832,
+        "meshingMs": 42.873668000029284,
+        "changedVoxels": 34635,
+        "sampled": 85184,
+        "indexBytes": 17065884,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 159301568,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 249
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "rotate",
+      "pass": 3,
+      "wallMs": 1120.054999999993,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.15235027735873088,
+      "previewRmsErrorVoxels": 0.033801282811310375,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.001749999995809,
+          "p95": 3.1005420000001322,
+          "p99": 3.824084000007133
+        },
+        "wallMs": 1119.9805419999902,
+        "cpuMs": 810.9528859999118,
+        "maxSliceMs": 4.6091250000026776,
+        "meshingMs": 43.73170600006415,
+        "changedVoxels": 34655,
+        "sampled": 85184,
+        "indexBytes": 17070148,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 159877224,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 267
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 1,
+      "wallMs": 904.8925829999935,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.17005032151305785,
+      "previewRmsErrorVoxels": 0.0341556688994261,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0017920000100276,
+          "p95": 3.172458999993978,
+          "p99": 3.8785829999978887
+        },
+        "wallMs": 904.8200419999921,
+        "cpuMs": 659.3301670000073,
+        "maxSliceMs": 4.91279200000281,
+        "meshingMs": 43.86346099997172,
+        "changedVoxels": 34930,
+        "sampled": 85184,
+        "indexBytes": 17069164,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 158752132,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 216
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 2,
+      "wallMs": 1010.3198749999865,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.10968656103971282,
+      "previewRmsErrorVoxels": 0.027122506466259112,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0018750000017462,
+          "p95": 3.15479200000118,
+          "p99": 3.820417000009911
+        },
+        "wallMs": 1010.2033329999977,
+        "cpuMs": 733.8869990000821,
+        "maxSliceMs": 4.816625000006752,
+        "meshingMs": 43.72675099995104,
+        "changedVoxels": 34479,
+        "sampled": 85184,
+        "indexBytes": 17069656,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 159300332,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 241
+      }
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "mode": "twist",
+      "pass": 3,
+      "wallMs": 981.5326659999992,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "previewProbeCount": 512,
+      "previewMaxErrorVoxels": 0.10916494723750012,
+      "previewRmsErrorVoxels": 0.0255102995205135,
+      "degenerate": 0,
+      "maxSeamNormalDelta": 0,
+      "stats": {
+        "backend": "cooperative",
+        "waitMs": 0,
+        "slicePercentiles": {
+          "p50": 3.0019159999937983,
+          "p95": 3.1487920000072336,
+          "p99": 3.903707999998005
+        },
+        "wallMs": 981.4111249999987,
+        "cpuMs": 712.3496609998547,
+        "maxSliceMs": 5.52179199999955,
+        "meshingMs": 42.594748999981675,
+        "changedVoxels": 34469,
+        "sampled": 85184,
+        "indexBytes": 17065884,
+        "patchBytes": 1022208,
+        "estimatedPeakBytes": 159848392,
+        "dirtyChunks": 64,
+        "grew": false,
+        "slices": 233
+      }
+    }
+  ]
+}

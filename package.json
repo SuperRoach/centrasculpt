@@ -15,7 +15,9 @@
     "benchmark:shapes": "node scripts/benchmark-shapes.mjs",
     "benchmark:stamps": "node scripts/benchmark-stamps.mjs",
     "test:changed": "node scripts/test.mjs --changed",
-    "test:worker": "node scripts/test.mjs --worker persistent-move rotation-move move-worker move-precision"
+    "test:worker": "node scripts/test.mjs --worker persistent-move rotation-move move-worker move-precision",
+    "benchmark:quality": "node scripts/benchmark-mesh-quality.mjs outputs/phase-3-quality-after.json",
+    "benchmark:quality:move": "node scripts/benchmark-quality-move.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"
