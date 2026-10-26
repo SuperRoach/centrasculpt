@@ -1,3 +1,4 @@
+import type {ToolPreferences} from './tool-preferences';
 import type { ProjectDisplayPreferences } from './display-preferences';
 import type { VolumeStore } from './volume-store';
 import { identityTransform, validateTransform } from './transform';
@@ -83,6 +84,7 @@ export class LayerStack {
   }
 }
 export class SculptProject {
+  toolPreferences?:ToolPreferences;
   displayPreferences?:ProjectDisplayPreferences;
   readonly id: string;
   constructor(readonly layerStack: LayerStack,public settings: ProjectSettings,public name='Untitled',id=newId()) {this.id=validateId(id);validateName(name);}

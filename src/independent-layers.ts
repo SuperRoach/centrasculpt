@@ -11,7 +11,7 @@ import {validateShapeDefinition} from './shapes';
 import {SculptMetrics} from './sculpt-metrics';
 import {applyRenderStyle} from './render-style';
 import {prepareStamp} from './shape-stamp';
-import { Group, MeshStandardMaterial } from 'three';
+import { Group, Mesh, MeshStandardMaterial } from 'three';
 import type { Bounds, BrushMode, Point3 } from './sdf';
 import {reflectPoint,validateMirrorPlane} from './sdf';
 import type {MirrorPlane} from './sdf';
@@ -87,6 +87,8 @@ export class IndependentLayers {
   get deforming():boolean{return this.movePending;}
   lastMoveStats:MoveCommitStats|null=null;
   private disposed=false;
+  private committedRevision=0;
+  backgroundBytes=0;interruptBackground:()=>void=()=>{};
   private past: TimelineEntry[]=[];
   private future: TimelineEntry[]=[];
   private transformSession:{layerId:string;before:VolumeTransform}|null=null;
@@ -105,7 +107,10 @@ export class IndependentLayers {
   }
   /** Lower bound: current source grids+scratch, source geometry and retained payloads.
    * Includes retained Bake runtimes; excludes pending Maps, derived CSG and JS/GPU overhead. */
-  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}return bytes+this.moveStagingBytes;}
+  get recoveryReady():boolean{return !this.disposed&&!this.drawing&&!this.transforming&&!this.previewing&&!this.deforming&&!this.baking&&!this.pendingChunks;}
+  recoveryKey():string{return JSON.stringify([this.project.id,this.committedRevision,this.project.activeLayerId,this.project.layerStack.layers.map(l=>[l.metadata(),l.volume.dimensions,l.volume.latticeMin])]);}
+  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}return {voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
+  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}return bytes+this.moveStagingBytes+this.backgroundBytes;}
   get pendingChunks():number{let count=0;for(const r of this.runtimes.values())count+=r.mesher.pendingChunks;return count;}
   get active(): LayerRuntime {return this.runtime(this.project.activeLayerId);}
   runtime(id: string): LayerRuntime {const runtime=this.runtimes.get(id);if(!runtime)throw new Error('Layer runtime does not exist.');return runtime;}
@@ -113,7 +118,7 @@ export class IndependentLayers {
   get redoCount(): number {return this.future.length;}
   get transforming():boolean {return this.transformSession!==null;}
   get drawing(): boolean {return this.strokeLayer!==null;}
-  private assertAvailable():void {if(this.disposed)throw new Error('Project is closed.');if(this.previewOwner)throw new Error('Finish the Move preview first.');if(this.movePending)throw new Error('Wait for Move reconstruction to finish or cancel it.');if(this.baking)throw new Error('Wait for Bake to finish or cancel it.');}
+  private assertAvailable():void {this.interruptBackground();if(this.disposed)throw new Error('Project is closed.');if(this.previewOwner)throw new Error('Finish the Move preview first.');if(this.movePending)throw new Error('Wait for Move reconstruction to finish or cancel it.');if(this.baking)throw new Error('Wait for Bake to finish or cancel it.');}
   private editableRuntime(id: string): LayerRuntime {
     this.assertAvailable();
     assertIndependentLayerVolumes(this.project.layerStack.layers);
@@ -194,7 +199,7 @@ export class IndependentLayers {
     if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();this.strokePoint=null;
     const dirty=runtime.history.cancel((index,before,after)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0)));this.composite.invalidateLayer(runtime.layer,dirty);const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
-  private recordCommit(id: string): void {
+  private recordCommit(id: string): void {this.committedRevision++;
     this.discardFuture();
     this.past.push({kind:'voxels',layerId:id});
     // Sparse history can evict old payloads. Drop matching timeline entries from the oldest end.
@@ -231,7 +236,7 @@ export class IndependentLayers {
   }
   undo(redo=false): string|null {
     this.assertAvailable();this.finishStroke();this.finishTransform();const from=redo?this.future:this.past,to=redo?this.past:this.future,entry=from.at(-1);if(!entry)return null;
-    if(entry.kind==='bake'){this.replayBake(entry,redo);from.pop();to.push(entry);return this.project.activeLayerId;}
+    if(entry.kind==='bake'){this.replayBake(entry,redo);this.committedRevision++;from.pop();to.push(entry);return this.project.activeLayerId;}
     const layer=this.project.layerStack.get(entry.layerId);
     if(entry.kind==='order')this.restoreOrder(redo?entry.after:entry.before);
     else if(entry.kind==='operation') {if(layer.locked)throw new Error('Unlock the layer to change its operation.');layer.operation=redo?entry.after:entry.before;}
@@ -241,7 +246,7 @@ export class IndependentLayers {
       else {const record=(index:number,before:number,after:number)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0));const dirty=redo?runtime.history.redo(record):runtime.history.undo(record);if(!dirty)throw new Error('History payload unavailable.');runtime.rebuild();this.composite.invalidateLayer(layer,dirty);}
     }
     this.syncPresentation();
-    from.pop();to.push(entry);this.project.layerStack.select(entry.layerId);return entry.layerId;
+    from.pop();to.push(entry);this.committedRevision++;this.project.layerStack.select(entry.layerId);return entry.layerId;
   }
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
   stampShape(value:unknown):boolean {
@@ -328,7 +333,7 @@ export class IndependentLayers {
   private replaceVolume(previous: LayerRuntime,volume: VolumeStore): void {
     // Prepare separately, then retain the original SdfLayer identity/metadata on commit.
     const next=new LayerRuntime(previous.layer,this.neutral,volume);
-    previous.layer.volume=volume;
+    this.committedRevision++;previous.layer.volume=volume;
     this.group.remove(previous.surface.group);previous.dispose();this.install(next);
     for(const entry of [...this.past,...this.future])if(entry.kind==='bake'&&entry.layerId===previous.layer.id)entry.runtime=next;
     this.past=this.past.filter(entry=>entry.layerId!==previous.layer.id||entry.kind!=='voxels');this.future=this.future.filter(entry=>entry.layerId!==previous.layer.id||entry.kind!=='voxels');this.syncPresentation();
@@ -382,7 +387,7 @@ export class IndependentLayers {
       if(validated.hideSources)for(const id of plan.sourceIds)this.project.layerStack.get(id).visible=false;
       else this.viewMode='separate';
       this.discardFuture();this.syncPresentation();this.composite.invalidate();
-      this.past.push({kind:'bake',layerId:layer.id,runtime:candidate,before,after:this.bakeState(),index:this.project.layerStack.layers.findIndex(l=>l.id===layer.id)});
+      this.committedRevision++;this.past.push({kind:'bake',layerId:layer.id,runtime:candidate,before,after:this.bakeState(),index:this.project.layerStack.layers.findIndex(l=>l.id===layer.id)});
       this.lastBakeStats={samplingMs,meshingMs,totalMs:performance.now()-start,resolution:plan.resolution,triangles:candidate.triangles,worldStep:plan.worldStep,gridBytes:plan.gridBytes};
       candidate=undefined;return layer;
     }finally{candidate?.dispose();this.baking=false;}
@@ -425,7 +430,7 @@ export class IndependentLayers {
       history.publish();adopt();runtime.volume=runtime.layer.volume=next;runtime.mesher=mesher;runtime.surface=stagedSurface;
       this.group.children[slot]=stagedSurface.group;stagedSurface.group.parent=this.group;sourceSurface.group.parent=null;
       runtime.triangles=mesher.triangles;runtime.totalChunks=mesher.allocatedChunks;runtime.lastChanged=dirtyChunks;runtime.lastMeshMs=meshMs;if(plan){runtime.expansions++;runtime.lastExpansionMs=performance.now()-start;}
-      this.past=past;this.future=future;this.lastMoveStats=stats;invalidateComposite();mesher=undefined;stagedSurface=undefined;
+      this.committedRevision++;this.past=past;this.future=future;this.lastMoveStats=stats;invalidateComposite();mesher=undefined;stagedSurface=undefined;
       // Source geometries still shared with the candidate changed ownership;
       // only superseded buffers are disposed. Cleanup cannot undo a publication.
       try{sourceMesher.dispose();sourceSurface.clear();for(const e of discarded)if(e.kind==='bake'){e.runtime.dispose();this.display.remove(this.project.id,e.layerId);}}catch(error){console.warn('Move committed; deferred resource cleanup failed',error);}

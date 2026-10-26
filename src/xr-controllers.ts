@@ -41,7 +41,8 @@ export class XRControllers {
  private readonly resources:{dispose:()=>void}[]=[];
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly hits:Intersection<Object3D>[]=[];
  private readonly event=(event:XRInputSourceEvent)=>{if(this.session?.visibilityState==='visible')this.input.semantic(event.inputSource,event.type.startsWith('select')?'trigger':'grip',event.type.endsWith('start'));};
- private readonly visibility=()=>{if(this.session?.visibilityState!=='visible'){this.shortcuts.reset();this.options.menus?.close();this.options.stroke?.cancel();this.options.alternate?.cancel();this.options.sizing?.reset();this.options.selection?.cancel();this.input.suspend();this.grab?.cancel();this.layerGrab?.cancel();this.root.visible=false;}};
+ private readonly visibility=()=>{if(this.session?.visibilityState!=='visible')this.suspend();};
+ suspend():void{this.shortcuts.reset();this.options.menus?.close();this.options.stroke?.cancel();this.options.alternate?.cancel();this.options.sizing?.reset();this.options.selection?.cancel();this.input.suspend();this.grab?.cancel();this.layerGrab?.cancel();this.root.visible=false;}
  private readonly ended=()=>this.stop();
  inputMs=0;private resetNoticeUntil=0;
  constructor(manager:Pick<WebXRManager,'getController'|'getControllerGrip'>,private readonly root:Group,readonly roles:XRControllerRoles,private readonly panel?:XRDiagnostics,private readonly changed:()=>void=()=>{},private readonly options:{alternate?:XRAlternateTool;selection?:XRLayerSelection;sizing?:XRAnalogToolControl;stroke?:XRStrokeInteraction;toolMode?:()=>EditorTool;menus?:XRMenuInteraction;shortcuts?:XRShortcutOptions;workspace?:Object3D;layers?:()=>IndependentLayers;models?:ControllerModels;resetView?:()=>boolean;setPerformance?:(enabled:boolean)=>void}={}){

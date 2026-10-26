@@ -17,7 +17,7 @@ export function createUI() {
   document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <header><a class="brand" href="./" aria-label="Centra Sculpt home"><span class="brand-mark" aria-hidden="true">◎</span><span>Centra <em>Sculpt</em></span></a><span class="subtitle">A SPACE TO SHAPE</span><div id="xr-entry-slot"></div><span class="phase"><i></i> LOCAL STUDIO</span></header>
     <main><aside><div class="eyebrow">YOUR TOOLKIT</div><h1>Make room<br>for an idea.</h1><p class="intro">Build up. Carve away.<br>See where the form takes you.</p>
-    <div id="xr-diagnostics-slot"></div><div id="shape-library-slot"></div>
+    <div id="recovery-slot"></div><div id="xr-diagnostics-slot"></div><div id="shape-library-slot"></div>
     <section><label>SCULPT BRUSH</label><div class="modes"><button id="add" class="active" aria-pressed="true"><b>＋</b> Add</button><button id="subtract" aria-pressed="false"><b>−</b> Subtract</button><button id="smooth" aria-pressed="false"><b>≈</b> Smooth</button></div>
     <div class="range-label"><label for="radius">BRUSH RADIUS · WORLD</label><output id="radius-value">0.220</output></div><input id="radius" type="range" min="${BRUSH_RADIUS_LIMITS.min}" max="${BRUSH_RADIUS_LIMITS.max}" step="0.01" value="0.22"/><div class="range-ends"><span>Fine detail</span><span>Broad strokes</span></div>
     <div class="range-label strength-label"><label for="strength">BRUSH STRENGTH</label><output id="strength-value">35%</output></div><input id="strength" type="range" min="0.01" max="1" step="0.01" value="0.35"/><div class="range-ends"><span>Gentle</span><span>Strong</span></div>

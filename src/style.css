@@ -45,3 +45,9 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 #export-quality { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #d7dccc; border-radius: 7px; color: inherit; background: #fafbf6; font: inherit; font-size: 12px; }
 .actions label[for="export-quality"] { margin: 16px 0 8px; }
 #export-estimate { text-align: left; font-size: 11px; line-height: 1.5; }
+
+.recovery-panel { margin-bottom: 18px; padding: 12px 0; }
+.recovery-panel p,.recovery-panel output { font-size: 11px; line-height: 1.5; display: block; overflow-wrap: anywhere; }
+.recovery-panel input[type="checkbox"] { width: auto; margin: 0 6px 0 0; }
+.recovery-panel select,.recovery-panel button { width: 100%; margin: 5px 0; min-height: 36px; }
+.recovery-panel summary { font-size: 10px; cursor: pointer; }

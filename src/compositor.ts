@@ -97,6 +97,8 @@ export class BooleanComposite {
     this.version++;this.lastEdit=performance.now();
   }
   get failed():boolean {return this.failedVersion===this.version;}
+  get busy():boolean{return !!this.running;}
+  get trackedBytes():number{return (this.volume?this.volume.dimensions.reduce((a,b)=>a*b,1)*8:0)+(this.mesher?.ownedGeometryBytes??0);}
   get pending():boolean {return this.full||this.regions.length>0;}
   /** Debounced metadata/stroke preview. UI calls without awaiting; only one job can run. */
   tick():Promise<boolean>|null {this.syncMetadata();if(this.disposed||this.running||this.failedVersion===this.version||!this.pending||performance.now()-this.lastEdit<120)return null;return this.rebuild();}

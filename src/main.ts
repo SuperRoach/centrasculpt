@@ -1,3 +1,9 @@
+import {RecoveryController} from './recovery';
+import {IndexedRecoveryStore,type RecoveryRecord} from './recovery-store';
+import {encodeRecovery} from './recovery-client';
+import {checksum} from './project-snapshot';
+import {AppLifecycle} from './app-lifecycle';
+import {StabilityMetrics} from './stability-metrics';
 import {uniformScale} from './transform';
 import {ClayStrokeSession} from './clay-stroke-session';
 import {XRBrushPreview} from './xr-brush-preview';
@@ -38,9 +44,9 @@ let renderEmulatorFrame:((time:number)=>void)|null=null;
 if(import.meta.env.DEV&&window.isSecureContext&&new URLSearchParams(location.search).get('xrEmulate')==='quest3'){
  try{const {installQuestEmulator}=await import('./xr-emulator');renderEmulatorFrame=await installQuestEmulator();}catch(error){console.error('Quest emulator setup failed; desktop editor retained.',error);}
 }
-const ui=createUI(),display=new LayerDisplayPreferences();
+const ui=createUI();let display=new LayerDisplayPreferences();
 let layers=new IndependentLayers(createBaseProject(new SDFVolume(DEFAULT_RESOLUTION),{mode:'add',radius:0.22,strength:0.35,hardness:0,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}}),display);
-let loadingProject=false;
+let loadingProject=false;let recovery:RecoveryController|undefined;const stabilityMetrics=new StabilityMetrics();let stabilityText='';
 let xrExperience:XRExperience|undefined;
 const xrBlocked=()=>xrExperience?.blocking??false;
 const input=new InputOwnership();
@@ -158,7 +164,7 @@ renderer.domElement.addEventListener('pointerup',event=>{
   if(definition)applyShapeStamp(definition);if(activePointer!==null)stopSculpt(true);else if(!desktopStroke.active)stop();
 });
 renderer.domElement.addEventListener('pointercancel',stop);renderer.domElement.addEventListener('lostpointercapture',()=>{if(activePointer!==null)stop();});
-window.addEventListener('blur',stop);
+// AppLifecycle resolves suspension/blur without committing partial gestures.
 function changeHistory(redo:boolean) {
   if(loadingProject||ui.modalOpen||xrBlocked())return;
   stop();try {const id=layers.undo(redo);if(id){cursor.visible=false;ui.status(`${redo?'Redone':'Undone'} on ${layers.active.layer.name}`);}refresh();}
@@ -287,24 +293,26 @@ document.getElementById('apply-resolution')!.addEventListener('click',()=>{
   void heavy('Resampling only the active layer…',()=>{const name=layers.active.layer.name,start=performance.now();layers.resampleActive(requested);ui.projectMessage(`${name}: ${requested}³ in ${(performance.now()-start).toFixed(0)} ms. Only this layer’s voxel history cleared; transforms retained. Other volumes unchanged.`);});
 });
 function download(data:Blob,name:string){const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-document.getElementById('save-project')!.addEventListener('click',()=>{
-  if(loadingProject||xrBlocked())return;stop();try {
-    layers.project.settings={...ui.settings,camera:{position:camera.position.toArray(),target:controls.target.toArray()}};
-    download(new Blob([saveSculptProject(layers.project,display.snapshot(layers.project.id,layers.project.layerStack.layers))],{type:'application/octet-stream'}),'sculpture.form');ui.projectMessage('All independent layers, layer colours and display mode saved.');
-  }catch(error){ui.projectMessage(`Save failed: ${message(error)}`,true);}
-});
+document.getElementById('save-project')!.addEventListener('click',()=>void(async()=>{
+  if(loadingProject||xrBlocked())return;stop();loadingProject=true;ui.projectBusy(true);recovery?.cancelJob();
+  try{await recovery?.settle();await paint();layers.project.toolPreferences=editorTools?.snapshotPreferences();layers.project.settings={...ui.settings,camera:{position:camera.position.toArray(),target:controls.target.toArray()}};download(new Blob([saveSculptProject(layers.project,display.snapshot(layers.project.id,layers.project.layerStack.layers))],{type:'application/octet-stream'}),'sculpture.form');ui.projectMessage('All independent layers, display and tool preferences saved. Recovery data stays separate.');}
+  catch(error){ui.projectMessage(`Save failed: ${message(error)}`,true);}
+  finally{loadingProject=false;ui.projectBusy(false);refresh();}
+})());
 const projectFile=document.querySelector<HTMLInputElement>('#project-file')!;
 document.getElementById('open-project')!.addEventListener('click',()=>{if(loadingProject||xrBlocked())return;stop();projectFile.value='';projectFile.click();});
-async function openProjectFile(file:File):Promise<void>{
-  if(loadingProject||xrBlocked())return;
+async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:string):Promise<boolean>{
+  if(loadingProject||xrBlocked())return false;
+  recovery?.cancelJob();xrExperience?.controllers.suspend();editorTools?.clearMoveSelection();
   stop();loadingProject=true;ui.projectBusy(true);syncTransformUI();transformTools?.sync();ui.projectMessage('Validating all layer data…');
   try {
+    await recovery?.settle();
     if(file.size>MAX_PROJECT_BYTES)throw new Error('Project file exceeds the supported size limit.');
-    const project=openSculptProject(await file.arrayBuffer());await paint();const candidate=new IndependentLayers(project,display);
-    candidate.viewMode=layers.viewMode;xrExperience!.rig.sculptureRoot.remove(layers.group,layers.composite.group);layers.dispose();layers=candidate;shapeGhost.reset();layers.composite.setQuality(Number(document.querySelector<HTMLSelectElement>('#composite-quality')!.value));xrExperience!.rig.sculptureRoot.add(layers.group,layers.composite.group);syncView();ui.setSettings(project.settings);
+    const project=openSculptProject(buffer??await file.arrayBuffer());if(expectedProjectId&&project.id!==expectedProjectId)throw new Error('Recovery project identity does not match its record.');await paint();const candidate=new IndependentLayers(project,new LayerDisplayPreferences());
+    candidate.viewMode=layers.viewMode;xrExperience!.rig.sculptureRoot.remove(layers.group,layers.composite.group);layers.dispose();layers=candidate;display=candidate.display;layers.interruptBackground=()=>recovery?.cancelJob();shapeGhost.reset();layers.composite.setQuality(Number(document.querySelector<HTMLSelectElement>('#composite-quality')!.value));xrExperience!.rig.sculptureRoot.add(layers.group,layers.composite.group);syncView();ui.setSettings(project.settings);editorTools?.restorePreferences(project.toolPreferences);
     controls.dispose();camera.position.fromArray(project.settings.camera.position);controls=createCameraControls();controls.target.fromArray(project.settings.camera.target);controls.update();
-    cursor.visible=false;pointerInside=false;lastRebuild=performance.now();ui.projectMessage(`Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`);ui.status('Project opened');
-  }catch(error){ui.projectMessage(`Open failed: ${message(error)} Current project kept.`,true);}
+    cursor.visible=false;pointerInside=false;lastRebuild=performance.now();ui.projectMessage(`Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`);ui.status('Project opened');recovery?.replaceProject();return true;
+  }catch(error){ui.projectMessage(`Open failed: ${message(error)} Current project kept.`,true);return false;}
   finally{loadingProject=false;refresh();ui.projectBusy(false);projectFile.value='';}
 }
 projectFile.addEventListener('change',()=>{const file=projectFile.files?.[0];if(file)void openProjectFile(file);});
@@ -318,9 +326,10 @@ document.getElementById('export-quality')!.addEventListener('change',exportEstim
 async function exportGlb(scope:'visible'|'selected'|'composite') {
   if(loadingProject||xrBlocked())return;stop();
   if(layers.deforming||layers.previewing){ui.projectMessage('Finish or cancel Move before exporting.',true);return;}
+  recovery?.cancelJob();
   loadingProject=true;exportAbort=new AbortController();const signal=exportAbort.signal;ui.projectBusy(true);syncTransformUI();transformTools?.sync();cancelExport.hidden=false;
   try {
-    await paint();let sources:ExportSource[];
+    await recovery?.settle();if(signal.aborted)throw new Error('Export cancelled.');await paint();let sources:ExportSource[];
     if(scope==='composite'){
       ui.projectMessage('Evaluating Boolean result at the existing quality cap…');
       // Abort the export wait; the shared preview scheduler may finish its own cache.
@@ -352,20 +361,38 @@ const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,la
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
- tools:editorTools,layers:()=>layers,historyChanged:()=>{cursor.visible=false;refresh();},
+ tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
  sculptureInfo:()=>({activeResolution:volumeLabel(layers.active.layer.volume),resolutions:layers.project.layerStack.layers.map(layer=>`${volumeLabel(layer.volume)}`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
- canEnter:()=>!loadingProject&&!ui.modalOpen&&(!booleanPreview||!layers.composite.pending),hidden:[shapeGhost.group,cursor,grid],
+ blockedReason:()=>!recovery?.initialized?'Checking local recovery storage…':recovery.blocked?'Choose Restore or Discard recovery on desktop before entering VR.':'Finish the current project operation before entering VR.',
+ canEnter:()=>!!recovery?.initialized&&(!recovery.blocked||!recovery.enabled)&&!loadingProject&&!ui.modalOpen&&(!booleanPreview||!layers.composite.pending),hidden:[shapeGhost.group,cursor,grid],
  lockDesktop:blocked=>{
   if(blocked===desktopLocked)return;desktopLocked=blocked;
-  if(blocked){stop();savedTarget=controls.target.clone();input.suspended=true;controls.enabled=false;pointerInside=false;viewportTools?.close();
+  if(blocked){recovery?.cancelJob();layers.project.settings={...ui.settings,camera:{position:camera.position.toArray(),target:controls.target.toArray()}};stop();savedTarget=controls.target.clone();input.suspended=true;controls.enabled=false;pointerInside=false;viewportTools?.close();
    for(const element of document.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('#app button,#app input,#app select')){if(element.id==='enter-vr'||element.id==='xr-tool-hand'||element.id==='xr-show-diagnostics'||element.id==='xr-controller-display'||element.id==='xr-hints'||element.id==='xr-show-performance'||element.id==='xr-reset-workspace')continue;disabledBeforeXR.set(element,element.disabled);element.disabled=true;}
    transformTools?.sync();ghostRotation?.sync();
   }else{input.suspended=false;controls.enabled=input.cameraEnabled;for(const [element,disabled]of disabledBeforeXR)element.disabled=disabled;disabledBeforeXR.clear();pointerInside=false;refresh();resizeDesktop();}
   document.body.classList.toggle('xr-blocked',blocked);
  },
- restored:()=>{controls.dispose();controls=createCameraControls();controls.target.copy(savedTarget);controls.enabled=false;pointerInside=false;previous=performance.now();},
+ restored:()=>{queueMicrotask(()=>void recovery?.tick(Date.now(),true));controls.dispose();controls=createCameraControls();controls.target.copy(savedTarget);controls.enabled=false;pointerInside=false;previous=performance.now();},
 },!!renderEmulatorFrame);
 void xrExperience.check();
+const recoveryPanel=document.getElementById('recovery-slot')!;
+recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS</summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection"></select><p>Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh.</p><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></details><p>Stored only in this browser/origin. Not a manual save or cloud backup.</p><details><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
+const recoveryStatus=document.getElementById('recovery-status')!,recoveryAvailable=document.getElementById('recovery-available')!,recoverySelect=document.querySelector<HTMLSelectElement>('#recovery-selection')!,autosaveEnabled=document.querySelector<HTMLInputElement>('#autosave-enabled')!,recoveryConfirm=document.getElementById('recovery-confirm')!;
+let recoveryAction:'restore'|'discard'|null=null,recoveryListKey='',recoveryChoice='',recoveryWasBlocked=false,restoringRecovery=false;
+const recoveryReady=()=>!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active;
+const recoveryKey=()=>JSON.stringify([layers.recoveryKey(),ui.settings,display.snapshot(layers.project.id,layers.project.layerStack.layers),editorTools?.snapshotPreferences()]);
+function updateRecoveryUI():void{if(!recovery)return;recoveryStatus.textContent=recovery.status();autosaveEnabled.checked=recovery.enabled;autosaveEnabled.disabled=!recovery.initialized||xrBlocked();const key=JSON.stringify(recovery.records.map(r=>[r.id,r.createdAt]));if(key!==recoveryListKey){const selected=recoverySelect.value;recoveryListKey=key;recoverySelect.replaceChildren(...recovery.records.map(r=>new Option(`${r.projectName} · ${new Date(r.createdAt).toLocaleString()} · ${(r.bytes/1048576).toFixed(1)} MiB`,r.id)));if(recovery.records.some(r=>r.id===selected))recoverySelect.value=selected;}recoveryAvailable.hidden=!recovery.records.length;if(recoveryWasBlocked!==recovery.blocked){(recoveryAvailable as HTMLDetailsElement).open=recovery.blocked;recoveryWasBlocked=recovery.blocked;}for(const id of ['restore-recovery','discard-recovery','confirm-recovery'])document.querySelector<HTMLButtonElement>(`#${id}`)!.disabled=loadingProject||xrBlocked()||!layers.recoveryReady;}
+recovery=new RecoveryController(new IndexedRecoveryStore(undefined,import.meta.env.DEV&&new URLSearchParams(location.search).get('recoveryFixture')==='lab'?'centra-sculpt-recovery-test':'centra-sculpt-recovery'),{key:recoveryKey,ready:recoveryReady,project:()=>layers.project,changed:updateRecoveryUI,reserve:bytes=>{layers.backgroundBytes=bytes;},encode:signal=>{const source=layers,key=recoveryKey();return encodeRecovery(source,{...ui.settings,camera:{position:(xrBlocked()?layers.project.settings.camera.position:camera.position.toArray()),target:(xrBlocked()?layers.project.settings.camera.target:controls.target.toArray())}},display.snapshot(source.project.id,source.project.layerStack.layers),editorTools?.snapshotPreferences(),signal,()=>layers===source&&recoveryKey()===key&&recoveryReady());}});
+layers.interruptBackground=()=>recovery?.cancelJob();void recovery.init();
+autosaveEnabled.addEventListener('change',()=>void recovery!.setEnabled(autosaveEnabled.checked));
+for(const action of ['restore','discard'] as const)document.getElementById(`${action}-recovery`)!.addEventListener('click',()=>{recovery?.cancelJob();recoveryAction=action;recoveryChoice=recoverySelect.value;recoveryConfirm.hidden=false;document.getElementById('recovery-confirm-text')!.textContent=action==='restore'?'Replace the currently open project with this checkpoint?':'Permanently discard all local recovery checkpoints? Manual files are kept.';});
+document.getElementById('cancel-recovery-action')!.addEventListener('click',()=>{recoveryAction=null;recoveryConfirm.hidden=true;});
+document.getElementById('confirm-recovery')!.addEventListener('click',()=>void(async()=>{if(loadingProject||xrBlocked()||!layers.recoveryReady)return;const action=recoveryAction;recoveryAction=null;recoveryConfirm.hidden=true;if(action==='discard'){await recovery!.discard();return;}if(action!=='restore')return;const source=layers,key=layers.recoveryKey();restoringRecovery=true;try{const {record,data}=await recovery!.store.read(recoveryChoice);if(layers!==source||layers.recoveryKey()!==key||loadingProject||xrBlocked()||!layers.recoveryReady)throw new Error('Recovery restore cancelled: current project changed. Current work kept.');if(checksum(data)!==record.checksum)throw new Error('Recovery checksum failed; checkpoint kept for inspection/discard.');if(await openProjectFile(new File([],`Recovery ${record.projectName}.form`),data,record.projectId)){recovery!.restored(record);ui.projectMessage('Recovery restored. Geometry, layers and tool preferences kept; Undo starts fresh. Save a manual project when ready.');}}catch(error){recovery!.warning=message(error);}finally{restoringRecovery=false;updateRecoveryUI();}})());
+function interruptSession(_reason:string):void{recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
+const lifecycle=new AppLifecycle(document,window,interruptSession,()=>{previous=performance.now();pointerInside=false;void recovery?.tick(Date.now(),true);});
+const recoveryTimer=setInterval(()=>{if(document.visibilityState==='visible'){const stats=stabilityMetrics.sample(layers,Date.now()),heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;stabilityText=`History ${(stats.historyBytes/1048576).toFixed(1)} MiB · recovery ${!recovery?.enabled?'off':recovery?.blocked?'choice needed':recovery?.warning?'warning':recovery?.active?'working':recovery?.lastSuccess?'saved':'waiting'} ${(recovery?.lastMs??0).toFixed(0)} ms`;document.getElementById('stability-status')!.textContent=`${stats.chunks} allocated / ${stats.meshChunks} mesh chunks · ${stats.vertices.toLocaleString()} vertices / ${stats.triangles.toLocaleString()} triangles. Grid ${(stats.voxelBytes/1048576).toFixed(1)} MiB · history ${(stats.historyBytes/1048576).toFixed(1)} MiB · derived Boolean ${(stats.compositeBytes/1048576).toFixed(1)} MiB. Pending Move ${stats.pendingMoveJobs} / Bake ${stats.pendingBakeJobs} / export ${Number(!!exportAbort)} / recovery ${Number(!!recovery?.active)}. Checkpoint ${((recovery?.lastBytes??0)/1048576).toFixed(1)} MiB / ${(recovery?.lastMs??0).toFixed(0)} ms, snapshot copy ${(recovery?.lastCopyMs??0).toFixed(1)} ms. Tracked ${(stats.trackedBytes/1048576).toFixed(1)} MiB (excludes JS/GPU overhead) · JS heap ${heap===undefined?'unavailable':(heap/1048576).toFixed(1)+' MiB'} · renderer ${renderer.info.memory.geometries} geometries / ${renderer.info.memory.textures} textures.${stats.pressure?' Resource pressure: save manually before further large edits.':''}`;void recovery?.tick();updateRecoveryUI();}},500);
+import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
 function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w=ui.viewport.clientWidth,h=ui.viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();

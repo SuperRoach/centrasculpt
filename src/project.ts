@@ -1,3 +1,4 @@
+import {validateToolPreferences} from './tool-preferences';
 import {requireLegacyCubicGrid,isLegacyCubicGrid,volumeSampleCount} from './volume-store';
 import {BRUSH_RADIUS_LIMITS} from './brush-settings';
 import {validateProjectDisplay,type ProjectDisplayPreferences} from './display-preferences';
@@ -122,7 +123,7 @@ export function saveSculptProject(project: SculptProject,display:ProjectDisplayP
   // Revalidate identity/order/selection after metadata may have been edited by clients.
   new LayerStack([...layers],project.activeLayerId);
   const displayPreferences=display===undefined?undefined:validateProjectDisplay(display,layers.map(layer=>layer.id));
-  const metadata=new TextEncoder().encode(JSON.stringify({displayPreferences,id:validateId(project.id),name:validateName(project.name),activeLayerId:project.activeLayerId,settings,voxelEncoding:'float32-le',layers:descriptors}));
+  const metadata=new TextEncoder().encode(JSON.stringify({toolPreferences:project.toolPreferences===undefined?undefined:validateToolPreferences(project.toolPreferences),displayPreferences,id:validateId(project.id),name:validateName(project.name),activeLayerId:project.activeLayerId,settings,voxelEncoding:'float32-le',layers:descriptors}));
   if(metadata.length>65536)throw new Error('Project metadata exceeds the supported limit.');
   const buffer=new ArrayBuffer(16+metadata.length+offset*4),bytes=new Uint8Array(buffer),view=new DataView(buffer);
   bytes.set(MAGIC);view.setUint32(8,layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
@@ -167,6 +168,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
   });
   if(buffer.byteLength!==16+length+expectedOffset*4)throw new Error('Unexpected trailing voxel data.');
   const project=new SculptProject(new LayerStack(layers,active),settings,name,id);
+  if(metadata.toolPreferences!==undefined)project.toolPreferences=validateToolPreferences(metadata.toolPreferences);
   if(metadata.displayPreferences!==undefined)project.displayPreferences=validateProjectDisplay(metadata.displayPreferences,layers.map(layer=>layer.id));
   return project;
 }

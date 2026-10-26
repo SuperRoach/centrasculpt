@@ -1,3 +1,4 @@
+import {defaultToolPreferences,validateToolPreferences,type ToolPreferences} from './tool-preferences';
 import {BRUSH_RADIUS_LIMITS} from './brush-settings';
 import {ClayPathControls} from './clay-path';
 import type {IndependentLayers} from './independent-layers';
@@ -33,6 +34,9 @@ export class EditorToolState {
  readonly path=new ClayPathControls();
  readonly stampRotation:[number,number,number]=[0,0,0];
  constructor(readonly port:EditorToolPort){}
+ snapshotPreferences():ToolPreferences{return validateToolPreferences({symmetry:this.port.layers().symmetry,path:this.path,move:this.move,alternateTool:this.alternateTool,stampRotation:this.stampRotation});}
+ restorePreferences(value?:unknown):void{const p=value===undefined?defaultToolPreferences():validateToolPreferences(value);Object.assign(this.path,p.path);Object.assign(this.move,p.move);Object.assign(this.port.layers().symmetry,p.symmetry);this.alternateTool=p.alternateTool;this.stampRotation.splice(0,3,...p.stampRotation);}
+
  setStampScale(value:number):boolean {
   if(this.busy||this.active!=='stamp'||!Number.isFinite(value))return false;
   const shape=this.port.shape,stack=this.port.layers().project.layerStack;if(shape.availability(stack))return false;

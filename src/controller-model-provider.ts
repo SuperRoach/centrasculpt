@@ -18,15 +18,16 @@ export class FactoryControllerModelProvider implements ControllerModelProvider {
    this.pending.add(cancel);
    // The factory's supplied asset error callback throws asynchronously. Intercept failures instead.
    const loader=new GLTFLoader(manager),baseLoad=loader.load.bind(loader);
-   loader.load=(url,onLoad,onProgress)=>{if(settled)return;return baseLoad(url,asset=>{this.collect(asset.scene);if(!settled)onLoad(asset);},onProgress,error=>fail(error));};
+   loader.load=(url,onLoad,onProgress)=>{if(settled)return;return baseLoad(url,asset=>{if(settled){this.releaseObject(asset.scene);return;}this.collect(asset.scene);try{onLoad(asset);}catch(error){this.releaseObject(asset.scene);fail(error);}},onProgress,error=>fail(error));};
    const factory=new XRControllerModelFactory(loader,()=>{
     if(settled)return;settled=true;clearTimeout(timer);this.pending.delete(cancel);this.collect(model);
     const motion=model.motionController as {id:string;assetUrl:string;xrInputSource:XRInputSource};
-    resolve({object:model,profile:motion.id,assetUrl:motion.assetUrl,bind:s=>{motion.xrInputSource=s;}});
+    resolve({object:model,profile:motion.id,assetUrl:motion.assetUrl,bind:s=>{motion.xrInputSource=s;},dispose:()=>this.releaseObject(model)});
    });factory.setPath(this.path);const model=factory.createControllerModel(proxy);model.name=`Profile controller ${source.handedness}`;
    proxy.dispatchEvent({type:'connected',data:source} as never);
   });
  }
  private collect(object:Object3D):void{object.traverse(child=>{const mesh=child as Object3D&{geometry?:BufferGeometry;material?:Material|Material[]};if(mesh.geometry){if(this.disposed)mesh.geometry.dispose();else this.resources.add(mesh.geometry);}const materials=mesh.material?(Array.isArray(mesh.material)?mesh.material:[mesh.material]):[];for(const material of materials){if(this.disposed)material.dispose();else this.resources.add(material);for(const value of Object.values(material))if(value&&(value as Texture).isTexture){if(this.disposed)(value as Texture).dispose();else this.resources.add(value as Texture);}}});}
+ private releaseObject(object:Object3D):void{const owned=new Set<{dispose:()=>void}>();object.traverse(child=>{const m=child as Object3D&{geometry?:BufferGeometry;material?:Material|Material[]};if(m.geometry)owned.add(m.geometry);for(const material of m.material?(Array.isArray(m.material)?m.material:[m.material]):[]){owned.add(material);for(const value of Object.values(material))if(value&&(value as Texture).isTexture)owned.add(value as Texture);}});for(const resource of owned){this.resources.delete(resource);resource.dispose();}object.removeFromParent();}
  dispose():void{this.disposed=true;for(const cancel of this.pending)cancel();this.pending.clear();for(const resource of this.resources)resource.dispose();this.resources.clear();}
 }
