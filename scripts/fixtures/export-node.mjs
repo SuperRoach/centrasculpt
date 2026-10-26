@@ -1,0 +1,3 @@
+// GLTFExporter uses only these FileReader methods for its texture-free binary payload.
+export function installFileReader(){globalThis.FileReader=class{readAsArrayBuffer(blob){blob.arrayBuffer().then(result=>{this.result=result;this.onloadend?.();});}readAsDataURL(blob){blob.arrayBuffer().then(result=>{this.result=`data:${blob.type};base64,${Buffer.from(result).toString('base64')}`;this.onloadend?.();});}};}
+export async function readGlb(data){const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');return new Promise((resolve,reject)=>new GLTFLoader().parse(data,'',resolve,reject));}

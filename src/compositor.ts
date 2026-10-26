@@ -1,3 +1,4 @@
+import type {ExportSource} from './export-mesh';
 import { Group, Vector3 } from 'three';
 import type { Material } from 'three';
 import type { SculptProject, SdfLayer, LayerOperation } from './layers';
@@ -128,6 +129,11 @@ export class BooleanComposite {
     }
     this.full=false;this.regions=[];this.group.updateWorldMatrix(true,true);
     this.stats={samplingMs,meshingMs,elapsedMs:performance.now()-start,samples,chunks,totalChunks,triangles,resolution:n,step:volume.step,capped:layout.capped,full};return true;
+  }
+  exportSources():ExportSource[]{
+    if(this.pending||!this.mesher||!this.volume||this.running)throw new Error('Wait for the Boolean result to finish rebuilding.');
+    const mesher=this.mesher,version=this.version,volume=this.volume,metadata=this.metadataKey();
+    return [{name:'Boolean Result',step:volume.step,transform:{position:this.group.position.toArray(),rotation:[0,0,0],scale:[1,1,1]},chunks:mesher.snapshotUpdates().filter(u=>u.geometry.getAttribute('position').count).map(u=>({positions:u.geometry.getAttribute('position').array as Float32Array,normals:u.geometry.getAttribute('normal').array as Float32Array})),current:()=>this.metadataKey()===metadata&&!this.disposed&&!this.pending&&!this.running&&this.version===version&&this.volume===volume}];
   }
   exportGroup():Group {
     if(this.pending||!this.surface)throw new Error('Wait for the Boolean preview to finish rebuilding.');

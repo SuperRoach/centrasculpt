@@ -1,3 +1,4 @@
+import type {ExportSource} from './export-mesh';
 import {reconstructMoveAsync} from './move-worker-client';
 import {copyMoveVolume,MoveWork} from './deformation-reconstruction';
 import type {MoveProgress} from './deformation-reconstruction';
@@ -430,6 +431,17 @@ export class IndependentLayers {
       try{sourceMesher.dispose();sourceSurface.clear();for(const e of discarded)if(e.kind==='bake'){e.runtime.dispose();this.display.remove(this.project.id,e.layerId);}}catch(error){console.warn('Move committed; deferred resource cleanup failed',error);}
       return true;
     }finally{mesher?.dispose();stagedSurface?.clear();this.moveStagingBytes=0;this.movePending=false;}
+  }
+  /** Borrow committed SDF-derived chunk buffers, never display/GPU deformation helpers.
+   * Snapshotting owns copies; guards reject edits/replacement while those copies are made. */
+  exportSources(scope:'visible'|'selected'='visible'):ExportSource[]{
+    if(this.drawing||this.transforming||this.previewing||this.deforming||this.baking)throw new Error('Finish or cancel the current sculpt / Move reconstruction before exporting.');
+    const selection=()=>JSON.stringify(this.project.layerStack.layers.filter(l=>scope==='selected'?l.id===this.project.activeLayerId:l.visible).map(l=>l.id)),selectionKey=selection();
+    const selected=this.project.activeLayerId,layers=this.project.layerStack.layers.filter(l=>scope==='selected'?l.id===selected:l.visible);
+    return layers.map(layer=>{const runtime=this.runtime(layer.id),volume=runtime.volume,revision=runtime.surface.revision,metadata=JSON.stringify(layer.metadata());
+      if(runtime.mesher.pendingChunks)throw new Error('Wait for committed surface meshing before exporting.');
+      return {name:layer.name,layerId:layer.id,step:volume.step,transform:copyTransform(layer.transform),chunks:runtime.mesher.snapshotUpdates().filter(u=>u.geometry.getAttribute('position').count).map(u=>({positions:u.geometry.getAttribute('position').array as Float32Array,normals:u.geometry.getAttribute('normal').array as Float32Array})),current:()=>selection()===selectionKey&&!this.disposed&&!this.drawing&&!this.previewing&&!this.deforming&&!this.transforming&&this.runtimes.get(layer.id)===runtime&&runtime.volume===volume&&runtime.surface.revision===revision&&!runtime.mesher.pendingChunks&&JSON.stringify(layer.metadata())===metadata};
+    });
   }
   exportGroup(): Group {
     this.finishStroke();this.finishTransform();const group=new Group();group.name=this.project.name;

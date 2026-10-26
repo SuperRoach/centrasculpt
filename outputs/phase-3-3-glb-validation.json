@@ -1,0 +1,366 @@
+{
+  "validator": "2.0.0-dev.3.10",
+  "scope": "Actual exported binary GLBs validated by Khronos glTF Validator and reloaded by Three.js GLTFLoader; no Blender or physical Quest test implied.",
+  "rows": [
+    {
+      "name": "sphere",
+      "quality": "fast",
+      "fileBytes": 2271760,
+      "triangles": 31536,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "sphere",
+      "quality": "standard",
+      "fileBytes": 758248,
+      "triangles": 31536,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "sphere",
+      "quality": "high",
+      "fileBytes": 569032,
+      "triangles": 31536,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "box",
+      "quality": "fast",
+      "fileBytes": 2662180,
+      "triangles": 36960,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "box",
+      "quality": "standard",
+      "fileBytes": 888316,
+      "triangles": 36960,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "box",
+      "quality": "high",
+      "fileBytes": 469996,
+      "triangles": 26040,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "triangular-prism",
+      "quality": "fast",
+      "fileBytes": 1973044,
+      "triangles": 27388,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "triangular-prism",
+      "quality": "standard",
+      "fileBytes": 658640,
+      "triangles": 27388,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "triangular-prism",
+      "quality": "high",
+      "fileBytes": 383972,
+      "triangles": 21258,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "pyramid",
+      "quality": "fast",
+      "fileBytes": 1553756,
+      "triangles": 21564,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "pyramid",
+      "quality": "standard",
+      "fileBytes": 518900,
+      "triangles": 21564,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "pyramid",
+      "quality": "high",
+      "fileBytes": 313340,
+      "triangles": 17332,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "free-clay-curve-three-components",
+      "quality": "fast",
+      "fileBytes": 574472,
+      "triangles": 7964,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "free-clay-curve-three-components",
+      "quality": "standard",
+      "fileBytes": 192508,
+      "triangles": 7964,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "free-clay-curve-three-components",
+      "quality": "high",
+      "fileBytes": 144724,
+      "triangles": 7964,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "mirrored-line-expanded-negative-transformed-multilayer",
+      "quality": "fast",
+      "fileBytes": 2520280,
+      "triangles": 34976,
+      "meshes": 2,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "mirrored-line-expanded-negative-transformed-multilayer",
+      "quality": "standard",
+      "fileBytes": 841904,
+      "triangles": 34976,
+      "meshes": 2,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "mirrored-line-expanded-negative-transformed-multilayer",
+      "quality": "high",
+      "fileBytes": 632048,
+      "triangles": 34976,
+      "meshes": 2,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-union",
+      "quality": "fast",
+      "fileBytes": 1648820,
+      "triangles": 22884,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-union",
+      "quality": "standard",
+      "fileBytes": 550608,
+      "triangles": 22884,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-union",
+      "quality": "high",
+      "fileBytes": 413304,
+      "triangles": 22884,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-difference",
+      "quality": "fast",
+      "fileBytes": 1218552,
+      "triangles": 16908,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-difference",
+      "quality": "standard",
+      "fileBytes": 407184,
+      "triangles": 16908,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-difference",
+      "quality": "high",
+      "fileBytes": 305736,
+      "triangles": 16908,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-intersect",
+      "quality": "fast",
+      "fileBytes": 904916,
+      "triangles": 12552,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-intersect",
+      "quality": "standard",
+      "fileBytes": 302632,
+      "triangles": 12552,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "boolean-intersect",
+      "quality": "high",
+      "fileBytes": 227320,
+      "triangles": 12552,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "non-elastic",
+      "quality": "fast",
+      "fileBytes": 584856,
+      "triangles": 8108,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "non-elastic",
+      "quality": "standard",
+      "fileBytes": 195884,
+      "triangles": 8108,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "non-elastic",
+      "quality": "high",
+      "fileBytes": 147236,
+      "triangles": 8108,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "elastic",
+      "quality": "fast",
+      "fileBytes": 584280,
+      "triangles": 8100,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "elastic",
+      "quality": "standard",
+      "fileBytes": 195692,
+      "triangles": 8100,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "elastic",
+      "quality": "high",
+      "fileBytes": 147092,
+      "triangles": 8100,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "twist",
+      "quality": "fast",
+      "fileBytes": 583416,
+      "triangles": 8088,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "twist",
+      "quality": "standard",
+      "fileBytes": 195404,
+      "triangles": 8088,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "name": "twist",
+      "quality": "high",
+      "fileBytes": 146876,
+      "triangles": 8088,
+      "meshes": 1,
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    }
+  ]
+}

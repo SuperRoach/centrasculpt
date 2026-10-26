@@ -15,7 +15,9 @@ import {placeShapeOnSurface,StampClickGesture} from './shape-placement';
 import type {ShapeDefinition} from './shapes';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import {exportGlbAsync} from './export-client';
+import {EXPORT_MEMORY_LIMIT,exportAdmission} from './export-mesh';
+import type {ExportQuality,ExportSource} from './export-mesh';
 import type { LayerOperation } from './layers';
 import { createBaseProject } from './layers';
 import { SDFVolume } from './sdf';
@@ -81,6 +83,7 @@ function syncStats() {
 }
 function syncTransformUI(){syncViewportTools();ui.transformState(layers.active.layer.transform,layers.active.layer.editable,input.mode,input.space,loadingProject||xrBlocked());syncStats();}
 function refresh() {
+  exportEstimate();
   syncView();
   ui.layerRows(layers.project.layerStack.layers,layers.project.activeLayerId,layer=>display.colour(layers.project.id,layer.id,layer.order));
   ui.resolution(layers.active.layer.volume.resolution);syncRenderStyle();ui.viewportMode(display.mode);syncTransformUI();transformTools?.sync();
@@ -305,22 +308,37 @@ async function openProjectFile(file:File):Promise<void>{
   finally{loadingProject=false;refresh();ui.projectBusy(false);projectFile.value='';}
 }
 projectFile.addEventListener('change',()=>{const file=projectFile.files?.[0];if(file)void openProjectFile(file);});
-async function exportGlb(composite:boolean) {
-  if(loadingProject||xrBlocked())return;stop();loadingProject=true;ui.projectBusy(true);syncTransformUI();transformTools?.sync();
-  let exported:THREE.Group|undefined;
+let exportAbort:AbortController|null=null;
+const cancelExport=document.querySelector<HTMLButtonElement>('#cancel-export')!;
+cancelExport.addEventListener('click',()=>exportAbort?.abort());
+window.addEventListener('keydown',event=>{if(event.key==='Escape'&&exportAbort){event.preventDefault();exportAbort.abort();}});
+function exportEstimate():void {const count=layers.project.layerStack.layers.reduce((n,l)=>n+(l.visible?layers.runtime(l.id).triangles:0),0);let note='Final count reported after export.';try{const q=document.querySelector<HTMLSelectElement>('#export-quality')!.value as ExportQuality;exportAdmission(layers.exportSources(),q,Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes));}catch(error){note=message(error);}document.getElementById('export-estimate')!.textContent=`Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;}
+document.getElementById('export-quality')!.addEventListener('change',exportEstimate);
+
+async function exportGlb(scope:'visible'|'selected'|'composite') {
+  if(loadingProject||xrBlocked())return;stop();
+  if(layers.deforming||layers.previewing){ui.projectMessage('Finish or cancel Move before exporting.',true);return;}
+  loadingProject=true;exportAbort=new AbortController();const signal=exportAbort.signal;ui.projectBusy(true);syncTransformUI();transformTools?.sync();cancelExport.hidden=false;
   try {
-    await paint();
-    if(composite){ui.projectMessage('Evaluating Boolean result…');await layers.composite.flush();exported=layers.composite.exportGroup();}
-    else exported=layers.exportGroup();
-    const data=await new GLTFExporter().parseAsync(exported,{binary:true});
-    if(!(data instanceof ArrayBuffer))throw new Error('Expected binary GLB.');
-    download(new Blob([data],{type:'model/gltf-binary'}),composite?'centra-boolean-result.glb':'centra-sculpt.glb');
-    ui.projectMessage(composite?'Boolean result exported as one neutral mesh. Independent sources kept.':`GLB exported: ${exported.children.length} separate layers · neutral materials`);
-  }catch(error){ui.projectMessage(`Export failed: ${message(error)}`,true);}
-  finally{exported?.traverse(object=>{if(object instanceof THREE.Mesh)object.geometry.dispose();});loadingProject=false;syncView();refresh();ui.projectBusy(false);}
+    await paint();let sources:ExportSource[];
+    if(scope==='composite'){
+      ui.projectMessage('Evaluating Boolean result at the existing quality cap…');
+      // Abort the export wait; the shared preview scheduler may finish its own cache.
+      let release=()=>{};try{await Promise.race([layers.composite.flush(),new Promise<never>((_,reject)=>{const abort=()=>reject(new Error('Export cancelled.'));signal.addEventListener('abort',abort,{once:true});release=()=>signal.removeEventListener('abort',abort);if(signal.aborted)abort();})]);}finally{release();}
+      sources=layers.composite.exportSources();
+    }else sources=layers.exportSources(scope);
+    const quality=document.querySelector<HTMLSelectElement>('#export-quality')!.value as ExportQuality;
+    const result=await exportGlbAsync(sources,quality,{signal,maxBytes:Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes),progress:p=>{ui.projectMessage(`${p.stage} · ${Math.round(100*p.completed/Math.max(1,p.total))}% · Cancel available`);}});
+    if(signal.aborted)throw new Error('Export cancelled.');
+    download(new Blob([result.data],{type:'model/gltf-binary'}),scope==='composite'?'centra-boolean-result.glb':scope==='selected'?'centra-selected-layer.glb':'centra-sculpt.glb');
+    const triangles=result.stats.reduce((n,s)=>n+s.triangles,0),issues=result.stats.reduce((n,s)=>n+s.boundaryEdges+s.nonManifoldEdges+s.inconsistentEdges,0);
+    ui.projectMessage(`${quality[0].toUpperCase()+quality.slice(1)} GLB: ${triangles.toLocaleString()} triangles · ${(result.data.byteLength/1048576).toFixed(2)} MiB · ${result.stats.length} ${result.stats.length===1?'mesh':'meshes'}${issues?` · ${issues} open/non-manifold/winding edges; inspect before printing`:''}. Source sculpture kept.`);
+  }catch(error){ui.projectMessage(`${message(error)} Source sculpture kept.`,!signal.aborted);}
+  finally{exportAbort=null;cancelExport.hidden=true;loadingProject=false;syncView();refresh();ui.projectBusy(false);exportEstimate();}
 }
-document.getElementById('export')!.addEventListener('click',()=>void exportGlb(false));
-document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb(true));
+document.getElementById('export')!.addEventListener('click',()=>void exportGlb('visible'));
+document.getElementById('export-selected')!.addEventListener('click',()=>void exportGlb('selected'));
+document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb('composite'));
 editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
  selectTool:tool=>{if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
