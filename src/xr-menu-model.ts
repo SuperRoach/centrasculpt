@@ -57,7 +57,8 @@ export class XRMenuModel {
   const button=this.content().buttons.find(b=>b.id===id);if(!button||button.disabled){this.feedback='Unavailable';return;}
   try{
    const separator=id.indexOf(':'),action=separator<0?id:id.slice(0,separator),value=id.slice(separator+1);
-   if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.project.activeLayerId};}
+   if(id==='reset-stamp-offset')this.tools.resetStampOffset();
+   else if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.project.activeLayerId};}
    else if(id==='cancel-reset')this.resetTarget=null;
    else if(id==='confirm-reset'){const target=this.resetTarget;this.resetTarget=null;if(target&&this.tools.port.layers().project===target.project)this.tools.resetLayerTransform(target.id);}
    else if(action==='tool'){this.tools.select(value as EditorTool);this.page='tool-options';this.optionPage=0;}

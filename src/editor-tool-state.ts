@@ -32,10 +32,12 @@ export class EditorToolState {
  endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
  clearMoveSelection():void{this.previewOwner?.cancel();this.moveSelected=false;}
  readonly path=new ClayPathControls();
+ readonly stampAttachment={position:[0,0,0] as [number,number,number],rotation:[0,0,0,1] as [number,number,number,number],mode:'single' as 'single'|'continuous',spacing:.35};
+ resetStampOffset():void{this.assertIdle();this.stampAttachment.position.splice(0,3,0,0,0);this.stampAttachment.rotation.splice(0,4,0,0,0,1);this.stampRotation.fill(0);this.port.changed();}
  readonly stampRotation:[number,number,number]=[0,0,0];
  constructor(readonly port:EditorToolPort){}
- snapshotPreferences():ToolPreferences{return validateToolPreferences({symmetry:this.port.layers().symmetry,path:this.path,move:this.move,alternateTool:this.alternateTool,stampRotation:this.stampRotation});}
- restorePreferences(value?:unknown):void{const p=value===undefined?defaultToolPreferences():validateToolPreferences(value);Object.assign(this.path,p.path);Object.assign(this.move,p.move);Object.assign(this.port.layers().symmetry,p.symmetry);this.alternateTool=p.alternateTool;this.stampRotation.splice(0,3,...p.stampRotation);}
+ snapshotPreferences():ToolPreferences{return validateToolPreferences({symmetry:this.port.layers().symmetry,path:this.path,move:this.move,alternateTool:this.alternateTool,stampAttachment:this.stampAttachment,stampRotation:this.stampRotation});}
+ restorePreferences(value?:unknown):void{const p=value===undefined?defaultToolPreferences():validateToolPreferences(value);Object.assign(this.path,p.path);Object.assign(this.move,p.move);Object.assign(this.port.layers().symmetry,p.symmetry);this.alternateTool=p.alternateTool;Object.assign(this.stampAttachment,p.stampAttachment??{position:[0,0,0],rotation:[0,0,0,1],mode:'single',spacing:.35});this.stampRotation.splice(0,3,...p.stampRotation);}
 
  setStampScale(value:number):boolean {
   if(this.busy||this.active!=='stamp'||!Number.isFinite(value))return false;
@@ -87,6 +89,9 @@ export class EditorToolState {
    p.shape.sync(l.project.layerStack);const d=p.shape.definition,blocked=!!p.shape.availability(l.project.layerStack),set=(v:typeof d)=>p.shape.set(v,l.project.layerStack);
    options.push({id:'shape',label:'Shape',read:()=>d.kind,write:v=>{const kind=v as ShapeKind;set({...d,kind,dimensions:shapeDimensionsForKind(kind,d.dimensions)});},choices:SHAPE_KINDS,names:SHAPE_KINDS.map(k=>SHAPE_METADATA[k].name),disabled:blocked},
     {id:'operation',label:'Stamp operation',read:()=>d.operation,write:v=>set({...d,operation:v as 'add'|'subtract'}),choices:['add','subtract'],names:['Add','Subtract'],disabled:blocked});
+   options.push({id:'stamp-mode',label:'Stamp Mode',read:()=>this.stampAttachment.mode,write:v=>this.stampAttachment.mode=v as 'single'|'continuous',choices:['single','continuous'],names:['Single','Continuous'],disabled:blocked});
+   if(this.stampAttachment.mode==='continuous')options.push({id:'stamp-spacing',label:'Spacing · fraction of smallest dimension',read:()=>this.stampAttachment.spacing,write:v=>this.stampAttachment.spacing=Number(v),min:.05,max:3,step:.05,disabled:blocked});
+   options.push({id:'reset-stamp-offset',label:'Reset Stamp Offset',read:()=> 'Default working point',action:'reset-stamp-offset',disabled:blocked}, {id:'stamp-grip',label:'Tool grip · adjust attachment',read:()=> 'Hold shape still; move wrist; release to attach',disabled:true});
    const rule=SHAPE_METADATA[d.kind].dimensionRule;
    for(let i=0;i<3;i++)options.push({id:`dimension-${i}`,label:rule==='diameter'&&i===0?'Diameter':`Dimension ${'XYZ'[i]}`,read:()=>d.dimensions[i],write:v=>{const dimensions=[...d.dimensions] as [number,number,number];dimensions[i]=Number(v);if(rule==='diameter')dimensions.fill(Number(v));if(rule==='square-base'&&(i===0||i===2))dimensions[0]=dimensions[2]=Number(v);set({...d,dimensions});},min:.001,max:1000,step:.05,disabled:blocked||rule==='diameter'&&i!==0||rule==='square-base'&&i===2});
    for(let i=0;i<3;i++)options.push({id:`rotation-${i}`,label:`Wrist offset ${'XYZ'[i]} (°)`,read:()=>this.stampRotation[i]*180/Math.PI,write:v=>{this.stampRotation[i]=Number(v)*Math.PI/180;const transform=copyTransform(d.transform);transform.rotation[i]=this.stampRotation[i];set({...d,transform});},min:-360,max:360,step:15,format:v=>`${Number(v).toFixed(0)}°`,disabled:blocked});

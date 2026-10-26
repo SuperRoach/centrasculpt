@@ -127,6 +127,6 @@ test('numeric bounds clamp, brush settings retain the existing native save/load 
 });
 test('eight layer rows, paginated options and radial targets stay within the usable menu surface',()=>{
  const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,24);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
- f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<2;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(page===0)f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
+ f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<10;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
  }finally{f.dispose();}
 });

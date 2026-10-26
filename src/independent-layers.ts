@@ -249,9 +249,10 @@ export class IndependentLayers {
     from.pop();to.push(entry);this.committedRevision++;this.project.layerStack.select(entry.layerId);return entry.layerId;
   }
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
-  stampShape(value:unknown):boolean {
+  stampShape(value:unknown,inStroke=false):boolean {
     validateMirrorPlane(this.symmetry);
-    this.assertAvailable();this.finishStroke();this.finishTransform();
+    this.assertAvailable();if(!inStroke)this.finishStroke();this.finishTransform();
+    if(inStroke&&this.strokeLayer!==this.project.activeLayerId)throw new Error('Stamp stroke target changed.');
     const runtime=this.editableRuntime(this.project.activeLayerId),start=performance.now(),definition=validateShapeDefinition(value);
     if(definition.targetLayerId!==runtime.layer.id)throw new Error('Stamp must target the active layer.');
     if(definition.operation==='add'){const box=prepareShape(definition).worldBounds;if(this.symmetry.enabled){const a='xyz'.indexOf(this.symmetry.axis),lo=box.min[a],hi=box.max[a];box.min[a]=Math.min(lo,2*this.symmetry.offset-hi);box.max[a]=Math.max(hi,2*this.symmetry.offset-lo);}this.growRuntime(runtime,box);}
@@ -260,7 +261,8 @@ export class IndependentLayers {
     if(!patch.indices.length){this.lastStampStats={evaluationMs:patch.evaluationMs,scanned:patch.scanned,evaluated:patch.evaluated,meshingMs:0,totalMs:performance.now()-start,changedVoxels:0,chunks:0,totalChunks:runtime.totalChunks};return false;}
     // Allocate the exact history snapshots before source mutation; preparation owns
     // the patch, so no Map-based stroke recorder is needed for these unique indices.
-    const committed=runtime.history.commitPatch('shape-stamp',patch),hadSurface=runtime.triangles>0;
+    const committed=inStroke?false:runtime.history.commitPatch('shape-stamp',patch),hadSurface=runtime.triangles>0;
+    if(inStroke)runtime.history.recordStampPatch(patch);
     for(let i=0;i<patch.indices.length;i++){
       runtime.volume.writeVoxel(patch.indices[i],patch.after[i]);
       const signChanged=(patch.before[i]<0)!==(patch.after[i]<0);

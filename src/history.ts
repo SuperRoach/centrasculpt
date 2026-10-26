@@ -13,6 +13,7 @@ export class SculptHistory {
   private future: Action[] = [];
   private bytes = 0;
   private revision=0;
+  private packed:Action|null=null;
   private pendingKind: HistoryKind='stroke';
   pendingBudgetBytes=Infinity;
   lastApplied: HistoryTransaction | null=null;
@@ -24,10 +25,10 @@ export class SculptHistory {
     const offset=assertExactDenseGrowth(old,next),[nx,ny]=old.dimensions;
     const remap=(index:number)=>next.index(index%nx+offset[0],Math.floor(index/nx)%ny+offset[1],Math.floor(index/(nx*ny))+offset[2]);
     const shift=(b:Bounds):Bounds=>({min:b.min.map((v,a)=>v+offset[a]) as [number,number,number],max:b.max.map((v,a)=>v+offset[a]) as [number,number,number]});
-    const actions=[...this.past,...this.future],staged=actions.map(action=>({action,indices:action.indices.map(remap),bounds:shift(action.bounds)})),pending=this.pending,newPending=pending?new Map([...pending].map(([index,value])=>[remap(index),value])):null;
-    let used=false;return ()=>{assertExactDenseGrowth(old,next);if(used||this.revision!==revision||this.volume!==old||this.pending!==pending||this.past.length+this.future.length!==actions.length)throw new Error('Stale history growth preparation.');used=true;for(const item of staged){item.action.indices=item.indices;item.action.bounds=item.bounds;}this.pending=newPending;this.volume=next;this.revision++;};
+    const actions=[...this.past,...this.future,...(this.packed?[this.packed]:[])],staged=actions.map(action=>({action,indices:action.indices.map(remap),bounds:shift(action.bounds)})),pending=this.pending,newPending=pending?new Map([...pending].map(([index,value])=>[remap(index),value])):null;
+    let used=false;return ()=>{assertExactDenseGrowth(old,next);if(used||this.revision!==revision||this.volume!==old||this.pending!==pending||this.past.length+this.future.length+(this.packed?1:0)!==actions.length)throw new Error('Stale history growth preparation.');used=true;for(const item of staged){item.action.indices=item.indices;item.action.bounds=item.bounds;}this.pending=newPending;this.volume=next;this.revision++;};
   }
-  get pendingMemoryEstimate():number{return (this.pending?.size??0)*160;}
+  get pendingMemoryEstimate():number{return (this.pending?.size??0)*160+(this.packed?.indices.length??0)*12;}
   get canUndo(): boolean { return this.past.length > 0; }
   get canRedo(): boolean { return this.future.length > 0; }
   discardRedo(): void {this.revision++;
@@ -53,6 +54,7 @@ export class SculptHistory {
   };
   commit(): boolean {
     if (!this.pending) return false;
+    if(this.packed){const action=this.packed;const retained=this.retain(action);this.packed=null;this.pending=null;this.revision++;return retained;}
     this.revision++;const entries = Array.from(this.pending).filter(([, value]) => value.before !== value.after);
     if (!entries.length) {this.pending=null;return false;} // Clicking empty space does not destroy redo.
     const indices = new Uint32Array(entries.length), before = new Float32Array(entries.length), after = new Float32Array(entries.length);
@@ -64,6 +66,21 @@ export class SculptHistory {
       point.forEach((v, axis) => { bounds.min[axis]=Math.min(bounds.min[axis],v); bounds.max[axis]=Math.max(bounds.max[axis],v); });
     });
     const retained=this.retain({indices,before,after,bounds,layerId:this.targetLayerId,kind:this.pendingKind});this.pending=null;return retained;
+  }
+  /** Merge sorted stamp deltas without one JS object per affected voxel. Earliest
+   * before and latest after survive overlaps; staging completes before source writes. */
+  recordStampPatch(patch:{indices:Uint32Array;before:Float32Array;after:Float32Array;bounds:Bounds|null}):void {
+    if(!this.pending||this.pending.size)throw new Error('Stamp transaction unavailable.');
+    if(!patch.indices.length||!patch.bounds)return;
+    const old=this.packed;let a=0,b=0,count=0;
+    while(a<(old?.indices.length??0)||b<patch.indices.length){const x=old&&a<old.indices.length?old.indices[a]:Infinity,y=b<patch.indices.length?patch.indices[b]:Infinity;if(x<=y)a++;if(y<=x)b++;count++;}
+    if(count*12+this.pendingMemoryEstimate>this.pendingBudgetBytes)throw new Error('Stamp history memory safety limit reached.');
+    const indices=new Uint32Array(count),before=new Float32Array(count),after=new Float32Array(count);a=b=0;let n=0;
+    while(a<(old?.indices.length??0)||b<patch.indices.length){const x=old&&a<old.indices.length?old.indices[a]:Infinity,y=b<patch.indices.length?patch.indices[b]:Infinity;
+      indices[n]=Math.min(x,y);before[n]=x<=y?old!.before[a]:patch.before[b];after[n]=y<=x?patch.after[b]:old!.after[a];if(x<=y)a++;if(y<=x)b++;n++;
+    }
+    const bounds=old?{min:old.bounds.min.map((v,i)=>Math.min(v,patch.bounds!.min[i])),max:old.bounds.max.map((v,i)=>Math.max(v,patch.bounds!.max[i]))} as Bounds:{min:[...patch.bounds.min],max:[...patch.bounds.max]} as Bounds;
+    this.packed={indices,before,after,bounds,layerId:this.targetLayerId,kind:'shape-stamp'};this.revision++;
   }
   /** Trusted staged stamp patch. Snapshot arrays are copied before any source writes,
    * avoiding a second object/Map entry per voxel while retaining exact undo data. */
@@ -102,6 +119,7 @@ export class SculptHistory {
   }
   cancel(record?:VoxelChangeListener):Bounds|null {
     if(!this.pending)return null;this.revision++;const pending=this.pending;this.pending=null;let bounds:Bounds|null=null;const [nx,ny]=this.volume.dimensions;
+    if(this.packed){const action=this.packed;this.packed=null;bounds=action.bounds;for(let i=0;i<action.indices.length;i++){const index=action.indices[i];record?.(index,this.volume.readVoxel(index),action.before[i]);this.volume.writeVoxel(index,action.before[i]);}}
     for(const [index,value]of pending){if(value.before===value.after)continue;record?.(index,this.volume.readVoxel(index),value.before);this.volume.writeVoxel(index,value.before);const p=[index%nx,Math.floor(index/nx)%ny,Math.floor(index/(nx*ny))] as [number,number,number];if(!bounds)bounds={min:[...p],max:[...p]};else for(let a=0;a<3;a++){bounds.min[a]=Math.min(bounds.min[a],p[a]);bounds.max[a]=Math.max(bounds.max[a],p[a]);}}
     return bounds;
   }
