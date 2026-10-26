@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "cases": 54,
+  "pointsPerCase": 300,
+  "maxPositionError": 2.439405522892881e-07,
+  "maxNormalError": 3.927027279588632e-07,
+  "wallMs": 70.59999999403954,
+  "scope": "Observed in desktop in-app browser WebGL2 transform feedback harness; not physical Quest or immersive frame timing."
+}

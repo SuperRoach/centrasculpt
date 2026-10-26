@@ -25,7 +25,7 @@ export type EditorToolPort={layers:()=>IndependentLayers;shape:ShapePreviewModel
 export class EditorToolState {
  alternateTool:'off'|'clay'|'smooth'='smooth';
  private moveSelected=false;private previewOwner:{cancel:()=>void}|null=null;
- readonly move={radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
+ readonly move={interaction:'translate' as 'translate'|'rotate'|'twist',axis:'free' as 'free'|'x'|'y'|'z',angularStrength:1,angleClamp:120,radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
  get brushRadius():number{return this.active==='move'?this.move.radius:this.port.settings().radius;}
  beginPreview(owner:{cancel:()=>void}):void{if(this.busy)throw new Error('Finish the current interaction first.');this.previewOwner=owner;}
  endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
@@ -58,11 +58,16 @@ export class EditorToolState {
    options.push({id:'application',label:'VR strokes',read:()=>this.path.placement==='free'?'Tool trigger · free space':'Tool trigger · surface',disabled:true});
   }
   if(active==='move'){
+   options.push({id:'move-interaction',label:'Move gesture',read:()=>this.move.interaction,write:v=>this.move.interaction=v as typeof this.move.interaction,choices:['translate','rotate','twist'],names:['Translate','Local rotate','Progressive twist']});
+   if(this.move.interaction!=='translate')options.push({id:'move-axis',label:'Rotation axis · layer local',read:()=>this.move.axis,write:v=>this.move.axis=v as typeof this.move.axis,choices:['free','x','y','z'],names:['Wrist axis','X','Y','Z']},
+    {id:'move-angular-strength',label:'Angular strength',read:()=>this.move.angularStrength,write:v=>this.move.angularStrength=Number(v),min:.1,max:2,step:.1},
+    {id:'move-angle-clamp',label:'Angle limit · degrees',read:()=>this.move.angleClamp,write:v=>this.move.angleClamp=Number(v),min:15,max:180,step:15},
+    {id:'move-compatibility',label:'Rotation compatibility',read:()=>this.move.interaction==='translate'?'Selected mode below':'Non-Elastic rotation · fixed surface pivot',disabled:true});
    options.push({id:'move-mode',label:'Deformation Mode',read:()=>this.move.mode,write:v=>this.move.mode=v as 'preview'|'non-elastic'|'elastic',choices:['non-elastic','elastic','preview'],names:['Non-Elastic','Elastic','Preview only']},
     {id:'move-radius',label:'Influence Radius',read:()=>this.move.radius,write:v=>this.move.radius=Number(v),min:BRUSH_RADIUS_LIMITS.min,max:BRUSH_RADIUS_LIMITS.max,step:.02,format:v=>Number(v).toFixed(3)},
     {id:'move-falloff',label:'Falloff',read:()=>this.move.falloff,write:v=>this.move.falloff=Number(v),min:1,max:4,step:.5},
-    {id:'move-strength',label:'Move strength',read:()=>this.move.strength,write:v=>this.move.strength=Number(v),min:.01,max:1,step:.05},
-    {id:'move-stiffness',label:'Elastic stiffness',read:()=>this.move.stiffness,write:v=>this.move.stiffness=Number(v),min:.25,max:4,step:.25,disabled:this.move.mode!=='elastic'},
+    {id:'move-strength',label:'Translation strength',read:()=>this.move.strength,write:v=>this.move.strength=Number(v),min:.01,max:1,step:.05,disabled:this.move.interaction!=='translate'},
+    {id:'move-stiffness',label:'Elastic stiffness',read:()=>this.move.stiffness,write:v=>this.move.stiffness=Number(v),min:.25,max:4,step:.25,disabled:this.move.mode!=='elastic'||this.move.interaction!=='translate'},
     {id:'application',label:'Release / cancel',read:()=>this.move.mode==='preview'?'Restores SDF surface · no undo action':'Commit one action · cancel restores',disabled:true});
   }
   if(active==='stamp'){

@@ -7,6 +7,9 @@ const identity=new Matrix4();
 /** GLSL mirrors both modes of RadialMoveField. Source attributes are NEVER written or uploaded.
  * The same layer-local function on duplicate boundary vertices prevents seams. */
 export const MOVE_PREVIEW_GLSL=`
+uniform float moveInteraction;
+uniform vec3 moveAxis;
+uniform float moveAngle;
 uniform vec3 moveCenter;
 uniform vec3 moveDelta;
 uniform float moveRadius;
@@ -24,7 +27,13 @@ vec3 elasticMove(vec3 p, int column) {
  float dA=e*(-0.5*iv3-1.5*e*e*iv5)*rj,dB=-1.5*e*iv5*rj;
  vec3 v=(dA*t+A*dt)*moveDelta+((dB*t+B*dt)*h+B*t*dj)*r;v[column]+=B*t*h;return v;
 }
+vec3 rotateMove(vec3 r,float a){return r*cos(a)+cross(moveAxis,r)*sin(a)+moveAxis*dot(moveAxis,r)*(1.0-cos(a));}
+vec3 rotationalMove(vec3 p){vec3 r=p-moveCenter;float profile=moveInteraction>1.5?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0;return moveCenter+rotateMove(r,moveAngle*moveWeight(p)*profile);}
 vec3 moveNormal(vec3 p,vec3 n) {
+ if(moveInteraction>0.5){vec3 r=p-moveCenter;float w=moveWeight(p),profile=moveInteraction>1.5?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0,theta=moveAngle*w*profile;
+ vec3 g=moveGradient(p)*moveAngle*profile;if(moveInteraction>1.5)g+=moveAxis*moveAngle*w/(2.0*moveRadius);
+ vec3 v=cross(moveAxis,rotateMove(r,theta)),a=rotateMove(vec3(1,0,0),theta)+v*g.x,b=rotateMove(vec3(0,1,0),theta)+v*g.y,c=rotateMove(vec3(0,0,1),theta)+v*g.z;
+ return cross(b,c)*n.x+cross(c,a)*n.y+cross(a,b)*n.z;}
  if(moveElastic<0.5){vec3 g=moveGradient(p);return (1.0+dot(g,moveDelta))*n-g*dot(moveDelta,n);}
  vec3 a=vec3(1,0,0)+elasticMove(p,0),b=vec3(0,1,0)+elasticMove(p,1),c=vec3(0,0,1)+elasticMove(p,2);
  return cross(b,c)*n.x+cross(c,a)*n.y+cross(a,b)*n.z;
@@ -39,11 +48,11 @@ export class MoveMeshPreview {
  private readonly materials=new Map<MeshStandardMaterial,MeshStandardMaterial>();
  private readonly influence=new Sphere();
  private readonly candidates:Mesh[]=[];
- readonly uniforms={moveCenter:{value:this.field.center},moveDelta:{value:this.field.delta},moveRadius:{value:.3},moveExponent:{value:3},moveElastic:{value:0},moveStiffness:{value:1}};
+ readonly uniforms={moveInteraction:{value:0},moveAxis:{value:this.field.axis},moveAngle:{value:0},moveCenter:{value:this.field.center},moveDelta:{value:this.field.delta},moveRadius:{value:.3},moveExponent:{value:3},moveElastic:{value:0},moveStiffness:{value:1}};
  get active():boolean{return this.bindings.length>0;}
  get cachedMaterials():number{return this.materials.size;}
  begin(surface:Group,center:Vector3,radius:number,falloff:number,strength:number,budgetMs=MOVE_PREPARATION_BUDGET_MS,index?:ChunkSpatialIndex,mode:'non-elastic'|'elastic'='non-elastic',stiffness=1):void{
-  this.restore();this.field.capture(center,radius,falloff,strength);this.field.configure(mode,stiffness);this.uniforms.moveElastic.value=mode==='elastic'?1:0;this.uniforms.moveStiffness.value=stiffness;this.uniforms.moveRadius.value=radius;this.uniforms.moveExponent.value=falloff+1;
+  this.restore();this.uniforms.moveInteraction.value=0;this.field.capture(center,radius,falloff,strength);this.field.configure(mode,stiffness);this.uniforms.moveElastic.value=mode==='elastic'?1:0;this.uniforms.moveStiffness.value=stiffness;this.uniforms.moveRadius.value=radius;this.uniforms.moveExponent.value=falloff+1;
   const start=performance.now(),chosen:{mesh:Mesh;material:MeshStandardMaterial}[]=[];let candidates=0,affected=0;
   this.influence.center.copy(center);this.influence.radius=radius;
   try{
@@ -62,8 +71,8 @@ export class MoveMeshPreview {
    const staged=chosen.map(({mesh,material})=>{
     let preview=this.materials.get(material);
     if(!preview){preview=material.clone();preview.name='Experimental Move preview · render only';
-     preview.onBeforeCompile=shader=>{Object.assign(shader.uniforms,this.uniforms);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+MOVE_PREVIEW_GLSL).replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nvec3 moveN=moveNormal(position,objectNormal);\nobjectNormal=dot(moveN,moveN)>1e-12?normalize(moveN):objectNormal;`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed += moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position);');};
-     preview.customProgramCacheKey=()=> 'centra-move-preview-v3-elastic';this.materials.set(material,preview);
+     preview.onBeforeCompile=shader=>{Object.assign(shader.uniforms,this.uniforms);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+MOVE_PREVIEW_GLSL).replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nvec3 moveN=moveNormal(position,objectNormal);\nobjectNormal=dot(moveN,moveN)>1e-12?normalize(moveN):objectNormal;`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed += moveInteraction>0.5?rotationalMove(position)-position:(moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position));');};
+     preview.customProgramCacheKey=()=> 'centra-move-preview-v4-rotation';this.materials.set(material,preview);
     }
     return {mesh,material:mesh.material,preview,culled:mesh.frustumCulled,geometry:mesh.geometry};
    });
@@ -73,6 +82,7 @@ export class MoveMeshPreview {
   }catch(error){this.cancel();throw error;}finally{this.candidates.length=0;this.preparationMs=performance.now()-start;}
  }
  valid():boolean{for(const b of this.bindings)if(b.mesh.geometry!==b.geometry||b.mesh.material!==b.preview)return false;return true;}
+ setRotation(axis:Vector3,angle:number,interaction:'rotate'|'twist'):void{this.field.interaction=interaction;this.field.setRotation(axis,angle);this.uniforms.moveInteraction.value=interaction==='twist'?2:1;this.uniforms.moveAngle.value=angle;}
  update(displacement:Vector3):void{this.field.setDisplacement(displacement);}
  /** Release restores exact material references/culling; cached shader clones can
   * be reused on the next grab. Tool/session cancellation releases that cache. */

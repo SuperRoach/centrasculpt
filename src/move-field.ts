@@ -30,10 +30,18 @@ export class RadialMoveField implements DeformationField {
    dA=e*(-.5*inv3-1.5*e*e*inv5)*rj,dB=-1.5*e*inv5*rj;
   out.copy(this.delta).multiplyScalar(dA*t+A*dt).addScaledVector(r,(dB*t+B*dt)*dot+B*t*dj);out.setComponent(column,out.getComponent(column)+B*t*dot);return out;
  }
+ interaction:'translate'|'rotate'|'twist'='translate';
+ readonly axis=new Vector3(0,1,0);angle=0;
+ setRotation(axis:Vector3,angle:number):void{if(!axis.toArray().every(Number.isFinite)||axis.lengthSq()<1e-12||!Number.isFinite(angle))throw new Error('Invalid Move rotation.');this.axis.copy(axis).normalize();this.angle=angle;}
+ private readonly rotated=new Vector3();private readonly angleGradient=new Vector3();
+ private rotation(point:Vector3,out:Vector3):Vector3{
+  const r=this.rotated.copy(point).sub(this.center),w=this.weight(point),profile=this.interaction==='twist'?(1+r.dot(this.axis)/this.radius)*.5:1;
+  return out.copy(r).applyAxisAngle(this.axis,this.angle*w*profile).add(this.center);
+ }
  private readonly g=new Vector3();
  capture(center:Vector3,radius:number,falloff:number,strength:number):void{
   if(!center.toArray().every(Number.isFinite)||!Number.isFinite(radius)||radius<=0||!Number.isFinite(falloff)||falloff<1||falloff>4||!Number.isFinite(strength)||strength<.01||strength>1)throw new Error('Invalid Move preview parameters.');
-  this.center.copy(center);this.radius=radius;this.falloff=falloff;this.strength=strength;this.delta.set(0,0,0);
+  this.center.copy(center);this.radius=radius;this.falloff=falloff;this.strength=strength;this.delta.set(0,0,0);this.angle=0;this.interaction='translate';
  }
  setDisplacement(value:Vector3):void{
   if(!Number.isFinite(Math.fround(value.x))||!Number.isFinite(Math.fround(value.y))||!Number.isFinite(Math.fround(value.z)))throw new Error('Invalid Move displacement.');
@@ -43,11 +51,18 @@ export class RadialMoveField implements DeformationField {
  }
  weight(point:Vector3):number{const q=point.distanceToSquared(this.center)/(this.radius*this.radius);return q>=1?0:Math.pow(1-q,this.falloff+1);}
  gradient(point:Vector3,out:Vector3):Vector3{const q=point.distanceToSquared(this.center)/(this.radius*this.radius);return q>=1?out.set(0,0,0):out.copy(point).sub(this.center).multiplyScalar(-2*(this.falloff+1)*Math.pow(1-q,this.falloff)/(this.radius*this.radius));}
- position(point:Vector3,out:Vector3):Vector3{if(this.mode==='elastic'){const x=point.x,y=point.y,z=point.z;this.elastic(point,out);out.x+=x;out.y+=y;out.z+=z;return out;}const weight=this.weight(point);return out.copy(point).addScaledVector(this.delta,weight);}
- normal(point:Vector3,normal:Vector3,out:Vector3):Vector3{if(this.mode==='elastic'){for(let j=0;j<3;j++){this.elastic(point,this.columns[j],j);this.columns[j].setComponent(j,this.columns[j].getComponent(j)+1);}const [a,b,c]=this.columns;const nx=normal.x,ny=normal.y,nz=normal.z;out.crossVectors(b,c).multiplyScalar(nx).addScaledVector(this.cross.crossVectors(c,a),ny).addScaledVector(this.cross.crossVectors(a,b),nz);return out.lengthSq()>1e-12?out.normalize():out.copy(normal).normalize();}const g=this.gradient(point,this.g),determinant=1+g.dot(this.delta),dot=this.delta.dot(normal),nx=normal.x,ny=normal.y,nz=normal.z;
+ position(point:Vector3,out:Vector3):Vector3{if(this.interaction!=='translate')return this.rotation(point,out);if(this.mode==='elastic'){const x=point.x,y=point.y,z=point.z;this.elastic(point,out);out.x+=x;out.y+=y;out.z+=z;return out;}const weight=this.weight(point);return out.copy(point).addScaledVector(this.delta,weight);}
+ normal(point:Vector3,normal:Vector3,out:Vector3):Vector3{if(this.interaction!=='translate'){
+ const r=this.rotated.copy(point).sub(this.center),w=this.weight(point),profile=this.interaction==='twist'?(1+r.dot(this.axis)/this.radius)*.5:1,theta=this.angle*w*profile;
+ this.gradient(point,this.angleGradient).multiplyScalar(this.angle*profile);
+ if(this.interaction==='twist')this.angleGradient.addScaledVector(this.axis,this.angle*w/(2*this.radius));
+ r.applyAxisAngle(this.axis,theta);this.g.crossVectors(this.axis,r);
+ for(let j=0;j<3;j++)this.columns[j].set(0,0,0).setComponent(j,1).applyAxisAngle(this.axis,theta).addScaledVector(this.g,this.angleGradient.getComponent(j));
+ const [a,b,c]=this.columns,nx=normal.x,ny=normal.y,nz=normal.z;out.crossVectors(b,c).multiplyScalar(nx).addScaledVector(this.cross.crossVectors(c,a),ny).addScaledVector(this.cross.crossVectors(a,b),nz);return out.lengthSq()>1e-12?out.normalize():out.copy(normal).normalize();
+ }if(this.mode==='elastic'){for(let j=0;j<3;j++){this.elastic(point,this.columns[j],j);this.columns[j].setComponent(j,this.columns[j].getComponent(j)+1);}const [a,b,c]=this.columns;const nx=normal.x,ny=normal.y,nz=normal.z;out.crossVectors(b,c).multiplyScalar(nx).addScaledVector(this.cross.crossVectors(c,a),ny).addScaledVector(this.cross.crossVectors(a,b),nz);return out.lengthSq()>1e-12?out.normalize():out.copy(normal).normalize();}const g=this.gradient(point,this.g),determinant=1+g.dot(this.delta),dot=this.delta.dot(normal),nx=normal.x,ny=normal.y,nz=normal.z;
   // Cofactor(J) maps oriented surface normals without dividing by det(J).
   // Remains finite through inversions; a collapsed tangent plane uses the source normal.
   out.copy(normal).multiplyScalar(determinant).addScaledVector(g,-dot);
   return out.lengthSq()>1e-12?out.normalize():out.set(nx,ny,nz).normalize();}
- affectedBounds():VolumeBounds{const c=this.center,d=this.delta,r=this.radius;if(this.mode==='elastic'){const m=d.length()/this.stiffness;return {min:[c.x-r-m,c.y-r-m,c.z-r-m],max:[c.x+r+m,c.y+r+m,c.z+r+m]};}return {min:[c.x-r+Math.min(0,d.x),c.y-r+Math.min(0,d.y),c.z-r+Math.min(0,d.z)],max:[c.x+r+Math.max(0,d.x),c.y+r+Math.max(0,d.y),c.z+r+Math.max(0,d.z)]};}
+ affectedBounds():VolumeBounds{const c=this.center,d=this.delta,r=this.radius;if(this.interaction!=='translate')return {min:[c.x-r,c.y-r,c.z-r],max:[c.x+r,c.y+r,c.z+r]};if(this.mode==='elastic'){const m=d.length()/this.stiffness;return {min:[c.x-r-m,c.y-r-m,c.z-r-m],max:[c.x+r+m,c.y+r+m,c.z+r+m]};}return {min:[c.x-r+Math.min(0,d.x),c.y-r+Math.min(0,d.y),c.z-r+Math.min(0,d.z)],max:[c.x+r+Math.max(0,d.x),c.y+r+Math.max(0,d.y),c.z+r+Math.max(0,d.z)]};}
 }

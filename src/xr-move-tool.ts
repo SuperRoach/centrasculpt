@@ -1,4 +1,4 @@
-import {Group,Matrix4,Ray,Mesh,MeshBasicMaterial,Raycaster,SphereGeometry,Vector3} from 'three';
+import {Group,Matrix4,Quaternion,Ray,Mesh,MeshBasicMaterial,Raycaster,SphereGeometry,Vector3} from 'three';
 import type {Intersection,Object3D} from 'three';
 import type {XRControllerState} from './xr-input';
 import type {XRStrokeInteraction} from './xr-clay-stroke';
@@ -8,7 +8,7 @@ import type {VolumeStore} from './volume-store';
 import {uniformScale} from './transform';
 import {XRBrushPreview} from './xr-brush-preview';
 import {MoveMeshPreview} from './move-mesh-preview';
-export type MovePreviewCapture=Readonly<{projectId:string;layerId:string;volume:VolumeStore;surfaceRevision:number;nativeTransform:readonly number[];target:readonly number[];worldMatrix:readonly number[];controllerPose:readonly number[];radius:number;falloff:number;strength:number;stiffness:number;mode:'preview'|'non-elastic'|'elastic'}>;
+export type MovePreviewCapture=Readonly<{projectId:string;layerId:string;volume:VolumeStore;surfaceRevision:number;nativeTransform:readonly number[];target:readonly number[];worldMatrix:readonly number[];controllerPose:readonly number[];radius:number;falloff:number;strength:number;stiffness:number;mode:'preview'|'non-elastic'|'elastic';interaction:'translate'|'rotate'|'twist';axis:'free'|'x'|'y'|'z';angularStrength:number;angleClamp:number}>;
 /** Surface targeting and noncumulative preview in a frozen layer frame.
  * Release delegates one atomic persistent command to IndependentLayers. */
 export class XRMoveTool implements XRStrokeInteraction {
@@ -22,6 +22,7 @@ export class XRMoveTool implements XRStrokeInteraction {
  private readonly localRay=new Ray();private readonly rayChunks:Mesh[]=[];
  private readonly raycaster=new Raycaster();private readonly hits:Intersection<Object3D>[]=[];
  private readonly direction=new Vector3();private readonly center=new Vector3();private readonly controllerStart=new Vector3();private readonly displacement=new Vector3();private readonly markerPoint=new Vector3();
+ private readonly inverseStartRotation=new Quaternion();private readonly startRotation=new Quaternion();private readonly wristRotation=new Quaternion();private readonly rotationAxis=new Vector3();private readonly poseRotation=new Matrix4();
  private readonly inverse=new Matrix4();private readonly anchor=new Matrix4();private readonly markerMatrix=new Matrix4();private readonly parentInverse=new Matrix4();
  constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly pulse:(event:'grab'|'release')=>void=()=>{},private readonly committed:()=>void=()=>{}){
   this.influence=new XRBrushPreview(root);this.influence.group.name='Move influence · not project data';
@@ -46,11 +47,11 @@ export class XRMoveTool implements XRStrokeInteraction {
     this.cancel();this.feedback='Move preview cancelled · target or workspace changed';this.until=time+1200;return;
    }
    if(this.commitAbort){this.feedback=this.commitMessage;return;}
-   if(!tool!.buttons.trigger.pressed&&this.capture!.mode!=='preview'){this.displacement.setFromMatrixPosition(pose!).applyMatrix4(this.inverse).sub(this.controllerStart);this.preview.update(this.displacement);this.startCommit(l,time);return;}
+   if(!tool!.buttons.trigger.pressed&&this.capture!.mode!=='preview'){this.displacement.setFromMatrixPosition(pose!).applyMatrix4(this.inverse).sub(this.controllerStart);this.updatePose(pose!);this.startCommit(l,time);return;}
    if(!tool!.buttons.trigger.pressed){this.release();this.armed=true;this.feedback='Move preview finished · original SDF surface restored · no undo action';this.until=time+1200;this.pulse('release');return;}
-   this.displacement.setFromMatrixPosition(pose!).applyMatrix4(this.inverse).sub(this.controllerStart);this.preview.update(this.displacement);
+   this.displacement.setFromMatrixPosition(pose!).applyMatrix4(this.inverse).sub(this.controllerStart);this.updatePose(pose!);
    this.paint(surface,this.preview.field.center,this.preview.field.radius,true);
-   this.feedback=this.capture!.mode==='preview'?'Move · preview only · full hand travel · release restores':`Move · ${this.capture!.mode} · full hand travel · release commits`;
+   this.feedback=this.capture!.mode==='preview'?`Move · preview only · ${this.capture!.interaction==='translate'?'full hand travel':'wrist '+this.capture!.interaction} · release restores`:`Move · ${this.capture!.mode} · ${this.capture!.interaction} · release commits`;
    return;
   }
   if(!tool!.buttons.trigger.pressed&&tool!.buttons.trigger.rawValue<.45)this.armed=true;
@@ -67,11 +68,29 @@ export class XRMoveTool implements XRStrokeInteraction {
   const start=this.armed&&tool!.buttons.trigger.justPressed&&tool!.buttons.trigger.pressed;
   if(tool!.buttons.trigger.pressed)this.armed=false;if(!start)return;
   this.capturedLayers=l;this.runtime=runtime;this.owner=tool!.connectionId;
-  this.anchor.copy(surface.matrixWorld);this.controllerStart.setFromMatrixPosition(pose!).applyMatrix4(this.inverse);
-  this.capture=Object.freeze({projectId:l.project.id,layerId:runtime.layer.id,volume:runtime.volume,surfaceRevision:runtime.surface.revision,nativeTransform:Object.freeze([...runtime.layer.transform.position,...runtime.layer.transform.rotation,...runtime.layer.transform.scale]),target:Object.freeze(this.center.toArray()),worldMatrix:Object.freeze(this.anchor.toArray()),controllerPose:Object.freeze(pose!.toArray()),radius,falloff:this.tools.move.falloff,strength:this.tools.move.strength,stiffness:this.tools.move.stiffness,mode:this.tools.move.mode});
+  this.anchor.copy(surface.matrixWorld);this.poseRotation.multiplyMatrices(this.inverse,pose!).extractRotation(this.poseRotation);this.startRotation.setFromRotationMatrix(this.poseRotation);this.controllerStart.setFromMatrixPosition(pose!).applyMatrix4(this.inverse);
+  this.capture=Object.freeze({projectId:l.project.id,layerId:runtime.layer.id,volume:runtime.volume,surfaceRevision:runtime.surface.revision,nativeTransform:Object.freeze([...runtime.layer.transform.position,...runtime.layer.transform.rotation,...runtime.layer.transform.scale]),target:Object.freeze(this.center.toArray()),worldMatrix:Object.freeze(this.anchor.toArray()),controllerPose:Object.freeze(pose!.toArray()),radius,falloff:this.tools.move.falloff,strength:this.tools.move.strength,stiffness:this.tools.move.stiffness,mode:this.tools.move.mode==='preview'?'preview':this.tools.move.interaction==='translate'?this.tools.move.mode:'non-elastic',interaction:this.tools.move.interaction,axis:this.tools.move.axis,angularStrength:this.tools.move.angularStrength,angleClamp:this.tools.move.angleClamp});
   this.tools.beginPreview(this);l.beginPreview(this);
   this.preview.begin(surface,this.center,radius,this.capture.falloff,this.capture.strength,undefined,runtime.surface.spatial,this.capture.mode==='elastic'?'elastic':'non-elastic',this.capture.stiffness);
-  this.grabbing=true;this.paint(surface,this.center,radius,true);this.feedback=this.capture.mode==='preview'?'Move · preview only · pull controller; release restores':`Move · ${this.capture.mode} · pull controller; release commits`;this.pulse('grab');
+  this.grabbing=true;this.displacement.set(0,0,0);this.updatePose(pose!);this.paint(surface,this.center,radius,true);this.feedback=this.capture.mode==='preview'?`Move · preview only · ${this.capture.interaction==='translate'?'pull controller':'turn wrist'}; release restores`:`Move · ${this.capture.mode} · ${this.capture.interaction==='translate'?'pull controller':'turn wrist'}; release commits`;this.pulse('grab');
+ }
+ private updatePose(pose:Matrix4):void{
+  const capture=this.capture!;
+  if(capture.interaction==='translate'){this.preview.update(this.displacement);return;}
+  this.poseRotation.multiplyMatrices(this.inverse,pose).extractRotation(this.poseRotation);
+  this.wristRotation.setFromRotationMatrix(this.poseRotation).multiply(this.inverseStartRotation.copy(this.startRotation).invert()).normalize();
+  // q and -q represent the same pose: choose the shortest, bounded captured-pose delta.
+  if(this.wristRotation.w<0)this.wristRotation.set(-this.wristRotation.x,-this.wristRotation.y,-this.wristRotation.z,-this.wristRotation.w);
+  const q=this.wristRotation;let angle:number;
+  if(capture.axis==='free'){
+   this.rotationAxis.set(q.x,q.y,q.z);const length=this.rotationAxis.length();angle=2*Math.atan2(length,q.w);
+   if(length>1e-9)this.rotationAxis.multiplyScalar(1/length);else this.rotationAxis.set(0,1,0);
+  }else{
+   this.rotationAxis.set(capture.axis==='x'?1:0,capture.axis==='y'?1:0,capture.axis==='z'?1:0);
+   const projection=q.x*this.rotationAxis.x+q.y*this.rotationAxis.y+q.z*this.rotationAxis.z;angle=Math.hypot(projection,q.w)<1e-8?0:2*Math.atan2(projection,q.w);
+  }
+  const limit=capture.angleClamp*Math.PI/180;
+  this.preview.setRotation(this.rotationAxis,Math.max(-limit,Math.min(limit,angle*capture.angularStrength)),capture.interaction);
  }
  private startCommit(l:IndependentLayers,time:number):void{
   const capture=this.capture!,generation=++this.commitGeneration,abort=new AbortController();this.commitAbort=abort;this.commitMessage='Move · reconstructing · preview held · Support grip cancels';this.armed=false;
