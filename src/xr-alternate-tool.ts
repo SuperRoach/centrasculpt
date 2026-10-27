@@ -9,7 +9,7 @@ export class XRAlternateTool {
  private wanted=false;
  constructor(readonly tools:EditorToolState){}
  get active():boolean{return !!this.saved;}
- get feedback():string{return this.saved?`Alternate ${this.tools.active} · release Support trigger to restore${this.wanted?'':' after Tool stroke'}`:this.wanted?'Alternate queued · release Tool trigger':'';}
+ get feedback():string{return this.saved?`Alternate ${this.tools.active==='clay'?`Clay ${this.tools.port.settings().mode==='subtract'?'SUBTRACT':'ADD'}`:this.tools.active} · release Support trigger to restore${this.wanted?'':' after Tool stroke'}`:this.wanted?'Alternate queued · release Tool trigger':'';}
  update(support:XRControllerState|undefined,tool:XRControllerState|undefined,enabled:boolean,strokeActive:boolean):void{
   const valid=enabled&&support?.connected&&support.tracked&&support.gripTracked&&support.role==='support';
   if(!valid||support!.connectionId!==this.owner){this.armed=false;this.wanted=false;this.owner=valid?support!.connectionId:0;}
@@ -19,7 +19,7 @@ export class XRAlternateTool {
   if(this.saved&&!this.wanted)this.restore();
   if(!this.saved&&this.wanted&&this.tools.alternateTool!=='off'&&(this.tools.active==='clay'||this.tools.active==='smooth'||this.tools.active==='move')&&this.tools.active!==this.tools.alternateTool){
    this.saved={tool:this.tools.active,settings:{...this.tools.port.settings()},path:{...this.tools.path}};
-   this.tools.select(this.tools.alternateTool);
+   if(this.tools.alternateTool==='opposite'&&this.saved.tool==='clay'){const mode=this.tools.port.settings().mode==='subtract'?'add':'subtract';this.tools.select('clay');this.tools.port.setSettings({...this.tools.port.settings(),mode});}else this.tools.select(this.tools.alternateTool==='opposite'?'smooth':this.tools.alternateTool);
   }
  }
  /** Caller cancels the transaction first on interruptions, then restores settings. */

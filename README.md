@@ -1,5 +1,8 @@
 ## Move precision — Phase 2.5
 
+Quest polish controls: **Snap 15°** in the Tool Wheel/Options shares snapping between Straight Line direction and Move rotation. Tool stick resizes Clay while drawing; during an Elastic grab it adjusts **edge softness** (up softer, down firmer), preserving captured radius/pivot. Fresh defaults use Support trigger for opposite Clay Add/Subtract; existing saved alternate preferences are preserved. Mirror's red border/centre handle can be dragged in VR to set its layer-local offset. In Layers, **Merge with…** selects a second source, resolution and confirmation; Union creates a new editable layer and hides the two originals, with one Undo. Desktop **Bake / Merge layers… → Sources** offers the same pair merge. Continuous Stamp shows up to 16 lightweight pending-shape previews while exact final work advances over frames; allow the queue to finish after release. [Headset feedback and retest checklist](docs/PHASE_3_HEADSET_FEEDBACK.md).
+
+
 In VR Move Options, **Precision** reduces hand/wrist sensitivity to one quarter. Translate, Rotate region and Twist region use the captured grip pose and fixed surface pivot; small tracking movements are suppressed. Three subtle influence rings and a point show the target, amber when locked. Support-trigger temporary Smooth now returns to Move with its settings intact. Release holds the preview while reconstruction completes, then commits one Undo action.
 
 Software/browser validation is complete; physical Quest 3 acceptance is pending. See [design, actual measurements and headset checklist](docs/VR_MOVE_PRECISION.md).

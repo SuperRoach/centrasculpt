@@ -1,0 +1,45 @@
+{
+  "environment": "Host Node CPU; synthetic 60-sample Clay path, no renderer; not Quest measurements",
+  "results": [
+    {
+      "resolution": 64,
+      "staged": false,
+      "updates": 61,
+      "drainUpdates": 0,
+      "p95Ms": 12.690458000000007,
+      "maxMs": 18.542958999999996,
+      "totalCpuMs": 337.9456690000002,
+      "triangles": 32712
+    },
+    {
+      "resolution": 64,
+      "staged": true,
+      "updates": 68,
+      "drainUpdates": 7,
+      "p95Ms": 2.697166999999979,
+      "maxMs": 2.880958000000021,
+      "totalCpuMs": 90.02849999999995,
+      "triangles": 32712
+    },
+    {
+      "resolution": 128,
+      "staged": false,
+      "updates": 61,
+      "drainUpdates": 0,
+      "p95Ms": 24.265084,
+      "maxMs": 28.956249999999955,
+      "totalCpuMs": 607.3423359999997,
+      "triangles": 133192
+    },
+    {
+      "resolution": 128,
+      "staged": true,
+      "updates": 98,
+      "drainUpdates": 37,
+      "p95Ms": 2.4341660000000047,
+      "maxMs": 3.1737500000001546,
+      "totalCpuMs": 116.41708599999947,
+      "triangles": 133192
+    }
+  ]
+}

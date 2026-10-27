@@ -1,0 +1,259 @@
+Completed 64³
+Completed 128³
+Completed 192³
+{
+  "scope": "Deterministic Node CPU, 900 moving input samples at simulated 90 Hz, mesh every 9 samples, large brushes, Steady/Line replay, rotated repeated stamps, 20 cancel/undo cycles, native roundtrip/export. 64³ includes overlapping transformed Difference/export. CPU processing samples are NOT XR frame intervals; no browser/GPU/headset measurements. p95 requires >=20 and p99 >=100 samples. First/cold calls included; timings depend on host load. Wall includes assertions, save validation and allocations.",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.8.1"
+  },
+  "results": [
+    {
+      "resolution": 64,
+      "simulatedSeconds": 10,
+      "frames": 900,
+      "extendedCycles": 20,
+      "totalWallMs": 1585.7023339999998,
+      "frameProcessingCPU": {
+        "samples": 900,
+        "medianMs": 0.0599170000000413,
+        "p95Ms": 7.615499999999997,
+        "p99Ms": 10.773624999999925,
+        "maxMs": 12.880042000000003
+      },
+      "brush": {
+        "samples": 900,
+        "medianMs": 0.053749999999979536,
+        "p95Ms": 0.12379099999998289,
+        "p99Ms": 0.3716660000000047,
+        "maxMs": 0.905541999999997
+      },
+      "remesh": {
+        "samples": 100,
+        "medianMs": 7.204666999999972,
+        "p95Ms": 11.052874999999972,
+        "p99Ms": 12.758833999999979,
+        "maxMs": 12.768333999999982
+      },
+      "replayPump": {
+        "samples": 27,
+        "medianMs": 2.1529579999998987,
+        "p95Ms": 9.09575000000018,
+        "p99Ms": null,
+        "maxMs": 12.869417000000112
+      },
+      "stamps": [
+        {
+          "evaluationMs": 21.213040999999976,
+          "meshingMs": 15.404250000000047,
+          "totalMs": 58.47791599999982,
+          "changedVoxels": 232467,
+          "scanned": 262144,
+          "evaluated": 232917,
+          "chunks": 16,
+          "totalChunks": 64
+        },
+        {
+          "evaluationMs": 14.579042000000072,
+          "meshingMs": 6.035000000000082,
+          "totalMs": 20.767250000000104,
+          "changedVoxels": 211,
+          "scanned": 262144,
+          "evaluated": 512,
+          "chunks": 4,
+          "totalChunks": 64
+        },
+        {
+          "evaluationMs": 14.674708999999893,
+          "meshingMs": 7.2000000000000455,
+          "totalMs": 22.03166699999997,
+          "changedVoxels": 211,
+          "scanned": 262144,
+          "evaluated": 232917,
+          "chunks": 4,
+          "totalChunks": 64
+        },
+        {
+          "evaluationMs": 4.348624999999856,
+          "meshingMs": 5.953375000000051,
+          "totalMs": 10.419790999999805,
+          "changedVoxels": 211,
+          "scanned": 262144,
+          "evaluated": 512,
+          "chunks": 4,
+          "totalChunks": 64
+        }
+      ],
+      "pendingChunks": 0,
+      "sourceAndScratchMiB": 2,
+      "trackedLowerBoundMiB": 9.70956039428711,
+      "triangles": 18684,
+      "historyMiB": 0
+    },
+    {
+      "resolution": 128,
+      "simulatedSeconds": 10,
+      "frames": 900,
+      "extendedCycles": 20,
+      "totalWallMs": 3514.452084,
+      "frameProcessingCPU": {
+        "samples": 900,
+        "medianMs": 0.14679099999966638,
+        "p95Ms": 14.706249999999955,
+        "p99Ms": 19.520958000000064,
+        "maxMs": 23.85966600000029
+      },
+      "brush": {
+        "samples": 900,
+        "medianMs": 0.14216699999997218,
+        "p95Ms": 0.20983400000000074,
+        "p99Ms": 0.34075000000007094,
+        "maxMs": 1.6985830000000988
+      },
+      "remesh": {
+        "samples": 100,
+        "medianMs": 14.152082999999948,
+        "p95Ms": 20.179249999999683,
+        "p99Ms": 21.89720800000009,
+        "maxMs": 23.751416000000063
+      },
+      "replayPump": {
+        "samples": 40,
+        "medianMs": 4.057832999999846,
+        "p95Ms": 15.52062500000011,
+        "p99Ms": null,
+        "maxMs": 18.682083000000148
+      },
+      "stamps": [
+        {
+          "evaluationMs": 124.93258300000025,
+          "meshingMs": 61.372417000000496,
+          "totalMs": 341.0690830000003,
+          "changedVoxels": 1931005,
+          "scanned": 2097152,
+          "evaluated": 1933943,
+          "chunks": 45,
+          "totalChunks": 512
+        },
+        {
+          "evaluationMs": 42.36408300000039,
+          "meshingMs": 9.184666999999536,
+          "totalMs": 51.772249999999985,
+          "changedVoxels": 1686,
+          "scanned": 2097152,
+          "evaluated": 4608,
+          "chunks": 8,
+          "totalChunks": 512
+        },
+        {
+          "evaluationMs": 139.4305000000004,
+          "meshingMs": 13.426625000000058,
+          "totalMs": 153.1314170000005,
+          "changedVoxels": 1686,
+          "scanned": 2097152,
+          "evaluated": 1933943,
+          "chunks": 8,
+          "totalChunks": 512
+        },
+        {
+          "evaluationMs": 110.37183400000049,
+          "meshingMs": 9.028459000000112,
+          "totalMs": 119.63687500000015,
+          "changedVoxels": 1686,
+          "scanned": 2097152,
+          "evaluated": 4608,
+          "chunks": 8,
+          "totalChunks": 512
+        }
+      ],
+      "pendingChunks": 0,
+      "sourceAndScratchMiB": 16,
+      "trackedLowerBoundMiB": 46.40283203125,
+      "triangles": 78304,
+      "historyMiB": 25.026123046875
+    },
+    {
+      "resolution": 192,
+      "simulatedSeconds": 10,
+      "frames": 900,
+      "extendedCycles": 20,
+      "totalWallMs": 6761.544541,
+      "frameProcessingCPU": {
+        "samples": 900,
+        "medianMs": 0.35112500000013824,
+        "p95Ms": 28.57654199999979,
+        "p99Ms": 33.09137499999997,
+        "maxMs": 38.1426249999995
+      },
+      "brush": {
+        "samples": 900,
+        "medianMs": 0.342583999999988,
+        "p95Ms": 0.5088340000002063,
+        "p99Ms": 0.8166659999997137,
+        "maxMs": 1.2351660000003903
+      },
+      "remesh": {
+        "samples": 100,
+        "medianMs": 27.85479200000009,
+        "p95Ms": 33.08812500000022,
+        "p99Ms": 34.23770799999966,
+        "maxMs": 37.36283300000014
+      },
+      "replayPump": {
+        "samples": 82,
+        "medianMs": 4.114249999998719,
+        "p95Ms": 35.82783299999937,
+        "p99Ms": null,
+        "maxMs": 46.907624999999825
+      },
+      "stamps": [
+        {
+          "evaluationMs": 427.5363749999997,
+          "meshingMs": 101.18333399999938,
+          "totalMs": 1039.5849160000016,
+          "changedVoxels": 6591939,
+          "scanned": 7077888,
+          "evaluated": 6601361,
+          "chunks": 90,
+          "totalChunks": 1728
+        },
+        {
+          "evaluationMs": 106.67954100000134,
+          "meshingMs": 0.9663749999999709,
+          "totalMs": 108.16408299999966,
+          "changedVoxels": 5745,
+          "scanned": 7077888,
+          "evaluated": 16224,
+          "chunks": 8,
+          "totalChunks": 1728
+        },
+        {
+          "evaluationMs": 279.51137500000004,
+          "meshingMs": 10.740334000000075,
+          "totalMs": 290.78291700000045,
+          "changedVoxels": 5745,
+          "scanned": 7077888,
+          "evaluated": 6601361,
+          "chunks": 8,
+          "totalChunks": 1728
+        },
+        {
+          "evaluationMs": 107.2973750000001,
+          "meshingMs": 1.0501660000008997,
+          "totalMs": 108.9001249999983,
+          "changedVoxels": 5745,
+          "scanned": 7077888,
+          "evaluated": 16224,
+          "chunks": 8,
+          "totalChunks": 1728
+        }
+      ],
+      "pendingChunks": 0,
+      "sourceAndScratchMiB": 54,
+      "trackedLowerBoundMiB": 66.54120254516602,
+      "triangles": 179772,
+      "historyMiB": 0.19723892211914062
+    }
+  ]
+}

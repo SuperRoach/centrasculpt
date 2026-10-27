@@ -29,6 +29,7 @@ import type { LayerOperation } from './layers';
 import { createBaseProject } from './layers';
 import { SDFVolume } from './sdf';
 import { createUI } from './ui';
+import {XRMirrorPlane} from './xr-mirror-plane';
 import type { BakePlan } from './bake';
 import { DEFAULT_RESOLUTION } from './resolution';
 import { saveSculptProject, openSculptProject, MAX_PROJECT_BYTES } from './project';
@@ -274,7 +275,7 @@ document.getElementById('cancel-bake')!.addEventListener('click',()=>bakeAbort?.
 window.addEventListener('keydown',event=>{if(event.key==='Escape'&&bakeAbort){event.preventDefault();bakeAbort.abort();}});
 document.getElementById('bake-layers')!.addEventListener('click',async()=>{
   if(loadingProject||ui.modalOpen||xrBlocked())return;stop();cursor.visible=false;
-  const configured=ui.requestBake(resolution=>layers.bakePlan(resolution),showBakeBounds);transformTools?.sync();
+  const configured=ui.requestBake((resolution,ids)=>layers.bakePlan(resolution,ids),showBakeBounds,layers.project.layerStack.layers,layers.project.activeLayerId);transformTools?.sync();
   const options=await configured;if(!options){transformTools?.sync();return;}
   loadingProject=true;bakeAbort=new AbortController();ui.projectBusy(true);ui.bakeBusy(true);syncTransformUI();transformTools?.sync();ui.projectMessage('Baking a new independent SDF layer…');
   await paint();
@@ -358,7 +359,7 @@ editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settin
 const precisionPanel=document.createElement('details');precisionPanel.className='precision-settings';const precisionTitle=document.createElement('summary');precisionTitle.textContent='PRECISION · SHARED TOOL SETTINGS';const precisionOptions=document.createElement('div');precisionPanel.append(precisionTitle,precisionOptions);document.querySelector('#radius')!.closest('section')!.append(precisionPanel);
 let precisionKey='';
 function syncPrecisionOptions(){const options=editorTools!.options(),key=JSON.stringify(options);if(key===precisionKey)return;precisionKey=key;precisionOptions.replaceChildren();for(const o of options){const row=document.createElement('p'),label=document.createElement('span');label.textContent=`${o.label}: ${o.value} `;row.append(label);if(o.increase||o.decrease)for(const direction of [-1,1] as const){const button=document.createElement('button');button.type='button';button.textContent=direction===1?'＋':'−';button.setAttribute('aria-label',`${direction===1?'Increase':'Decrease'} ${o.label}`);button.disabled=o.disabled||!(direction===1?o.increase:o.decrease);button.onclick=()=>{try{editorTools!.adjust(o.id,direction);syncPrecisionOptions();}catch(error){ui.status(message(error));}};row.append(button);}precisionOptions.append(row);}}
-const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);
+const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorPlane=new XRMirrorPlane(editorTools!,desktopPreviewRoot);
 const desktopPathGeometry=new THREE.BufferGeometry(),desktopPathMaterial=new THREE.LineBasicMaterial({color:'#267c78',depthTest:false});const desktopPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopMirrorPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopPaths=new THREE.Group();desktopPaths.matrixAutoUpdate=false;desktopPaths.add(desktopPath,desktopMirrorPath);scene.add(desktopPaths);
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
 let desktopLocked=false,savedTarget=controls.target.clone();
@@ -385,7 +386,7 @@ const recoveryPanel=document.getElementById('recovery-slot')!;
 recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS</summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection"></select><p>Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh.</p><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></details><details><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
 const recoveryStatus=document.getElementById('recovery-status')!,recoveryAvailable=document.getElementById('recovery-available')!,recoverySelect=document.querySelector<HTMLSelectElement>('#recovery-selection')!,autosaveEnabled=document.querySelector<HTMLInputElement>('#autosave-enabled')!,recoveryConfirm=document.getElementById('recovery-confirm')!;
 let recoveryAction:'restore'|'discard'|null=null,recoveryListKey='',recoveryChoice='',recoveryWasBlocked=false,restoringRecovery=false;
-const recoveryReady=()=>!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active;
+const recoveryReady=()=>!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active&&!xrExperience?.interaction?.active;
 const recoveryKey=()=>JSON.stringify([layers.recoveryKey(),ui.settings,display.snapshot(layers.project.id,layers.project.layerStack.layers),editorTools?.snapshotPreferences()]);
 function updateSaveIndicator():void{
  const button=document.querySelector<HTMLButtonElement>('#header-save')!;
@@ -440,7 +441,7 @@ function pollComposite(now:number):void{
 renderer.setAnimationLoop((now,frame)=>{
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
-    desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
+    desktopMirrorPlane.group.visible=false;desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
     const cpuStart=performance.now();if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
     if(!xrExperience!.controllers.grab?.active&&!xrExperience!.controllers.layerGrab?.active)pollComposite(now);
     renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
@@ -463,7 +464,7 @@ renderer.setAnimationLoop((now,frame)=>{
     if(layers.drawing&&now-lastRebuild>=1000/30){runtime.rebuild();syncStats();lastRebuild=performance.now();}
   }else{cursor.visible=false;layers.breakStrokePath();}
   syncPrecisionOptions();
-  desktopMirrorCursor.hide();if(cursor.visible&&layers.symmetry.enabled){runtime.surface.group.updateWorldMatrix(true,false);const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopMirrorCursor.show(runtime.surface.group,reflectPoint(p,layers.symmetry),ui.radius/uniformScale(runtime.layer.transform),ui.mode==='smooth');}
+  desktopMirrorPlane.sync();desktopMirrorCursor.hide();if(cursor.visible&&layers.symmetry.enabled){runtime.surface.group.updateWorldMatrix(true,false);const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopMirrorCursor.show(runtime.surface.group,reflectPoint(p,layers.symmetry),ui.radius/uniformScale(runtime.layer.transform),ui.mode==='smooth');}
   desktopPaths.visible=desktopStroke.active&&desktopStroke.preview.length>0;if(desktopPaths.visible){desktopPathGeometry.setFromPoints(desktopStroke.preview.map(p=>new THREE.Vector3(p.x,p.y,p.z)));desktopPaths.matrix.copy(runtime.surface.group.matrixWorld);const m=layers.symmetry;desktopMirrorPath.visible=m.enabled;desktopMirrorPath.scale.set(1,1,1);desktopMirrorPath.position.set(0,0,0);if(m.enabled){desktopMirrorPath.scale[m.axis]=-1;desktopMirrorPath.position[m.axis]=2*m.offset;}}
   pollComposite(now);
   if(ghostRotation){ghostRotation.space=document.querySelector<HTMLSelectElement>('#shape-space')!.value==='world'?'world':'local';ghostRotation.sync();}

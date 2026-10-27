@@ -8,8 +8,8 @@ import {XRBrushPreview} from './xr-brush-preview';
 import {CLAY_TIP_REACH_METRES} from './clay-path';
 import type {VolumeBounds,VolumeStore} from './volume-store';
 import {uniformScale} from './transform';
-import {ClayStrokeSession} from './clay-stroke-session';
-export interface XRStrokeInteraction {readonly active:boolean;readonly feedback?:string;update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void;cancel():void;}
+import {ClayStrokeSession,CLAY_MESH_CHUNKS,CLAY_MESH_BUDGET_MS} from './clay-stroke-session';
+export interface XRStrokeInteraction {readonly active:boolean;readonly feedback?:string;readonly liveSizing?:'clay-radius'|'move-falloff'|null;update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void;cancel():void;}
 /** Grip-relative free-space Clay/Smooth by default; optional surface follow. All path filtering/transaction work is device-independent. */
 export class XRClayStroke implements XRStrokeInteraction {
  readonly controllerRaw:{position:number[];direction:number[];time:number}[]=[];
@@ -20,16 +20,17 @@ export class XRClayStroke implements XRStrokeInteraction {
  private readonly line:Line;private readonly mirrorLine:Line;private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly local=new Vector3();private readonly inverse=new Matrix4();private readonly parentInverse=new Matrix4();private readonly anchor=new Matrix4();
  private boundsVolume:VolumeStore|null=null;private bounds:VolumeBounds|null=null;private placementNote='';private capturedPlacement:'free'|'surface'='free';
  private processingMs=0;private processingMeasured=false;
- private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastMesh=0;private lastPreview:unknown=null;private previewLength=0;
- constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
+ private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastPreview:unknown=null;private previewLength=0;
+ constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed,true);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
+ get liveSizing(){return this.session.phase==='drawing'&&this.capturedTool==='clay'?'clay-radius' as const:null;}
  get active():boolean{return this.session.active;}
  get feedback():string{if(this.placementNote)return this.placementNote;const label=this.tools.active==='smooth'?'Smooth':'Clay';return this.session.phase==='committing'?`${label}: applying the preview · one undo action`:this.session.phase==='drawing'?this.session.buffered?`${label} preview · release trigger to apply`:`${label}: freehand`:this.message;}
  cancel():void{this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
-  const metrics=this.layers().metrics,wasActive=this.active,start=metrics.enabled?performance.now():0;
+  const metrics=this.layers().metrics,wasActive=this.active,start=performance.now();
   if(!wasActive){this.processingMs=0;this.processingMeasured=metrics.enabled;}
   if(!metrics.enabled)this.processingMeasured=false;
-  try{this.step(tool,pose,time,enabled,gripPose);}finally{if(metrics.enabled&&this.processingMeasured&&(wasActive||this.active)){this.processingMs+=performance.now()-start;if(!this.active)metrics.xrStroke.add(this.processingMs);}}
+  try{this.step(tool,pose,time,enabled,gripPose);}finally{this.session.accountFrameCPU(performance.now()-start);if(metrics.enabled&&this.processingMeasured&&(wasActive||this.active)){this.processingMs+=performance.now()-start;if(!this.active)metrics.xrStroke.add(this.processingMs);}}
  }
  private step(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const dt=this.lastFrame!==null?Math.min(.05,Math.max(0,(time-this.lastFrame)/1000)):1/90;this.lastFrame=time;
@@ -40,8 +41,9 @@ export class XRClayStroke implements XRStrokeInteraction {
   const runtime=layers.active;runtime.surface.group.updateWorldMatrix(true,true);
   if(this.active&&runtime.surface.group.matrixWorld.elements.some((v,i)=>Math.abs(v-this.anchor.elements[i])>1e-9)){this.cancel();this.message='Stroke cancelled: target/workspace moved';return;}
   try{
+   if(this.liveSizing)this.session.setRadius(this.tools.port.settings().radius);
    const radius=this.active?this.session.localRadius:this.tools.port.settings().radius/uniformScale(runtime.layer.transform);
-   if(this.session.phase==='committing'){this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth');this.session.pump();this.paint();return;}
+   if(this.session.phase==='committing'){this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',true,this.tools.port.settings().mode==='subtract');this.session.pump();this.paint();return;}
    this.raycaster.ray.origin.setFromMatrixPosition(pose!);this.direction.set(0,0,-1).transformDirection(pose!);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=3;
    this.inverse.copy(runtime.surface.group.matrixWorld).invert();let hasTarget=false;this.placementNote='';
    if(placement==='free'){
@@ -56,18 +58,19 @@ export class XRClayStroke implements XRStrokeInteraction {
    if(hasTarget&&this.active){const projected=this.session.projectPoint(this.local);this.local.set(projected.x,projected.y,projected.z);}
    const nearBounds=!canGrow&&placement==='free'&&this.bounds&&[this.local.x,this.local.y,this.local.z].some((v,i)=>v-radius<this.bounds!.min[i]+runtime.volume.step||v+radius>this.bounds!.max[i]-runtime.volume.step);
    if(nearBounds)this.placementNote='Near layer bounds · brush will be clipped';
-   if(hasTarget)this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',!nearBounds);else this.cursor.hide();
-   if(hasTarget&&layers.symmetry.enabled)this.mirrorCursor.show(runtime.surface.group,reflectPoint(this.local,layers.symmetry),radius,mode==='smooth',!nearBounds);else this.mirrorCursor.hide();
+   if(hasTarget)this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',!nearBounds,this.tools.port.settings().mode==='subtract');else this.cursor.hide();
+   if(hasTarget&&layers.symmetry.enabled)this.mirrorCursor.show(runtime.surface.group,reflectPoint(this.local,layers.symmetry),radius,mode==='smooth',!nearBounds,this.tools.port.settings().mode==='subtract');else this.mirrorCursor.hide();
    if(!this.active&&!tool!.buttons.trigger.pressed){this.armed=true;return;}
    if(!this.active&&(!this.armed||!tool!.buttons.trigger.justPressed||!tool!.buttons.trigger.pressed))return;
    if(this.active&&!tool!.buttons.trigger.pressed){if(this.session.buffered&&hasTarget){this.recordController(time);this.session.sample(this.local,time);}this.session.end();this.armed=true;this.paint();return;}
    if(!hasTarget){this.cancel();return;}
    if(!this.active){this.controllerRaw.length=0;this.capturedTool=mode;this.capturedPlacement=placement;this.anchor.copy(runtime.surface.group.matrixWorld);this.session.begin(this.tools.port.settings(),this.tools.path,time-dt*1000,placement==='free');this.owner=tool!.connectionId;this.armed=false;this.message='';}
-   this.recordController(time);this.session.sample(this.local,time);if(!this.session.buffered&&time-this.lastMesh>=1000/30){runtime.rebuild();this.lastMesh=time;}this.paint();
+   this.recordController(time);this.session.sample(this.local,time);if(!this.session.buffered)runtime.rebuild(CLAY_MESH_CHUNKS,CLAY_MESH_BUDGET_MS);this.paint();
   }catch(error){this.cancel();this.message=error instanceof Error?error.message:'Stroke cancelled';}
  }
  private recordController(time:number):void{this.controllerRaw.push({position:this.raycaster.ray.origin.toArray(),direction:this.raycaster.ray.direction.toArray(),time});}
  private paint():void{
+  this.material.color.set(this.tools.port.settings().mode==='subtract'?'#a04b36':this.tools.active==='smooth'?'#a8c9ee':'#9de6cf');
   this.preview.visible=this.active&&this.session.preview.length>0;if(!this.preview.visible)return;
   if(this.lastPreview!==this.session.preview||this.previewLength!==this.session.preview.length){this.lastPreview=this.session.preview;this.previewLength=this.session.preview.length;this.session.preview.forEach((p,i)=>this.positions.setXYZ(i,p.x,p.y,p.z));this.positions.needsUpdate=true;this.geometry.setDrawRange(0,this.session.preview.length);}
   const mirror=this.layers().symmetry;this.mirrorLine.visible=mirror.enabled;this.mirrorLine.scale.set(1,1,1);this.mirrorLine.position.set(0,0,0);if(mirror.enabled){this.mirrorLine.scale[mirror.axis]=-1;this.mirrorLine.position[mirror.axis]=2*mirror.offset;}

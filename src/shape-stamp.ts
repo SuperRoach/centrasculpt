@@ -13,6 +13,10 @@ export type StampPatch={indices:Uint32Array;before:Float32Array;after:Float32Arr
  * bounds cheaply reject values that cannot change, before evaluating the prepared kernel.
  */
 export function prepareStamp(layer:SdfLayer,value:unknown,maxStagingBytes=Infinity,mirror?:MirrorPlane):StampPatch {
+ const work=prepareStampSteps(layer,value,maxStagingBytes,mirror);let step=work.next();while(!step.done)step=work.next();return step.value;
+}
+/** Shared exact kernel; the XR caller advances bounded batches across frames. */
+export function* prepareStampSteps(layer:SdfLayer,value:unknown,maxStagingBytes=Infinity,mirror?:MirrorPlane):Generator<void,StampPatch> {
  const start=performance.now(),d=validateShapeDefinition(value);
  if(d.targetLayerId!==layer.id)throw new Error('Stamp must target the active layer.');
  layer.assertEditable();validateTransform(layer.transform);uniformScale(layer.transform);
@@ -27,7 +31,7 @@ export function prepareStamp(layer:SdfLayer,value:unknown,maxStagingBytes=Infini
  let indices=new Uint32Array(initial),before=new Float32Array(initial),after=new Float32Array(initial),count=0,scanned=0,evaluated=0;
  const bounds:Bounds={min:[...dims],max:[0,0,0]},p={x:0,y:0,z:0};
  for(let z=lo[2];z<=hi[2];z++)for(let y=lo[1];y<=hi[1];y++)for(let x=lo[0];x<=hi[0];x++){
-  scanned++;const index=volume.index(x,y,z),old=volume.readVoxel(index);p.x=volume.coordinate(x,0);p.y=volume.coordinate(y,1);p.z=volume.coordinate(z,2);
+  if(scanned&&scanned%2048===0)yield;scanned++;const index=volume.index(x,y,z),old=volume.readVoxel(index);p.x=volume.coordinate(x,0);p.y=volume.coordinate(y,1);p.z=volume.coordinate(z,2);
   if(!Number.isFinite(old)||Math.abs(old)>limit)throw new Error('Target contains invalid SDF values.');
   const dx=Math.max(box.min[0]-p.x,0,p.x-box.max[0]),dy=Math.max(box.min[1]-p.y,0,p.y-box.max[1]),dz=Math.max(box.min[2]-p.z,0,p.z-box.max[2]);
   const outside=dx>0||dy>0||dz>0;

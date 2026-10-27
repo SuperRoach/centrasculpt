@@ -15,7 +15,7 @@ export function validateProjectDisplay(value: unknown,layerIds: readonly string[
 }
 /** Runtime display preferences with an explicit native-project snapshot boundary. */
 export class LayerDisplayPreferences {
-  mode: ViewportMode='clay';
+  mode: ViewportMode='layer-colours';
   renderStyle:RenderStyle='normal';
   private readonly colours=new Map<string,string>();
   colour(projectId: string,layerId: string,index: number): string {
@@ -36,7 +36,7 @@ export class LayerDisplayPreferences {
   }
   restore(projectId:string,layers:readonly {id:string;order:number}[],saved?:ProjectDisplayPreferences):void {
     const validated=saved===undefined?undefined:validateProjectDisplay(saved,layers.map(layer=>layer.id));
-    this.mode=validated?.mode??'clay';this.renderStyle=validated?.renderStyle??'normal';
+    this.mode=validated?.mode??'layer-colours';this.renderStyle=validated?.renderStyle??'normal';
     for(const layer of layers)this.remove(projectId,layer.id);
     for(const [id,colour] of Object.entries(validated?.colours??{}))this.setColour(projectId,id,colour);
     for(const layer of layers)this.colour(projectId,layer.id,layer.order);

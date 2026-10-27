@@ -10,7 +10,7 @@ import {prepareShape} from './shape-library';
 import {validateShapeDefinition} from './shapes';
 import {SculptMetrics} from './sculpt-metrics';
 import {applyRenderStyle} from './render-style';
-import {prepareStamp} from './shape-stamp';
+import {prepareStampSteps} from './shape-stamp';
 import { Group, Mesh, MeshStandardMaterial } from 'three';
 import type { Bounds, BrushMode, Point3 } from './sdf';
 import {reflectPoint,validateMirrorPlane} from './sdf';
@@ -84,6 +84,7 @@ export class IndependentLayers {
   endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
   private baking=false;
   private movePending=false;private moveStagingBytes=0;
+  get bakingLayer():boolean{return this.baking;}
   get deforming():boolean{return this.movePending;}
   lastMoveStats:MoveCommitStats|null=null;
   private disposed=false;
@@ -249,7 +250,8 @@ export class IndependentLayers {
     from.pop();to.push(entry);this.committedRevision++;this.project.layerStack.select(entry.layerId);return entry.layerId;
   }
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
-  stampShape(value:unknown,inStroke=false):boolean {
+  stampShape(value:unknown,inStroke=false):boolean {const work=this.stampShapeSteps(value,inStroke);let step=work.next();while(!step.done)step=work.next();return step.value;}
+  *stampShapeSteps(value:unknown,inStroke=false):Generator<void,boolean> {
     validateMirrorPlane(this.symmetry);
     this.assertAvailable();if(!inStroke)this.finishStroke();this.finishTransform();
     if(inStroke&&this.strokeLayer!==this.project.activeLayerId)throw new Error('Stamp stroke target changed.');
@@ -257,20 +259,23 @@ export class IndependentLayers {
     if(definition.targetLayerId!==runtime.layer.id)throw new Error('Stamp must target the active layer.');
     if(definition.operation==='add'){const box=prepareShape(definition).worldBounds;if(this.symmetry.enabled){const a='xyz'.indexOf(this.symmetry.axis),lo=box.min[a],hi=box.max[a];box.min[a]=Math.min(lo,2*this.symmetry.offset-hi);box.max[a]=Math.max(hi,2*this.symmetry.offset-lo);}this.growRuntime(runtime,box);}
     const remaining=(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes-runtime.history.pendingMemoryEstimate;
-    const patch=prepareStamp(runtime.layer,definition,Math.max(0,Math.floor(remaining)),this.symmetry);
+    const patch=yield* prepareStampSteps(runtime.layer,definition,Math.max(0,Math.floor(remaining)),inStroke?this.strokeMirror:this.symmetry);
     if(!patch.indices.length){this.lastStampStats={evaluationMs:patch.evaluationMs,scanned:patch.scanned,evaluated:patch.evaluated,meshingMs:0,totalMs:performance.now()-start,changedVoxels:0,chunks:0,totalChunks:runtime.totalChunks};return false;}
     // Allocate the exact history snapshots before source mutation; preparation owns
     // the patch, so no Map-based stroke recorder is needed for these unique indices.
     const committed=inStroke?false:runtime.history.commitPatch('shape-stamp',patch),hadSurface=runtime.triangles>0;
-    if(inStroke)runtime.history.recordStampPatch(patch);
+    if(inStroke)yield* runtime.history.recordStampPatchSteps(patch);
     for(let i=0;i<patch.indices.length;i++){
+      if(inStroke&&i&&i%4096===0)yield;
       runtime.volume.writeVoxel(patch.indices[i],patch.after[i]);
       const signChanged=(patch.before[i]<0)!==(patch.after[i]<0);
       if(hadSurface||signChanged)runtime.mesher.invalidateSample(patch.indices[i],signChanged);
     }
     if(committed)this.recordCommit(runtime.layer.id);
     this.composite.invalidateLayer(runtime.layer,patch.bounds);
-    const meshStart=performance.now(),rebuilt=runtime.rebuild();
+    const meshStart=performance.now();let rebuilt=false,chunks=0;
+    if(inStroke){while(runtime.rebuild(1,3)){rebuilt=true;chunks+=runtime.lastChanged;yield;}runtime.lastChanged=chunks;}
+    else rebuilt=runtime.rebuild();
     this.lastStampStats={evaluationMs:patch.evaluationMs,meshingMs:performance.now()-meshStart,totalMs:performance.now()-start,changedVoxels:patch.indices.length,scanned:patch.scanned,evaluated:patch.evaluated,chunks:rebuilt?runtime.lastChanged:0,totalChunks:runtime.totalChunks};
     return true;
   }
@@ -362,9 +367,9 @@ export class IndependentLayers {
       entry.runtime=this.runtime(entry.layerId);entry.after.visibility[entry.layerId]=entry.runtime.layer.visible;stack.remove(entry.layerId);this.group.remove(entry.runtime.surface.group);this.runtimes.delete(entry.layerId);this.restoreBakeState(entry.before);
     }
   }
-  bakePlan(resolution:number){this.assertAvailable();this.assertCapacity(resolution**3,undefined,1);return planBake(this.project,resolution);}
+  bakePlan(resolution:number,sourceIds?:string[]){this.assertAvailable();this.assertCapacity(resolution**3,undefined,1);return planBake(this.project,resolution,sourceIds);}
   async bake(options:BakeOptions,signal?:AbortSignal,progress?:(p:BakeProgress)=>void):Promise<SdfLayer> {
-    this.assertAvailable();const validated=validateBakeOptions(options),plan=this.bakePlan(validated.resolution);
+    this.assertAvailable();const validated=validateBakeOptions(options),plan=this.bakePlan(validated.resolution,validated.sourceIds);
     this.finishStroke();this.finishTransform();
     const triangleBudget=MAX_PROJECT_TRIANGLES-[...this.runtimes.values()].reduce((sum,r)=>sum+r.triangles,0);
     if(triangleBudget<=0)throw new Error('Bake would exceed the native project triangle budget, including hidden sources.');
@@ -388,6 +393,7 @@ export class IndependentLayers {
       this.project.layerStack.insert(layer);for(const source of this.project.layerStack.layers)if(source.id in before.orders)source.order=before.orders[source.id];layer.order=Math.max(...Object.values(before.orders))+1;this.install(candidate);
       if(validated.hideSources)for(const id of plan.sourceIds)this.project.layerStack.get(id).visible=false;
       else this.viewMode='separate';
+      if(plan.merge)this.viewMode='separate';
       this.discardFuture();this.syncPresentation();this.composite.invalidate();
       this.committedRevision++;this.past.push({kind:'bake',layerId:layer.id,runtime:candidate,before,after:this.bakeState(),index:this.project.layerStack.layers.findIndex(l=>l.id===layer.id)});
       this.lastBakeStats={samplingMs,meshingMs,totalMs:performance.now()-start,resolution:plan.resolution,triangles:candidate.triangles,worldStep:plan.worldStep,gridBytes:plan.gridBytes};

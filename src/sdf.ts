@@ -164,7 +164,12 @@ export class SDFVolume implements VolumeStore {
           // Constructive clay: union/difference with an applicator sphere. Its
           // zero set is radius-sized even in a large positive (empty) field.
           // Strength/hardness control interior field depth, not dwell time to seed.
-          const field=(d-1)*radius*Math.max(.001,Math.min(1,strength))*(.25+.75*Math.max(0,Math.min(1,hardness)));
+          const signed=(d-1)*radius,band=this.step*2;
+          // Keep metric distances around zero AND in the positive exterior.
+          // Scaling the exterior lowered neighboring sphere samples within the
+          // finite brush AABB, corrupting gradients/zero crossings at its edge.
+          const depth=Math.max(.001,Math.min(1,strength))*(.25+.75*Math.max(0,Math.min(1,hardness)));
+          const field=signed>=-band?signed:-band+(signed+band)*depth;
           next=mode==='add'?Math.min(next,field):Math.max(next,-field);
         } else next += (mode === 'add' ? -1 : 1) * amount * falloff;
       }

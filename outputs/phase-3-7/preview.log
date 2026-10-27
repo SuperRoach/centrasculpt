@@ -2,9 +2,7 @@
 > sdf-sculpt-studio@0.1.0 dev
 > vite --host 0.0.0.0 --host 127.0.0.1
 
-error when starting dev server:
-Error: listen EPERM: operation not permitted 127.0.0.1:5173
-    at Server.setupListenHandle [as _listen2] (node:net:2306:21)
-    at listenInCluster (node:net:2437:12)
-    at node:net:2666:7
-    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+
+  VITE v7.3.7  ready in 68 ms
+
+  ➜  Local:   http://127.0.0.1:5173/

@@ -1,0 +1,65 @@
+{
+  "scope": "Actual SDF samples and extracted mesh, fixed ring partly embedded in starter sphere. Analytic torus approximates the 48-segment applicator sweep; surface probes are not Hausdorff. Before source pinned to 9aa9936. No Quest timing claim.",
+  "rows": [
+    {
+      "n": 64,
+      "version": "before",
+      "probes": 9220,
+      "outsideBandChanged": 140,
+      "vertices": 101748,
+      "triangles": 33916,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.02584212420557569,
+      "maxSurfaceProbeErrorVoxels": 0.5087668202972714,
+      "vertexRmsError": 0.0015759250891197681,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 84788
+    },
+    {
+      "n": 64,
+      "version": "corrected",
+      "probes": 9220,
+      "outsideBandChanged": 0,
+      "vertices": 101748,
+      "triangles": 33916,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.02463675898241846,
+      "maxSurfaceProbeErrorVoxels": 0.4850361924663634,
+      "vertexRmsError": 0.0010598902055149407,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 84788
+    },
+    {
+      "n": 128,
+      "version": "before",
+      "probes": 38812,
+      "outsideBandChanged": 336,
+      "vertices": 413124,
+      "triangles": 137708,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.015190352270441965,
+      "maxSurfaceProbeErrorVoxels": 0.6028671057331654,
+      "vertexRmsError": 0.000606613582992216,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 344268
+    },
+    {
+      "n": 128,
+      "version": "corrected",
+      "probes": 38812,
+      "outsideBandChanged": 0,
+      "vertices": 413124,
+      "triangles": 137708,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.010848816228790414,
+      "maxSurfaceProbeErrorVoxels": 0.43056239408011954,
+      "vertexRmsError": 0.0003867190145480857,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 344268
+    }
+  ]
+}

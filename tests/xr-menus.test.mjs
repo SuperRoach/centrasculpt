@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Group,Matrix4,Quaternion,Vector3} from 'three';
+import {Group,Matrix4,Quaternion,Vector3,Mesh,BoxGeometry,MeshBasicMaterial} from 'three';
 import {EditorToolState,EDITOR_TOOLS} from '../work/test-build/editor-tool-state.mjs';
 import {XRMenuModel,MENU_SIZE,WHEEL} from '../work/test-build/xr-menu-model.mjs';
 import {XRMenuView} from '../work/test-build/xr-menu-view.mjs';
@@ -42,7 +42,7 @@ test('radial and rectangular hit tests align with every visible target, includin
 test('Clay/Smooth options update the same desktop settings without voxel/history changes',()=>{
  const f=fixture();try{const bytes=new Uint8Array(saveSculptProject(f.layers.project)),volume=f.layers.active.volume.getDenseView().slice(),geometry=f.layers.active.surface.group.children.map(o=>o.geometry);
  f.tools.adjust('operation',1);assert.equal(f.settings.mode,'subtract');f.tools.adjust('radius',1);assert.equal(f.settings.radius,.24);f.tools.adjust('strength',1);assert.equal(f.settings.strength,.4);f.tools.adjust('hardness',1);assert.equal(f.settings.hardness,.05);assert.throws(()=>f.tools.adjust('spacing',1));
- f.tools.select('smooth');assert.equal(f.settings.mode,'smooth');assert.deepEqual(f.tools.options().map(o=>o.id),['placement','radius','strength','quality','application','symmetry','symmetry-axis','symmetry-offset','alternate-tool']);f.tools.adjust('strength',-1);assert.equal(f.settings.strength,.35);f.tools.select('clay');assert.equal(f.settings.mode,'subtract');
+ f.tools.select('smooth');assert.equal(f.settings.mode,'smooth');assert.deepEqual(f.tools.options().map(o=>o.id),['placement','radius','strength','quality','application','global-snap','symmetry','symmetry-axis','symmetry-offset','alternate-tool']);f.tools.adjust('strength',-1);assert.equal(f.settings.strength,.35);f.tools.select('clay');assert.equal(f.settings.mode,'subtract');
  f.tools.port.setSettings({...f.settings,radius:.3});assert.equal(f.tools.options().find(o=>o.id==='radius').value,'0.300');f.input.mode='rotate';assert.equal(f.tools.active,'transform');f.shape.setEnabled(true,f.layers.project.layerStack);assert.equal(f.tools.active,'stamp');
  assert.deepEqual(f.layers.active.volume.getDenseView(),volume);assert.deepEqual(f.layers.active.surface.group.children.map(o=>o.geometry),geometry);assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)),bytes);assert.equal(f.layers.undoCount,0);
  }finally{f.dispose();}
@@ -52,7 +52,7 @@ test('data-driven Stamp options use the existing preview model and linked dimens
  f.tools.adjust('shape',1);assert.equal(f.shape.definition.kind,'box');f.tools.adjust('dimension-1',1);assert.equal(f.shape.definition.dimensions[1],.9);f.tools.adjust('rotation-0',1);assert(Math.abs(f.shape.definition.transform.rotation[0]-Math.PI/12)<1e-10);f.tools.adjust('shape-scale',1);assert.deepEqual(f.shape.definition.transform.scale,[1.1,1.1,1.1]);f.tools.adjust('operation',1);assert.equal(f.shape.definition.operation,'subtract');
  f.tools.adjust('shape',1);f.tools.adjust('shape',1);assert.equal(f.shape.definition.kind,'pyramid');f.tools.adjust('dimension-0',1);assert.equal(f.shape.definition.dimensions[0],f.shape.definition.dimensions[2]);assert(f.tools.options().find(o=>o.id==='dimension-2').disabled);
  f.model.setRequest('tool-wheel');f.model.activate('options');f.model.activate('next');assert.equal(f.model.optionPage,1);assert(f.model.content().labels.some(l=>l.text==='Uniform scale'));f.model.activate('prev');assert.equal(f.model.optionPage,0);
- assert.deepEqual(f.layers.active.volume.getDenseView(),bytes);assert.equal(f.layers.undoCount,0);f.layers.setFlag(f.layers.project.activeLayerId,'locked',true);assert(f.tools.options().filter(o=>o.id!=='application'&&o.id!=='alternate-tool').every(o=>o.disabled));assert.throws(()=>f.tools.adjust('shape',1));
+ assert.deepEqual(f.layers.active.volume.getDenseView(),bytes);assert.equal(f.layers.undoCount,0);f.layers.setFlag(f.layers.project.activeLayerId,'locked',true);assert(f.tools.options().filter(o=>o.id!=='application'&&o.id!=='alternate-tool'&&o.id!=='global-snap').every(o=>o.disabled));assert.throws(()=>f.tools.adjust('shape',1));
  }finally{f.dispose();}
 });
 test('Transform options edit metadata with existing undo and native persistence, never SDF resampling',()=>{
@@ -64,7 +64,7 @@ test('Transform options edit metadata with existing undo and native persistence,
  }finally{f.dispose();}
 });
 test('Layers panel selects visible, hidden or locked rows and toggles flags using existing commands',()=>{
- const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,7);
+ const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,8);
  m.activate(`select:${first.id}`);assert.equal(f.layers.project.activeLayerId,first.id);assert(m.content().buttons.find(b=>b.id===`select:${first.id}`).selected);m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert.equal(first.visible,false);assert.equal(first.locked,true);m.activate(`select:${second.id}`);assert.equal(f.layers.project.activeLayerId,second.id);m.activate(`select:${first.id}`);assert.equal(f.layers.active.layer.id,first.id);
  const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.activeLayerId,first.id);assert.equal(opened.layerStack.active.visible,false);assert.equal(opened.layerStack.active.locked,true);assert.deepEqual(first.volume.getDenseView(),a);assert.deepEqual(second.volume.getDenseView(),b);assert.equal(f.layers.undoCount,0);assert.equal(f.layers.project.layerStack.layers.length,2);
  m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert(first.visible&&!first.locked);assert(f.changed>=6);
@@ -126,7 +126,7 @@ test('numeric bounds clamp, brush settings retain the existing native save/load 
  }finally{f.dispose();}
 });
 test('eight layer rows, paginated options and radial targets stay within the usable menu surface',()=>{
- const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,25);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
+ const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,26);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
  f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<10;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
  }finally{f.dispose();}
 });
@@ -161,3 +161,40 @@ test('eight layer rows, paginated options and radial targets stay within the usa
    trigger(state,false);view.update('layers',state,pose,176,true);trigger(state,true);view.update('layers',state,pose,192,true);assert.equal(f.layers.project.layerStack.layers.length,3);
   }finally{view?.dispose();f.dispose();restore();}
  });
+
+test('interactive menu renders after transparent scene panels and previews',()=>{
+ const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
+ assert.equal(view.mesh.material.transparent,true);assert.equal(view.mesh.material.opacity,1);
+ assert.equal(view.mesh.material.depthTest,false);assert.equal(view.mesh.material.depthWrite,false);
+ assert(view.mesh.renderOrder>30);
+ }finally{view.dispose();f.dispose();restore();}
+});
+
+for(const hand of ['left','right'])test(`menu pointer overlays the panel and clears on dismissal (${hand})`,()=>{
+ const h=bridgeFixture(hand);try{
+ h.stick(0,-1);h.point('tool:stamp');const line=h.bridge.slots[0].line;
+ assert(h.bridge.slots[0].rayVisual.visible);assert(line.renderOrder>h.view.mesh.renderOrder);assert.equal(line.material.depthTest,false);assert.equal(line.material.depthWrite,false);
+ assert(h.view.cursor.visible);assert(h.view.cursor.renderOrder>line.renderOrder);assert.equal(h.view.cursor.material.transparent,true);assert.equal(h.view.cursor.material.depthTest,false);
+ h.rays[0].position.set(100,100,100);h.update();assert.equal(h.view.cursor.visible,false);
+ h.point('tool:stamp');assert(h.view.cursor.visible);h.stick();assert.equal(h.view.cursor.visible,false);assert.equal(line.renderOrder,0);assert.equal(line.material.depthTest,true);assert.equal(line.material.depthWrite,true);
+ }finally{h.dispose();}
+});
+
+test('controller overlay includes realistic model meshes, restores materials and handles session cleanup',()=>{
+ const h=bridgeFixture('right'),model=new Group(),mesh=new Mesh(new BoxGeometry(),new MeshBasicMaterial()),original=mesh.material;model.add(mesh);
+ h.bridge.options.models={entries:[{asset:{object:model}},{}],ready:()=>true,stop(){},dispose(){}};
+ try{h.stick(0,-1);const body=h.bridge.slots[0].body;
+ assert(body.renderOrder>h.view.mesh.renderOrder);assert(mesh.renderOrder>h.view.cursor.renderOrder);assert.notEqual(mesh.material,original);assert.equal(mesh.material.transparent,true);assert.equal(mesh.material.depthTest,original.depthTest);assert.equal(mesh.material.depthWrite,original.depthWrite);assert.equal(original.transparent,false);
+ const overlay=mesh.material;h.update();assert.equal(mesh.material,overlay);
+ h.stick();assert.equal(mesh.material,original);assert.equal(mesh.renderOrder,0);assert.equal(body.renderOrder,0);
+ h.stick(0,-1);assert.notEqual(mesh.material,original);h.bridge.stop();assert.equal(mesh.material,original);
+ }finally{h.dispose();mesh.geometry.dispose();original.dispose();}
+});
+
+test('menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled',()=>{
+ const h=bridgeFixture('right');try{h.stick(0,-1);let clears=0;let writable=false;const renderer={state:{buffers:{depth:{setMask:v=>writable=v}}},clearDepth:()=>{assert(writable);clears++;writable=false;}};
+ h.view.mesh.onAfterRender(renderer);h.view.mesh.onAfterRender(renderer);assert.equal(clears,2);
+ const body=h.bridge.slots[0].body;assert.equal(body.material.depthTest,true);assert.equal(body.material.depthWrite,true);assert(body.renderOrder>h.view.mesh.renderOrder);
+ h.stick();assert.equal(body.material.depthTest,true);assert.equal(body.material.depthWrite,true);
+ }finally{h.dispose();}
+});

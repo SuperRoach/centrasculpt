@@ -24,7 +24,7 @@ type Declaration={id:string;label:string;read:()=>number|string;write?:(v:number
 /** The port reads/writes the existing application state. There is no VR copy of tool values. */
 export type EditorToolPort={layers:()=>IndependentLayers;shape:ShapePreviewModel;settings:()=>SculptSettings;setSettings:(v:SculptSettings)=>void;mode:()=>EditorMode;selectTool:(tool:EditorTool)=>void;selectTransform:(mode:Exclude<EditorMode,'sculpt'>)=>void;busy:()=>boolean;changed:()=>void};
 export class EditorToolState {
- alternateTool:'off'|'clay'|'smooth'='smooth';
+ alternateTool:'off'|'clay'|'smooth'|'opposite'='opposite';
  private moveSelected=false;private previewOwner:{cancel:()=>void}|null=null;
  readonly move={snap:0 as 0|15|45|90,precision:false,interaction:'translate' as 'translate'|'rotate'|'twist',axis:'free' as 'free'|'x'|'y'|'z',angularStrength:1,angleClamp:120,radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
  get brushRadius():number{return this.active==='move'?this.move.radius:this.port.settings().radius;}
@@ -46,7 +46,9 @@ export class EditorToolState {
   shape.set({...d,transform:{...d.transform,scale:[next,next,next]}},stack);return true;
  }
  get active():EditorTool{return this.moveSelected&&!this.port.shape.enabled&&this.port.mode()==='sculpt'?'move':this.port.shape.enabled?'stamp':this.port.mode()!=='sculpt'?'transform':this.port.settings().mode==='smooth'?'smooth':'clay';}
- get busy():boolean{const l=this.port.layers();return !!this.previewOwner||this.port.busy()||l.drawing||l.transforming||l.previewing||l.deforming;}
+ get busy():boolean{const l=this.port.layers();return !!this.previewOwner||this.port.busy()||l.drawing||l.transforming||l.previewing||l.deforming||l.bakingLayer;}
+ setLiveClayRadius(value:number):boolean{const l=this.port.layers();if(this.active!=='clay'||!l.drawing||l.previewing||l.deforming||l.transforming||this.port.busy()||!Number.isFinite(value))return false;const radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(radius===this.brushRadius)return false;this.port.setSettings({...this.port.settings(),radius});return true;}
+ setLiveMoveFalloff(value:number):boolean{if(this.active!=='move'||!this.previewOwner||this.port.layers().deforming||this.move.mode!=='elastic'||this.move.interaction!=='translate'||this.port.busy()||!Number.isFinite(value))return false;const next=Math.max(1,Math.min(4,value));if(next===this.move.falloff)return false;this.move.falloff=next;return true;}
  setBrushRadius(value:number,current?:SculptSettings):boolean{if(this.busy||toolSizingBinding(this.active)!=='brush-radius'||!Number.isFinite(value))return false;const settings=current??this.port.settings(),radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(Math.abs(this.brushRadius-radius)<1e-12)return false;if(this.active==='move')this.move.radius=radius;else this.port.setSettings({...settings,radius});return true;}
  select(tool:EditorTool):void{const cancelled=!!this.previewOwner;this.previewOwner?.cancel();const l=this.port.layers(),onlyCancelledMove=cancelled&&l.deforming&&!this.previewOwner&&!l.previewing&&!l.drawing&&!l.transforming&&!this.port.busy();if(this.busy&&!onlyCancelledMove)throw new Error('Finish the current interaction first.');if(!EDITOR_TOOLS.some(t=>t.id===tool&&t.enabled))throw new Error('This tool is unavailable.');this.port.selectTool(tool);this.moveSelected=tool==='move';this.port.changed();}
  /** Match desktop's default: a separate empty 64³ clay volume, selected immediately. */
@@ -109,8 +111,9 @@ export class EditorToolState {
    options.push({id:'selected-layer',label:'Selected layer',read:()=>l.active.layer.name,disabled:true},{id:'workspace-note',label:'Workspace / layer',read:()=> 'Support/both = view; Tool = saved layer',disabled:true},{id:'reset-layer',label:'Reset Layer Transform…',read:()=> 'Position 0 · rotation 0 · scale 1',action:'reset-layer',disabled:!editable});
    options.push({id:'grip',label:'Tool grip',read:()=>l.transforming?'Moving / rotating · release grip':l.viewMode!=='separate'?'Use Separate Layers':!editable?'Show / unlock layer':!hasUniformScale(t)?'Uniform layer scale required':'Move + wrist rotate',disabled:true});
   }
+  options.push({id:'global-snap',label:'Angle snap · Line + Move rotation',read:()=>this.path.snap?'on':'off',write:v=>this.path.snap=v==='on'?15:0,choices:['off','on'],names:['Off','15°']});
   options.push(...mirrorOptions);
-  options.push({id:'alternate-tool',label:'Support trigger alternate',read:()=>this.alternateTool,write:v=>this.alternateTool=v as 'off'|'clay'|'smooth',choices:['off','smooth','clay'],names:['Off','Smooth','Clay']});
+  options.push({id:'alternate-tool',label:'Support trigger alternate',read:()=>this.alternateTool,write:v=>this.alternateTool=v as typeof this.alternateTool,choices:['opposite','smooth','off'],names:['Opposite Clay · Add / Subtract','Smooth','Off']});
   return options;
  }
  options():ToolOption[]{return this.declarations().map(d=>{const value=d.read(),disabled=this.busy||!!d.disabled||!d.write&&!d.action,index=d.choices?.indexOf(String(value))??0;return {action:d.action,slider:d.slider?{min:d.min!,max:d.max!,value:Number(value)}:undefined,id:d.id,label:d.label,value:d.format?.(value)??(d.choices?(d.names??d.choices)[index]:typeof value==='number'?Number(value.toFixed(3)).toString():value),disabled,decrease:!disabled&&(!!d.choices||Number(value)>d.min!),increase:!disabled&&(!!d.choices||Number(value)<d.max!)};});}

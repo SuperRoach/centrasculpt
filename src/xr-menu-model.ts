@@ -11,21 +11,30 @@ export const WHEEL=Object.freeze({x:576,y:590,inner:185,outer:430,labelRadius:30
 /** Screen-independent menu state, hit targets and application command dispatch. */
 export class XRMenuModel {
  request:XRMenuRequest|null=null;page:XRMenuRequest='tool-wheel';optionPage=0;hover:string|null=null;feedback='';
+ private merge:{project:unknown;id:string;other?:string;resolution:number}|null=null;private mergeAbort:AbortController|null=null;
  private resetTarget:{project:unknown;id:string}|null=null;
  constructor(readonly tools:EditorToolState){}
- setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.hover=null;this.feedback='';}
+ setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.hover=null;this.feedback='';}
  content():MenuContent{
   if(this.resetTarget&&(this.tools.active!=='transform'||this.tools.busy||this.tools.port.layers().project!==this.resetTarget.project||this.tools.port.layers().project.activeLayerId!==this.resetTarget.id)){this.resetTarget=null;this.feedback='Reset cancelled: selection or interaction changed';}
   if(this.resetTarget){const l=this.tools.port.layers().active.layer;return {title:'RESET LAYER TRANSFORM?',subtitle:l.name,labels:[{text:'Position 0 · rotation 0 · uniform scale 1',x:60,y:320},{text:'Permanent layer edit · one Undo action',x:60,y:390},{text:'Workspace navigation stays unchanged',x:60,y:460}],buttons:[{id:'cancel-reset',label:'Cancel',rect:{x:60,y:600,width:480,height:110}},{id:'confirm-reset',label:'Reset layer',disabled:!l.editable,rect:{x:600,y:600,width:480,height:110}}],footer:'Release trigger, then confirm or cancel'};}
+  if(this.merge){const state=this.merge,l=this.tools.port.layers();if(l.project!==state.project||l.project.activeLayerId!==state.id&&!this.mergeAbort){this.merge=null;this.feedback='Merge cancelled: selected layer changed';return this.content();}
+   const running=!!this.mergeAbort,buttons:MenuButton[]=[{id:'cancel-merge',label:running?'Cancel merge':'‹ Back to Layers',rect:{x:40,y:150,width:1072,height:68}}];
+   if(!state.other){l.project.layerStack.layers.filter(x=>x.id!==state.id).forEach((layer,i)=>buttons.push({id:`merge-target:${layer.id}`,label:layer.name,rect:{x:40,y:240+i*100,width:1072,height:82},disabled:this.tools.busy}));}
+   else {buttons.push({id:'merge-resolution',label:`Output ${state.resolution}³ · tap to change`,rect:{x:40,y:440,width:1072,height:100},disabled:running},{id:'confirm-merge',label:'Merge these two layers',rect:{x:40,y:640,width:1072,height:100},disabled:this.tools.busy||running});}
+   return {title:running?'MERGING…':state.other?'MERGE TWO LAYERS?':'CHOOSE LAYER TO MERGE',subtitle:l.project.layerStack.get(state.id).name,buttons,labels:state.other?[{text:l.project.layerStack.get(state.other).name,x:52,y:310},{text:'Union · originals kept hidden · one Undo',x:52,y:370},{text:'Lower resolution can lose fine detail',x:52,y:590}]:[],footer:this.feedback||'Hold Support stick · release cancels'};
+  }
   const buttons:MenuButton[]=[],labels:MenuContent['labels']=[],title=this.page==='tool-wheel'?'TOOL WHEEL':this.page==='layers'?'LAYERS':`${EDITOR_TOOLS.find(t=>t.id===this.tools.active)?.label.toUpperCase()} OPTIONS`;
   const add=(id:string,label:string,x:number,y:number,width:number,height:number,selected=false,disabled=false,detail?:string)=>buttons.push({id,label,rect:{x,y,width,height},selected,disabled,detail});
   if(this.page==='tool-wheel'){
+   add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',40,140,300,74,!!this.tools.path.snap,this.tools.busy);
    EDITOR_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.detail,sector:i,selected:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
    add('options','Options',436,518,280,144,false,false,EDITOR_TOOLS.find(t=>t.id===this.tools.active)?.label);
   }else if(this.page==='layers'){
    const layers=this.tools.port.layers();
    const full=layers.project.layerStack.layers.length>=MAX_PROJECT_LAYERS;
-   add('new-layer','＋ Add New Layer',40,960,1072,78,false,this.tools.busy||full,full?'Maximum of 8 layers reached':'Empty clay volume · 64³ · selects new layer');
+   add('new-layer','＋ Add New Layer',40,960,524,78,false,this.tools.busy||full,full?'Maximum of 8 layers reached':'Empty clay volume · 64³ · selects new layer');
+   add('merge-layers','Merge with…',588,960,524,78,false,this.tools.busy||full||layers.project.layerStack.layers.length<2);
    labels.push({text:'Select layer',x:48,y:192},{text:'Visibility',x:728,y:192},{text:'Lock',x:944,y:192});
    layers.project.layerStack.layers.forEach((layer,i)=>{const y=216+i*94,active=layer.id===layers.project.activeLayerId;
     add(`select:${layer.id}`,layer.name,40,y,664,82,active,this.tools.busy,`${active?'✓ Active · ':''}${volumeLabel(layer.volume)} · ${layer.operation==='union'?'Union':layer.operation==='difference'?'Difference':'Intersect'}`);
@@ -34,7 +43,7 @@ export class XRMenuModel {
     add(`locked:${layer.id}`,layer.locked?'Locked':'Unlocked',912,y,200,82,layer.locked,this.tools.busy);
    });
   }else{
-   add('tools','‹ Tools',40,140,240,74);const all=this.tools.options(),pages=Math.max(1,Math.ceil(all.length/7));this.optionPage=Math.min(this.optionPage,pages-1);
+   add('tools','‹ Tools',40,140,240,74);add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',300,140,440,74,!!this.tools.path.snap,this.tools.busy);const all=this.tools.options(),pages=Math.max(1,Math.ceil(all.length/7));this.optionPage=Math.min(this.optionPage,pages-1);
    labels.push({text:`${this.optionPage+1} / ${pages}`,x:550,y:185});
    add('prev','‹',788,140,144,74,false,this.optionPage===0);add('next','›',948,140,164,74,false,this.optionPage===pages-1);
    all.slice(this.optionPage*7,this.optionPage*7+7).forEach((option,i)=>{const y=242+i*102;
@@ -61,7 +70,15 @@ export class XRMenuModel {
   const button=this.content().buttons.find(b=>b.id===id);if(!button||button.disabled){this.feedback='Unavailable';return;}
   try{
    const separator=id.indexOf(':'),action=separator<0?id:id.slice(0,separator),value=id.slice(separator+1);
-   if(id==='reset-stamp-offset')this.tools.resetStampOffset();
+   if(id==='snap-toggle')this.tools.adjust('global-snap',1);
+   else if(id==='merge-layers'){const l=this.tools.port.layers();this.merge={project:l.project,id:l.project.activeLayerId,resolution:128};}
+   else if(action==='merge-target'&&this.merge)this.merge.other=value;
+   else if(id==='merge-resolution'&&this.merge)this.merge.resolution=this.merge.resolution===64?128:this.merge.resolution===128?192:64;
+   else if(id==='cancel-merge'){this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;}
+   else if(id==='confirm-merge'&&this.merge?.other){const state=this.merge,l=this.tools.port.layers(),abort=new AbortController();this.mergeAbort=abort;
+    void l.bake({name:'Merged sculpture',resolution:state.resolution,hideSources:true,sourceIds:[state.id,state.other!]},abort.signal,p=>{this.feedback=`${p.stage} ${p.completed}/${p.total}`;}).then(()=>{if(this.mergeAbort!==abort)return;this.mergeAbort=null;this.merge=null;this.feedback='Merged · originals hidden · Undo restores';this.tools.port.shape.sync(l.project.layerStack);this.tools.port.changed();}).catch(error=>{if(this.mergeAbort!==abort)return;this.mergeAbort=null;this.feedback=error instanceof Error?error.message:'Merge failed; sources kept';});
+   }
+   else if(id==='reset-stamp-offset')this.tools.resetStampOffset();
    else if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.project.activeLayerId};}
    else if(id==='cancel-reset')this.resetTarget=null;
    else if(id==='confirm-reset'){const target=this.resetTarget;this.resetTarget=null;if(target&&this.tools.port.layers().project===target.project)this.tools.resetLayerTransform(target.id);}

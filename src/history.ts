@@ -69,15 +69,16 @@ export class SculptHistory {
   }
   /** Merge sorted stamp deltas without one JS object per affected voxel. Earliest
    * before and latest after survive overlaps; staging completes before source writes. */
-  recordStampPatch(patch:{indices:Uint32Array;before:Float32Array;after:Float32Array;bounds:Bounds|null}):void {
+  recordStampPatch(patch:{indices:Uint32Array;before:Float32Array;after:Float32Array;bounds:Bounds|null}):void {for(const _ of this.recordStampPatchSteps(patch)){void _;}}
+  *recordStampPatchSteps(patch:{indices:Uint32Array;before:Float32Array;after:Float32Array;bounds:Bounds|null}):Generator<void> {
     if(!this.pending||this.pending.size)throw new Error('Stamp transaction unavailable.');
     if(!patch.indices.length||!patch.bounds)return;
     const old=this.packed;let a=0,b=0,count=0;
-    while(a<(old?.indices.length??0)||b<patch.indices.length){const x=old&&a<old.indices.length?old.indices[a]:Infinity,y=b<patch.indices.length?patch.indices[b]:Infinity;if(x<=y)a++;if(y<=x)b++;count++;}
+    while(a<(old?.indices.length??0)||b<patch.indices.length){const x=old&&a<old.indices.length?old.indices[a]:Infinity,y=b<patch.indices.length?patch.indices[b]:Infinity;if(x<=y)a++;if(y<=x)b++;count++;if(count%8192===0)yield;}
     if(count*12+this.pendingMemoryEstimate>this.pendingBudgetBytes)throw new Error('Stamp history memory safety limit reached.');
     const indices=new Uint32Array(count),before=new Float32Array(count),after=new Float32Array(count);a=b=0;let n=0;
     while(a<(old?.indices.length??0)||b<patch.indices.length){const x=old&&a<old.indices.length?old.indices[a]:Infinity,y=b<patch.indices.length?patch.indices[b]:Infinity;
-      indices[n]=Math.min(x,y);before[n]=x<=y?old!.before[a]:patch.before[b];after[n]=y<=x?patch.after[b]:old!.after[a];if(x<=y)a++;if(y<=x)b++;n++;
+      indices[n]=Math.min(x,y);before[n]=x<=y?old!.before[a]:patch.before[b];after[n]=y<=x?patch.after[b]:old!.after[a];if(x<=y)a++;if(y<=x)b++;n++;if(n%8192===0)yield;
     }
     const bounds=old?{min:old.bounds.min.map((v,i)=>Math.min(v,patch.bounds!.min[i])),max:old.bounds.max.map((v,i)=>Math.max(v,patch.bounds!.max[i]))} as Bounds:{min:[...patch.bounds.min],max:[...patch.bounds.max]} as Bounds;
     this.packed={indices,before,after,bounds,layerId:this.targetLayerId,kind:'shape-stamp'};this.revision++;

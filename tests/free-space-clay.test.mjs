@@ -41,3 +41,13 @@ test('constructive Add grows before the brush reaches the positive boundary; onl
 test('explicit blank layer creation preserves existing data, voxel spacing, independent storage and native round trip',()=>{
  const c=setup(33);try{const base=c.active.volume,before=base.values.slice(),empty=c.create(128,true);assert.equal(empty.volume.step,3.2/127);assert(empty.volume.values.every(v=>v>0));assert.equal(c.active.triangles,0);draw(c,[point(0)]);assert.deepEqual(base.values,before);const loaded=openSculptProject(saveSculptProject(c.project));assert.equal(loaded.layerStack.layers.length,2);assert.deepEqual(loaded.activeLayer.volume.values,empty.volume.values);}finally{c.dispose();}
 });
+
+test('partly embedded Clay preserves the starter sphere zero-crossing band outside the applicator',()=>{
+ for(const n of [64,128]){const v=new SDFVolume(n),before=v.values.slice(),center={x:.82,y:0,z:0},radius=.22;
+ v.brush(center,radius,'add',.01,undefined,.6,true,.35);
+ let inspected=0;for(let z=1;z<n-1;z++)for(let y=1;y<n-1;y++)for(let x=1;x<n-1;x++){
+ const i=v.index(x,y,z),px=v.coordinate(x),py=v.coordinate(y),pz=v.coordinate(z),applicator=Math.hypot(px-center.x,py,pz)-radius;
+ if(Math.abs(before[i])<=v.step*1.5&&applicator>v.step*2){inspected++;assert.equal(v.values[i],before[i],`unaffected sphere narrow band at ${x},${y},${z}`);}
+ }assert(inspected>100);
+ }
+});

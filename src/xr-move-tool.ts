@@ -35,6 +35,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   this.boundary=new LineSegments(geometry,new LineBasicMaterial({color:'#aec4de',transparent:true,opacity:.65,depthTest:true,depthWrite:false,toneMapped:false}));this.boundary.raycast=()=>{};this.boundary.frustumCulled=false;this.influence.group.add(this.boundary);
   this.marker=new Mesh(new SphereGeometry(1,10,8),new MeshBasicMaterial({color:'#99cfff',depthTest:true,depthWrite:false,toneMapped:false}));this.marker.matrixAutoUpdate=false;this.marker.raycast=()=>{};this.marker.frustumCulled=false;this.marker.renderOrder=26;this.marker.visible=false;this.marker.name='Move surface target · not project data';root.add(this.marker);
  }
+ get liveSizing(){return this.grabbing&&!this.commitAbort&&this.capture?.mode==='elastic'&&this.capture.interaction==='translate'?'move-falloff' as const:null;}
  get active():boolean{return this.grabbing;}
  get notifying():boolean{return this.until>this.currentTime;}
  private release():void{this.preview.restore();this.tools.endPreview(this);this.capturedLayers?.endPreview(this);this.grabbing=false;this.capturedLayers=null;this.runtime=null;this.capture=null;this.owner=0;this.influence.hide();this.marker.visible=false;}
@@ -60,6 +61,7 @@ export class XRMoveTool implements XRStrokeInteraction {
    this.displacement.setFromMatrixPosition(pose!).applyMatrix4(this.inverse).sub(this.controllerStart);this.updatePose(pose!);
    this.paint(surface,this.preview.field.center,this.preview.field.radius,true);
    this.feedback=this.capture!.precision?`Move · Precision ¼ sensitivity · ${this.capture!.mode==='preview'?'release restores':'release commits'}`:this.capture!.mode==='preview'?`Move · preview only · ${this.capture!.interaction==='translate'?'full hand travel':'wrist '+this.capture!.interaction} · release restores`:`Move · ${this.capture!.mode} · ${this.capture!.interaction} · release commits`;
+   if(this.liveSizing)this.feedback+=` · Tool stick: edge softness ${this.preview.field.falloff.toFixed(2)}`;
    return;
   }
   if(!tool!.buttons.trigger.pressed&&tool!.buttons.trigger.rawValue<.45)this.armed=true;
@@ -81,7 +83,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   if(tool!.buttons.trigger.pressed)this.armed=false;if(!start)return;
   this.capturedLayers=l;this.runtime=runtime;this.owner=tool!.connectionId;
   this.anchor.copy(surface.matrixWorld);this.poseRotation.multiplyMatrices(this.inverse,pose!).extractRotation(this.poseRotation);this.startRotation.setFromRotationMatrix(this.poseRotation);this.controllerStart.setFromMatrixPosition(pose!).applyMatrix4(this.inverse);
-  this.capture=Object.freeze({projectId:l.project.id,layerId:runtime.layer.id,volume:runtime.volume,surfaceRevision:runtime.surface.revision,nativeTransform:Object.freeze([...runtime.layer.transform.position,...runtime.layer.transform.rotation,...runtime.layer.transform.scale]),target:Object.freeze(this.center.toArray()),worldMatrix:Object.freeze(this.anchor.toArray()),controllerPose:Object.freeze(pose!.toArray()),radius,falloff:this.tools.move.falloff,strength:this.tools.move.strength,stiffness:this.tools.move.stiffness,mode:this.tools.move.mode==='preview'?'preview':this.tools.move.interaction==='translate'?this.tools.move.mode:'non-elastic',interaction:this.tools.move.interaction,axis:this.tools.move.axis,angularStrength:this.tools.move.angularStrength,angleClamp:this.tools.move.angleClamp,precision:this.tools.move.precision,snap:this.tools.move.snap});
+  this.capture=Object.freeze({projectId:l.project.id,layerId:runtime.layer.id,volume:runtime.volume,surfaceRevision:runtime.surface.revision,nativeTransform:Object.freeze([...runtime.layer.transform.position,...runtime.layer.transform.rotation,...runtime.layer.transform.scale]),target:Object.freeze(this.center.toArray()),worldMatrix:Object.freeze(this.anchor.toArray()),controllerPose:Object.freeze(pose!.toArray()),radius,falloff:this.tools.move.falloff,strength:this.tools.move.strength,stiffness:this.tools.move.stiffness,mode:this.tools.move.mode==='preview'?'preview':this.tools.move.interaction==='translate'?this.tools.move.mode:'non-elastic',interaction:this.tools.move.interaction,axis:this.tools.move.axis,angularStrength:this.tools.move.angularStrength,angleClamp:this.tools.move.angleClamp,precision:this.tools.move.precision,snap:this.tools.path.snap||this.tools.move.snap});
   this.tools.beginPreview(this);l.beginPreview(this);
   this.preview.begin(surface,this.center,radius,this.capture.falloff,this.capture.strength,undefined,runtime.surface.spatial,this.capture.mode==='elastic'?'elastic':'non-elastic',this.capture.stiffness);
   surface.getWorldScale(this.worldScale);this.gesture.capture(this.capture.precision,1/this.worldScale.x);
@@ -89,6 +91,7 @@ export class XRMoveTool implements XRStrokeInteraction {
  }
  private updatePose(pose:Matrix4):void{
   const capture=this.capture!;
+  if(this.liveSizing){this.preview.field.falloff=this.tools.move.falloff;this.preview.uniforms.moveExponent.value=this.tools.move.falloff+1;}
   if(capture.interaction==='translate'){this.preview.update(this.gesture.translation(this.displacement,this.filteredDisplacement,capture.axis));return;}
   this.poseRotation.multiplyMatrices(this.inverse,pose).extractRotation(this.poseRotation);
   this.wristRotation.setFromRotationMatrix(this.poseRotation).multiply(this.inverseStartRotation.copy(this.startRotation).invert()).normalize();

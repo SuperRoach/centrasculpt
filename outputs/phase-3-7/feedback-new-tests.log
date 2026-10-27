@@ -1,0 +1,25 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs headset-feedback
+
+Tests: 1/56 files · compiled 0, cached 82 · preparation 6 ms
+✔ fresh Clay alternate reverses Add/Subtract and restores exact settings; legacy explicit Smooth remains (22.0975ms)
+✔ Tool stick resizes drawing Clay, respects menu/grip gates, and frozen replay retains each recorded radius (60.913083ms)
+✔ buffered variable-radius replay exactly matches the displayed path radii under layer scaling (31.268167ms)
+✔ shared snap quantizes line azimuth/elevation, leaves freehand untouched and persists with legacy defaults (17.105666ms)
+✔ red mirror plane handle drags only its offset; release persists, cancellation restores and helpers never enter native data (11.341ms)
+✔ Elastic captured grab changes only edge softness; CPU/GPU falloff agree and cancellation leaves exact SDF (12.083208ms)
+✔ pair merge unions exactly two chosen layers regardless of their Boolean flags and preserves third/source data and history (175.472375ms)
+✔ XR merge target selection, resolution/confirmation and cancellation preserve sources and unrelated visibility (108.328042ms)
+✔ cooperative stamps match synchronous output, and cancelling during evaluation/history/writes restores exact redo (136.092875ms)
+✔ pending Stamp previews are bounded, display-only, and hide on cancellation with source/redo retained (13.8075ms)
+✔ invalid pair selection rejects before any source visibility, history or voxel mutation (10.174208ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 655.850292
+Test command wall time: 0.69 s

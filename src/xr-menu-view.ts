@@ -1,4 +1,4 @@
-import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,Quaternion,Raycaster,SRGBColorSpace,Vector3} from 'three';
+import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,SphereGeometry,Quaternion,Raycaster,SRGBColorSpace,Vector3} from 'three';
 import type {Matrix4} from 'three';
 import type {XRControllerState} from './xr-input';
 import type {XRMenuRequest} from './xr-support-shortcuts';
@@ -7,6 +7,7 @@ import type {MenuContent,MenuButton} from './xr-menu-model';
 /** The polling bridge supplies poses/actions; the menu owns ray hits, trigger capture and drawing. */
 export interface XRMenuInteraction {readonly active:boolean;update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null;close():void;}
 export class XRMenuView implements XRMenuInteraction {
+ readonly cursor=new Mesh(new SphereGeometry(.004,12,8),new MeshBasicMaterial({color:'#ffffff',transparent:true,depthTest:false,depthWrite:false,toneMapped:false}));
  readonly mesh:Mesh<PlaneGeometry,MeshBasicMaterial>;readonly canvas:HTMLCanvasElement;paintCount=0;
  private readonly texture:CanvasTexture;private readonly ctx:CanvasRenderingContext2D;
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();
@@ -16,12 +17,16 @@ export class XRMenuView implements XRMenuInteraction {
  constructor(readonly model:XRMenuModel){
   this.canvas=document.createElement('canvas');this.canvas.width=this.canvas.height=MENU_SIZE;this.ctx=this.canvas.getContext('2d')!;
   this.texture=new CanvasTexture(this.canvas);this.texture.colorSpace=SRGBColorSpace;
-  this.mesh=new Mesh(new PlaneGeometry(.72,.72),new MeshBasicMaterial({map:this.texture,toneMapped:false,depthTest:false,depthWrite:false}));this.mesh.name='VR tools / layers / contextual options';this.mesh.renderOrder=30;this.mesh.visible=false;
+  this.mesh=new Mesh(new PlaneGeometry(.72,.72),new MeshBasicMaterial({map:this.texture,transparent:true,toneMapped:false,depthTest:false,depthWrite:false}));this.mesh.name='VR tools / layers / contextual options';this.mesh.renderOrder=1000;this.mesh.visible=false;
+  // Start the foreground depth layer after the menu, once per rendered XR eye.
+  // Controllers retain depth testing so their buttons/body correctly occlude each other.
+  this.mesh.onAfterRender=renderer=>{renderer.state.buffers.depth.setMask(true);renderer.clearDepth();};
+  this.cursor.name='Menu ray hit cursor';this.cursor.renderOrder=1002;this.cursor.visible=false;this.cursor.raycast=()=>{};this.mesh.add(this.cursor);
  }
  get active():boolean{return !!this.model.request;}
  place(position:{x:number;y:number;z:number},orientation:{x:number;y:number;z:number;w:number}):void{this.eye.set(position.x,position.y,position.z);this.head.set(orientation.x,orientation.y,orientation.z,orientation.w);this.hasPose=true;}
  private anchor():void{this.forward.set(0,0,-1).applyQuaternion(this.head);this.forward.y=0;if(this.forward.lengthSq()<.001)this.forward.set(0,0,-1);this.forward.normalize();this.mesh.position.copy(this.eye).addScaledVector(this.forward,1.05);this.mesh.position.y-=.12;this.mesh.lookAt(this.eye);this.mesh.updateWorldMatrix(true,false);}
- close():void{this.slider=null;this.model.setRequest(null);this.mesh.visible=false;this.ready=false;this.owner=0;this.content=null;this.lastContent='';this.lastRefresh=-Infinity;}
+ close():void{this.cursor.visible=false;this.slider=null;this.model.setRequest(null);this.mesh.visible=false;this.ready=false;this.owner=0;this.content=null;this.lastContent='';this.lastRefresh=-Infinity;}
  start():void{this.close();this.hasPose=false;}
  stop():void{this.start();this.mesh.removeFromParent();}
  update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null{
@@ -31,12 +36,12 @@ export class XRMenuView implements XRMenuInteraction {
   if(!this.mesh.visible&&this.hasPose)this.anchor();
   this.mesh.visible=this.hasPose;if(!this.mesh.visible)return null;
   if(time-this.lastRefresh>=100||!this.content){this.content=this.model.content();this.lastRefresh=time;}
-  let distance:number|null=null;this.model.hover=null;
+  let distance:number|null=null;this.model.hover=null;this.cursor.visible=false;
   if(tool?.connected&&tool.role==='tool'&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10){
    if(tool.connectionId!==this.owner){this.slider=null;this.owner=tool.connectionId;this.ready=false;}
    this.mesh.updateWorldMatrix(true,false);this.raycaster.ray.origin.setFromMatrixPosition(pose);this.direction.set(0,0,-1).transformDirection(pose);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=3;
    const hit=this.raycaster.intersectObject(this.mesh,false)[0];
-   if(hit?.uv){distance=hit.distance;this.model.hover=this.model.hit(hit.uv.x*MENU_SIZE,(1-hit.uv.y)*MENU_SIZE,this.content);}
+   if(hit?.uv){this.cursor.visible=true;this.cursor.position.set((hit.uv.x-.5)*.72,(hit.uv.y-.5)*.72,.002);distance=hit.distance;this.model.hover=this.model.hit(hit.uv.x*MENU_SIZE,(1-hit.uv.y)*MENU_SIZE,this.content);}
    if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){this.ready=true;this.slider=null;}
    if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:'))this.slider=this.model.hover;else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
    if(this.slider&&tool.buttons.trigger.pressed&&hit?.uv){const b=this.content.buttons.find(b=>b.id===this.slider);if(b?.rect){this.model.setSlider(this.slider,(hit.uv.x*MENU_SIZE-b.rect.x)/b.rect.width);this.content=this.model.content();}}
@@ -63,5 +68,5 @@ export class XRMenuView implements XRMenuInteraction {
   if(b.colour&&b.rect){ctx.fillStyle=b.colour;ctx.fillRect(b.rect.x+12,b.rect.y+14,16,b.rect.height-28);}
   if(b.detail){ctx.font='24px sans-serif';ctx.fillStyle=b.disabled?'#89999e':'#bed8ce';ctx.fillText(b.detail,x,y+(lines.length-1)*18+38,width);}
  }
- dispose():void{this.stop();this.texture.dispose();this.mesh.geometry.dispose();this.mesh.material.dispose();}
+ dispose():void{this.stop();this.cursor.geometry.dispose();this.cursor.material.dispose();this.texture.dispose();this.mesh.geometry.dispose();this.mesh.material.dispose();}
 }

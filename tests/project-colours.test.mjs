@@ -24,7 +24,7 @@ test('native project restores layer colours by stable ID and display mode in a f
  } finally {runtime.dispose();}
 });
 test('Clay mode still saves chosen colours for switching back after loading',()=>{
- const project=createBaseProject(new SDFVolume(9),settings),display=new LayerDisplayPreferences();display.setColour(project.id,project.activeLayerId,'#456789');
+ const project=createBaseProject(new SDFVolume(9),settings),display=new LayerDisplayPreferences();display.mode='clay';display.setColour(project.id,project.activeLayerId,'#456789');
  const loaded=openSculptProject(saveSculptProject(project,display.snapshot(project.id,project.layerStack.layers))),runtime=new IndependentLayers(loaded);
  try{assert.equal(runtime.display.mode,'clay');assert(runtime.active.material.color.equals(runtime.neutral.color));runtime.display.mode='layer-colours';runtime.syncPresentation();assert.equal(runtime.active.material.color.getHexString(),'456789');}finally{runtime.dispose();}
 });
@@ -32,7 +32,7 @@ test('old v3 and legacy single-volume projects load without display metadata',()
  const project=createBaseProject(new SDFVolume(9),settings);
  for(const buffer of [saveSculptProject(project),saveProject(new SDFVolume(9),settings)]){
   const loaded=openSculptProject(buffer),runtime=new IndependentLayers(loaded);
-  try{assert.equal(loaded.displayPreferences,undefined);assert.equal(runtime.display.mode,'clay');assert.match(runtime.display.colour(loaded.id,loaded.activeLayerId,0),/^#[0-9a-f]{6}$/);}finally{runtime.dispose();}
+  try{assert.equal(loaded.displayPreferences,undefined);assert.equal(runtime.display.mode,'layer-colours');assert.match(runtime.display.colour(loaded.id,loaded.activeLayerId,0),/^#[0-9a-f]{6}$/);}finally{runtime.dispose();}
  }
 });
 test('invalid display preferences fail validation on save and load',()=>{

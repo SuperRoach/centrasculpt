@@ -1,0 +1,111 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs bake xr-menus
+
+Tests: 2/55 files · compiled 4, cached 78 · preparation 79 ms
+✔ bake Union Difference and Intersect directly samples the ordered field and keeps source voxels (344.40475ms)
+✔ bake respects explicit order and first visible initialization, including hidden and locked sources (79.735542ms)
+✔ destination choices are exactly 64/128/192 and are independent from mixed source resolutions (1492.231583ms)
+✔ padded destination bounds contain all transformed source bounds without clipping and stay native-compatible (129.844667ms)
+✔ empty and disjoint intersections fail atomically; disjoint subtraction keeps the first source (171.601125ms)
+✔ no visible sources and invalid names/resolutions/bounds/capacity are rejected without mutation (318.143125ms)
+✔ one bake undo/redo restores stack ordering flags active selection and preview state without copying voxels (100.459334ms)
+✔ keeping sources visible explicitly selects Separate Layers and bake replay restores that decision (58.507208ms)
+✔ continued Add Subtract Smooth strokes target only baked voxels and replay through bake creation (133.76275ms)
+✔ new strokes discard undone bake redo and safely release retained geometry (68.259458ms)
+✔ cancel during sampling or chunk preparation leaves no partial layers, flags, history or runtime (121.857541ms)
+✔ source commands are gated during asynchronous baking and prior redo survives failure (7.925708ms)
+✔ native round trip treats baked output as an ordinary independent layer and excludes viewport preferences (560.194125ms)
+✔ baked layers retain normal transform rename lock visibility and independent resampling behavior (196.390916ms)
+✔ both GLB workflows export the baked layer only while sources are hidden, with neutral materials (215.890791ms)
+✔ lower output resolution can lose a tiny feature while high output retains it without source changes (960.513917ms)
+✔ reversing two visible Boolean operands changes the baked field in the expected order (110.686416ms)
+✔ non-overlapping union bakes both components and source 192³ stays independent (417.383875ms)
+✔ triangle-budget failure and a full stack keep original project and histories intact (221.158334ms)
+✔ redo retains renamed hidden locked baked state and deletion cannot resurrect a deleted output (62.611ms)
+✔ Bake preserves legacy non-contiguous source ordering metadata across commit and undo/redo (132.9825ms)
+✔ Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly (12.065375ms)
+✔ radial and rectangular hit tests align with every visible target, including experimental Move (5.178208ms)
+✖ Clay/Smooth options update the same desktop settings without voxel/history changes (7.899458ms)
+✖ data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp (7.803708ms)
+✔ Transform options edit metadata with existing undo and native persistence, never SDF resampling (5.595584ms)
+✔ Layers panel selects visible, hidden or locked rows and toggles flags using existing commands (67.77825ms)
+✔ busy/current edit guards reject menu business commands instead of committing an edit (2.199417ms)
+✔ tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect (3.793625ms)
+✔ view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity (2.493458ms)
+✔ view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions (2.246209ms)
+✔ interactive menus select shared tools/layers with left dominance; old shortcuts and grips remain exclusive (5.648917ms)
+✔ interactive menus select shared tools/layers with right dominance; old shortcuts and grips remain exclusive (3.373375ms)
+✔ Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm (2.562583ms)
+✔ menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak (3.218958ms)
+✔ interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held (0.130292ms)
+✔ numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only (2.971458ms)
+✔ eight layer rows, paginated options and radial targets stay within the usable menu surface (195.140792ms)
+✔ VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history (13.852166ms)
+✔ VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors (8.795167ms)
+✔ Tool Hand trigger adds a VR layer only once per press (4.024709ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 39
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5959.985666
+
+✖ failing tests:
+
+test at tests/xr-menus.test.mjs:42:1
+✖ Clay/Smooth options update the same desktop settings without voxel/history changes (7.899458ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    [
+      'placement',
+      'radius',
+      'strength',
+      'quality',
+      'application',
+  +   'global-snap',
+      'symmetry',
+      'symmetry-axis',
+      'symmetry-offset',
+      'alternate-tool'
+    ]
+
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:45:73)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'placement', 'radius', 'strength', 'quality', 'application', 'global-snap', 'symmetry', 'symmetry-axis', 'symmetry-offset', 'alternate-tool' ],
+    expected: [ 'placement', 'radius', 'strength', 'quality', 'application', 'symmetry', 'symmetry-axis', 'symmetry-offset', 'alternate-tool' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests/xr-menus.test.mjs:50:1
+✖ data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp (7.803708ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert(f.tools.options().filter(o=>o.id!=='application'&&o.id!=='alternate-tool').every(o=>o.disabled))
+
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:55:162)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+Test command wall time: 6.06 s

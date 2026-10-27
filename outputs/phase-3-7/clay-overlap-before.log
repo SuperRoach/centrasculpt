@@ -1,0 +1,47 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs free-space-clay
+
+Tests: 1/55 files · compiled 0, cached 81 · preparation 19 ms
+✔ empty volume immediately draws three floating smiley components; save, history, Boolean and both GLBs retain them (144.706792ms)
+✔ fast strokes have no gaps at 30, 72 and 120 Hz; Steady and Straight Line also deposit without dwelling (120.779583ms)
+✔ free Subtract and Smooth skip empty positive fields and create no undo/remesh work (2.203542ms)
+✔ free erase and Smooth affect material with exact undo/redo; cancellation keeps redo (15.1805ms)
+✔ constructive Add grows before the brush reaches the positive boundary; only affected chunks rebuilt (15.5305ms)
+✔ explicit blank layer creation preserves existing data, voxel spacing, independent storage and native round trip (96.8305ms)
+✖ partly embedded Clay preserves the starter sphere zero-crossing band outside the applicator (8.914458ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 6
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 456.919833
+
+✖ failing tests:
+
+test at tests/free-space-clay.test.mjs:45:1
+✖ partly embedded Clay preserves the starter sphere zero-crossing band outside the applicator (8.914458ms)
+  AssertionError [ERR_ASSERTION]: unaffected sphere narrow band at 47,25,25
+  + actual - expected
+
+  + 0.06077433377504349
+  - 0.06534330546855927
+        ^
+
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/free-space-clay.test.mjs:50:78)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0.06077433377504349,
+    expected: 0.06534330546855927,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+Test command wall time: 0.50 s

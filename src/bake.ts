@@ -1,30 +1,35 @@
 import {volumeSampleCount} from './volume-store';
-import type { SculptProject } from './layers';
+import {SdfLayer,type SculptProject} from './layers';
 import { validateName } from './layers';
 import { compositeLayout, prepareComposite } from './compositor';
 import { SDFVolume } from './sdf';
 import { MAX_PROJECT_LAYERS, MAX_PROJECT_VOXELS } from './project';
 import type { Vec3 } from './transform';
 export type SurfaceView='separate'|'boolean';
-export type BakeOptions={name:string;resolution:number;hideSources:boolean};
-export type BakePlan={resolution:number;center:Vec3;extent:number;scale:number;min:Vec3;max:Vec3;worldStep:number;sourceIds:string[];gridBytes:number;projectGridBytes:number;detailLimited:boolean};
+export type BakeOptions={name:string;resolution:number;hideSources:boolean;sourceIds?:string[]};
+export type BakePlan={resolution:number;center:Vec3;extent:number;scale:number;min:Vec3;max:Vec3;worldStep:number;sourceIds:string[];gridBytes:number;projectGridBytes:number;detailLimited:boolean;merge?:boolean};
 export type BakeProgress={stage:'sampling'|'meshing';completed:number;total:number};
 export type BakeStats={samplingMs:number;meshingMs:number;totalMs:number;resolution:number;triangles:number;worldStep:number;gridBytes:number};
-export function planBake(project:SculptProject,resolution:number):BakePlan {
+function bakeSources(project:SculptProject,ids?:readonly string[]){
+ if(!ids)return project.layerStack.layers;
+ if(ids.length!==2||new Set(ids).size!==2||ids.some(id=>typeof id!=='string'))throw new Error('Choose two different layers to merge.');
+ return ids.map(id=>{const l=project.layerStack.get(id);return new SdfLayer(l.volume,{...l.metadata(),visible:true,operation:'union'});});
+}
+export function planBake(project:SculptProject,resolution:number,sourceIds?:string[]):BakePlan {
   if(![64,128,192].includes(resolution))throw new Error('Bake resolution must be 64³, 128³ or 192³.');
-  const layers=project.layerStack.layers,visible=layers.filter(l=>l.visible);
+  const layers=project.layerStack.layers,sources=bakeSources(project,sourceIds),visible=sources.filter(l=>l.visible);
   if(!visible.length)throw new Error('Show at least one source layer before baking.');
   if(layers.length>=MAX_PROJECT_LAYERS)throw new Error('Bake needs room for a new layer (maximum 8). Original layers are never deleted.');
   if(!Number.isSafeInteger(Math.max(...layers.map(l=>l.order))+1))throw new Error('Layer ordering is outside the supported Bake range. Reorder sources before baking.');
   const count=layers.reduce((sum,l)=>sum+volumeSampleCount(l.volume),0)+resolution**3;
   if(count>MAX_PROJECT_VOXELS)throw new Error('Bake exceeds the project voxel budget, including hidden sources. Choose a lower output resolution; sources were kept.');
-  const layout=compositeLayout(layers,resolution),scale=layout.extent/1.6;
+  const layout=compositeLayout(sources,resolution),scale=layout.extent/1.6;
   if(!Number.isFinite(scale)||scale<.001||scale>1000||layout.center.some(v=>!Number.isFinite(v)||Math.abs(v)>1000))throw new Error('Bake bounds exceed supported transform limits. Move/scale sources closer together before baking.');
-  return {resolution,center:layout.center,extent:layout.extent,scale,min:layout.center.map(v=>v-layout.extent) as Vec3,max:layout.center.map(v=>v+layout.extent) as Vec3,worldStep:2*layout.extent/(resolution-1),sourceIds:visible.map(l=>l.id),gridBytes:resolution**3*8,projectGridBytes:count*8,detailLimited:2*layout.extent/(resolution-1)>layout.desiredStep*1.001};
+  return {...(sourceIds?{merge:true}:{}),resolution,center:layout.center,extent:layout.extent,scale,min:layout.center.map(v=>v-layout.extent) as Vec3,max:layout.center.map(v=>v+layout.extent) as Vec3,worldStep:2*layout.extent/(resolution-1),sourceIds:visible.map(l=>l.id),gridBytes:resolution**3*8,projectGridBytes:count*8,detailLimited:2*layout.extent/(resolution-1)>layout.desiredStep*1.001};
 }
 export function validateBakeOptions(options:BakeOptions):BakeOptions {
   if(typeof options.hideSources!=='boolean')throw new Error('Choose whether to hide the sources.');
-  return {name:validateName(options.name).trim(),resolution:options.resolution,hideSources:options.hideSources};
+  return {...(options.sourceIds?{sourceIds:[...options.sourceIds]}:{}),name:validateName(options.name).trim(),resolution:options.resolution,hideSources:options.hideSources};
 }
 export const yieldBake=()=>new Promise<void>(resolve=>setTimeout(resolve,0));
 export function checkBakeCancelled(signal?:AbortSignal):void {if(signal?.aborted)throw new Error('Bake cancelled. Source layers were kept.');}
@@ -33,7 +38,7 @@ export function checkBakeCancelled(signal?:AbortSignal):void {if(signal?.aborted
  */
 export async function sampleBake(project:SculptProject,plan:BakePlan,signal?:AbortSignal,progress?:(p:BakeProgress)=>void):Promise<{volume:SDFVolume;samplingMs:number}> {
   checkBakeCancelled(signal);
-  const volume=new SDFVolume(plan.resolution,1.6,false),sample=prepareComposite(project.layerStack.layers),n=plan.resolution;
+  const volume=new SDFVolume(plan.resolution,1.6,false),sample=prepareComposite(bakeSources(project,plan.merge?plan.sourceIds:undefined)),n=plan.resolution;
   let samplingMs=0,negative=false;
   for(let z=0;z<n;z++){
     const start=performance.now(),wz=volume.coordinate(z)*plan.scale+plan.center[2];

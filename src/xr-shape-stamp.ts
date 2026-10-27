@@ -1,3 +1,4 @@
+import {XRMirrorPlane} from './xr-mirror-plane';
 import {Euler,Group,Matrix4,Quaternion,Vector3} from 'three';
 import type {ShapeDefinition} from './shapes';
 import type {EditorToolState} from './editor-tool-state';
@@ -13,9 +14,24 @@ import {CLAY_TIP_REACH_METRES} from './clay-path';
 /** Controller input adapter. All voxel, history, meshing and export work remains
  * in IndependentLayers.stampShape, shared with desktop. Ghost lives outside sources. */
 export class XRShapeStamp implements XRStrokeInteraction {
- readonly ghost:ShapeGhost;
+ readonly ghost:ShapeGhost;readonly pendingPreview=new Group();private readonly trail:Group[]=[];private pendingPose:Matrix4|null=null;
+ private paintPending(surface:Matrix4):void{
+  const poses=[...(this.pendingPose?[this.pendingPose]:[]),...this.queue].slice(0,16);this.pendingPreview.visible=this.continuous&&poses.length>0;
+  if(!this.pendingPreview.visible)return;
+  this.pendingPreview.matrix.copy(surface);if(this.pendingPreview.parent){this.pendingPreview.parent.updateWorldMatrix(true,false);this.pendingPreview.matrix.premultiply(new Matrix4().copy(this.pendingPreview.parent.matrixWorld).invert());}
+  const mirror=this.layers().symmetry;
+  for(let i=0;i<32;i++){
+   const source=this.ghost.group.children[i%2];if(!source)continue;
+   if(i>=poses.length*2||i%2&&!mirror.enabled){if(this.trail[i])this.trail[i].visible=false;continue;}
+   if(!this.trail[i]){const clone=source.clone(true) as Group;clone.traverse(o=>{o.raycast=()=>{};});this.trail[i]=clone;this.pendingPreview.add(clone);}
+   const clone=this.trail[i];clone.visible=true;clone.matrixAutoUpdate=false;clone.matrix.copy(transformMatrix(this.definitionAt(poses[Math.floor(i/2)]).transform));
+   if(i%2){const scale=new Vector3(1,1,1);scale[mirror.axis]=-1;const reflection=new Matrix4().makeScale(scale.x,scale.y,scale.z);reflection.elements[12+'xyz'.indexOf(mirror.axis)]=2*mirror.offset;clone.matrix.premultiply(reflection);}
+  }
+  this.pendingPreview.updateWorldMatrix(false,true);
+ }
  private armed=false;private held=false;private owner=0;private target='';private project:unknown;
  private adjusting=false;private readonly anchor=new Matrix4();private released=false;private continuous=false;private strokeLayers:IndependentLayers|undefined;
+ private pending:Generator<void,boolean>|null=null;private readonly strokeAnchor=new Matrix4();
  private previous:Matrix4|undefined;private remainder=0;private queue:Matrix4[]=[];private emitted=0;
  private attachmentPose(controller:Matrix4):Matrix4 {
   const a=this.tools.stampAttachment,q=new Quaternion().setFromEuler(new Euler(...this.tools.stampRotation,'XYZ'));
@@ -38,11 +54,11 @@ export class XRShapeStamp implements XRStrokeInteraction {
  private readonly inverse=new Matrix4();private readonly parentInverse=new Matrix4();
  private readonly position=new Vector3();private readonly rotation=new Quaternion();private readonly scale=new Vector3();private readonly euler=new Euler();
  constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly changed:()=>void=()=>{}) {
-  this.ghost=new ShapeGhost(()=>layers().project.layerStack,tools.port.shape);this.ghost.group.name='VR Shape Ghost · not project data';root.add(this.ghost.group);
+  this.ghost=new ShapeGhost(()=>layers().project.layerStack,tools.port.shape);this.ghost.group.name='VR Shape Ghost · not project data';root.add(this.ghost.group);this.pendingPreview.matrixAutoUpdate=false;this.pendingPreview.visible=false;this.pendingPreview.name='Pending Stamp preview · at most 16 samples · not source geometry';root.add(this.pendingPreview);
  }
  get active():boolean{return this.held||this.adjusting||this.continuous;}
  get feedback():string{return this.message;}
- cancel():void{if(this.continuous)this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeLayers=undefined;this.adjusting=false;this.previous=undefined;this.queue=[];this.emitted=0;this.remainder=0;this.armed=this.held=false;this.owner=0;this.target='';this.project=undefined;this.message='';this.failureUntil=0;this.ghost.group.visible=false;}
+ cancel():void{this.pendingPreview.visible=false;this.pendingPose=null;this.pending?.return(false);this.pending=null;if(this.continuous)this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeLayers=undefined;this.adjusting=false;this.previous=undefined;this.queue=[];this.emitted=0;this.remainder=0;this.armed=this.held=false;this.owner=0;this.target='';this.project=undefined;this.message='';this.failureUntil=0;this.ghost.group.visible=false;}
  update(tool:XRControllerState|undefined,aim:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void {
   const layers=this.layers(),stack=layers.project.layerStack,pose=gripPose??aim;
   if(!enabled||this.tools.active!=='stamp'||this.tools.port.busy()||this.tools.busy&&!this.continuous||layers.viewMode!=='separate'||!tool?.connected||tool.role!=='tool'||!tool.tracked||!tool.gripTracked||!pose||!pose.elements.every(Number.isFinite)||Math.abs(pose.determinant())<1e-10||this.tools.port.shape.availability(stack)){this.cancel();return;}
@@ -52,7 +68,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
    const surface=layers.active.surface.group;surface.updateWorldMatrix(true,false);this.inverse.copy(surface.matrixWorld).invert();
    const grip=tool.buttons.grip.pressed||tool.buttons.grip.rawValue>=.45;
    if(grip){
-    if(this.continuous){this.strokeLayers?.cancelStroke();this.continuous=false;this.queue=[];this.previous=undefined;}
+    if(this.continuous){this.pending?.return(false);this.pending=null;this.pendingPose=null;this.strokeLayers?.cancelStroke();this.continuous=false;this.queue=[];this.previous=undefined;}
     if(!this.adjusting){this.anchor.copy(this.attachmentPose(pose));this.adjusting=true;}
     const working=pose.clone().multiply(new Matrix4().makeTranslation(0,0,-CLAY_TIP_REACH_METRES));
     working.invert().multiply(this.anchor).decompose(this.position,this.rotation,this.scale);
@@ -71,37 +87,42 @@ export class XRShapeStamp implements XRStrokeInteraction {
    let growthError='';
    if(outside&&definition.operation==='add'&&volume instanceof SDFVolume)try{planDenseGrowth(volume,box,layers.growthLimits);}catch(error){growthError=error instanceof Error?error.message:'Stamp growth exceeds available storage.';}
    this.ghost.mirror=layers.symmetry;this.ghost.sync();this.ghost.setWarning(!!growthError||outside&&definition.operation==='subtract');
-   this.ghost.group.matrix.copy(surface.matrixWorld);if(this.ghost.group.parent){this.ghost.group.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.ghost.group.parent.matrixWorld).invert();this.ghost.group.matrix.premultiply(this.parentInverse);}this.ghost.group.updateWorldMatrix(false,true);
+   this.ghost.group.matrix.copy(surface.matrixWorld);if(this.ghost.group.parent){this.ghost.group.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.ghost.group.parent.matrixWorld).invert();this.ghost.group.matrix.premultiply(this.parentInverse);}this.ghost.group.updateWorldMatrix(false,true);this.paintPending(surface.matrixWorld);
    if(growthError)this.message=growthError;
    else if(time<this.failureUntil){/* Keep a failed commit readable while the ghost moves. */}
    else if(outside)this.message=definition.operation==='add'?'Stamp · volume grows on commit':'Subtract overlaps layer bounds · only existing material inside is affected';
    else if(time>=this.until)this.message='Stamp · trigger once; release to rearm';
    if(grip){this.message='Adjust Stamp · move wrist relative to held shape; release grip to attach';return;}
    if(this.continuous){
+    if(surface.matrixWorld.elements.some((v,i)=>Math.abs(v-this.strokeAnchor.elements[i])>1e-9))throw new Error('Stamp cancelled: target/workspace moved');
     if(!this.released){const size=Math.min(...definition.dimensions)*definition.transform.scale[0]*surface.getWorldScale(new Vector3()).x;this.sample(pose,Math.max(.001,size*this.tools.stampAttachment.spacing));if(!tool.buttons.trigger.pressed)this.released=true;}
     const deadline=performance.now()+4;let count=0;
-    while(this.queue.length&&count<2&&performance.now()<deadline){const next=this.queue.shift()!;if(layers.stampShape(this.definitionAt(next),true))this.changed();this.emitted++;count++;}
-    if(this.released&&!this.queue.length){layers.finishStroke();this.continuous=false;this.strokeLayers=undefined;this.previous=undefined;this.emitted=0;this.remainder=0;this.held=tool.buttons.trigger.pressed;this.armed=!this.held;this.changed();}
-    this.message=this.queue.length?`Continuous Stamp · ${this.queue.length} samples pending`:'Continuous Stamp · release for one Undo action';return;
+    while((this.pending||this.queue.length)&&count<2&&performance.now()<deadline){
+     if(!this.pending){this.pendingPose=this.queue.shift()!;this.pending=layers.stampShapeSteps(this.definitionAt(this.pendingPose),true);this.emitted++;}
+     const result=this.pending.next();if(result.done){this.pending=null;this.pendingPose=null;if(result.value)this.changed();count++;}
+    }
+    if(this.released&&!this.queue.length&&!this.pending){layers.finishStroke();this.continuous=false;this.strokeLayers=undefined;this.previous=undefined;this.emitted=0;this.remainder=0;this.held=tool.buttons.trigger.pressed;this.armed=!this.held;this.changed();}
+    this.paintPending(surface.matrixWorld);this.message=this.queue.length||this.pending?`Continuous Stamp · ${this.queue.length+Number(!!this.pending)} samples pending · preview tracks hand`:'Continuous Stamp · release for one Undo action';return;
    }
    if(!tool.buttons.trigger.pressed){this.held=false;this.armed=true;return;}
    const apply=this.armed&&!this.held&&tool.buttons.trigger.justPressed;this.armed=false;this.held=true;
    if(!apply)return;
    if(growthError)throw new Error(growthError);
-   if(this.tools.stampAttachment.mode==='continuous'){layers.beginStroke();this.released=false;this.continuous=true;this.strokeLayers=layers;this.previous=pose.clone();this.remainder=0;this.emitted=1;const edited=layers.stampShape(definition,true);if(edited)this.changed();return;}
+   if(this.tools.stampAttachment.mode==='continuous'){this.pendingPreview.clear();this.trail.length=0;layers.beginStroke();this.released=false;this.continuous=true;this.strokeLayers=layers;this.previous=pose.clone();this.remainder=0;this.emitted=0;this.strokeAnchor.copy(surface.matrixWorld);this.queue=[pose.clone()];this.message='Continuous Stamp · preview now, final surface staged';this.paintPending(surface.matrixWorld);return;}
    const edited=layers.stampShape(definition);this.failureUntil=0;this.message=edited?outside&&definition.operation==='subtract'?'Stamp applied · limited to existing material inside layer bounds':'Stamp applied · release trigger for next stamp':'No material changed · release trigger';this.until=time+900;if(edited)this.changed();
-  }catch(error){if(this.continuous){this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeLayers=undefined;this.queue=[];this.previous=undefined;}this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+(performance.now()-workStart)+5000;this.failureUntil=this.until;}
+  }catch(error){this.pendingPreview.visible=false;this.pendingPose=null;this.pending?.return(false);this.pending=null;if(this.continuous){this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeLayers=undefined;this.queue=[];this.previous=undefined;}this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+(performance.now()-workStart)+5000;this.failureUntil=this.until;}
  }
- dispose():void{this.cancel();this.ghost.dispose();}
+ dispose():void{this.cancel();this.pendingPreview.removeFromParent();this.pendingPreview.clear();this.trail.length=0;this.ghost.dispose();}
 }
 /** Shared controller arbitration sees one interaction, including Stamp's held-trigger latch. */
 export class XRToolInteraction implements XRStrokeInteraction {
- constructor(private readonly tools:EditorToolState,private readonly clay:XRStrokeInteraction,private readonly stamp:XRStrokeInteraction,private readonly move?:XRStrokeInteraction){}
+ constructor(private readonly tools:EditorToolState,private readonly clay:XRStrokeInteraction,private readonly stamp:XRStrokeInteraction,private readonly move?:XRStrokeInteraction,readonly mirror?:XRMirrorPlane){}
  private get current():XRStrokeInteraction|undefined{return this.tools.active==='move'?this.move:this.tools.active==='stamp'?this.stamp:this.clay;}
- get active():boolean{return this.clay.active||this.stamp.active||!!this.move?.active;}
- get feedback():string{return this.current?.feedback??'';}
- cancel():void{this.clay.cancel();this.stamp.cancel();this.move?.cancel();}
+ get active():boolean{return !!this.mirror?.active||this.clay.active||this.stamp.active||!!this.move?.active;}
+ get liveSizing(){return this.current?.liveSizing??null;}
+ get feedback():string{return this.mirror?.hover||this.mirror?.active?this.mirror.feedback:this.current?.feedback??'';}
+ cancel():void{this.mirror?.cancel();this.clay.cancel();this.stamp.cancel();this.move?.cancel();}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
-  const current=this.current;if(this.clay!==current)this.clay.cancel();if(this.stamp!==current)this.stamp.cancel();if(this.move&&this.move!==current)this.move.cancel();current?.update(tool,pose,time,enabled,gripPose);
+  const current=this.current;if(this.mirror?.update(tool,pose,enabled,!this.clay.active&&!this.stamp.active&&!this.move?.active,gripPose)){current?.cancel();return;}if(this.clay!==current)this.clay.cancel();if(this.stamp!==current)this.stamp.cancel();if(this.move&&this.move!==current)this.move.cancel();current?.update(tool,pose,time,enabled,gripPose);
  }
 }
