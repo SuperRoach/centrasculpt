@@ -1,0 +1,899 @@
+{
+  "baselineRef": null,
+  "scope": "Mac Node CPU, one warm-up then three extractions per fixture, meshMs is median;  analytic SDF at vertices and triangle centroids, not Hausdorff. Normal angle only sphere; shared-position normal metric includes same-chunk duplicates. No headset/GPU measurements.",
+  "host": {
+    "node": "v26.8.1",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "rows": [
+    {
+      "n": 33,
+      "kind": "sphere",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 9.443916000000002,
+      "meshSamplesMs": [
+        9.844375000000014,
+        9.443916000000002,
+        7.960666000000003
+      ],
+      "vertices": 24264,
+      "triangles": 8088,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.003956581175072471,
+      "maxSurfaceProbeErrorVoxels": 0.03956581175072471,
+      "vertexRmsError": 0.0012744814323459594,
+      "maxNormalDegrees": 0.18437133314418622,
+      "maxSeamNormalDelta": 0,
+      "shared": 20218
+    },
+    {
+      "n": 33,
+      "kind": "empty-capacity-growth",
+      "dimensions": [
+        97,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "growthMs": 2.2980830000000196,
+      "rebindMeshMs": 4.0861659999999915,
+      "remeshed": 0,
+      "vertices": 24264,
+      "triangles": 8088,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.003956581175072471,
+      "maxSurfaceProbeErrorVoxels": 0.03956581175072471,
+      "vertexRmsError": 0.0012744814323459594,
+      "maxNormalDegrees": 0.18437133314418622,
+      "maxSeamNormalDelta": 0,
+      "shared": 20218
+    },
+    {
+      "n": 33,
+      "kind": "occupied-growth",
+      "dimensions": [
+        97,
+        33,
+        33
+      ],
+      "step": 0.1,
+      "meshMs": 11.159125000000017,
+      "meshSamplesMs": [
+        11.953125,
+        11.159125000000017,
+        10.325541000000015
+      ],
+      "vertices": 18588,
+      "triangles": 6196,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.007876644100715313,
+      "maxSurfaceProbeErrorVoxels": 0.07876644100715313,
+      "vertexRmsError": 0.0020580350983090126,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 15488
+    },
+    {
+      "n": 33,
+      "kind": "box",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 6.9694580000000315,
+      "meshSamplesMs": [
+        6.9694580000000315,
+        6.9731669999999895,
+        4.573582999999985
+      ],
+      "vertices": 6552,
+      "triangles": 2184,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.033333333333333326,
+      "maxSurfaceProbeErrorVoxels": 0.33333333333333326,
+      "vertexRmsError": 1.1920928910670205e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 5458
+    },
+    {
+      "n": 33,
+      "kind": "triangular-prism",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 4.629415999999992,
+      "meshSamplesMs": [
+        4.719875000000002,
+        4.629415999999992,
+        4.5936249999999745
+      ],
+      "vertices": 7524,
+      "triangles": 2508,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.04472135777292863,
+      "maxSurfaceProbeErrorVoxels": 0.44721357772928627,
+      "vertexRmsError": 1.1588239865326382e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 6268
+    },
+    {
+      "n": 33,
+      "kind": "pyramid",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 2.975833000000023,
+      "meshSamplesMs": [
+        2.970709000000056,
+        2.975833000000023,
+        2.9891660000000115
+      ],
+      "vertices": 6408,
+      "triangles": 2136,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.033333333333333326,
+      "maxSurfaceProbeErrorVoxels": 0.33333333333333326,
+      "vertexRmsError": 0.0010471594649289456,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 5338
+    },
+    {
+      "n": 33,
+      "kind": "aligned-box",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 4.364291000000037,
+      "meshSamplesMs": [
+        4.364291000000037,
+        4.4475419999999986,
+        4.337833999999987
+      ],
+      "vertices": 8640,
+      "triangles": 2880,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.033333329359690356,
+      "maxSurfaceProbeErrorVoxels": 0.33333329359690356,
+      "vertexRmsError": 1.1920928910670455e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 7198
+    },
+    {
+      "n": 33,
+      "kind": "thin-stroke",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 1.4328329999999596,
+      "meshSamplesMs": [
+        1.4328329999999596,
+        1.4363329999999905,
+        1.3810419999999795
+      ],
+      "vertices": 1080,
+      "triangles": 360,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0358876173955827,
+      "maxSurfaceProbeErrorVoxels": 0.358876173955827,
+      "vertexRmsError": 0.004103860495834233,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 898
+    },
+    {
+      "n": 33,
+      "kind": "narrow-groove",
+      "step": 0.1,
+      "dimensions": [
+        33,
+        33,
+        33
+      ],
+      "meshMs": 3.608665999999971,
+      "meshSamplesMs": [
+        3.7806249999999864,
+        3.5744169999999826,
+        3.608665999999971
+      ],
+      "vertices": 6780,
+      "triangles": 2260,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.033333333333333326,
+      "maxSurfaceProbeErrorVoxels": 0.33333333333333326,
+      "vertexRmsError": 1.18412598049362e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 5648
+    },
+    {
+      "n": 64,
+      "kind": "sphere",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 24.083708,
+      "meshSamplesMs": [
+        24.083708,
+        24.279791999999986,
+        23.89391599999999
+      ],
+      "vertices": 94608,
+      "triangles": 31536,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0010834154420134023,
+      "maxSurfaceProbeErrorVoxels": 0.02132974151463886,
+      "vertexRmsError": 0.00032751520696193,
+      "maxNormalDegrees": 0.05067140913720287,
+      "maxSeamNormalDelta": 0,
+      "shared": 78838
+    },
+    {
+      "n": 64,
+      "kind": "empty-capacity-growth",
+      "dimensions": [
+        129,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "growthMs": 3.3741670000000568,
+      "rebindMeshMs": 4.339375000000018,
+      "remeshed": 0,
+      "vertices": 94608,
+      "triangles": 31536,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0010834154420134023,
+      "maxSurfaceProbeErrorVoxels": 0.02132974151463886,
+      "vertexRmsError": 0.00032751520696193,
+      "maxNormalDegrees": 0.05067140913720287,
+      "maxSeamNormalDelta": 0,
+      "shared": 78838
+    },
+    {
+      "n": 64,
+      "kind": "occupied-growth",
+      "dimensions": [
+        129,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "meshMs": 21.862792000000013,
+      "meshSamplesMs": [
+        23.06929200000002,
+        21.812000000000012,
+        21.862792000000013
+      ],
+      "vertices": 88344,
+      "triangles": 29448,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0023714818329764187,
+      "maxSurfaceProbeErrorVoxels": 0.04668854858672324,
+      "vertexRmsError": 0.00045737135657367015,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 73618
+    },
+    {
+      "n": 64,
+      "kind": "box",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 22.253041000000053,
+      "meshSamplesMs": [
+        22.253041000000053,
+        22.233916000000022,
+        22.35187499999995
+      ],
+      "vertices": 110880,
+      "triangles": 36960,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.005854360262552816,
+      "maxSurfaceProbeErrorVoxels": 0.11525771766900857,
+      "vertexRmsError": 0.0004396242344057369,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 92398
+    },
+    {
+      "n": 64,
+      "kind": "triangular-prism",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 17.348124999999982,
+      "meshSamplesMs": [
+        17.348124999999982,
+        17.342874999999935,
+        17.478834000000006
+      ],
+      "vertices": 82164,
+      "triangles": 27388,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.021769130878324886,
+      "maxSurfaceProbeErrorVoxels": 0.4285797641670212,
+      "vertexRmsError": 0.0021951386087624707,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 68468
+    },
+    {
+      "n": 64,
+      "kind": "pyramid",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 14.396457999999939,
+      "meshSamplesMs": [
+        14.396457999999939,
+        14.342499999999973,
+        14.73395800000003
+      ],
+      "vertices": 64692,
+      "triangles": 21564,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.02429095856439727,
+      "maxSurfaceProbeErrorVoxels": 0.47822824673657127,
+      "vertexRmsError": 0.0024456777186081277,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 53908
+    },
+    {
+      "n": 64,
+      "kind": "aligned-box",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 30.91774999999984,
+      "meshSamplesMs": [
+        30.91774999999984,
+        30.96491600000013,
+        30.82358299999987
+      ],
+      "vertices": 145152,
+      "triangles": 48384,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.004232792059580492,
+      "maxSurfaceProbeErrorVoxels": 0.08333309367299095,
+      "vertexRmsError": 1.192092891065921e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 120958
+    },
+    {
+      "n": 64,
+      "kind": "thin-stroke",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 3.368249999999989,
+      "meshSamplesMs": [
+        3.368249999999989,
+        3.210459000000128,
+        3.4671249999998963
+      ],
+      "vertices": 4464,
+      "triangles": 1488,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.026904460238408034,
+      "maxSurfaceProbeErrorVoxels": 0.5296815609436581,
+      "vertexRmsError": 0.003830401123792784,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 3718
+    },
+    {
+      "n": 64,
+      "kind": "narrow-groove",
+      "step": 0.050793650793650794,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "meshMs": 22.43162499999994,
+      "meshSamplesMs": [
+        22.19329199999993,
+        22.43162499999994,
+        22.465625000000045
+      ],
+      "vertices": 111444,
+      "triangles": 37148,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.014816813502559104,
+      "maxSurfaceProbeErrorVoxels": 0.29170601583163236,
+      "vertexRmsError": 0.0005512570248630908,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 92868
+    },
+    {
+      "n": 128,
+      "kind": "sphere",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 93.1139169999999,
+      "meshSamplesMs": [
+        92.65770799999996,
+        93.1139169999999,
+        95.80895800000008
+      ],
+      "vertices": 384912,
+      "triangles": 128304,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.00027730480530618884,
+      "maxSurfaceProbeErrorVoxels": 0.011005534460589368,
+      "vertexRmsError": 0.00008028832582224028,
+      "maxNormalDegrees": 0.018370799257866856,
+      "maxSeamNormalDelta": 0,
+      "shared": 320758
+    },
+    {
+      "n": 128,
+      "kind": "empty-capacity-growth",
+      "dimensions": [
+        225,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "growthMs": 20.411290999999892,
+      "rebindMeshMs": 32.508124999999836,
+      "remeshed": 0,
+      "vertices": 384912,
+      "triangles": 128304,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.00027730480530618884,
+      "maxSurfaceProbeErrorVoxels": 0.011005534460589368,
+      "vertexRmsError": 0.00008028832582224028,
+      "maxNormalDegrees": 0.018370799257866856,
+      "maxSeamNormalDelta": 0,
+      "shared": 320758
+    },
+    {
+      "n": 128,
+      "kind": "occupied-growth",
+      "dimensions": [
+        225,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "meshMs": 91.11287500000026,
+      "meshSamplesMs": [
+        90.72620800000004,
+        91.11287500000026,
+        92.11500000000024
+      ],
+      "vertices": 355080,
+      "triangles": 118360,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0005846062297023003,
+      "maxSurfaceProbeErrorVoxels": 0.023201559741310038,
+      "vertexRmsError": 0.00011414888128206289,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 295898
+    },
+    {
+      "n": 128,
+      "kind": "box",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 95.45550000000003,
+      "meshSamplesMs": [
+        95.31824999999981,
+        96.06945799999994,
+        95.45550000000003
+      ],
+      "vertices": 447552,
+      "triangles": 149184,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.002904129028320268,
+      "maxSurfaceProbeErrorVoxels": 0.11525762081146063,
+      "vertexRmsError": 0.00015391253090465666,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 372958
+    },
+    {
+      "n": 128,
+      "kind": "triangular-prism",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 75.574208,
+      "meshSamplesMs": [
+        75.47383300000001,
+        75.574208,
+        79.28120799999988
+      ],
+      "vertices": 333660,
+      "triangles": 111220,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.01079886348732061,
+      "maxSurfaceProbeErrorVoxels": 0.42857989465303664,
+      "vertexRmsError": 0.0007742378964635982,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 278048
+    },
+    {
+      "n": 128,
+      "kind": "pyramid",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 61.15449999999964,
+      "meshSamplesMs": [
+        64.44599999999991,
+        61.15449999999964,
+        60.865624999999454
+      ],
+      "vertices": 261084,
+      "triangles": 87028,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.012049800208883509,
+      "maxSurfaceProbeErrorVoxels": 0.4782264457900642,
+      "vertexRmsError": 0.0008682300244494569,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 217568
+    },
+    {
+      "n": 128,
+      "kind": "aligned-box",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 126.2577080000001,
+      "meshSamplesMs": [
+        127.10216600000058,
+        126.143959,
+        126.2577080000001
+      ],
+      "vertices": 585216,
+      "triangles": 195072,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.002099720637003588,
+      "maxSurfaceProbeErrorVoxels": 0.0833326627810799,
+      "vertexRmsError": 1.1920928910718133e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 487678
+    },
+    {
+      "n": 128,
+      "kind": "thin-stroke",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 14.354749999999513,
+      "meshSamplesMs": [
+        14.67345800000021,
+        14.354749999999513,
+        13.439833999999792
+      ],
+      "vertices": 25176,
+      "triangles": 8392,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.012033652459105523,
+      "maxSurfaceProbeErrorVoxels": 0.4775855819707504,
+      "vertexRmsError": 0.0006269813952307064,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 20978
+    },
+    {
+      "n": 128,
+      "kind": "narrow-groove",
+      "step": 0.02519685039370079,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "meshMs": 95.96970800000054,
+      "meshSamplesMs": [
+        95.96970800000054,
+        95.96429199999966,
+        96.02020799999991
+      ],
+      "vertices": 450972,
+      "triangles": 150324,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.00900639858162243,
+      "maxSurfaceProbeErrorVoxels": 0.3574414437081401,
+      "vertexRmsError": 0.00025813568834480514,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 375808
+    },
+    {
+      "n": 192,
+      "kind": "sphere",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 223.61704199999986,
+      "meshSamplesMs": [
+        221.94187499999953,
+        223.61704199999986,
+        227.06733299999996
+      ],
+      "vertices": 871056,
+      "triangles": 290352,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.00012318683134615593,
+      "maxSurfaceProbeErrorVoxels": 0.0073527139959736814,
+      "vertexRmsError": 0.00003552576659583636,
+      "maxNormalDegrees": 0.016804961920774134,
+      "maxSeamNormalDelta": 0,
+      "shared": 725878
+    },
+    {
+      "n": 192,
+      "kind": "empty-capacity-growth",
+      "dimensions": [
+        289,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "growthMs": 54.14091699999972,
+      "rebindMeshMs": 85.54566700000032,
+      "remeshed": 0,
+      "vertices": 871056,
+      "triangles": 290352,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.00012318683134615593,
+      "maxSurfaceProbeErrorVoxels": 0.0073527139959736814,
+      "vertexRmsError": 0.00003552576659583636,
+      "maxNormalDegrees": 0.016804961920774134,
+      "maxSeamNormalDelta": 0,
+      "shared": 725878
+    },
+    {
+      "n": 192,
+      "kind": "occupied-growth",
+      "dimensions": [
+        289,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "meshMs": 223.23300000000017,
+      "meshSamplesMs": [
+        223.23300000000017,
+        230.45958299999984,
+        223.06316700000025
+      ],
+      "vertices": 800088,
+      "triangles": 266696,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.00026286841137523886,
+      "maxSurfaceProbeErrorVoxels": 0.01568995830395957,
+      "vertexRmsError": 0.000053615244639990944,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 666738
+    },
+    {
+      "n": 192,
+      "kind": "box",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 235.09729200000038,
+      "meshSamplesMs": [
+        230.33600000000115,
+        235.3579580000005,
+        235.09729200000038
+      ],
+      "vertices": 1010016,
+      "triangles": 336672,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0019310235977172407,
+      "maxSurfaceProbeErrorVoxels": 0.1152579709887478,
+      "vertexRmsError": 0.00008350577622903622,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 841678
+    },
+    {
+      "n": 192,
+      "kind": "triangular-prism",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 184.81487500000003,
+      "meshSamplesMs": [
+        184.50608300000022,
+        188.2345839999998,
+        184.81487500000003
+      ],
+      "vertices": 754500,
+      "triangles": 251500,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.007180391548088704,
+      "maxSurfaceProbeErrorVoxels": 0.42857962052654447,
+      "vertexRmsError": 0.00042108777403792333,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 628748
+    },
+    {
+      "n": 192,
+      "kind": "pyramid",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 150.38224999999875,
+      "meshSamplesMs": [
+        150.976584,
+        150.38224999999875,
+        150.13987500000076
+      ],
+      "vertices": 589188,
+      "triangles": 196396,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.008012188097078132,
+      "maxSurfaceProbeErrorVoxels": 0.4782274770443509,
+      "vertexRmsError": 0.0004732032776205082,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 490988
+    },
+    {
+      "n": 192,
+      "kind": "aligned-box",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 310.6257079999996,
+      "meshSamplesMs": [
+        313.5779999999995,
+        310.6257079999996,
+        299.3187910000015
+      ],
+      "vertices": 1320192,
+      "triangles": 440064,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.0013961474100748772,
+      "maxSurfaceProbeErrorVoxels": 0.08333254853884423,
+      "vertexRmsError": 1.1920928910739182e-8,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 1100158
+    },
+    {
+      "n": 192,
+      "kind": "thin-stroke",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 37.242417000001296,
+      "meshSamplesMs": [
+        38.09137499999997,
+        37.14616699999897,
+        37.242417000001296
+      ],
+      "vertices": 53808,
+      "triangles": 17936,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.011123102150151692,
+      "maxSurfaceProbeErrorVoxels": 0.663910159587179,
+      "vertexRmsError": 0.00044780081311499904,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 44838
+    },
+    {
+      "n": 192,
+      "kind": "narrow-groove",
+      "step": 0.016753926701570682,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "meshMs": 235.5342079999973,
+      "meshSamplesMs": [
+        236.09679200000028,
+        232.82508400000006,
+        235.5342079999973
+      ],
+      "vertices": 1018788,
+      "triangles": 339596,
+      "degenerate": 0,
+      "maxSurfaceProbeError": 0.006801615770101105,
+      "maxSurfaceProbeErrorVoxels": 0.40597144127790963,
+      "vertexRmsError": 0.00018681824110397804,
+      "maxNormalDegrees": null,
+      "maxSeamNormalDelta": 0,
+      "shared": 848988
+    }
+  ]
+}

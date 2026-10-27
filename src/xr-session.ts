@@ -1,14 +1,19 @@
+export type XREnvironment='studio'|'passthrough';
+export const environmentMode=(environment:XREnvironment):XRSessionMode=>environment==='passthrough'?'immersive-ar':'immersive-vr';
 export type XRAvailability={supported:boolean;reason:string};
-export async function detectXR(secure:boolean,xr?:Pick<XRSystem,'isSessionSupported'>):Promise<XRAvailability>{
+export async function detectXR(secure:boolean,xr?:Pick<XRSystem,'isSessionSupported'>,environment:XREnvironment='studio'):Promise<XRAvailability>{
  if(!secure)return {supported:false,reason:'WebXR needs a secure origin: trusted HTTPS, or localhost on the PC running this browser (Quest: use ADB reverse). HTTP .local/LAN addresses are desktop-only.'};
  if(!xr)return {supported:false,reason:'This browser does not expose WebXR. Use a compatible WebXR browser and headset runtime, or the development emulator; desktop editing remains available.'};
- try{const supported=await xr.isSessionSupported('immersive-vr');return {supported,reason:supported?'Immersive VR available. Enter from a user click.':'No immersive-vr device/runtime available. Check the connected headset, active OpenXR runtime and browser support, or configure an emulator.'};}
+ try{const supported=await xr.isSessionSupported(environmentMode(environment));if(environment==='passthrough')return {supported,reason:supported?'Passthrough available. Enter Passthrough from a user click.':'Passthrough unavailable: this browser/runtime does not support immersive-ar. Studio and desktop remain available.'};return {supported,reason:supported?'Immersive VR available. Enter from a user click.':'No immersive-vr device/runtime available. Check the connected headset, active OpenXR runtime and browser support, or configure an emulator.'};}
  catch(error){return {supported:false,reason:`VR capability check failed: ${error instanceof Error?error.message:String(error)}. Check browser permissions and runtime support.`};}
 }
 export type XRSessionState='checking'|'unavailable'|'ready'|'requesting'|'presenting'|'ending';
 export type XRSessionHooks={prepare:()=>void;restore:()=>void;changed:()=>void};
 /** User gesture requests a session immediately; scene hooks never own sculpture data. */
 export class XRSessionController {
+ environment:XREnvironment='studio';
+ activeEnvironment:XREnvironment|null=null;
+ availability:Record<XREnvironment,XRAvailability>={studio:{supported:false,reason:'Checking Studio…'},passthrough:{supported:false,reason:'Checking Passthrough…'}};
  state:XRSessionState='checking';
  reason='Checking immersive VR support…';
  session:XRSession|null=null;
@@ -18,27 +23,35 @@ export class XRSessionController {
  constructor(private readonly manager:{setSession:(session:XRSession)=>Promise<void>},private readonly hooks:XRSessionHooks){}
  get blocking():boolean{return this.state==='requesting'||this.state==='presenting'||this.state==='ending';}
  async check(secure:boolean,xr?:XRSystem):Promise<void>{
-  if(this.blocking||this.disposed)return;this.xr=xr;const result=await detectXR(secure,xr);if(this.disposed||this.blocking)return;
+  if(this.blocking||this.disposed)return;this.xr=xr;const [studio,passthrough]=await Promise.all([detectXR(secure,xr),detectXR(secure,xr,'passthrough')]);if(this.disposed||this.blocking)return;this.availability={studio,passthrough};const result=this.availability[this.environment];
   this.state=result.supported?'ready':'unavailable';this.reason=result.reason;this.hooks.changed();
+ }
+ /** Selection never requests a session after awaiting exit: the next Enter click is a fresh gesture. */
+ async select(environment:XREnvironment):Promise<void>{
+  if(this.disposed||this.state==='checking'||this.state==='requesting'||this.state==='ending'||!this.availability[environment]?.supported)return;
+  this.environment=environment;
+  if(this.session){await this.exit();return;}
+  this.state='ready';this.reason=this.availability[environment].reason;this.hooks.changed();
  }
  async enter():Promise<void>{
   if(this.state!=='ready'||!this.xr||this.disposed)return;
-  this.state='requesting';this.reason='Requesting immersive VR…';this.hooks.changed();
+  this.state='requesting';this.reason=`Requesting ${this.environment}…`;this.hooks.changed();
   let session:XRSession|undefined;
   try{
    // requestSession must stay directly in the trusted click path, before any await/preparation.
-   const request=this.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']});
+   const request=this.xr.requestSession(environmentMode(this.environment),{optionalFeatures:['local-floor']});
    session=await request;
    if(this.disposed){try{await session.end();}finally{this.state='ready';this.reason='VR request cancelled. Desktop retained.';this.hooks.changed();}return;}
-   this.session=session;const active=session;
+   this.session=session;this.activeEnvironment=this.environment;const active=session;
    session.addEventListener('end',()=>queueMicrotask(()=>this.finish(active)),{once:true});
+   if(this.activeEnvironment==='passthrough'&&session.environmentBlendMode==='opaque')throw new Error('Runtime returned opaque AR; real-world passthrough is unavailable');
    this.prepared=true;this.hooks.prepare();await this.manager.setSession(session);
    if(this.session!==session)return;
-   this.state='presenting';this.reason='VR active · Tool Hand edits the selected layer · use headset system controls to exit.';this.hooks.changed();
+   this.state='presenting';this.reason=`${this.activeEnvironment==='passthrough'?'Passthrough':'Studio'} active · use headset controls to exit, then select an environment and click Enter.`;this.hooks.changed();
   }catch(error){
    if(session){try{await session.end();}catch{/* Restore the app even if setup never completed. */}this.finish(session);}
    else{this.state='ready';this.hooks.changed();}
-   this.reason=`Could not enter VR: ${error instanceof Error?error.message:String(error)}. Desktop sculpture kept; retry from Enter VR.`;this.hooks.changed();
+   this.reason=`Could not enter ${this.environment}: ${error instanceof Error?error.message:String(error)}. Desktop sculpture kept; retry with a fresh Enter click.`;this.hooks.changed();
   }
  }
  async exit():Promise<void>{
@@ -48,9 +61,9 @@ export class XRSessionController {
   catch(error){if(this.session===session){this.state='presenting';this.reason=`Exit request failed: ${error instanceof Error?error.message:String(error)}. Use headset system controls to exit.`;this.hooks.changed();}}
  }
  private finish(session:XRSession):void{
-  if(this.session!==session)return;this.session=null;
+  if(this.session!==session)return;this.session=null;this.activeEnvironment=null;
   if(this.prepared){this.prepared=false;this.hooks.restore();}
-  this.state='ready';this.reason='Desktop restored. Sculpture and independent layer data retained.';this.hooks.changed();
+  this.state='ready';this.reason=`Desktop restored. Project retained. Select an environment, then click Enter ${this.environment==='passthrough'?'Passthrough':'Studio'}. Workspace will refit to your new tracked view.`;this.hooks.changed();
  }
  async dispose():Promise<void>{this.disposed=true;await this.exit();}
 }

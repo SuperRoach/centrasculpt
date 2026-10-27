@@ -1,3 +1,4 @@
+import {WebGLBackground} from '../node_modules/three/src/renderers/webgl/WebGLBackground.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Scene,PerspectiveCamera,Vector3,Quaternion,Box3,Color,Texture,AmbientLight} from 'three';
@@ -75,3 +76,49 @@ test('failed renderer binding restores the background, camera and workspace befo
  await controller.check(true,xr);await controller.enter();await tick();assert.equal(scene.background,background);assert.deepEqual(camera.position,before);assert.equal(controller.blocking,false);assert.equal(rig.active,false);fail=false;await controller.enter();assert.equal(controller.state,'presenting');assert.equal(scene.background.getHexString(),'808080');await controller.exit();assert.equal(scene.background,background);assert.deepEqual(new Uint8Array(saveSculptProject(c.project)),new Uint8Array(native));assert.equal(c.undoCount,0);
  }finally{c.dispose();}
 });
+
+test('Passthrough probes AR independently, including AR-only and missing/denied runtimes',async()=>{
+ const modes=[],xr={isSessionSupported:async mode=>{modes.push(mode);return mode==='immersive-ar';}};
+ assert((await detectXR(true,xr,'passthrough')).supported);assert.deepEqual(modes,['immersive-ar']);
+ assert.equal((await detectXR(true,undefined,'passthrough')).supported,false);
+ assert.equal((await detectXR(false,xr,'passthrough')).supported,false);
+ assert.match((await detectXR(true,{isSessionSupported:async()=>false},'passthrough')).reason,/immersive-ar/);
+ assert.equal((await detectXR(true,{isSessionSupported:async()=>{throw Error('denied');}},'passthrough')).supported,false);
+ const c=new XRSessionController({setSession:async()=>{}},{prepare:()=>{},restore:()=>{},changed:()=>{}});await c.check(true,xr);assert.equal(c.state,'unavailable');await c.select('passthrough');assert.equal(c.state,'ready');
+});
+test('environment switching exits once and requires a separate gesture; repeated VR/AR sessions clean up once',async()=>{
+ const requests=[],sessions=[];let prepare=0,restore=0;
+ const c=new XRSessionController({setSession:async()=>{}},{prepare:()=>prepare++,restore:()=>restore++,changed:()=>{}});
+ await c.check(true,{isSessionSupported:async()=>true,requestSession:(mode)=>{requests.push(mode);const s=new FakeSession();s.environmentBlendMode=mode==='immersive-ar'?'alpha-blend':'opaque';sessions.push(s);return Promise.resolve(s);}});
+ assert.equal(c.environment,'studio');await c.enter();
+ for(const environment of ['passthrough','studio','passthrough','studio']){
+  const count=requests.length;await c.select(environment);await tick();assert.equal(c.session,null);assert.equal(c.activeEnvironment,null);assert.equal(requests.length,count);assert.equal(c.state,'ready');assert.match(c.reason,/click Enter/);
+  const entering=c.enter();assert.equal(requests.length,count+1,'request issued synchronously in Enter gesture');await entering;assert.equal(c.activeEnvironment,environment);
+ }
+ await sessions.at(-1).end();await tick();assert.equal(prepare,5);assert.equal(restore,5);assert.equal(c.session,null);
+ assert.deepEqual(requests,['immersive-vr','immersive-ar','immersive-vr','immersive-ar','immersive-vr']);
+});
+test('unsupported selection, denied AR request and opaque AR leave Studio recoverable',async()=>{
+ const h=harness();await h.controller.check(true,{...h.xr,isSessionSupported:async mode=>mode==='immersive-vr'});await h.controller.select('passthrough');assert.equal(h.controller.environment,'studio');
+ const denied=harness({request:()=>Promise.reject(Error('gesture required'))});await denied.controller.check(true,denied.xr);await denied.controller.select('passthrough');await denied.controller.enter();assert.equal(denied.controller.state,'ready');assert.match(denied.controller.reason,/fresh Enter click/);assert.equal(denied.counts.prepares,0);
+ const opaque=harness();opaque.session.environmentBlendMode='opaque';await opaque.controller.check(true,opaque.xr);await opaque.controller.select('passthrough');await opaque.controller.enter();assert.equal(opaque.controller.session,null);assert.equal(opaque.counts.prepares,0);assert.match(opaque.controller.reason,/opaque/);await opaque.controller.select('studio');await opaque.controller.enter();assert.equal(opaque.controller.state,'presenting');await opaque.controller.exit();
+});
+test('AR transparency, VR grey, workspace refitting and existing history/project bytes survive both directions',()=>{
+ const {scene,c,rig}=sceneHarness();try{
+  c.setActiveTransform({position:[.2,.1,0],rotation:[0,.4,0],scale:[1.1,1.1,1.1]});const native=new Uint8Array(saveSculptProject(c.project)),undo=c.undoCount,redo=c.redoCount,desktop=new Color('#123456');scene.background=desktop;
+  for(const mode of ['studio','passthrough','studio','passthrough']){
+   rig.enter([],mode);assert(mode==='passthrough'?scene.background===null:scene.background.getHexString()==='808080');rig.placeFirstView({x:2,y:1.6,z:3},{x:0,y:0,z:0,w:1});const home=rig.workspaceRoot.matrix.clone();rig.workspaceRoot.position.x+=3;rig.workspaceRoot.scale.multiplyScalar(2);assert(rig.resetWorkspaceView());assert(rig.workspaceRoot.matrix.elements.every((v,i)=>Math.abs(v-home.elements[i])<1e-12));
+   assert.deepEqual(new Uint8Array(saveSculptProject(c.project)),native);assert.equal(c.undoCount,undo);assert.equal(c.redoCount,redo);rig.exit();assert.equal(scene.background,desktop);
+  }
+ }finally{c.dispose();}
+});
+
+ test('installed Three renderer clears AR transparently and Studio opaquely without another renderer',()=>{
+  const clears=[];let blend='alpha-blend',count=0;
+  const renderer={getRenderTarget:()=>null,outputColorSpace:'srgb',xr:{getEnvironmentBlendMode:()=>blend},autoClear:true,clear:()=>count++};
+  const noop=()=>{},state={buffers:{color:{setClear:(...args)=>clears.push(args),setMask:noop},depth:{setTest:noop,setMask:noop}}};
+  const background=WebGLBackground(renderer,{}, {},state,{},true,true),scene=new Scene();
+  background.render(scene);assert.equal(clears.at(-1)[3],0);assert.equal(count,1);
+  blend='opaque';scene.background=new Color('#808080');background.render(scene);assert.equal(clears.at(-1)[3],1);
+  blend=undefined;scene.background=null;background.render(scene);assert.equal(clears.at(-1)[3],0);background.dispose();
+ });

@@ -1,3 +1,4 @@
+import {MAX_PROJECT_LAYERS} from './project';
 import {volumeLabel} from './volume-store';
 import {EDITOR_TOOLS} from './editor-tool-state';
 import type {EditorToolState,EditorTool} from './editor-tool-state';
@@ -22,7 +23,10 @@ export class XRMenuModel {
    EDITOR_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.detail,sector:i,selected:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
    add('options','Options',436,518,280,144,false,false,EDITOR_TOOLS.find(t=>t.id===this.tools.active)?.label);
   }else if(this.page==='layers'){
-   const layers=this.tools.port.layers();labels.push({text:'Select layer',x:48,y:192},{text:'Visibility',x:728,y:192},{text:'Lock',x:944,y:192});
+   const layers=this.tools.port.layers();
+   const full=layers.project.layerStack.layers.length>=MAX_PROJECT_LAYERS;
+   add('new-layer','＋ Add New Layer',40,960,1072,78,false,this.tools.busy||full,full?'Maximum of 8 layers reached':'Empty clay volume · 64³ · selects new layer');
+   labels.push({text:'Select layer',x:48,y:192},{text:'Visibility',x:728,y:192},{text:'Lock',x:944,y:192});
    layers.project.layerStack.layers.forEach((layer,i)=>{const y=216+i*94,active=layer.id===layers.project.activeLayerId;
     add(`select:${layer.id}`,layer.name,40,y,664,82,active,this.tools.busy,`${active?'✓ Active · ':''}${volumeLabel(layer.volume)} · ${layer.operation==='union'?'Union':layer.operation==='difference'?'Difference':'Intersect'}`);
     buttons[buttons.length-1].colour=layers.display.colour(layers.project.id,layer.id,layer.order);
@@ -65,6 +69,7 @@ export class XRMenuModel {
    else if(id==='options'){this.page='tool-options';this.optionPage=0;}
    else if(id==='tools'){this.page='tool-wheel';this.optionPage=0;}
    else if(id==='next')this.optionPage++;else if(id==='prev')this.optionPage--;
+   else if(id==='new-layer')this.tools.createLayer();
    else if(action==='select')this.tools.selectLayer(value);
    else if(action==='visible'||action==='locked')this.tools.toggleLayer(value,action);
    else if(action==='inc'||action==='dec')this.tools.adjust(value,action==='inc'?1:-1);

@@ -64,7 +64,7 @@ test('Transform options edit metadata with existing undo and native persistence,
  }finally{f.dispose();}
 });
 test('Layers panel selects visible, hidden or locked rows and toggles flags using existing commands',()=>{
- const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,6);
+ const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,7);
  m.activate(`select:${first.id}`);assert.equal(f.layers.project.activeLayerId,first.id);assert(m.content().buttons.find(b=>b.id===`select:${first.id}`).selected);m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert.equal(first.visible,false);assert.equal(first.locked,true);m.activate(`select:${second.id}`);assert.equal(f.layers.project.activeLayerId,second.id);m.activate(`select:${first.id}`);assert.equal(f.layers.active.layer.id,first.id);
  const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.activeLayerId,first.id);assert.equal(opened.layerStack.active.visible,false);assert.equal(opened.layerStack.active.locked,true);assert.deepEqual(first.volume.getDenseView(),a);assert.deepEqual(second.volume.getDenseView(),b);assert.equal(f.layers.undoCount,0);assert.equal(f.layers.project.layerStack.layers.length,2);
  m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert(first.visible&&!first.locked);assert(f.changed>=6);
@@ -126,7 +126,38 @@ test('numeric bounds clamp, brush settings retain the existing native save/load 
  }finally{f.dispose();}
 });
 test('eight layer rows, paginated options and radial targets stay within the usable menu surface',()=>{
- const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,24);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
+ const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,25);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
  f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<10;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
  }finally{f.dispose();}
 });
+
+ test('VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history',()=>{
+  const f=fixture();try{
+   f.tools.select('stamp');f.tools.stampAttachment.position[0]=.12;
+   const original=f.layers.active.layer;f.layers.setActiveTransform({position:[.3,0,0],rotation:[0,0,0],scale:[1,1,1]});f.layers.undo();
+   const bytes=original.volume.getDenseView().slice(),metadata=original.metadata(),undo=f.layers.undoCount,redo=f.layers.redoCount;
+   f.model.setRequest('layers');assert.equal(f.model.hit(...buttonPoint(f.model,'new-layer')),'new-layer');f.model.activate('new-layer');
+   const layer=f.layers.active.layer;assert.notEqual(layer.id,original.id);assert.equal(f.layers.project.layerStack.layers.length,2);assert.equal(layer.volume.resolution,64);assert(layer.volume.values.every(v=>v>0));assert.equal(layer.visible,true);assert.equal(layer.locked,false);
+   assert.equal(f.tools.active,'stamp');assert.equal(f.shape.definition.targetLayerId,layer.id);assert.equal(f.tools.stampAttachment.position[0],.12);
+   assert.deepEqual(original.metadata(),metadata);assert.deepEqual(original.volume.getDenseView(),bytes);assert.equal(f.layers.undoCount,undo);assert.equal(f.layers.redoCount,redo);assert.equal(f.model.page,'layers');assert.equal(f.changed,2);
+   const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.layers.length,2);assert.equal(opened.layerStack.activeLayerId,layer.id);
+  }finally{f.dispose();}
+ });
+ test('VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors',()=>{
+  const f=fixture();try{
+   f.model.setRequest('layers');f.busy=true;assert(f.model.content().buttons.find(b=>b.id==='new-layer').disabled);f.model.activate('new-layer');assert.equal(f.layers.project.layerStack.layers.length,1);assert.throws(()=>f.tools.createLayer(),/Finish/);f.busy=false;
+   f.layers.beginStroke();assert.throws(()=>f.tools.createLayer(),/Finish/);f.layers.finishStroke();
+   const create=f.layers.create;f.layers.create=()=>{throw Error('Project voxel budget exceeded');};f.model.activate('new-layer');assert.match(f.model.feedback,/voxel budget/);assert.equal(f.layers.project.layerStack.layers.length,1);f.layers.create=create;
+   while(f.layers.project.layerStack.layers.length<8)f.tools.createLayer();
+   const content=f.model.content(),button=content.buttons.find(b=>b.id==='new-layer');assert(button.disabled);assert.match(button.detail,/Maximum/);f.model.activate('new-layer');assert.equal(f.layers.project.layerStack.layers.length,8);
+   for(const b of content.buttons){assert(b.rect.y+b.rect.height<1092);assert.equal(f.model.hit(...buttonPoint(f.model,b.id)),b.id);}
+  }finally{f.dispose();}
+ });
+ test('Tool Hand trigger adds a VR layer only once per press',()=>{
+  const restore=fakeDocument(),f=fixture();let view;try{
+   view=new XRMenuView(f.model);new Group().add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const state=toolState();view.update('layers',state,new Matrix4(),0,true);const pose=rayPose(view,...buttonPoint(f.model,'new-layer'));
+   trigger(state,false);view.update('layers',state,pose,16,true);trigger(state,true);view.update('layers',state,pose,32,true);assert.equal(f.layers.project.layerStack.layers.length,2);
+   state.buttons.trigger.justPressed=false;for(let t=48;t<160;t+=16)view.update('layers',state,pose,t,true);assert.equal(f.layers.project.layerStack.layers.length,2);
+   trigger(state,false);view.update('layers',state,pose,176,true);trigger(state,true);view.update('layers',state,pose,192,true);assert.equal(f.layers.project.layerStack.layers.length,3);
+  }finally{view?.dispose();f.dispose();restore();}
+ });

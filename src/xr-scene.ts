@@ -24,11 +24,11 @@ export class XRSceneRig {
   this.sculptureRoot.traverseVisible(object=>{if(object instanceof Mesh){const geometry=object.geometry;if(!geometry.boundingBox)geometry.computeBoundingBox();if(geometry.boundingBox&&!geometry.boundingBox.isEmpty()){matrix.multiplyMatrices(inverse,object.matrixWorld);bounds.union(geometry.boundingBox.clone().applyMatrix4(matrix));}}});
   return bounds;
  }
- enter(hidden:readonly Object3D[]=[]):void {
+ enter(hidden:readonly Object3D[]=[],environment:'studio'|'passthrough'='studio'):void {
   if(this.active)return;
   const camera=this.camera;
   this.snapshot={background:this.scene.background,transforms:[capture(camera),capture(this.trackingOrigin),capture(this.workspaceRoot)],projection:camera.projectionMatrix.clone(),inverseProjection:camera.projectionMatrixInverse.clone(),fov:camera.fov,aspect:camera.aspect,near:camera.near,far:camera.far,zoom:camera.zoom,visibility:hidden.map(object=>({object,visible:object.visible}))};
-  this.scene.background=new Color(this.preferences.background);
+  this.scene.background=environment==='passthrough'?null:new Color(this.preferences.background);
   const bounds=this.visibleBounds();if(bounds.isEmpty())bounds.set(new Vector3(-.5,-.5,-.5),new Vector3(.5,.5,.5));
   bounds.getCenter(this.center);const size=bounds.getSize(new Vector3()),diameter=Math.max(size.x,size.y,size.z);
   this.presentationScale=.65/Math.max(diameter,.000001);

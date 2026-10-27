@@ -1,0 +1,17 @@
+expanded baseline 4.0 MiB grids 0.2 MiB history
+stroke 40 4.0 MiB grids 1.4 MiB history
+stroke 80 4.0 MiB grids 1.9 MiB history
+stroke 120 4.0 MiB grids 1.5 MiB history
+stroke 160 4.0 MiB grids 1.5 MiB history
+stroke 200 4.0 MiB grids 1.8 MiB history
+stroke 240 4.0 MiB grids 1.4 MiB history
+stroke 280 4.0 MiB grids 1.2 MiB history
+stroke 320 4.0 MiB grids 1.1 MiB history
+after stamps 4.0 MiB grids 20.4 MiB history
+after layer churn 4.0 MiB grids 20.4 MiB history
+mixed resolutions / Boolean / Bake 22.0 MiB grids 20.4 MiB history
+after Bake undo/redo 22.0 MiB grids 20.4 MiB history
+native reload, fresh history 22.0 MiB grids 0.0 MiB history
+ten repeated native reloads 22.0 MiB grids 0.0 MiB history
+12 sequential asynchronous Moves 2.0 MiB grids 0.3 MiB history
+192 high detail checkpoint 54.0 MiB grids 0.1 MiB history
