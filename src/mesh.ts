@@ -160,6 +160,22 @@ export class IncrementalMesher {
     const [nx,ny]=this.layout.dimensions,p=[index%nx,Math.floor(index/nx)%ny,Math.floor(index/(nx*ny))] as Point;
     this.visitAffected({min:p,max:p},id=>{if(signChanged||(this.chunks[id].geometry?.getAttribute('position').count??0)>0)this.dirty.add(id);});
   }
+  /** Coalesce identical chunk/gradient-halo coverage during a staged stamp patch.
+   * A rebuild or any outside invalidation clears the cache, so later writes still
+   * dirty geometry extracted between publication slices. Clay keeps its API. */
+  stampInvalidator():(index:number,signChanged:boolean)=>void{
+    const layout=this.layout,visited=new Set<number>();let revision=this.editRevision;
+    return (index,signChanged)=>{
+      if(this.layout!==layout||this.disposed)throw new Error('Stamp mesher changed during publication.');
+      if(revision!==this.editRevision)visited.clear();
+      const [nx,ny]=layout.dimensions,x=index%nx,y=Math.floor(index/nx)%ny,z=Math.floor(index/(nx*ny)),c=this.chunkSize;
+      const lx=Math.max(layout.min[0],Math.floor((x+layout.origin[0]-2)/c)),ly=Math.max(layout.min[1],Math.floor((y+layout.origin[1]-2)/c)),lz=Math.max(layout.min[2],Math.floor((z+layout.origin[2]-2)/c));
+      const hx=Math.min(layout.max[0],Math.floor((x+layout.origin[0]+1)/c)),hy=Math.min(layout.max[1],Math.floor((y+layout.origin[1]+1)/c)),hz=Math.min(layout.max[2],Math.floor((z+layout.origin[2]+1)/c));
+      const cell=(lx-layout.min[0])+layout.size[0]*((ly-layout.min[1])+layout.size[1]*(lz-layout.min[2]));
+      const key=cell*16+(hx>lx?2:0)+(hy>ly?4:0)+(hz>lz?8:0)+Number(signChanged);
+      if(!visited.has(key)){this.invalidateSample(index,signChanged);visited.add(key);}revision=this.editRevision;
+    };
+  }
   rebuildChunks(maxChunks=Infinity,maxMilliseconds=Infinity):{updates:ChunkUpdate[];stats:RebuildStats;triangles:number}|null{
     if(!(maxChunks>0)||!(maxMilliseconds>=0))throw new Error('Invalid meshing batch budget.');
     if(this.disposed)throw new Error('Mesher is disposed.');

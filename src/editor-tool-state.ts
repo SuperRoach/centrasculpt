@@ -1,3 +1,4 @@
+import {validateTube,insertTubePoint,deleteTubePoint,type TubeSource} from './procedural-tube';
 import {defaultToolPreferences,validateToolPreferences,type ToolPreferences} from './tool-preferences';
 import {BRUSH_RADIUS_LIMITS} from './brush-settings';
 import {ClayPathControls} from './clay-path';
@@ -9,10 +10,17 @@ import type {ShapeKind} from './shapes';
 import type {SculptSettings} from './project';
 import type {EditorMode} from './interaction';
 import {copyTransform,hasUniformScale,identityTransform,uniformScale} from './transform';
-export type EditorTool='clay'|'smooth'|'stamp'|'transform'|'move';
+export type EditorTool='clay'|'smooth'|'flatten'|'inflate'|'scrape'|'pinch'|'crease'|'stamp'|'transform'|'move'|'tube'|'edit-spline';
 export const EDITOR_TOOLS=Object.freeze([
  {id:'clay',label:'Clay',detail:'Add / subtract',enabled:true,layerGrab:false,sizing:'brush-radius'},
  {id:'smooth',label:'Smooth',detail:'Soften surfaces',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'flatten',label:'Flatten',detail:'Relax toward local tangent plane',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'inflate',label:'Inflate',detail:'Local outward field offset',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'scrape',label:'Scrape',detail:'Remove above applicator plane',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'pinch',label:'Pinch',detail:'Contract surface tangentially',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'crease',label:'Crease',detail:'Pinch with inward displacement',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'tube',label:'Tube',detail:'Draw an editable spline in free space',enabled:true,layerGrab:false,sizing:'brush-radius'},
+ {id:'edit-spline',label:'Edit Spline',detail:'Grab points · stick changes thickness',enabled:true,layerGrab:false,sizing:null},
  {id:'stamp',label:'Shape Stamp',detail:'Shape settings',enabled:true,layerGrab:false,sizing:'shape-scale'},
  {id:'transform',label:'Transform Layer',detail:'Move / wrist rotate',enabled:true,layerGrab:true,sizing:null},
  {id:'move',label:'Move Tool',detail:'Surface deformation · release commits',enabled:true,layerGrab:false,sizing:'brush-radius'},
@@ -25,12 +33,14 @@ type Declaration={id:string;label:string;read:()=>number|string;write?:(v:number
 export type EditorToolPort={layers:()=>IndependentLayers;shape:ShapePreviewModel;settings:()=>SculptSettings;setSettings:(v:SculptSettings)=>void;mode:()=>EditorMode;selectTool:(tool:EditorTool)=>void;selectTransform:(mode:Exclude<EditorMode,'sculpt'>)=>void;busy:()=>boolean;changed:()=>void};
 export class EditorToolState {
  alternateTool:'off'|'clay'|'smooth'|'opposite'='opposite';
+ splinePointId:string|null=null;
+ private splineSelected:'tube'|'edit-spline'|null=null;
  private moveSelected=false;private previewOwner:{cancel:()=>void}|null=null;
  readonly move={snap:0 as 0|15|45|90,precision:false,interaction:'translate' as 'translate'|'rotate'|'twist',axis:'free' as 'free'|'x'|'y'|'z',angularStrength:1,angleClamp:120,radius:.3,falloff:2,strength:1,stiffness:1,mode:'non-elastic' as 'preview'|'non-elastic'|'elastic'};
  get brushRadius():number{return this.active==='move'?this.move.radius:this.port.settings().radius;}
  beginPreview(owner:{cancel:()=>void}):void{if(this.busy)throw new Error('Finish the current interaction first.');this.previewOwner=owner;}
  endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
- clearMoveSelection():void{this.previewOwner?.cancel();this.moveSelected=false;}
+ clearMoveSelection():void{this.previewOwner?.cancel();this.moveSelected=false;this.splineSelected=null;}
  readonly path=new ClayPathControls();
  readonly stampAttachment={position:[0,0,0] as [number,number,number],rotation:[0,0,0,1] as [number,number,number,number],mode:'single' as 'single'|'continuous',spacing:.35};
  resetStampOffset():void{this.assertIdle();this.stampAttachment.position.splice(0,3,0,0,0);this.stampAttachment.rotation.splice(0,4,0,0,0,1);this.stampRotation.fill(0);this.port.changed();}
@@ -45,34 +55,51 @@ export class EditorToolState {
   const d=shape.definition,next=Math.max(.02,Math.min(10,value));if(Math.abs(next-d.transform.scale[0])<1e-12)return false;
   shape.set({...d,transform:{...d.transform,scale:[next,next,next]}},stack);return true;
  }
- get active():EditorTool{return this.moveSelected&&!this.port.shape.enabled&&this.port.mode()==='sculpt'?'move':this.port.shape.enabled?'stamp':this.port.mode()!=='sculpt'?'transform':this.port.settings().mode==='smooth'?'smooth':'clay';}
- get busy():boolean{const l=this.port.layers();return !!this.previewOwner||this.port.busy()||l.drawing||l.transforming||l.previewing||l.deforming||l.bakingLayer;}
+ get active():EditorTool{return this.splineSelected&&!this.port.shape.enabled&&this.port.mode()==='sculpt'?this.splineSelected:this.moveSelected&&!this.port.shape.enabled&&this.port.mode()==='sculpt'?'move':this.port.shape.enabled?'stamp':this.port.mode()!=='sculpt'?'transform':(['smooth','flatten','inflate','scrape','pinch','crease'].includes(this.port.settings().mode)?this.port.settings().mode as EditorTool:'clay');}
+ get busy():boolean{const l=this.port.layers();return !!this.previewOwner||this.port.busy()||l.drawing||l.transforming||l.previewing||l.deforming||l.bakingLayer||l.generatingTube;}
+ setLiveTubeRadius(value:number):boolean{if(this.active!=='tube'||!this.previewOwner||!this.port.layers().previewing||this.port.layers().generatingTube||!Number.isFinite(value))return false;const radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(radius===this.brushRadius)return false;this.port.setSettings({...this.port.settings(),radius});return true;}
  setLiveClayRadius(value:number):boolean{const l=this.port.layers();if(this.active!=='clay'||!l.drawing||l.previewing||l.deforming||l.transforming||this.port.busy()||!Number.isFinite(value))return false;const radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(radius===this.brushRadius)return false;this.port.setSettings({...this.port.settings(),radius});return true;}
  setLiveMoveFalloff(value:number):boolean{if(this.active!=='move'||!this.previewOwner||this.port.layers().deforming||this.move.mode!=='elastic'||this.move.interaction!=='translate'||this.port.busy()||!Number.isFinite(value))return false;const next=Math.max(1,Math.min(4,value));if(next===this.move.falloff)return false;this.move.falloff=next;return true;}
  setBrushRadius(value:number,current?:SculptSettings):boolean{if(this.busy||toolSizingBinding(this.active)!=='brush-radius'||!Number.isFinite(value))return false;const settings=current??this.port.settings(),radius=Math.max(BRUSH_RADIUS_LIMITS.min,Math.min(BRUSH_RADIUS_LIMITS.max,value));if(Math.abs(this.brushRadius-radius)<1e-12)return false;if(this.active==='move')this.move.radius=radius;else this.port.setSettings({...settings,radius});return true;}
- select(tool:EditorTool):void{const cancelled=!!this.previewOwner;this.previewOwner?.cancel();const l=this.port.layers(),onlyCancelledMove=cancelled&&l.deforming&&!this.previewOwner&&!l.previewing&&!l.drawing&&!l.transforming&&!this.port.busy();if(this.busy&&!onlyCancelledMove)throw new Error('Finish the current interaction first.');if(!EDITOR_TOOLS.some(t=>t.id===tool&&t.enabled))throw new Error('This tool is unavailable.');this.port.selectTool(tool);this.moveSelected=tool==='move';this.port.changed();}
+ select(tool:EditorTool):void{const cancelled=!!this.previewOwner;this.previewOwner?.cancel();const l=this.port.layers(),onlyCancelledMove=cancelled&&l.deforming&&!this.previewOwner&&!l.previewing&&!l.drawing&&!l.transforming&&!this.port.busy();if(this.busy&&!onlyCancelledMove)throw new Error('Finish the current interaction first.');if(!EDITOR_TOOLS.some(t=>t.id===tool&&t.enabled))throw new Error('This tool is unavailable.');this.port.selectTool(tool);if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease')this.port.setSettings({...this.port.settings(),mode:tool});this.moveSelected=tool==='move';this.splineSelected=tool==='tube'||tool==='edit-spline'?tool:null;this.port.changed();}
  /** Match desktop's default: a separate empty 64³ clay volume, selected immediately. */
  createLayer():void{this.assertIdle();const layers=this.port.layers();layers.create(64,true);this.port.shape.sync(layers.project.layerStack);this.port.changed();}
  selectLayer(id:string):void{this.assertIdle();this.port.layers().select(id);this.port.shape.sync(this.port.layers().project.layerStack);this.port.changed();}
  toggleLayer(id:string,flag:'visible'|'locked'):void{this.assertIdle();const l=this.port.layers();l.setFlag(id,flag,!l.project.layerStack.get(id)[flag]);this.port.changed();}
  resetLayerTransform(id:string):void{this.assertIdle();const l=this.port.layers();if(this.active!=='transform'||id!==l.project.activeLayerId)throw new Error('Reset cancelled: selected layer changed.');l.setActiveTransform(identityTransform());this.port.changed();}
  private assertIdle():void{if(this.busy)throw new Error('Finish the current interaction first.');}
+ async splineAction(action:string):Promise<void>{
+  this.assertIdle();const l=this.port.layers(),layer=l.active.layer,source=validateTube(layer.procedural),index=Math.max(0,source.points.findIndex(p=>p.id===this.splinePointId));
+  if(action==='tube-bake'){await l.bake({name:`${layer.name} baked`.slice(0,128),resolution:layer.volume.resolution,hideSources:false,sourceIds:[layer.id]});}
+  else {let next=source;if(action==='tube-insert')next=insertTubePoint(source,index);else if(action==='tube-delete')next=deleteTubePoint(source,source.points[index].id);else if(action==='tube-close')next={...source,closed:!source.closed};else throw new Error('Unknown spline action.');await l.regenerateTube(next,layer.id);}
+  this.port.changed();
+ }
  private declarations():Declaration[]{
   const p=this.port,l=p.layers(),settings=p.settings(),active=this.active,options:Declaration[]=[],mirrorOptions:Declaration[]=[];
   const brush=(id:'radius'|'strength'|'hardness',label:string,min:number,max:number,step:number)=>options.push({id,label,read:()=>settings[id],write:v=>p.setSettings({...p.settings(),[id]:v}),min,max,step,format:v=>id==='radius'?Number(v).toFixed(3):`${Math.round(Number(v)*100)}%`});
-  if(active==='clay'||active==='smooth'||active==='stamp'){
+  if(active==='clay'||active==='smooth'||active==='flatten'||active==='inflate'||active==='scrape'||active==='pinch'||active==='crease'||active==='stamp'){
    const mirror=l.symmetry;
    mirrorOptions.push({id:'symmetry',label:'Mirror symmetry · layer local',read:()=>mirror.enabled?'on':'off',write:v=>mirror.enabled=v==='on',choices:['off','on'],disabled:!l.active.layer.editable},
     {id:'symmetry-axis',label:'Mirror plane normal',read:()=>mirror.axis,write:v=>mirror.axis=v as typeof mirror.axis,choices:['x','y','z'],disabled:!l.active.layer.editable},
     {id:'symmetry-offset',label:'Mirror plane offset',read:()=>mirror.offset,write:v=>mirror.offset=Number(v),min:-100,max:100,step:.05,disabled:!l.active.layer.editable});
   }
-  if(active==='clay'||active==='smooth'){
+  if(active==='clay'||active==='smooth'||active==='flatten'||active==='inflate'||active==='scrape'||active==='pinch'||active==='crease'){
    if(active==='clay')options.push({id:'operation',label:'Clay operation',read:()=>settings.mode,write:v=>p.setSettings({...p.settings(),mode:v as 'add'|'subtract'}),choices:['add','subtract'],names:['Add','Subtract']});
    options.push({id:'placement',label:'Placement',read:()=>this.path.placement,write:v=>this.path.placement=v as 'free'|'surface',choices:['free','surface'],names:['Free space','Surface follow']});
    brush('radius','Brush radius',BRUSH_RADIUS_LIMITS.min,BRUSH_RADIUS_LIMITS.max,.02);brush('strength',active==='smooth'?'Smoothing strength':'Strength',.01,1,.05);
-   if(active==='clay'){brush('hardness','Hardness',0,1,.05);options.push({id:'steady',label:'Steady',read:()=>this.path.steady,write:v=>this.path.steady=Number(v),min:0,max:100,step:5,format:v=>`${v}%`,disabled:this.path.straightLine,slider:true},{id:'straight-line',label:'Straight Line',read:()=>this.path.straightLine?'on':'off',write:v=>this.path.straightLine=v==='on',choices:['off','on'],names:['Off','On']});options.push({id:'line-axis',label:'Straight Line axis · layer local',read:()=>this.path.axis,write:v=>this.path.axis=v as typeof this.path.axis,choices:['free','x','y','z'],disabled:!this.path.straightLine});options.push({id:'spacing',label:'Stroke spacing',read:()=> 'Automatic',disabled:true});}
+   if(active!=='smooth'){brush('hardness','Hardness',0,1,.05);options.push({id:'steady',label:'Steady',read:()=>this.path.steady,write:v=>this.path.steady=Number(v),min:0,max:100,step:5,format:v=>`${v}%`,disabled:this.path.straightLine,slider:true},{id:'straight-line',label:'Straight Line',read:()=>this.path.straightLine?'on':'off',write:v=>this.path.straightLine=v==='on',choices:['off','on'],names:['Off','On']});options.push({id:'line-axis',label:'Straight Line axis · layer local',read:()=>this.path.axis,write:v=>this.path.axis=v as typeof this.path.axis,choices:['free','x','y','z'],disabled:!this.path.straightLine});options.push({id:'spacing',label:'Stroke spacing',read:()=> 'Automatic',disabled:true});}
    options.push({id:'quality',label:'Geometry quality',read:()=>{const v=l.active.volume;return `Radius ${(settings.radius/uniformScale(l.active.layer.transform)/v.step).toFixed(1)} voxels · finer new layers: 128³ / 192³`;},disabled:true});
    options.push({id:'application',label:'VR strokes',read:()=>this.path.placement==='free'?'Tool trigger · free space':'Tool trigger · surface',disabled:true});
+   if(active==='pinch'||active==='crease')options.push({id:'brush-behaviour',label:active==='pinch'?'Pinch behaviour':'Crease behaviour',read:()=>active==='pinch'?'Contracts existing ridges; subtle on a smooth sphere':'Indents and contracts · release to finish queued work',disabled:true});
+  }
+  if(active==='tube'){
+   brush('radius','Tube radius',BRUSH_RADIUS_LIMITS.min,BRUSH_RADIUS_LIMITS.max,.02);
+   options.push({id:'steady',label:'Steady',read:()=>this.path.steady,write:v=>this.path.steady=Number(v),min:0,max:100,step:5}, {id:'straight-line',label:'Straight Line',read:()=>this.path.straightLine?'on':'off',write:v=>this.path.straightLine=v==='on',choices:['off','on']}, {id:'tube-note',label:'Draw',read:()=> 'Hold Tool trigger in free space · release commits',disabled:true});
+  }
+  if(active==='edit-spline'){
+   const source=l.active.layer.procedural,selected=source?.points.find(p=>p.id===this.splinePointId)??source?.points[0];
+   options.push({id:'tube-selected',label:'Spline selection',read:()=>source?`${l.active.layer.name} · ${source.points.length} points`:'Select a Tube in Layers, or point at its surface',disabled:true}, {id:'tube-radius',label:'Point radius',read:()=>selected?.radius.toFixed(3)??'No point',disabled:true}, {id:'tube-edit-note',label:'Controls',read:()=> 'Point + trigger: grab · Tool stick: radius',disabled:true});
+   for(const [action,label] of [['tube-insert','Insert point after selected'],['tube-delete','Delete selected point'],['tube-close',source?.closed?'Open spline':'Close spline'],['tube-bake','Bake to Sculpt Layer']])options.push({id:action,label,read:()=>action==='tube-bake'?'Original source preserved':'One Undo action',action,disabled:!source||!l.active.layer.editable});
   }
   if(active==='move'){
    options.push({id:'move-interaction',label:'Move gesture',read:()=>this.move.interaction,write:v=>this.move.interaction=v as typeof this.move.interaction,choices:['translate','rotate','twist'],names:['Translate','Rotate region','Twist region']});

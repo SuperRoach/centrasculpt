@@ -1,0 +1,23 @@
+{
+  "scope": "Host field samples at a tracked surface contact; not Quest measurements. Legacy integration rate reproduced with one-third strength; same per-dab safety caps.",
+  "result": [
+    {
+      "resolution": 64,
+      "seconds": 0.5,
+      "radius": 0.22,
+      "strength": 0.35,
+      "newDepth": 0.04065169021487258,
+      "legacyRateDepth": 0.014523430168628892,
+      "newDepthVoxels": 0.8003301511053039
+    },
+    {
+      "resolution": 128,
+      "seconds": 0.5,
+      "radius": 0.22,
+      "strength": 0.35,
+      "newDepth": 0.044196351617574736,
+      "legacyRateDepth": 0.015052975714206718,
+      "newDepthVoxels": 1.7540427048224971
+    }
+  ]
+}

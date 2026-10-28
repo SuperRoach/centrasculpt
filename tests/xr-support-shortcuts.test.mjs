@@ -1,3 +1,4 @@
+import {canvasContext} from '../scripts/fixtures/canvas-context.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Group} from 'three';
@@ -99,7 +100,7 @@ test('bridge reconnect, blur, handedness switch and repeated session cleanup clo
  }finally{h.dispose();}
 });
 test('shortcut card is cached, independent of diagnostic hints, and removed on session cleanup',()=>{
- const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>({fillRect(){},fillText(text){draws.push(text);}})})};let view;
+ const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>canvasContext({fillRect(){},fillText(text){draws.push(text);}})})};let view;
  try{view=new XRShortcutView();const root=new Group();root.add(view.mesh);view.start();view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const anchor=view.mesh.position.clone();const {r,step}=router();step(0,-1);view.paint(r,10);assert(view.mesh.visible);assert(draws.includes('Tool Wheel'));const count=view.paintCount;for(let i=0;i<20;i++)view.paint(r,20+i);assert.equal(view.paintCount,count);view.place({x:2,y:2,z:1},{x:0,y:0,z:0,w:1});assert.deepEqual(view.mesh.position,anchor);step();view.paint(r,100);assert.equal(view.mesh.visible,false);step(-1,0);view.paint(r,110);assert(view.mesh.visible);assert(draws.includes('Action unavailable'));view.paint(r,10000);assert.equal(view.mesh.visible,false);step();step(0,1);view.paint(r,12000,false);assert.equal(view.mesh.visible,false);view.stop();assert.equal(view.mesh.parent,null);assert.equal(view.mesh.visible,false);
  }finally{view?.dispose();globalThis.document=original;}
 });
@@ -111,7 +112,7 @@ test('nonfinite hardware axes disarm shortcuts instead of masquerading as neutra
  const h=bridgeHarness();try{h.c.setActiveTransform({position:[.2,0,0],rotation:[0,0,0],scale:[1,1,1]});h.stick(-1,0);assert.equal(h.c.undoCount,0);h.stick(NaN,0);assert.equal(h.bridge.input.states[1].stick.available,false);h.stick(1,0);assert.equal(h.c.undoCount,0);assert.equal(h.c.redoCount,1);h.stick();h.stick(1,0);assert.equal(h.c.undoCount,1);}finally{h.dispose();}
 });
 test('a trigger press during a menu request cannot also activate a diagnostic button',()=>{
- const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>({clearRect(){},fillRect(){},fillText(){}})})};let c,panel;
+ const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>canvasContext({clearRect(){},fillRect(){},fillText(){}})})};let c,panel;
  try{panel=new XRDiagnostics();const rays=[new Group(),new Group()],grips=[new Group(),new Group()],roles=new XRControllerRoles(),support=source('left'),tool=source('right');c=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},new Group(),roles,panel);c.start(new Session());rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});panel.group.position.z=-1;panel.group.visible=true;panel.group.updateMatrixWorld(true);rays[0].position.set(-.155,.127875,0);c.update(0);support.gamepad.axes[3]=-1;c.update(16);assert.equal(c.shortcuts.menu,'tool-wheel');Object.assign(tool.gamepad.buttons[0],{value:1,pressed:true});c.update(32);assert.equal(roles.dominant,'right');assert.equal(c.shortcuts.menu,null);c.update(48);assert.equal(roles.dominant,'right');Object.assign(tool.gamepad.buttons[0],{value:0,pressed:false});support.gamepad.axes[3]=0;c.update(64);Object.assign(tool.gamepad.buttons[0],{value:1,pressed:true});c.update(80);assert.equal(roles.dominant,'left');
  }finally{c?.dispose();globalThis.document=original;}
 });

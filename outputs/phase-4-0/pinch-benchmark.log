@@ -1,0 +1,72 @@
+{
+  "scope": "Single host run. Staged sample+meshing/drain CPU vs synchronous brush-only call; different work scopes, not a speedup ratio or Quest timing. Simulated 16 ms timestamps.",
+  "node": "v26.8.1",
+  "cases": [
+    {
+      "resolution": 64,
+      "radius": 0.25,
+      "samples": 12,
+      "drainUpdates": 3,
+      "stagedTotalCPUms": 42.50412499999999,
+      "stagedP95ms": 5.806625000000011,
+      "stagedMaxMs": 5.806625000000011,
+      "syncBrushMaxMs": 1.0088329999999956,
+      "identicalVoxels": true
+    },
+    {
+      "resolution": 64,
+      "radius": 0.5,
+      "samples": 12,
+      "drainUpdates": 3,
+      "stagedTotalCPUms": 60.99029100000007,
+      "stagedP95ms": 8.04166699999999,
+      "stagedMaxMs": 8.04166699999999,
+      "syncBrushMaxMs": 3.5812079999999753,
+      "identicalVoxels": true
+    },
+    {
+      "resolution": 128,
+      "radius": 0.25,
+      "samples": 12,
+      "drainUpdates": 3,
+      "stagedTotalCPUms": 39.616499999999974,
+      "stagedP95ms": 4.143790999999965,
+      "stagedMaxMs": 4.143790999999965,
+      "syncBrushMaxMs": 1.325207999999975,
+      "identicalVoxels": true
+    },
+    {
+      "resolution": 128,
+      "radius": 0.5,
+      "samples": 12,
+      "drainUpdates": 46,
+      "stagedTotalCPUms": 181.27108099999953,
+      "stagedP95ms": 6.622749999999996,
+      "stagedMaxMs": 7.636416999999938,
+      "syncBrushMaxMs": 9.77308400000004,
+      "identicalVoxels": true
+    },
+    {
+      "resolution": 192,
+      "radius": 0.25,
+      "samples": 12,
+      "drainUpdates": 23,
+      "stagedTotalCPUms": 99.35500000000093,
+      "stagedP95ms": 7.433084000000008,
+      "stagedMaxMs": 7.692874999999958,
+      "syncBrushMaxMs": 4.269833999999946,
+      "identicalVoxels": true
+    },
+    {
+      "resolution": 192,
+      "radius": 0.5,
+      "samples": 12,
+      "drainUpdates": 150,
+      "stagedTotalCPUms": 501.8345509999981,
+      "stagedP95ms": 5.915624999999636,
+      "stagedMaxMs": 13.123707999999624,
+      "syncBrushMaxMs": 34.212582999999995,
+      "identicalVoxels": true
+    }
+  ]
+}

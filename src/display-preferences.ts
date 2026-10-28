@@ -1,7 +1,9 @@
+import {defaultWorldSettings,validateWorldSettings,type WorldDisplayPreferences} from './world-settings';
+import {validateVRUIScale,type VRUIScale} from './xr-ui-style';
 import {validateRenderStyle,type RenderStyle} from './render-style';
 export type ViewportMode='clay'|'layer-colours';
 const palette=['#aabd8d','#d68d70','#86aeca','#c29ac9','#dfc574','#78b7a9','#d293ac','#929fc9'];
-export type ProjectDisplayPreferences={mode:ViewportMode;colours:Record<string,string>;renderStyle?:RenderStyle};
+export type ProjectDisplayPreferences={mode:ViewportMode;colours:Record<string,string>;renderStyle?:RenderStyle;vrUiScale?:VRUIScale;world?:WorldDisplayPreferences};
 /** Optional native-project display metadata, kept separate from SDF data and export materials. */
 export function validateProjectDisplay(value: unknown,layerIds: readonly string[]):ProjectDisplayPreferences {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid project display preferences.');
@@ -11,10 +13,14 @@ export function validateProjectDisplay(value: unknown,layerIds: readonly string[
   const entries=Object.entries(data.colours);
   if(entries.some(([id,colour])=>!layerIds.includes(id)||typeof colour!=='string'||!/^#[0-9a-f]{6}$/i.test(colour)))throw new Error('Invalid project layer colour or target layer.');
   const renderStyle=data.renderStyle===undefined?undefined:validateRenderStyle(data.renderStyle==='wireframe'?'normal':data.renderStyle);
-  return {...(renderStyle===undefined?{}:{renderStyle}),mode:data.mode,colours:Object.fromEntries(entries.map(([id,colour])=>[id,(colour as string).toLowerCase()]))};
+  const vrUiScale=data.vrUiScale===undefined?undefined:validateVRUIScale(data.vrUiScale);
+  const world=data.world===undefined?undefined:validateWorldSettings(data.world);
+  return {...(world===undefined?{}:{world}),...(vrUiScale===undefined?{}:{vrUiScale}),...(renderStyle===undefined?{}:{renderStyle}),mode:data.mode,colours:Object.fromEntries(entries.map(([id,colour])=>[id,(colour as string).toLowerCase()]))};
 }
 /** Runtime display preferences with an explicit native-project snapshot boundary. */
 export class LayerDisplayPreferences {
+  world=defaultWorldSettings();
+  vrUiScale:VRUIScale='normal';
   mode: ViewportMode='layer-colours';
   renderStyle:RenderStyle='normal';
   private readonly colours=new Map<string,string>();
@@ -32,11 +38,12 @@ export class LayerDisplayPreferences {
     this.colours.set(`${projectId}/${layerId}`,colour.toLowerCase());
   }
   snapshot(projectId:string,layers:readonly {id:string;order:number}[]):ProjectDisplayPreferences {
-    return {...(this.renderStyle==='normal'?{}:{renderStyle:this.renderStyle}),mode:this.mode,colours:Object.fromEntries(layers.map(layer=>[layer.id,this.colour(projectId,layer.id,layer.order)]))};
+    return {...(this.world.studioBackground==='neutral-grey'&&!this.world.groundGrid?{}:{world:{...this.world}}),...(this.vrUiScale==='normal'?{}:{vrUiScale:this.vrUiScale}),...(this.renderStyle==='normal'?{}:{renderStyle:this.renderStyle}),mode:this.mode,colours:Object.fromEntries(layers.map(layer=>[layer.id,this.colour(projectId,layer.id,layer.order)]))};
   }
   restore(projectId:string,layers:readonly {id:string;order:number}[],saved?:ProjectDisplayPreferences):void {
     const validated=saved===undefined?undefined:validateProjectDisplay(saved,layers.map(layer=>layer.id));
-    this.mode=validated?.mode??'layer-colours';this.renderStyle=validated?.renderStyle??'normal';
+    this.world=validated?.world??defaultWorldSettings();
+    this.vrUiScale=validated?.vrUiScale??'normal';this.mode=validated?.mode??'layer-colours';this.renderStyle=validated?.renderStyle??'normal';
     for(const layer of layers)this.remove(projectId,layer.id);
     for(const [id,colour] of Object.entries(validated?.colours??{}))this.setColour(projectId,id,colour);
     for(const layer of layers)this.colour(projectId,layer.id,layer.order);

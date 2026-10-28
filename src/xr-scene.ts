@@ -1,4 +1,5 @@
-import {Box3,Color,Group,Matrix4,Mesh,PerspectiveCamera,Quaternion,Scene,Vector3} from 'three';
+import {studioBackgroundColour,type WorldDisplayPreferences} from './world-settings';
+import {Box3,Color,Group,GridHelper,Matrix4,Mesh,PerspectiveCamera,Quaternion,Scene,Vector3} from 'three';
 import type {ColorRepresentation,Object3D} from 'three';
 type TransformSnapshot={object:Object3D;position:Vector3;quaternion:Quaternion;scale:Vector3};
 const capture=(object:Object3D):TransformSnapshot=>({object,position:object.position.clone(),quaternion:object.quaternion.clone(),scale:object.scale.clone()});
@@ -9,14 +10,26 @@ export class XRSceneRig {
  readonly controllerTracking=new Group();
  readonly workspaceRoot=new Group();
  readonly sculptureRoot=new Group();
+ readonly groundGrid=new GridHelper(4,20,'#b5c4c9','#b5c4c9');
+ private environment:'studio'|'passthrough'|null=null;
+ private gridEnabled=false;
  private snapshot:{background:Scene['background'];transforms:TransformSnapshot[];projection:Matrix4;inverseProjection:Matrix4;fov:number;aspect:number;near:number;far:number;zoom:number;visibility:{object:Object3D;visible:boolean}[]}|null=null;
  private pendingPlacement=false;private hasHome=false;private readonly home=new Matrix4();
  private readonly center=new Vector3();
  presentationScale=1;
  constructor(private readonly scene:Scene,readonly camera:PerspectiveCamera,readonly preferences:{background:ColorRepresentation}={background:'#808080'}){
   this.trackingOrigin.name='XR Tracking Origin';this.controllerTracking.name='Controller Tracking · foundation';this.workspaceRoot.name='Workspace Root';this.sculptureRoot.name='Sculpture Root';
+  this.groundGrid.name='Studio ground guide · workspace local';this.groundGrid.visible=false;this.groundGrid.raycast=()=>{};this.groundGrid.material.transparent=true;this.groundGrid.material.opacity=.16;this.groundGrid.material.depthWrite=false;this.groundGrid.material.toneMapped=false;this.workspaceRoot.add(this.groundGrid);
   this.trackingOrigin.add(camera,this.controllerTracking);this.workspaceRoot.add(this.sculptureRoot);scene.add(this.trackingOrigin,this.workspaceRoot);
  }
+ /** Presentation-only: a single shared colour and fixed line geometry; no sculpture traversal per frame. */
+ applyWorldSettings(settings:WorldDisplayPreferences):void{
+  const colour=studioBackgroundColour(settings.studioBackground);
+  this.preferences.background=colour;this.gridEnabled=settings.groundGrid;
+  if(this.active){if(this.environment==='passthrough')this.scene.background=null;else if(!(this.scene.background instanceof Color)||this.scene.background.getHexString().toLowerCase()!==colour.slice(1).toLowerCase())this.scene.background=new Color(colour);}
+  this.groundGrid.visible=this.active&&this.environment==='studio'&&this.gridEnabled;
+ }
+ dispose():void{this.groundGrid.removeFromParent();this.groundGrid.geometry.dispose();this.groundGrid.material.dispose();}
  get active():boolean{return this.snapshot!==null;}
  /** Only visible source/result meshes contribute; ghost/gizmos never live under Sculpture Root. */
  visibleBounds():Box3 {
@@ -28,9 +41,10 @@ export class XRSceneRig {
   if(this.active)return;
   const camera=this.camera;
   this.snapshot={background:this.scene.background,transforms:[capture(camera),capture(this.trackingOrigin),capture(this.workspaceRoot)],projection:camera.projectionMatrix.clone(),inverseProjection:camera.projectionMatrixInverse.clone(),fov:camera.fov,aspect:camera.aspect,near:camera.near,far:camera.far,zoom:camera.zoom,visibility:hidden.map(object=>({object,visible:object.visible}))};
+  this.environment=environment;this.groundGrid.visible=environment==='studio'&&this.gridEnabled;
   this.scene.background=environment==='passthrough'?null:new Color(this.preferences.background);
   const bounds=this.visibleBounds();if(bounds.isEmpty())bounds.set(new Vector3(-.5,-.5,-.5),new Vector3(.5,.5,.5));
-  bounds.getCenter(this.center);const size=bounds.getSize(new Vector3()),diameter=Math.max(size.x,size.y,size.z);
+  bounds.getCenter(this.center);this.groundGrid.position.set(this.center.x,bounds.min.y-.002,this.center.z);const size=bounds.getSize(new Vector3()),diameter=Math.max(size.x,size.y,size.z);
   this.presentationScale=.65/Math.max(diameter,.000001);
   this.trackingOrigin.position.set(0,0,0);this.trackingOrigin.quaternion.identity();this.trackingOrigin.scale.setScalar(1);
   camera.position.set(0,0,0);camera.quaternion.identity();camera.scale.setScalar(1);
@@ -50,7 +64,7 @@ export class XRSceneRig {
   this.workspaceRoot.position.copy(target.sub(offset));this.workspaceRoot.updateWorldMatrix(true,true);
  }
  exit():void {
-  const s=this.snapshot;if(!s)return;this.snapshot=null;this.pendingPlacement=false;this.hasHome=false;
+  const s=this.snapshot;if(!s)return;this.snapshot=null;this.environment=null;this.groundGrid.visible=false;this.pendingPlacement=false;this.hasHome=false;
   this.scene.background=s.background;
   for(const value of s.transforms)restore(value);
   Object.assign(this.camera,{fov:s.fov,aspect:s.aspect,near:s.near,far:s.far,zoom:s.zoom});this.camera.projectionMatrix.copy(s.projection);this.camera.projectionMatrixInverse.copy(s.inverseProjection);

@@ -30,15 +30,16 @@ export class XRShapeStamp implements XRStrokeInteraction {
   this.pendingPreview.updateWorldMatrix(false,true);
  }
  private armed=false;private held=false;private owner=0;private target='';private project:unknown;
+ private strokeSettings:{definition:ShapeDefinition;attachment:EditorToolState['stampAttachment'];rotation:[number,number,number]}|null=null;
  private adjusting=false;private readonly anchor=new Matrix4();private released=false;private continuous=false;private strokeLayers:IndependentLayers|undefined;
  private pending:Generator<void,boolean>|null=null;private readonly strokeAnchor=new Matrix4();
  private previous:Matrix4|undefined;private remainder=0;private queue:Matrix4[]=[];private emitted=0;
  private attachmentPose(controller:Matrix4):Matrix4 {
-  const a=this.tools.stampAttachment,q=new Quaternion().setFromEuler(new Euler(...this.tools.stampRotation,'XYZ'));
+  const a=this.strokeSettings?.attachment??this.tools.stampAttachment,q=new Quaternion().setFromEuler(new Euler(...(this.strokeSettings?.rotation??this.tools.stampRotation),'XYZ'));
   return controller.clone().multiply(new Matrix4().makeTranslation(0,0,-CLAY_TIP_REACH_METRES)).multiply(new Matrix4().compose(new Vector3(...a.position),new Quaternion(...a.rotation).multiply(q),new Vector3(1,1,1)));
  }
  private definitionAt(controller:Matrix4):ShapeDefinition {
-  const d=this.tools.port.shape.definition,p=new Vector3(),q=new Quaternion(),s=new Vector3();
+  const d=this.strokeSettings?.definition??this.tools.port.shape.definition,p=new Vector3(),q=new Quaternion(),s=new Vector3();
   this.attachmentPose(controller).premultiply(this.inverse).decompose(p,q,s);const e=new Euler().setFromQuaternion(q,'XYZ');
   return {...d,transform:{position:p.toArray(),rotation:[e.x,e.y,e.z],scale:d.transform.scale}};
  }
@@ -46,7 +47,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
   if(!this.previous){this.previous=controller.clone();return;}
   const p=new Vector3(),q=new Quaternion(),s=new Vector3(),p1=new Vector3(),q1=new Quaternion();this.previous.decompose(p,q,s);controller.decompose(p1,q1,s);
   // Rotation contributes arc length, so wrist turns sample too; a stationary pose emits nothing.
-  const length=p.distanceTo(p1)+q.angleTo(q1)*(spacing/this.tools.stampAttachment.spacing*.5+new Vector3(...this.tools.stampAttachment.position).length()+CLAY_TIP_REACH_METRES);
+  const length=p.distanceTo(p1)+q.angleTo(q1)*(spacing/(this.strokeSettings?.attachment.spacing??this.tools.stampAttachment.spacing)*.5+new Vector3(...(this.strokeSettings?.attachment.position??this.tools.stampAttachment.position)).length()+CLAY_TIP_REACH_METRES);
   if(length>1e-8){for(let at=spacing-this.remainder;at<=length+1e-10;at+=spacing){if(this.queue.length+this.emitted>=4096)throw new Error('Continuous stroke limit reached; release and start a shorter stroke.');const t=Math.min(1,at/length);this.queue.push(new Matrix4().compose(p.clone().lerp(p1,t),q.clone().slerp(q1,t),new Vector3(1,1,1)));}this.remainder=(this.remainder+length)%spacing;if(this.remainder<1e-8||spacing-this.remainder<1e-8)this.remainder=0;}
   this.previous.copy(controller);
  }
@@ -57,10 +58,17 @@ export class XRShapeStamp implements XRStrokeInteraction {
   this.ghost=new ShapeGhost(()=>layers().project.layerStack,tools.port.shape);this.ghost.group.name='VR Shape Ghost · not project data';root.add(this.ghost.group);this.pendingPreview.matrixAutoUpdate=false;this.pendingPreview.visible=false;this.pendingPreview.name='Pending Stamp preview · at most 16 samples · not source geometry';root.add(this.pendingPreview);
  }
  get active():boolean{return this.held||this.adjusting||this.continuous;}
+ get draining():boolean{return this.continuous&&this.released;}
  get feedback():string{return this.message;}
- cancel():void{this.pendingPreview.visible=false;this.pendingPose=null;this.pending?.return(false);this.pending=null;if(this.continuous)this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeLayers=undefined;this.adjusting=false;this.previous=undefined;this.queue=[];this.emitted=0;this.remainder=0;this.armed=this.held=false;this.owner=0;this.target='';this.project=undefined;this.message='';this.failureUntil=0;this.ghost.group.visible=false;}
+ cancel():void{this.pendingPreview.visible=false;this.pendingPose=null;this.pending?.return(false);this.pending=null;if(this.continuous)this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeSettings=null;this.strokeLayers=undefined;this.adjusting=false;this.previous=undefined;this.queue=[];this.emitted=0;this.remainder=0;this.armed=this.held=false;this.owner=0;this.target='';this.project=undefined;this.message='';this.failureUntil=0;this.ghost.group.visible=false;}
  update(tool:XRControllerState|undefined,aim:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void {
   const layers=this.layers(),stack=layers.project.layerStack,pose=gripPose??aim;
+  if(this.draining){
+   try{if(!enabled||this.tools.active!=='stamp'||this.tools.port.busy()||layers!==this.strokeLayers||layers.project!==this.project||stack.activeLayerId!==this.target||!layers.drawing||layers.viewMode!=='separate'||this.tools.port.shape.availability(stack))throw new Error('Stamp queue target is unavailable.');
+    const surface=layers.active.surface.group;surface.updateWorldMatrix(true,false);this.ghost.group.visible=false;this.pumpContinuous(layers,surface.matrixWorld,performance.now(),!!tool?.connected&&tool.tracked&&tool.gripTracked&&tool.role==='tool'&&tool.connectionId===this.owner&&!tool.buttons.trigger.pressed);
+   }catch(error){this.cancel();this.message=error instanceof Error?error.message:'Stamp queue cancelled';this.until=this.failureUntil=time+5000;}
+   return;
+  }
   if(!enabled||this.tools.active!=='stamp'||this.tools.port.busy()||this.tools.busy&&!this.continuous||layers.viewMode!=='separate'||!tool?.connected||tool.role!=='tool'||!tool.tracked||!tool.gripTracked||!pose||!pose.elements.every(Number.isFinite)||Math.abs(pose.determinant())<1e-10||this.tools.port.shape.availability(stack)){this.cancel();return;}
   if(this.owner!==tool.connectionId||this.target!==stack.activeLayerId||this.project!==layers.project){this.cancel();this.owner=tool.connectionId;this.target=stack.activeLayerId;this.project=layers.project;}
   const workStart=performance.now();
@@ -68,7 +76,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
    const surface=layers.active.surface.group;surface.updateWorldMatrix(true,false);this.inverse.copy(surface.matrixWorld).invert();
    const grip=tool.buttons.grip.pressed||tool.buttons.grip.rawValue>=.45;
    if(grip){
-    if(this.continuous){this.pending?.return(false);this.pending=null;this.pendingPose=null;this.strokeLayers?.cancelStroke();this.continuous=false;this.queue=[];this.previous=undefined;}
+    if(this.continuous){this.pending?.return(false);this.pending=null;this.pendingPose=null;this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeSettings=null;this.queue=[];this.previous=undefined;}
     if(!this.adjusting){this.anchor.copy(this.attachmentPose(pose));this.adjusting=true;}
     const working=pose.clone().multiply(new Matrix4().makeTranslation(0,0,-CLAY_TIP_REACH_METRES));
     working.invert().multiply(this.anchor).decompose(this.position,this.rotation,this.scale);
@@ -95,34 +103,41 @@ export class XRShapeStamp implements XRStrokeInteraction {
    if(grip){this.message='Adjust Stamp · move wrist relative to held shape; release grip to attach';return;}
    if(this.continuous){
     if(surface.matrixWorld.elements.some((v,i)=>Math.abs(v-this.strokeAnchor.elements[i])>1e-9))throw new Error('Stamp cancelled: target/workspace moved');
-    if(!this.released){const size=Math.min(...definition.dimensions)*definition.transform.scale[0]*surface.getWorldScale(new Vector3()).x;this.sample(pose,Math.max(.001,size*this.tools.stampAttachment.spacing));if(!tool.buttons.trigger.pressed)this.released=true;}
-    const deadline=performance.now()+4;let count=0;
-    while((this.pending||this.queue.length)&&count<2&&performance.now()<deadline){
-     if(!this.pending){this.pendingPose=this.queue.shift()!;this.pending=layers.stampShapeSteps(this.definitionAt(this.pendingPose),true);this.emitted++;}
-     const result=this.pending.next();if(result.done){this.pending=null;this.pendingPose=null;if(result.value)this.changed();count++;}
-    }
-    if(this.released&&!this.queue.length&&!this.pending){layers.finishStroke();this.continuous=false;this.strokeLayers=undefined;this.previous=undefined;this.emitted=0;this.remainder=0;this.held=tool.buttons.trigger.pressed;this.armed=!this.held;this.changed();}
-    this.paintPending(surface.matrixWorld);this.message=this.queue.length||this.pending?`Continuous Stamp · ${this.queue.length+Number(!!this.pending)} samples pending · preview tracks hand`:'Continuous Stamp · release for one Undo action';return;
+    if(!this.released){const size=Math.min(...definition.dimensions)*definition.transform.scale[0]*surface.getWorldScale(new Vector3()).x;this.sample(pose,Math.max(.001,size*(this.strokeSettings?.attachment.spacing??this.tools.stampAttachment.spacing)));if(!tool.buttons.trigger.pressed)this.released=true;}
+    this.pumpContinuous(layers,surface.matrixWorld,workStart,!tool.buttons.trigger.pressed);return;
    }
    if(!tool.buttons.trigger.pressed){this.held=false;this.armed=true;return;}
    const apply=this.armed&&!this.held&&tool.buttons.trigger.justPressed;this.armed=false;this.held=true;
    if(!apply)return;
    if(growthError)throw new Error(growthError);
-   if(this.tools.stampAttachment.mode==='continuous'){this.pendingPreview.clear();this.trail.length=0;layers.beginStroke();this.released=false;this.continuous=true;this.strokeLayers=layers;this.previous=pose.clone();this.remainder=0;this.emitted=0;this.strokeAnchor.copy(surface.matrixWorld);this.queue=[pose.clone()];this.message='Continuous Stamp · preview now, final surface staged';this.paintPending(surface.matrixWorld);return;}
+   if(this.tools.stampAttachment.mode==='continuous'){this.pendingPreview.clear();this.trail.length=0;layers.beginStroke();this.released=false;this.strokeSettings=structuredClone({definition,attachment:this.tools.stampAttachment,rotation:this.tools.stampRotation});this.continuous=true;this.strokeLayers=layers;this.previous=pose.clone();this.remainder=0;this.emitted=0;this.strokeAnchor.copy(surface.matrixWorld);this.queue=[pose.clone()];this.message='Continuous Stamp · preview now, final surface staged';this.paintPending(surface.matrixWorld);return;}
    const edited=layers.stampShape(definition);this.failureUntil=0;this.message=edited?outside&&definition.operation==='subtract'?'Stamp applied · limited to existing material inside layer bounds':'Stamp applied · release trigger for next stamp':'No material changed · release trigger';this.until=time+900;if(edited)this.changed();
-  }catch(error){this.pendingPreview.visible=false;this.pendingPose=null;this.pending?.return(false);this.pending=null;if(this.continuous){this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeLayers=undefined;this.queue=[];this.previous=undefined;}this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+(performance.now()-workStart)+5000;this.failureUntil=this.until;}
+  }catch(error){this.pendingPreview.visible=false;this.pendingPose=null;this.pending?.return(false);this.pending=null;if(this.continuous){this.strokeLayers?.cancelStroke();this.continuous=false;this.strokeSettings=null;this.strokeLayers=undefined;this.queue=[];this.previous=undefined;}this.armed=false;this.held=tool.buttons.trigger.pressed;this.message=error instanceof Error?error.message:'Stamp could not be applied';this.until=time+(performance.now()-workStart)+5000;this.failureUntil=this.until;}
+ }
+ private pumpContinuous(layers:IndependentLayers,surface:Matrix4,workStart:number,rearm=false):void{
+  if(surface.elements.some((v,i)=>Math.abs(v-this.strokeAnchor.elements[i])>1e-9))throw new Error('Stamp cancelled: target/workspace moved');
+    const deadline=performance.now()+4;let count=0;
+    while((this.pending||this.queue.length)&&count<2&&performance.now()<deadline){
+     if(!this.pending){this.pendingPose=this.queue.shift()!;this.pending=layers.stampShapeSteps(this.definitionAt(this.pendingPose),true,true);this.emitted++;}
+     const result=this.pending.next();if(result.done){this.pending=null;this.pendingPose=null;if(result.value)this.changed();count++;}
+    }
+    // Coalesce dirty chunks across stamps instead of draining a whole stamp
+    // before the next pose. Finish only after the existing two-chunk drain.
+    layers.active.rebuild(2,Math.min(3,Math.max(0,4-(performance.now()-workStart))));
+    if(this.released&&!this.queue.length&&!this.pending&&!layers.active.mesher.pendingChunks){layers.finishStroke();this.continuous=false;this.strokeLayers=undefined;this.previous=undefined;this.emitted=0;this.remainder=0;this.held=false;this.armed=rearm;this.strokeSettings=null;this.changed();}
+    this.paintPending(surface);if(!this.continuous){this.message='Continuous Stamp finished';return;}this.message=this.queue.length||this.pending?`Continuous Stamp · ${this.queue.length+Number(!!this.pending)} samples pending · ${this.released?'finishing captured poses':'preview tracks hand'}`:layers.active.mesher.pendingChunks?`Continuous Stamp · ${layers.active.mesher.pendingChunks} chunks finishing`:'Continuous Stamp · release for one Undo action';return;
  }
  dispose():void{this.cancel();this.pendingPreview.removeFromParent();this.pendingPreview.clear();this.trail.length=0;this.ghost.dispose();}
 }
 /** Shared controller arbitration sees one interaction, including Stamp's held-trigger latch. */
 export class XRToolInteraction implements XRStrokeInteraction {
- constructor(private readonly tools:EditorToolState,private readonly clay:XRStrokeInteraction,private readonly stamp:XRStrokeInteraction,private readonly move?:XRStrokeInteraction,readonly mirror?:XRMirrorPlane){}
- private get current():XRStrokeInteraction|undefined{return this.tools.active==='move'?this.move:this.tools.active==='stamp'?this.stamp:this.clay;}
- get active():boolean{return !!this.mirror?.active||this.clay.active||this.stamp.active||!!this.move?.active;}
+ constructor(private readonly tools:EditorToolState,private readonly clay:XRStrokeInteraction,private readonly stamp:XRStrokeInteraction,private readonly move?:XRStrokeInteraction,readonly mirror?:XRMirrorPlane,private readonly tube?:XRStrokeInteraction){}
+ private get current():XRStrokeInteraction|undefined{return this.tools.active==='tube'||this.tools.active==='edit-spline'?this.tube:this.tools.active==='move'?this.move:this.tools.active==='stamp'?this.stamp:this.clay;}
+ get active():boolean{return !!this.tube?.active||!!this.mirror?.active||this.clay.active||this.stamp.active||!!this.move?.active;}
  get liveSizing(){return this.current?.liveSizing??null;}
  get feedback():string{return this.mirror?.hover||this.mirror?.active?this.mirror.feedback:this.current?.feedback??'';}
- cancel():void{this.mirror?.cancel();this.clay.cancel();this.stamp.cancel();this.move?.cancel();}
+ cancel():void{this.tube?.cancel();this.mirror?.cancel();this.clay.cancel();this.stamp.cancel();this.move?.cancel();}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
-  const current=this.current;if(this.mirror?.update(tool,pose,enabled,!this.clay.active&&!this.stamp.active&&!this.move?.active,gripPose)){current?.cancel();return;}if(this.clay!==current)this.clay.cancel();if(this.stamp!==current)this.stamp.cancel();if(this.move&&this.move!==current)this.move.cancel();current?.update(tool,pose,time,enabled,gripPose);
+  const current=this.current;if(this.tube&&this.tube!==current)this.tube.cancel();if(this.mirror?.update(tool,pose,enabled,!this.tube?.active&&!this.clay.active&&!this.stamp.active&&!this.move?.active,gripPose)){current?.cancel();return;}if(this.clay!==current)this.clay.cancel();if(this.stamp!==current)this.stamp.cancel();if(this.move&&this.move!==current)this.move.cancel();current?.update(tool,pose,time,enabled,gripPose);
  }
 }

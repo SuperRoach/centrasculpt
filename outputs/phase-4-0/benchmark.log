@@ -1,0 +1,87 @@
+{
+  "scope": "Host synchronous SDF dabs only; no meshing/renderer/Quest timing",
+  "node": "v26.8.1",
+  "cases": [
+    {
+      "resolution": 64,
+      "mode": "flatten",
+      "dabs": 40,
+      "writes": 19616,
+      "totalMs": 6.804207000000002,
+      "p95Ms": 0.35862499999999997,
+      "maxMs": 0.8452920000000006
+    },
+    {
+      "resolution": 64,
+      "mode": "inflate",
+      "dabs": 40,
+      "writes": 22618,
+      "totalMs": 4.102788999999966,
+      "p95Ms": 0.3047910000000016,
+      "maxMs": 0.39049999999999585
+    },
+    {
+      "resolution": 64,
+      "mode": "scrape",
+      "dabs": 40,
+      "writes": 16188,
+      "totalMs": 3.2974569999999943,
+      "p95Ms": 0.3265000000000029,
+      "maxMs": 0.424709
+    },
+    {
+      "resolution": 128,
+      "mode": "flatten",
+      "dabs": 40,
+      "writes": 145748,
+      "totalMs": 16.81095500000005,
+      "p95Ms": 0.5585829999999987,
+      "maxMs": 2.8896249999999952
+    },
+    {
+      "resolution": 128,
+      "mode": "inflate",
+      "dabs": 40,
+      "writes": 183630,
+      "totalMs": 10.607206999999988,
+      "p95Ms": 0.2955000000000041,
+      "maxMs": 0.3629580000000061
+    },
+    {
+      "resolution": 128,
+      "mode": "scrape",
+      "dabs": 40,
+      "writes": 131824,
+      "totalMs": 10.684582999999918,
+      "p95Ms": 0.2897920000000056,
+      "maxMs": 0.3299159999999972
+    },
+    {
+      "resolution": 192,
+      "mode": "flatten",
+      "dabs": 40,
+      "writes": 493784,
+      "totalMs": 32.983743999999945,
+      "p95Ms": 0.8612919999999917,
+      "maxMs": 0.9407500000000368
+    },
+    {
+      "resolution": 192,
+      "mode": "inflate",
+      "dabs": 40,
+      "writes": 623796,
+      "totalMs": 32.89999799999981,
+      "p95Ms": 0.8759580000000255,
+      "maxMs": 0.9794999999999732
+    },
+    {
+      "resolution": 192,
+      "mode": "scrape",
+      "dabs": 40,
+      "writes": 447866,
+      "totalMs": 32.90916299999992,
+      "p95Ms": 0.8694160000000011,
+      "maxMs": 0.9507499999999709
+    }
+  ]
+}

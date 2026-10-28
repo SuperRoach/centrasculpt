@@ -1,3 +1,4 @@
+import {validateTube,type TubeSource} from './procedural-tube';
 import type {ToolPreferences} from './tool-preferences';
 import type { ProjectDisplayPreferences } from './display-preferences';
 import type { VolumeStore } from './volume-store';
@@ -5,7 +6,7 @@ import { identityTransform, validateTransform } from './transform';
 import type { VolumeTransform } from './transform';
 import type { ProjectSettings } from './project';
 export type LayerOperation='union'|'difference'|'intersect';
-export type LayerMetadata={id:string;name:string;transform:VolumeTransform;visible:boolean;locked:boolean;operation:LayerOperation;order:number};
+export type LayerMetadata={id:string;name:string;transform:VolumeTransform;visible:boolean;locked:boolean;operation:LayerOperation;order:number;procedural?:TubeSource};
 /** randomUUID requires a secure context; getRandomValues also works on HTTP LAN origins. */
 export function newId(): string {
   if(typeof crypto.randomUUID==='function')return crypto.randomUUID();
@@ -23,9 +24,10 @@ export function validateLayerMetadata(value: unknown): LayerMetadata {
   if(typeof m.visible!=='boolean'||typeof m.locked!=='boolean')throw new Error('Invalid layer visibility or locking flag.');
   if(!['union','difference','intersect'].includes(String(m.operation))||typeof m.operation!=='string')throw new Error('Invalid layer Boolean operation.');
   if(!Number.isInteger(m.order)||(m.order as number)<0)throw new Error('Invalid layer order.');
-  return {id:validateId(m.id),name:validateName(m.name),transform:validateTransform(m.transform),visible:m.visible,locked:m.locked,operation:m.operation as LayerOperation,order:m.order as number};
+  return {procedural:m.procedural===undefined?undefined:validateTube(m.procedural),id:validateId(m.id),name:validateName(m.name),transform:validateTransform(m.transform),visible:m.visible,locked:m.locked,operation:m.operation as LayerOperation,order:m.order as number};
 }
 export class SdfLayer {
+  procedural?:TubeSource;
   readonly id: string;
   name: string;
   transform: VolumeTransform;
@@ -35,13 +37,13 @@ export class SdfLayer {
   order: number;
   constructor(public volume: VolumeStore,metadata: Partial<LayerMetadata>={}) {
     const m=validateLayerMetadata({id:newId(),name:'Base',transform:identityTransform(),visible:true,locked:false,operation:'union',order:0,...metadata});
-    this.id=m.id;this.name=m.name;this.transform=m.transform;this.visible=m.visible;this.locked=m.locked;this.operation=m.operation;this.order=m.order;
+    this.procedural=m.procedural;this.id=m.id;this.name=m.name;this.transform=m.transform;this.visible=m.visible;this.locked=m.locked;this.operation=m.operation;this.order=m.order;
   }
   get dimensions() {return this.volume.dimensions;}
   get voxelSize() {return this.volume.voxelSize;}
   get editable(): boolean {return this.visible&&!this.locked;}
   assertEditable(): void {if(!this.visible)throw new Error(`Layer “${this.name}” is hidden.`);if(this.locked)throw new Error(`Layer “${this.name}” is locked.`);}
-  metadata(): LayerMetadata {return validateLayerMetadata({id:this.id,name:this.name,transform:this.transform,visible:this.visible,locked:this.locked,operation:this.operation,order:this.order});}
+  metadata(): LayerMetadata {return validateLayerMetadata({procedural:this.procedural,id:this.id,name:this.name,transform:this.transform,visible:this.visible,locked:this.locked,operation:this.operation,order:this.order});}
 }
 /** Reject accidental aliasing rather than silently cloning, merging or resampling any layer. */
 export function assertIndependentLayerVolumes(layers: readonly SdfLayer[]): void {

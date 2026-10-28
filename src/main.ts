@@ -158,6 +158,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
     updatePointer(e);try{if(placePointerShape()&&stampClick.begin(e.pointerId,e.button,e.clientX,e.clientY,shapeGhost.model.definition,e.buttons,e.isPrimary))renderer.domElement.setPointerCapture(e.pointerId);}catch(error){ui.status(message(error));}return;
   }
   if(e.button!==0||desktopStroke.active||activePointer!==null||!input.canSculpt(layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked()||shapeGhost.model.enabled))return;
+  if(editorTools?.active==='tube'||editorTools?.active==='edit-spline')return;
   try {desktopStroke.begin(ui.settings,editorTools!.path,performance.now());if(!input.beginSculpt(layers.active.layer.editable,loadingProject)){desktopStroke.cancel();return;}updatePointer(e);activePointer=e.pointerId;controls.enabled=input.cameraEnabled;renderer.domElement.setPointerCapture(e.pointerId);}
   catch(error){desktopStroke.cancel();input.end('sculpt');controls.enabled=input.cameraEnabled;ui.status(message(error));}
 });
@@ -353,13 +354,15 @@ document.getElementById('export')!.addEventListener('click',()=>void exportGlb('
 document.getElementById('export-selected')!.addEventListener('click',()=>void exportGlb('selected'));
 document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb('composite'));
 editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
- selectTool:tool=>{if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
+ selectTool:tool=>{if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease'){chooseWorkspace('brush',true);return;}if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
 });
 const precisionPanel=document.createElement('details');precisionPanel.className='precision-settings';const precisionTitle=document.createElement('summary');precisionTitle.textContent='PRECISION · SHARED TOOL SETTINGS';const precisionOptions=document.createElement('div');precisionPanel.append(precisionTitle,precisionOptions);document.querySelector('#radius')!.closest('section')!.append(precisionPanel);
 let precisionKey='';
-function syncPrecisionOptions(){const options=editorTools!.options(),key=JSON.stringify(options);if(key===precisionKey)return;precisionKey=key;precisionOptions.replaceChildren();for(const o of options){const row=document.createElement('p'),label=document.createElement('span');label.textContent=`${o.label}: ${o.value} `;row.append(label);if(o.increase||o.decrease)for(const direction of [-1,1] as const){const button=document.createElement('button');button.type='button';button.textContent=direction===1?'＋':'−';button.setAttribute('aria-label',`${direction===1?'Increase':'Decrease'} ${o.label}`);button.disabled=o.disabled||!(direction===1?o.increase:o.decrease);button.onclick=()=>{try{editorTools!.adjust(o.id,direction);syncPrecisionOptions();}catch(error){ui.status(message(error));}};row.append(button);}precisionOptions.append(row);}}
-const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorPlane=new XRMirrorPlane(editorTools!,desktopPreviewRoot);
+const tubeToolButtons=document.createElement('div');for(const [tool,label] of [['tube','Tube (VR drawing)'],['edit-spline','Edit Spline']] as const){const button=document.createElement('button');button.textContent=label;button.onclick=()=>{try{editorTools!.select(tool);}catch(error){ui.status(message(error));}};tubeToolButtons.append(button);}precisionPanel.before(tubeToolButtons);
+function syncPrecisionOptions(){const options=editorTools!.options(),key=JSON.stringify(options);if(key===precisionKey)return;precisionKey=key;precisionOptions.replaceChildren();for(const o of options){const row=document.createElement('p'),label=document.createElement('span');label.textContent=`${o.label}: ${o.value} `;row.append(label);if(o.increase||o.decrease)for(const direction of [-1,1] as const){const button=document.createElement('button');button.type='button';button.textContent=direction===1?'＋':'−';button.setAttribute('aria-label',`${direction===1?'Increase':'Decrease'} ${o.label}`);button.disabled=o.disabled||!(direction===1?o.increase:o.decrease);button.onclick=()=>{try{editorTools!.adjust(o.id,direction);syncPrecisionOptions();}catch(error){ui.status(message(error));}};row.append(button);}if(o.action&&o.action.startsWith('tube-')){const button=document.createElement('button');button.textContent=o.label;button.disabled=o.disabled;button.onclick=()=>void editorTools!.splineAction(o.action!).catch(error=>ui.status(message(error)));row.append(button);}precisionOptions.append(row);}}
+ui.onBrushSelection(mode=>{try{editorTools!.select(mode==='add'||mode==='subtract'?'clay':mode);ui.setSettings({...ui.settings,mode});}catch(error){ui.status(message(error));}});
+const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopFieldCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorPlane=new XRMirrorPlane(editorTools!,desktopPreviewRoot);
 const desktopPathGeometry=new THREE.BufferGeometry(),desktopPathMaterial=new THREE.LineBasicMaterial({color:'#267c78',depthTest:false});const desktopPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopMirrorPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopPaths=new THREE.Group();desktopPaths.matrixAutoUpdate=false;desktopPaths.add(desktopPath,desktopMirrorPath);scene.add(desktopPaths);
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
 let desktopLocked=false,savedTarget=controls.target.clone();
@@ -374,7 +377,7 @@ xrExperience=new XRExperience(renderer,xrRig,{
  lockDesktop:blocked=>{
   if(blocked===desktopLocked)return;desktopLocked=blocked;
   if(blocked){recovery?.cancelJob();layers.project.settings={...ui.settings,camera:{position:camera.position.toArray(),target:controls.target.toArray()}};stop();savedTarget=controls.target.clone();input.suspended=true;controls.enabled=false;pointerInside=false;viewportTools?.close();
-   for(const element of document.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('#app button,#app input,#app select')){if(element.id==='xr-environment'||element.id==='enter-vr'||element.id==='xr-tool-hand'||element.id==='xr-show-diagnostics'||element.id==='xr-controller-display'||element.id==='xr-hints'||element.id==='xr-show-performance'||element.id==='xr-reset-workspace')continue;disabledBeforeXR.set(element,element.disabled);element.disabled=true;}
+   for(const element of document.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('#app button,#app input,#app select')){if(element.id==='xr-environment'||element.id==='enter-vr'||element.id==='xr-tool-hand'||element.id==='xr-show-diagnostics'||element.id==='xr-controller-display'||element.id==='xr-hints'||element.id==='xr-ui-scale'||element.id==='xr-show-performance'||element.id==='xr-reset-workspace')continue;disabledBeforeXR.set(element,element.disabled);element.disabled=true;}
    transformTools?.sync();ghostRotation?.sync();
   }else{input.suspended=false;controls.enabled=input.cameraEnabled;for(const [element,disabled]of disabledBeforeXR)element.disabled=disabled;disabledBeforeXR.clear();pointerInside=false;refresh();resizeDesktop();}
   document.body.classList.toggle('xr-blocked',blocked);
@@ -441,7 +444,7 @@ function pollComposite(now:number):void{
 renderer.setAnimationLoop((now,frame)=>{
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
-    desktopMirrorPlane.group.visible=false;desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
+    desktopMirrorPlane.group.visible=false;desktopFieldCursor.hide();desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
     const cpuStart=performance.now();if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
     if(!xrExperience!.controllers.grab?.active&&!xrExperience!.controllers.layerGrab?.active)pollComposite(now);
     renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
@@ -464,7 +467,8 @@ renderer.setAnimationLoop((now,frame)=>{
     if(layers.drawing&&now-lastRebuild>=1000/30){runtime.rebuild();syncStats();lastRebuild=performance.now();}
   }else{cursor.visible=false;layers.breakStrokePath();}
   syncPrecisionOptions();
-  desktopMirrorPlane.sync();desktopMirrorCursor.hide();if(cursor.visible&&layers.symmetry.enabled){runtime.surface.group.updateWorldMatrix(true,false);const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopMirrorCursor.show(runtime.surface.group,reflectPoint(p,layers.symmetry),ui.radius/uniformScale(runtime.layer.transform),ui.mode==='smooth');}
+  desktopFieldCursor.hide();desktopMirrorPlane.sync();desktopMirrorCursor.hide();if(cursor.visible&&layers.symmetry.enabled){runtime.surface.group.updateWorldMatrix(true,false);const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopMirrorCursor.show(runtime.surface.group,reflectPoint(p,layers.symmetry),ui.radius/uniformScale(runtime.layer.transform),ui.mode==='smooth');desktopMirrorCursor.showField(runtime.volume,reflectPoint(p,layers.symmetry),ui.mode);}
+  if(cursor.visible&&['flatten','inflate','scrape','pinch','crease'].includes(ui.mode)){const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopFieldCursor.show(runtime.surface.group,p,ui.radius/uniformScale(runtime.layer.transform));desktopFieldCursor.showField(runtime.volume,p,ui.mode);cursor.visible=false;}
   desktopPaths.visible=desktopStroke.active&&desktopStroke.preview.length>0;if(desktopPaths.visible){desktopPathGeometry.setFromPoints(desktopStroke.preview.map(p=>new THREE.Vector3(p.x,p.y,p.z)));desktopPaths.matrix.copy(runtime.surface.group.matrixWorld);const m=layers.symmetry;desktopMirrorPath.visible=m.enabled;desktopMirrorPath.scale.set(1,1,1);desktopMirrorPath.position.set(0,0,0);if(m.enabled){desktopMirrorPath.scale[m.axis]=-1;desktopMirrorPath.position[m.axis]=2*m.offset;}}
   pollComposite(now);
   if(ghostRotation){ghostRotation.space=document.querySelector<HTMLSelectElement>('#shape-space')!.value==='world'?'world':'local';ghostRotation.sync();}

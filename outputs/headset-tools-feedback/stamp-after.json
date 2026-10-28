@@ -1,0 +1,27 @@
+{
+  "scope": "Single Node host, 30 simulated 90Hz input poses; no renderer or Quest timings. Exact final reference voxels asserted; CPU excludes suspended frame time.",
+  "results": [
+    {
+      "resolution": 64,
+      "stamps": 10,
+      "drainUpdates": 18,
+      "remeshedChunks": 39,
+      "p95CPUms": 5.927375000000012,
+      "maxCPUms": 6.647917000000007,
+      "totalCPUms": 220.31512599999988,
+      "triangles": 2520,
+      "identicalReference": true
+    },
+    {
+      "resolution": 128,
+      "stamps": 10,
+      "drainUpdates": 284,
+      "remeshedChunks": 65,
+      "p95CPUms": 5.174542000000201,
+      "maxCPUms": 6.708249999999907,
+      "totalCPUms": 1332.5412430000006,
+      "triangles": 11332,
+      "identicalReference": true
+    }
+  ]
+}

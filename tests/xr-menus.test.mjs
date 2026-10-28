@@ -24,7 +24,7 @@ function fixture(){
 }
 function fakeDocument(){const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({}, {get:()=>()=>{}})})};return ()=>globalThis.document=original;}
 const toolState=()=>({connectionId:7,role:'tool',connected:true,tracked:true,gripTracked:true,buttons:{trigger:{pressed:false,rawValue:0,justPressed:false},grip:{pressed:false,rawValue:0}}});
-function buttonPoint(model,id){const button=model.content().buttons.find(b=>b.id===id);assert(button,`missing ${id}`);if(button.rect)return [button.rect.x+button.rect.width/2,button.rect.y+button.rect.height/2];const a=-Math.PI/2+button.sector*Math.PI*2/5;return [WHEEL.x+Math.cos(a)*WHEEL.labelRadius,WHEEL.y+Math.sin(a)*WHEEL.labelRadius];}
+function buttonPoint(model,id){const button=model.content().buttons.find(b=>b.id===id);assert(button,`missing ${id}`);if(button.rect)return [button.rect.x+button.rect.width/2,button.rect.y+button.rect.height/2];const a=-Math.PI/2+button.sector*Math.PI*2/EDITOR_TOOLS.length;return [WHEEL.x+Math.cos(a)*WHEEL.labelRadius,WHEEL.y+Math.sin(a)*WHEEL.labelRadius];}
 function rayPose(view,x,y){view.mesh.updateWorldMatrix(true,false);const target=new Vector3((x/MENU_SIZE-.5)*.72,(.5-y/MENU_SIZE)*.72,0).applyMatrix4(view.mesh.matrixWorld),normal=new Vector3(0,0,1).transformDirection(view.mesh.matrixWorld);return new Matrix4().compose(target.addScaledVector(normal,.6),view.mesh.getWorldQuaternion(new Quaternion()),new Vector3(1,1,1));}
 function trigger(state,pressed){state.buttons.trigger={pressed,rawValue:pressed?1:0,justPressed:pressed};}
 test('Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly',()=>{
@@ -51,7 +51,7 @@ test('data-driven Stamp options use the existing preview model and linked dimens
  const f=fixture();try{const bytes=f.layers.active.volume.getDenseView().slice();f.tools.select('stamp');f.tools.adjust('dimension-0',1);assert.deepEqual(f.shape.definition.dimensions,[.85,.85,.85]);assert(f.tools.options().find(o=>o.id==='dimension-1').disabled);assert.throws(()=>f.tools.adjust('dimension-2',1));
  f.tools.adjust('shape',1);assert.equal(f.shape.definition.kind,'box');f.tools.adjust('dimension-1',1);assert.equal(f.shape.definition.dimensions[1],.9);f.tools.adjust('rotation-0',1);assert(Math.abs(f.shape.definition.transform.rotation[0]-Math.PI/12)<1e-10);f.tools.adjust('shape-scale',1);assert.deepEqual(f.shape.definition.transform.scale,[1.1,1.1,1.1]);f.tools.adjust('operation',1);assert.equal(f.shape.definition.operation,'subtract');
  f.tools.adjust('shape',1);f.tools.adjust('shape',1);assert.equal(f.shape.definition.kind,'pyramid');f.tools.adjust('dimension-0',1);assert.equal(f.shape.definition.dimensions[0],f.shape.definition.dimensions[2]);assert(f.tools.options().find(o=>o.id==='dimension-2').disabled);
- f.model.setRequest('tool-wheel');f.model.activate('options');f.model.activate('next');assert.equal(f.model.optionPage,1);assert(f.model.content().labels.some(l=>l.text==='Uniform scale'));f.model.activate('prev');assert.equal(f.model.optionPage,0);
+ f.model.setRequest('tool-wheel');f.model.activate('options');f.model.activate('next');assert.equal(f.model.optionPage,1);f.model.activate('next');assert.equal(f.model.optionPage,2);assert(f.model.content().labels.some(l=>l.text==='Uniform scale'));f.model.activate('prev');f.model.activate('prev');assert.equal(f.model.optionPage,0);
  assert.deepEqual(f.layers.active.volume.getDenseView(),bytes);assert.equal(f.layers.undoCount,0);f.layers.setFlag(f.layers.project.activeLayerId,'locked',true);assert(f.tools.options().filter(o=>o.id!=='application'&&o.id!=='alternate-tool'&&o.id!=='global-snap').every(o=>o.disabled));assert.throws(()=>f.tools.adjust('shape',1));
  }finally{f.dispose();}
 });
@@ -64,7 +64,7 @@ test('Transform options edit metadata with existing undo and native persistence,
  }finally{f.dispose();}
 });
 test('Layers panel selects visible, hidden or locked rows and toggles flags using existing commands',()=>{
- const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,8);
+ const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,9);
  m.activate(`select:${first.id}`);assert.equal(f.layers.project.activeLayerId,first.id);assert(m.content().buttons.find(b=>b.id===`select:${first.id}`).selected);m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert.equal(first.visible,false);assert.equal(first.locked,true);m.activate(`select:${second.id}`);assert.equal(f.layers.project.activeLayerId,second.id);m.activate(`select:${first.id}`);assert.equal(f.layers.active.layer.id,first.id);
  const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.activeLayerId,first.id);assert.equal(opened.layerStack.active.visible,false);assert.equal(opened.layerStack.active.locked,true);assert.deepEqual(first.volume.getDenseView(),a);assert.deepEqual(second.volume.getDenseView(),b);assert.equal(f.layers.undoCount,0);assert.equal(f.layers.project.layerStack.layers.length,2);
  m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert(first.visible&&!first.locked);assert(f.changed>=6);
@@ -126,7 +126,7 @@ test('numeric bounds clamp, brush settings retain the existing native save/load 
  }finally{f.dispose();}
 });
 test('eight layer rows, paginated options and radial targets stay within the usable menu surface',()=>{
- const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,26);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
+ const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,27);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
  f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<10;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
  }finally{f.dispose();}
 });

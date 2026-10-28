@@ -2,7 +2,7 @@ import {FourDirectionStick} from './xr-stick-directions';
 import type {StickDirection,StickDirectionOptions} from './xr-stick-directions';
 import type {XRControllerState} from './xr-input';
 import type {XRInteractionState} from './workspace-grab';
-export type XRMenuRequest='tool-wheel'|'layers'|'tool-options';
+export type XRMenuRequest='tool-wheel'|'layers'|'tool-options'|'world';
 export type XRShortcutBinding={kind:'command';action:string}|{kind:'menu';menu:XRMenuRequest};
 export type XRShortcutResult={ok:boolean;message:string};
 export type XRShortcutOptions={interactiveMenus?:boolean;bindings?:Readonly<Record<StickDirection,XRShortcutBinding>>;commands?:Readonly<Record<string,()=>XRShortcutResult>>;requestMenu?:(menu:XRMenuRequest|null)=>void;recognizer?:StickDirectionOptions};

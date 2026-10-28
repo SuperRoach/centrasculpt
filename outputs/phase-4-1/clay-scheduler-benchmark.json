@@ -1,0 +1,71 @@
+{
+  "environment": "Host Node CPU; synthetic 60-sample Clay path, no renderer; not Quest measurements",
+  "results": [
+    {
+      "resolution": 64,
+      "staged": false,
+      "chunks": 0,
+      "updates": 61,
+      "drainUpdates": 0,
+      "p95Ms": 12.22475,
+      "maxMs": 18.90433300000001,
+      "totalCpuMs": 350.4102969999999,
+      "triangles": 32712
+    },
+    {
+      "resolution": 64,
+      "staged": true,
+      "chunks": 1,
+      "updates": 68,
+      "drainUpdates": 7,
+      "p95Ms": 2.893957999999998,
+      "maxMs": 3.1059999999999945,
+      "totalCpuMs": 96.56054000000012,
+      "triangles": 32712
+    },
+    {
+      "resolution": 64,
+      "staged": true,
+      "chunks": 2,
+      "updates": 64,
+      "drainUpdates": 3,
+      "p95Ms": 3.3814579999999523,
+      "maxMs": 3.7039170000000468,
+      "totalCpuMs": 165.93558099999973,
+      "triangles": 32712
+    },
+    {
+      "resolution": 128,
+      "staged": false,
+      "chunks": 0,
+      "updates": 61,
+      "drainUpdates": 0,
+      "p95Ms": 24.571957999999995,
+      "maxMs": 27.237874999999804,
+      "totalCpuMs": 612.761249,
+      "triangles": 133192
+    },
+    {
+      "resolution": 128,
+      "staged": true,
+      "chunks": 1,
+      "updates": 98,
+      "drainUpdates": 37,
+      "p95Ms": 2.5938750000000255,
+      "maxMs": 2.848165999999992,
+      "totalCpuMs": 120.96204099999977,
+      "triangles": 133192
+    },
+    {
+      "resolution": 128,
+      "staged": true,
+      "chunks": 2,
+      "updates": 74,
+      "drainUpdates": 13,
+      "p95Ms": 3.5734580000000733,
+      "maxMs": 4.124207999999953,
+      "totalCpuMs": 160.2553350000005,
+      "triangles": 133192
+    }
+  ]
+}

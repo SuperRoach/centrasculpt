@@ -1,3 +1,4 @@
+import {evaluateTube,validateTube,type TubeSource} from './procedural-tube';
 import type {ExportSource} from './export-mesh';
 import {reconstructMoveAsync} from './move-worker-client';
 import {copyMoveVolume,MoveWork} from './deformation-reconstruction';
@@ -65,7 +66,8 @@ export class LayerRuntime {
 export type MoveCommitStats={backend:'worker'|'cooperative';waitMs:number;slicePercentiles:{p50:number;p95:number;p99:number};wallMs:number;cpuMs:number;meshingMs:number;changedVoxels:number;sampled:number;indexBytes:number;patchBytes:number;estimatedPeakBytes:number;maxSliceMs:number;dirtyChunks:number;grew:boolean;slices:number};
 type BakeState={ids:string[];orders:Record<string,number>;visibility:Record<string,boolean>;activeId:string;view:SurfaceView};
 type BakeEntry={kind:'bake';layerId:string;runtime:LayerRuntime;before:BakeState;after:BakeState;index:number};
-type TimelineEntry=BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
+type TubeEntry={kind:'tube';layerId:string;before:{source:TubeSource;volume:VolumeStore};after:{source:TubeSource;volume:VolumeStore}};
+type TimelineEntry=TubeEntry|BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
 
 /** Owns one independent rendering/editing runtime per layer. The derived compositor only reads these independent sources. */
 export class IndependentLayers {
@@ -82,6 +84,8 @@ export class IndependentLayers {
   get previewing():boolean{return this.previewOwner!==null;}
   beginPreview(owner:object):void{this.assertAvailable();if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');this.previewOwner=owner;}
   endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
+  private tubePending=false;private tubeStagingBytes=0;
+  get generatingTube():boolean{return this.tubePending;}
   private baking=false;
   private movePending=false;private moveStagingBytes=0;
   get bakingLayer():boolean{return this.baking;}
@@ -108,10 +112,10 @@ export class IndependentLayers {
   }
   /** Lower bound: current source grids+scratch, source geometry and retained payloads.
    * Includes retained Bake runtimes; excludes pending Maps, derived CSG and JS/GPU overhead. */
-  get recoveryReady():boolean{return !this.disposed&&!this.drawing&&!this.transforming&&!this.previewing&&!this.deforming&&!this.baking&&!this.pendingChunks;}
+  get recoveryReady():boolean{return !this.tubePending&&!this.disposed&&!this.drawing&&!this.transforming&&!this.previewing&&!this.deforming&&!this.baking&&!this.pendingChunks;}
   recoveryKey():string{return JSON.stringify([this.project.id,this.committedRevision,this.project.activeLayerId,this.project.layerStack.layers.map(l=>[l.metadata(),l.volume.dimensions,l.volume.latticeMin])]);}
-  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}return {voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
-  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}return bytes+this.moveStagingBytes+this.backgroundBytes;}
+  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}return {voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingTubeJobs:Number(this.tubePending),tubeStagingBytes:this.tubeStagingBytes,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
+  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}const caches=new Set<VolumeStore>();for(const e of [...this.past,...this.future])if(e.kind==='tube'){caches.add(e.before.volume);caches.add(e.after.volume);}for(const v of caches)if(![...held].some(r=>r.volume===v))bytes+=volumeSampleCount(v)*8;return bytes+this.tubeStagingBytes+this.moveStagingBytes+this.backgroundBytes;}
   get pendingChunks():number{let count=0;for(const r of this.runtimes.values())count+=r.mesher.pendingChunks;return count;}
   get active(): LayerRuntime {return this.runtime(this.project.activeLayerId);}
   runtime(id: string): LayerRuntime {const runtime=this.runtimes.get(id);if(!runtime)throw new Error('Layer runtime does not exist.');return runtime;}
@@ -119,7 +123,7 @@ export class IndependentLayers {
   get redoCount(): number {return this.future.length;}
   get transforming():boolean {return this.transformSession!==null;}
   get drawing(): boolean {return this.strokeLayer!==null;}
-  private assertAvailable():void {this.interruptBackground();if(this.disposed)throw new Error('Project is closed.');if(this.previewOwner)throw new Error('Finish the Move preview first.');if(this.movePending)throw new Error('Wait for Move reconstruction to finish or cancel it.');if(this.baking)throw new Error('Wait for Bake to finish or cancel it.');}
+  private assertAvailable():void {this.interruptBackground();if(this.tubePending)throw new Error('Wait for tube regeneration or cancel it.');if(this.disposed)throw new Error('Project is closed.');if(this.previewOwner)throw new Error('Finish the Move preview first.');if(this.movePending)throw new Error('Wait for Move reconstruction to finish or cancel it.');if(this.baking)throw new Error('Wait for Bake to finish or cancel it.');}
   private editableRuntime(id: string): LayerRuntime {
     this.assertAvailable();
     assertIndependentLayerVolumes(this.project.layerStack.layers);
@@ -162,12 +166,13 @@ export class IndependentLayers {
     const publishHistory=runtime.history.prepareVolumeRebind(next),publishMesh=runtime.mesher.prepareRebindVolume(next);
     publishMesh();publishHistory();runtime.volume=runtime.layer.volume=next;runtime.totalChunks=runtime.mesher.allocatedChunks;runtime.history.pendingBudgetBytes=Math.max(0,(options.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.expansions++;runtime.lastExpansionMs=performance.now()-expansionStart;this.composite.invalidateLayer(runtime.layer);return true;
   }
+  private assertSculptable(layer:SdfLayer):void{if(layer.procedural)throw new Error('Bake the procedural tube to a sculpt layer before brushing.');}
   select(id: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.select(id);}
   beginStroke(): void {
     validateMirrorPlane(this.symmetry);
     if(this.transformSession)throw new Error('Finish the transform before sculpting.');
     if(this.strokeLayer)throw new Error('Finish the current stroke first.');
-    const runtime=this.editableRuntime(this.project.activeLayerId);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.strokeMirror={...this.symmetry};this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
+    const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.strokeMirror={...this.symmetry};this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
   }
   applyStroke(worldPoint: Point3,radius: number,mode: BrushMode,strength: number,dt: number,hardness: number): Bounds|null {
     if(!this.strokeLayer)return null;const layer=this.runtime(this.strokeLayer).layer;return this.applyStrokeLocal(toLocal(worldPoint,layer.transform),radius/uniformScale(layer.transform),mode,strength,dt,hardness);
@@ -187,6 +192,19 @@ export class IndependentLayers {
     const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace,this.strokeMirror);
     this.strokePoint={...point};this.composite.invalidateLayer(runtime.layer,dirty);
     runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;this.metrics.record('brush',runtime.brushMs);return dirty;
+  }
+  /** Preserve the Pinch entry point for existing clients/tests. */
+  *applyPinchSteps(point:Point3,radius:number,strength:number,dt:number,hardness:number):Generator<void,Bounds|null>{return yield* this.applyResamplingSteps('pinch',point,radius,strength,dt,hardness);}
+  /** Cooperatively evaluate/publish Pinch/Crease against the same captured history owner. */
+  *applyResamplingSteps(mode:'pinch'|'crease',point:Point3,radius:number,strength:number,dt:number,hardness:number):Generator<void,Bounds|null>{
+    if(!this.strokeLayer)return null;
+    const runtime=this.editableRuntime(this.strokeLayer);
+    const work=this.stroke.applySteps(runtime.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,b=>runtime.mesher.invalidate(b),false,this.strokeMirror);
+    let step:IteratorResult<void,Bounds|null>,cpu=0;
+    do{const start=performance.now();step=work.next();cpu+=performance.now()-start;if(!step.done)yield;}while(!step.done);
+    const dirty=step.value;this.strokePoint={...point};this.composite.invalidateLayer(runtime.layer,dirty);
+    // Completed input-sample CPU only: exclude time suspended between frames.
+    runtime.brushMs=cpu;runtime.brushTotal+=cpu;runtime.brushFrames++;this.metrics.record('brush',cpu);return dirty;
   }
   breakStrokePath(): void {this.stroke.reset();this.strokePoint=null;}
   finishStroke(): void {
@@ -239,7 +257,8 @@ export class IndependentLayers {
     this.assertAvailable();this.finishStroke();this.finishTransform();const from=redo?this.future:this.past,to=redo?this.past:this.future,entry=from.at(-1);if(!entry)return null;
     if(entry.kind==='bake'){this.replayBake(entry,redo);this.committedRevision++;from.pop();to.push(entry);return this.project.activeLayerId;}
     const layer=this.project.layerStack.get(entry.layerId);
-    if(entry.kind==='order')this.restoreOrder(redo?entry.after:entry.before);
+    if(entry.kind==='tube'){layer.assertEditable();const state=redo?entry.after:entry.before,old=this.runtime(layer.id),next=new LayerRuntime(layer,this.neutral,state.volume);layer.volume=state.volume;layer.procedural=validateTube(state.source);this.group.remove(old.surface.group);old.dispose();this.install(next);for(const e of [...this.past,...this.future])if(e.kind==='bake'&&e.layerId===layer.id)e.runtime=next;this.composite.invalidate();}
+    else if(entry.kind==='order')this.restoreOrder(redo?entry.after:entry.before);
     else if(entry.kind==='operation') {if(layer.locked)throw new Error('Unlock the layer to change its operation.');layer.operation=redo?entry.after:entry.before;}
     else {
       const runtime=this.editableRuntime(entry.layerId);
@@ -251,11 +270,11 @@ export class IndependentLayers {
   }
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
   stampShape(value:unknown,inStroke=false):boolean {const work=this.stampShapeSteps(value,inStroke);let step=work.next();while(!step.done)step=work.next();return step.value;}
-  *stampShapeSteps(value:unknown,inStroke=false):Generator<void,boolean> {
+  *stampShapeSteps(value:unknown,inStroke=false,deferMesh=false):Generator<void,boolean> {
     validateMirrorPlane(this.symmetry);
     this.assertAvailable();if(!inStroke)this.finishStroke();this.finishTransform();
     if(inStroke&&this.strokeLayer!==this.project.activeLayerId)throw new Error('Stamp stroke target changed.');
-    const runtime=this.editableRuntime(this.project.activeLayerId),start=performance.now(),definition=validateShapeDefinition(value);
+    const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);const start=performance.now(),definition=validateShapeDefinition(value);
     if(definition.targetLayerId!==runtime.layer.id)throw new Error('Stamp must target the active layer.');
     if(definition.operation==='add'){const box=prepareShape(definition).worldBounds;if(this.symmetry.enabled){const a='xyz'.indexOf(this.symmetry.axis),lo=box.min[a],hi=box.max[a];box.min[a]=Math.min(lo,2*this.symmetry.offset-hi);box.max[a]=Math.max(hi,2*this.symmetry.offset-lo);}this.growRuntime(runtime,box);}
     const remaining=(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes-runtime.history.pendingMemoryEstimate;
@@ -265,22 +284,23 @@ export class IndependentLayers {
     // the patch, so no Map-based stroke recorder is needed for these unique indices.
     const committed=inStroke?false:runtime.history.commitPatch('shape-stamp',patch),hadSurface=runtime.triangles>0;
     if(inStroke)yield* runtime.history.recordStampPatchSteps(patch);
+    const invalidate=runtime.mesher.stampInvalidator();
     for(let i=0;i<patch.indices.length;i++){
       if(inStroke&&i&&i%4096===0)yield;
       runtime.volume.writeVoxel(patch.indices[i],patch.after[i]);
       const signChanged=(patch.before[i]<0)!==(patch.after[i]<0);
-      if(hadSurface||signChanged)runtime.mesher.invalidateSample(patch.indices[i],signChanged);
+      if(hadSurface||signChanged)invalidate(patch.indices[i],signChanged);
     }
     if(committed)this.recordCommit(runtime.layer.id);
     this.composite.invalidateLayer(runtime.layer,patch.bounds);
     const meshStart=performance.now();let rebuilt=false,chunks=0;
-    if(inStroke){while(runtime.rebuild(1,3)){rebuilt=true;chunks+=runtime.lastChanged;yield;}runtime.lastChanged=chunks;}
-    else rebuilt=runtime.rebuild();
+    if(inStroke&&!deferMesh){while(runtime.rebuild(1,3)){rebuilt=true;chunks+=runtime.lastChanged;yield;}runtime.lastChanged=chunks;}
+    else if(!deferMesh)rebuilt=runtime.rebuild();
     this.lastStampStats={evaluationMs:patch.evaluationMs,meshingMs:performance.now()-meshStart,totalMs:performance.now()-start,changedVoxels:patch.indices.length,scanned:patch.scanned,evaluated:patch.evaluated,chunks:rebuilt?runtime.lastChanged:0,totalChunks:runtime.totalChunks};
     return true;
   }
   resetActive(): void {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin('reset');
+    this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin('reset');
     try{runtime.layer.volume.reset(runtime.history.record);if(runtime.history.commit())this.recordCommit(runtime.layer.id);}catch(error){runtime.history.cancel();runtime.mesher.invalidate();runtime.rebuild();this.composite.invalidateLayer(runtime.layer);throw error;}
     runtime.mesher.invalidate();runtime.rebuild();this.composite.invalidateLayer(runtime.layer);
   }
@@ -331,7 +351,7 @@ export class IndependentLayers {
   }
   setFlag(id: string,flag:'visible'|'locked',value: boolean): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.get(id)[flag]=value;this.syncPresentation();}
   resampleActive(resolution: number): void {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);
+    this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);
     if(![64,128,192].includes(resolution))throw new Error('Choose 64³, 128³ or 192³.');
     if(resolution===runtime.layer.volume.resolution)return;
     this.assertCapacity(resolution**3,runtime.layer.id);
@@ -369,6 +389,7 @@ export class IndependentLayers {
   }
   bakePlan(resolution:number,sourceIds?:string[]){this.assertAvailable();this.assertCapacity(resolution**3,undefined,1);return planBake(this.project,resolution,sourceIds);}
   async bake(options:BakeOptions,signal?:AbortSignal,progress?:(p:BakeProgress)=>void):Promise<SdfLayer> {
+    if(options.sourceIds?.length===1&&this.project.layerStack.get(options.sourceIds[0]).procedural)return this.bakeTube(options,signal);
     this.assertAvailable();const validated=validateBakeOptions(options),plan=this.bakePlan(validated.resolution,validated.sourceIds);
     this.finishStroke();this.finishTransform();
     const triangleBudget=MAX_PROJECT_TRIANGLES-[...this.runtimes.values()].reduce((sum,r)=>sum+r.triangles,0);
@@ -400,10 +421,74 @@ export class IndependentLayers {
       candidate=undefined;return layer;
     }finally{candidate?.dispose();this.baking=false;}
   }
+  /** Explicit tube bake copies its evaluated lattice exactly: no normalization,
+   * density reduction, source deletion or merging with unrelated layers. */
+  private async bakeTube(options:BakeOptions,signal?:AbortSignal):Promise<SdfLayer>{
+    this.assertAvailable();const validated=validateBakeOptions(options),source=this.project.layerStack.get(validated.sourceIds![0]);
+    if(validated.resolution!==source.volume.resolution)throw new Error('Tube Bake preserves source resolution.');
+    this.assertCapacity(volumeSampleCount(source.volume),undefined,1);
+    if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');
+    const before=this.bakeState(),metadata=JSON.stringify(source.metadata()),start=performance.now();this.baking=true;let candidate:LayerRuntime|undefined;
+    const check=()=>{checkBakeCancelled(signal);if(this.disposed||JSON.stringify(source.metadata())!==metadata)throw new Error('Tube Bake cancelled: source changed.');};
+    try{
+      const original=source.volume,volume=new SDFVolume(original.resolution,original.extent,false,{dimensions:original.dimensions,latticeMin:original.latticeMin??[0,0,0]});
+      if(this.trackedBytes+volumeSampleCount(volume)*8>256*1024**2)throw new Error('Tube Bake exceeds the staging memory budget.');
+      for(let i=0;i<volume.values.length;i+=16384){check();for(let j=i;j<Math.min(volume.values.length,i+16384);j++)volume.values[j]=original.readVoxel(j);await yieldBake();}
+      const samplingMs=performance.now()-start,{id:unused,procedural:unusedSource,...metadataCopy}=source.metadata();void unused;void unusedSource;
+      const layer=new SdfLayer(volume,{...metadataCopy,name:validated.name,locked:false,visible:true,operation:'union',order:this.project.layerStack.layers.length});
+      candidate=new LayerRuntime(layer,this.neutral,volume,true);const meshStart=performance.now(),budget=MAX_PROJECT_TRIANGLES-[...this.runtimes.values()].reduce((n,r)=>n+r.triangles,0);
+      while(candidate.mesher.pendingChunks){check();candidate.rebuild(2,3);if(candidate.triangles>budget)throw new Error('Tube Bake exceeds the project triangle budget.');await yieldBake();}
+      check();this.project.layerStack.insert(layer);this.install(candidate);this.discardFuture();this.viewMode='separate';
+      if(validated.hideSources)source.visible=false;
+      this.past.push({kind:'bake',layerId:layer.id,runtime:candidate,before,after:this.bakeState(),index:this.project.layerStack.layers.length-1});
+      this.committedRevision++;this.syncPresentation();this.composite.invalidate();
+      this.lastBakeStats={samplingMs,meshingMs:performance.now()-meshStart,totalMs:performance.now()-start,resolution:volume.resolution,triangles:candidate.triangles,worldStep:volume.step*uniformScale(layer.transform),gridBytes:volume.values.byteLength*2};
+      candidate=undefined;return layer;
+    }finally{candidate?.dispose();this.baking=false;}
+  }
+  /** Source-first atomic regeneration. No source/cache publication before all slices
+   * and chunks succeed. One in-flight candidate, cancelled on ownership changes. */
+  async regenerateTube(value:TubeSource,id?:string,signal?:AbortSignal):Promise<SdfLayer>{
+    this.assertAvailable();if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');
+    const source=validateTube(value),old=id?this.runtime(id):undefined;
+    if(old){old.layer.assertEditable();if(!old.layer.procedural)throw new Error('Select a procedural tube.');}
+    const activeId=this.project.activeLayerId,metadata=old?JSON.stringify(old.layer.metadata()):'',before=this.bakeState();
+    const n=old?.volume.resolution??this.active.volume.resolution,extent=old?.volume.extent??this.active.volume.extent,baseTracked=this.trackedBytes;
+    this.tubePending=true;let candidate:LayerRuntime|undefined;
+    const check=()=>{if(signal?.aborted||this.disposed||this.project.activeLayerId!==activeId||old&&(!old.layer.editable||JSON.stringify(old.layer.metadata())!==metadata))throw new Error('Tube regeneration cancelled; source kept.');};
+    try{
+      const otherSamples=this.project.layerStack.layers.reduce((sum,l)=>sum+(l.id===id?0:volumeSampleCount(l.volume)),0);if(!old&&this.project.layerStack.layers.length>=MAX_PROJECT_LAYERS)throw new Error('Maximum of 8 independent layers reached.');
+      const maxSamples=Math.min(MAX_PROJECT_VOXELS-otherSamples,Math.floor((256*1024**2-baseTracked)/8));
+      const work=evaluateTube(source,n,extent,maxSamples,samples=>{this.tubeStagingBytes=samples*8;});let result=work.next(),deadline=performance.now()+3;
+      while(!result.done){check();if(performance.now()>=deadline){await yieldBake();deadline=performance.now()+3;}result=work.next();}
+      check();const volume=result.value;this.assertCapacity(volumeSampleCount(volume),id,old?0:1);
+      if(this.trackedBytes>256*1024**2)throw new Error('Tube exceeds the staging memory budget.');
+      const layer=new SdfLayer(volume,old?{...old.layer.metadata(),procedural:source}:{name:this.uniqueName('Procedural Tube'),order:this.project.layerStack.layers.length,procedural:source});
+      candidate=new LayerRuntime(old?.layer??layer,this.neutral,volume,true);
+      const triangleBudget=MAX_PROJECT_TRIANGLES-[...this.runtimes.values()].reduce((n,r)=>n+(r===old?0:r.triangles),0);
+      while(candidate.mesher.pendingChunks){check();candidate.rebuild(2,3);this.tubeStagingBytes=volumeSampleCount(volume)*8+candidate.mesher.ownedGeometryBytes;if(this.trackedBytes>256*1024**2)throw new Error('Tube staged mesh exceeds the memory budget.');if(candidate.triangles>triangleBudget)throw new Error('Tube exceeds the project triangle budget.');await yieldBake();}
+      check();this.discardFuture();
+      if(old){
+        const previous={source:validateTube(old.layer.procedural),volume:old.volume};
+        this.group.remove(old.surface.group);this.runtimes.delete(id!);
+        // Retain stable layer identity used by selection and transform tools.
+        old.layer.volume=volume;old.layer.procedural=source;
+        this.install(candidate);old.dispose();for(const e of this.past)if(e.kind==='bake'&&e.layerId===old.layer.id)e.runtime=candidate;
+        this.past.push({kind:'tube',layerId:old.layer.id,before:previous,after:{source,volume}});
+        // Bound source-cache history to eight edits. Source coordinates never resample.
+        let excess=this.past.filter(e=>e.kind==='tube').length-8;this.past=this.past.filter(e=>e.kind!=='tube'||excess--<=0);
+      }else{
+        this.project.layerStack.insert(layer);this.install(candidate);
+        this.past.push({kind:'bake',layerId:layer.id,runtime:candidate,before,after:this.bakeState(),index:this.project.layerStack.layers.length-1});
+      }
+      this.committedRevision++;this.syncPresentation();this.composite.invalidate();candidate=undefined;return old?.layer??layer;
+    }finally{candidate?.dispose();this.tubeStagingBytes=0;this.tubePending=false;}
+  }
   /** Atomic branch command owned by XRMoveTool's existing preview lock. */
   async commitMove(owner:object,input:RadialMoveField,signal:AbortSignal,progress:(p:MoveProgress)=>void=()=>{},beforePublish:()=>void=()=>{},externalGuard:()=>boolean=()=>true):Promise<boolean>{
     if(this.disposed||this.movePending||this.baking||this.previewOwner!==owner||this.drawing||this.transforming)throw new Error('Move does not own the editable source.');
     const runtime=this.active,source=runtime.volume,sourceSurface=runtime.surface,sourceMesher=runtime.mesher,transform=copyTransform(runtime.layer.transform),revision=sourceSurface.revision,project=this.project.id,start=performance.now();
+    this.assertSculptable(runtime.layer);
     if(runtime.layer.volume!==source||!(source instanceof SDFVolume)||!runtime.layer.editable||this.viewMode!=='separate'||sourceMesher.pendingChunks)throw new Error('Move needs a ready, visible, unlocked dense source in Separate Layers.');
     if(input.interaction==='translate'?input.delta.length()<source.step*1e-4:Math.abs(input.angle)*input.radius<source.step*1e-4)return false;
     const field=new RadialMoveField();field.capture(input.center,input.radius,input.falloff,1);field.setDisplacement(input.delta);field.configure(input.mode,input.stiffness);field.interaction=input.interaction;field.setRotation(input.axis,input.angle);
@@ -448,7 +533,7 @@ export class IndependentLayers {
   /** Borrow committed SDF-derived chunk buffers, never display/GPU deformation helpers.
    * Snapshotting owns copies; guards reject edits/replacement while those copies are made. */
   exportSources(scope:'visible'|'selected'='visible'):ExportSource[]{
-    if(this.drawing||this.transforming||this.previewing||this.deforming||this.baking)throw new Error('Finish or cancel the current sculpt / Move reconstruction before exporting.');
+    if(this.tubePending||this.drawing||this.transforming||this.previewing||this.deforming||this.baking)throw new Error('Finish or cancel the current sculpt / Move reconstruction before exporting.');
     const selection=()=>JSON.stringify(this.project.layerStack.layers.filter(l=>scope==='selected'?l.id===this.project.activeLayerId:l.visible).map(l=>l.id)),selectionKey=selection();
     const selected=this.project.activeLayerId,layers=this.project.layerStack.layers.filter(l=>scope==='selected'?l.id===selected:l.visible);
     return layers.map(layer=>{const runtime=this.runtime(layer.id),volume=runtime.volume,revision=runtime.surface.revision,metadata=JSON.stringify(layer.metadata());

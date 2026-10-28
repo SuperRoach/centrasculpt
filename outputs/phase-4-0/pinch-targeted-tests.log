@@ -1,0 +1,30 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs pinch-brush
+
+Tests: 1/58 files · compiled 0, cached 82 · preparation 6 ms
+✔ Pinch 64: exact staged/synchronous Jacobi samples and compact numeric locality (15.264791ms)
+✔ Pinch 128: exact staged/synchronous Jacobi samples and compact numeric locality (54.673125ms)
+✔ Pinch 192: exact staged/synchronous Jacobi samples and compact numeric locality (235.228458ms)
+✔ Pinch contracts a curved footprint; a planar surface remains planar instead of becoming a groove (61.178375ms)
+✔ Pinch inverse map is orientation preserving with bounded derivative across hardness extremes (0.626959ms)
+✔ Pinch 64 continuous: transformed mirror, staged cancellation, one undo and redo (129.173834ms)
+✔ Pinch 64 Steady/Line: transformed mirror, staged cancellation, one undo and redo (157.0295ms)
+✔ Pinch 128 continuous: transformed mirror, staged cancellation, one undo and redo (279.354041ms)
+✔ Pinch 128 Steady/Line: transformed mirror, staged cancellation, one undo and redo (277.858ms)
+✔ Pinch 192 continuous: transformed mirror, staged cancellation, one undo and redo (791.554792ms)
+✔ Pinch 192 Steady/Line: transformed mirror, staged cancellation, one undo and redo (871.060125ms)
+✔ cancel during partial Pinch publication restores exact source and prior redo (103.05825ms)
+✔ Pinch empty space, expanded negative lattice, and zero strength are safe (6.106875ms)
+✔ mirrored overlapping Pinch has reflection symmetry and no nearest-applicator jump (22.847709ms)
+✔ world/local Pinch agree under rotation, translation and uniform scale (71.85075ms)
+✔ XR Pinch uses shared registry, stages release, preserves chunk admission and cancels tracking loss (61.747375ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3195.056459
+Test command wall time: 3.23 s

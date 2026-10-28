@@ -1,0 +1,13 @@
+Unchanged from incoming checkpoint (tracked diffs):
+src/sdf.ts
+src/stroke.ts
+src/mesh.ts
+src/xr-shape-stamp.ts
+src/xr-clay-stroke.ts
+src/xr-controllers.ts
+src/independent-layers.ts
+src/project.ts
+src/layers.ts
+src/volume-store.ts
+src/main.ts
+src/editor-tool-state.ts

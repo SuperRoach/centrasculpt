@@ -113,7 +113,7 @@ export class XRControllers {
   if(this.shortcuts.menu){this.options.stroke?.cancel();this.options.alternate?.cancel();}
   const menuDistance=this.options.menus?.update(this.shortcuts.menu,menuTool,menuTool?this.slots[menuTool.slot].ray.matrixWorld:undefined,time,!!active)??null;
   if(!this.shortcuts.menu)this.restoreMenuModels();
-  let diagnosticOwned=false;
+  let diagnosticOwned=false;if(this.panel)this.panel.hover=null;
   let demand=!!this.grab?.active||!!this.layerGrab?.active||!!this.options.stroke?.active,feedbackMessage='',feedbackUntil=0;
   for(const state of this.input.states){const slot=this.slots[state.slot],tracked=active&&state.connected&&state.source?.targetRayMode==='tracked-pointer'&&!state.source.hand;
    slot.feedback.update(state,!!this.grab?.owns(state.connectionId)||!!this.layerGrab?.owns(state.connectionId),time);if(slot.feedback.message&&slot.feedback.until>time&&slot.feedback.until>feedbackUntil){feedbackMessage=slot.feedback.message;feedbackUntil=slot.feedback.until;}slot.halo.visible=slot.feedback.halo;slot.halo.material.opacity=this.grab?.active ? .55 : .3;
@@ -124,10 +124,12 @@ export class XRControllers {
    slot.line.material.color.copy(state.buttons.trigger.pressed?slot.indicator.material.color.set('#ffffff'):slot.body.material.color);slot.line.material.opacity=state.role==='tool'?1:.55;slot.indicator.scale.setScalar(1+state.buttons.trigger.value);slot.indicator.material.color.set(slot.feedback.halo?'#9bc6ba':state.buttons.grip.pressed?'#c2d5c9':'#ffffff');if(state.buttons.trigger.pressed&&!this.grab?.active&&!this.layerGrab?.active)slot.rayVisual.visible=!!tracked&&state.tracked;slot.line.scale.z=1;
    slot.line.renderOrder=this.shortcuts.menu?1001:0;slot.line.material.depthTest=!this.shortcuts.menu;slot.line.material.depthWrite=!this.shortcuts.menu;
    if(this.shortcuts.menu){slot.rayVisual.visible=state.role==='tool'&&!!tracked&&state.tracked;slot.line.scale.z=(menuDistance??1.5)/1.5;slot.line.material.color.set(menuDistance!==null?'#b1e6cd':'#79cde5');}
-   if(tracked&&state.tracked&&this.panel?.group.visible&&!menuWasOpen&&!this.shortcuts.menu&&!this.grab?.active&&!this.layerGrab?.active){
+   // An active tool transaction owns its trigger through release/draining;
+   // merely crossing a diagnostics panel must not cancel or redirect it.
+   if(tracked&&state.tracked&&this.panel?.group.visible&&!this.options.stroke?.active&&!menuWasOpen&&!this.shortcuts.menu&&!this.grab?.active&&!this.layerGrab?.active){
     slot.ray.updateWorldMatrix(true,false);this.raycaster.ray.origin.setFromMatrixPosition(slot.ray.matrixWorld);this.direction.set(0,0,-1).transformDirection(slot.ray.matrixWorld);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=2;this.hits.length=0;this.raycaster.intersectObject(this.panel.mesh,false,this.hits);
     const hit=this.hits[0],action=hit?.uv?diagnosticAction(hit.uv,this.panel.expanded):null;
-    demand ||= !!hit;if(hit&&state.role==='tool')diagnosticOwned=true;
+    if(this.panel&&state.role==='tool')this.panel.hover=action;demand ||= !!hit;if(hit&&state.role==='tool')diagnosticOwned=true;
     if(action){slot.rayVisual.visible=!!tracked&&state.tracked;slot.line.scale.z=hit.distance/1.5;slot.line.material.color.set('#9bc6ba');if(state.buttons.trigger.justPressed&&!this.grab?.active&&!this.layerGrab?.active){if(action==='swap')this.setDominant(this.roles.support);else if(action==='toggle')this.setDiagnostics(!this.panel.expanded);else if(action==='display')this.setDisplay(CONTROLLER_DISPLAY_MODES[(CONTROLLER_DISPLAY_MODES.indexOf(this.displayMode)+1)%3]);else if(action==='reset')this.resetWorkspaceView(time);else if(action==='performance')this.setPerformance(!this.panel.performanceEnabled);else{const modes=['hidden','on-demand','always'] as const;this.setHints(modes[(modes.indexOf(this.panel.hints.mode)+1)%3]);}}}
    }
   }

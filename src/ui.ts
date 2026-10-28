@@ -18,7 +18,7 @@ export function createUI() {
     <header><a class="brand" href="./" aria-label="Centra Sculpt home"><span class="brand-mark" aria-hidden="true">◎</span><span>Centra <em>Sculpt</em></span></a><span class="subtitle">A SPACE TO SHAPE</span><div id="xr-entry-slot"></div><button type="button" id="header-save" data-state="unsaved" aria-label="Save project — Unsaved changes" title="Unsaved changes · Click to save project"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></svg><span class="save-state-dot" aria-hidden="true"></span></button><span id="header-save-status" class="sr-only" role="status"></span></header>
     <main><aside><div class="eyebrow">YOUR TOOLKIT</div><h1>Make room<br>for an idea.</h1><p class="intro">Build up. Carve away.<br>See where the form takes you.</p>
     <div id="recovery-slot"></div><div id="xr-diagnostics-slot"></div><div id="shape-library-slot"></div>
-    <section><label>SCULPT BRUSH</label><div class="modes"><button id="add" class="active" aria-pressed="true"><b>＋</b> Add</button><button id="subtract" aria-pressed="false"><b>−</b> Subtract</button><button id="smooth" aria-pressed="false"><b>≈</b> Smooth</button></div>
+    <section><label>SCULPT BRUSH</label><div class="modes"><button id="add" class="active" aria-pressed="true"><b>＋</b> Add</button><button id="subtract" aria-pressed="false"><b>−</b> Subtract</button><button id="smooth" aria-pressed="false"><b>≈</b> Smooth</button><button id="flatten">Flatten</button><button id="inflate">Inflate</button><button id="scrape">Scrape</button><button id="pinch">Pinch</button><button id="crease">Crease</button></div>
     <div class="range-label"><label for="radius">BRUSH RADIUS · WORLD</label><output id="radius-value">0.220</output></div><input id="radius" type="range" min="${BRUSH_RADIUS_LIMITS.min}" max="${BRUSH_RADIUS_LIMITS.max}" step="0.01" value="0.22"/><div class="range-ends"><span>Fine detail</span><span>Broad strokes</span></div>
     <div class="range-label strength-label"><label for="strength">BRUSH STRENGTH</label><output id="strength-value">35%</output></div><input id="strength" type="range" min="0.01" max="1" step="0.01" value="0.35"/><div class="range-ends"><span>Gentle</span><span>Strong</span></div>
     <div class="range-label strength-label"><label for="hardness">BRUSH HARDNESS</label><output id="hardness-value">0%</output></div><input id="hardness" type="range" min="0" max="1" step="0.01" value="0"/><div class="range-ends"><span>Soft clay</span><span>Sharp edge · Smooth unchanged</span></div>
@@ -42,16 +42,17 @@ export function createUI() {
     <dialog id="bake-dialog" aria-labelledby="bake-title"><form method="dialog"><h2 id="bake-title">Bake visible Boolean result</h2><p>Creates a new editable SDF layer. Original layers are never deleted or resampled.</p><label for="bake-name">RESULT NAME</label><input id="bake-name" type="text" required maxlength="128" value="Baked sculpture"/><label for="bake-resolution">OUTPUT RESOLUTION</label><select id="bake-resolution"><option value="64">64³</option><option value="128" selected>128³</option><option value="192">192³</option></select><label for="bake-scope">SOURCES</label><select id="bake-scope"><option value="visible">Visible Boolean result</option><option value="pair">Selected layer + chosen layer (Union)</option></select><label for="bake-other">MERGE WITH</label><select id="bake-other"></select><pre id="bake-bounds"></pre><p id="bake-estimate" role="status"></p><p>Lower output resolution can permanently lose fine detail in the baked result. Sources keep all their detail.</p><label class="bake-hide"><input id="bake-hide" type="checkbox" checked/> Hide contributing source layers after baking</label><p id="bake-overlap-note"></p><p id="bake-error" role="alert"></p><div class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button id="confirm-bake" value="bake">Bake new layer</button></div></form></dialog>
     <dialog id="delete-layer-dialog"><form method="dialog"><h2>Delete layer?</h2><p id="delete-layer-message"></p><div class="dialog-actions"><button value="cancel">Cancel</button><button value="delete" class="danger">Delete layer</button></div></form></dialog>
     <footer><span>A little curiosity. Infinite possibilities.</span><span>CENTRA SCULPT · YOUR CREATIVE SPACE</span></footer>`;
+  let brushSelection:((mode:BrushMode)=>void)|null=null;
   let mode: BrushMode = 'add';
   let clayMode:'add'|'subtract'='add';
   function setMode(value: BrushMode): void {
-    mode = value;if(value!=='smooth')clayMode=value;
-    for (const other of ['add','subtract','smooth']) {
+    mode = value;if(value==='add'||value==='subtract')clayMode=value;
+    for (const other of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease']) {
       document.getElementById(other)!.classList.toggle('active', other === value);
       document.getElementById(other)!.setAttribute('aria-pressed', String(other === value));
     }
   }
-  for (const value of ['add','subtract','smooth'] as const) document.getElementById(value)!.addEventListener('click',()=>setMode(value));
+  for (const value of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease'] as const) document.getElementById(value)!.addEventListener('click',()=>brushSelection?brushSelection(value):setMode(value));
   const radius = document.querySelector<HTMLInputElement>('#radius')!;
   radius.addEventListener('input', () => document.getElementById('radius-value')!.textContent = Number(radius.value).toFixed(3));
   const strength = document.querySelector<HTMLInputElement>('#strength')!;
@@ -82,6 +83,7 @@ export function createUI() {
   const deleteDialog=document.querySelector<HTMLDialogElement>('#delete-layer-dialog')!;
   const bakeDialog=document.querySelector<HTMLDialogElement>('#bake-dialog')!;
   return {
+    onBrushSelection(callback:(mode:BrushMode)=>void){brushSelection=callback;},
     selectBrushTool(tool:'brush'|'smooth'){setMode(tool==='smooth'?'smooth':clayMode);},
     onTransformAction(callback:typeof transformAction){transformAction=callback;},
     transformState(transform:VolumeTransform,editable:boolean,mode:EditorMode,space:TransformSpace,busy=false){

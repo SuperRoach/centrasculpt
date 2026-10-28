@@ -1,3 +1,4 @@
+import {canvasContext} from '../scripts/fixtures/canvas-context.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {Scene,PerspectiveCamera,Group,Matrix4,Mesh,BoxGeometry,MeshBasicMaterial} from 'three';
 import {XRSceneRig} from '../work/test-build/xr-scene.mjs';import {WorkspaceGrab} from '../work/test-build/workspace-grab.mjs';
@@ -10,7 +11,7 @@ const settings={mode:'add',radius:.22,strength:.35,hardness:.5,camera:{position:
 const near=(a,b,tol=1e-9)=>{assert.equal(a.length,b.length);for(let i=0;i<a.length;i++)assert(Math.abs(a[i]-b[i])<tol,`${i}: ${a[i]} != ${b[i]}`);};
 const pose=x=>new Matrix4().makeTranslation(x,1,-.3);
 const support=()=>({connectionId:1,connected:true,handedness:'left',role:'support',tracked:true,gripTracked:true,buttons:{grip:{pressed:true,justPressed:true}}});
-function fakeDocument(){const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>({clearRect(){},fillRect(){},fillText(text){draws.push(text);}})})};return {draws,restore:()=>{globalThis.document=original;}};}
+function fakeDocument(){const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>canvasContext({clearRect(){},fillRect(){},fillText(text){draws.push(text);}})})};return {draws,restore:()=>{globalThis.document=original;}};}
 test('Reset Workspace View restores the exact entry anchor without following later head movement',()=>{
  const scene=new Scene(),rig=new XRSceneRig(scene,new PerspectiveCamera());assert.equal(rig.resetWorkspaceView(),false);rig.enter();assert.equal(rig.resetWorkspaceView(),false);rig.placeFirstView({x:.2,y:1.7,z:.1},{x:0,y:0,z:0,w:1});const home=rig.workspaceRoot.matrix.clone();rig.workspaceRoot.position.set(10,2,5);rig.workspaceRoot.rotation.y=2;rig.placeFirstView({x:5,y:2,z:3},{x:0,y:0,z:0,w:1});assert.equal(rig.resetWorkspaceView(),true);near(rig.workspaceRoot.matrix.elements,home.elements);rig.exit();assert.equal(rig.resetWorkspaceView(),false);rig.enter();rig.placeFirstView({x:.2,y:1.7,z:.1},{x:0,y:0,z:0,w:1});near(rig.workspaceRoot.matrix.elements,home.elements);rig.exit();
 });

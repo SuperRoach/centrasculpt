@@ -64,3 +64,29 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 #header-save[data-state=saved]{color:#347348}#header-save[data-state=autosaved]{color:#3277a3}#header-save[data-state=saving]{color:#7765a5}#header-save[data-state=error]{color:#b23c38}#header-save[data-state=recovery]{color:#a36b12}
 .save-state-dot{position:absolute;right:3px;bottom:3px;width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px #fbfcf8}#header-save[data-state=saving] .save-state-dot{animation:save-pulse 1s ease-in-out infinite}#header-save:disabled{cursor:default;opacity:.6}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@keyframes save-pulse{50%{opacity:.3}}@media(prefers-reduced-motion:reduce){#header-save[data-state=saving] .save-state-dot{animation:none}}
+/* Shared brush choices remain readable in the narrow studio sidebar. */
+.modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.modes button{justify-content:center;min-width:0}
+
+/* Give disclosure arrows a consistent slot and breathing room before their labels. */
+#app summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+  line-height: 1.5;
+}
+#app summary::-webkit-details-marker { display: none; }
+#app summary::marker { content: ''; }
+#app summary::before {
+  content: '';
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+#app details[open] > summary::before { transform: translateY(-2px) rotate(45deg); }
+#app #shape-library summary span { float: none; margin-left: auto; }
+#app summary:focus-visible { outline: 2px solid #80966d; outline-offset: 4px; border-radius: 3px; }

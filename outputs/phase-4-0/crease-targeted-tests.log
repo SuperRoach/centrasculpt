@@ -1,0 +1,30 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs crease-brush
+
+Tests: 1/59 files · compiled 9, cached 73 · preparation 105 ms
+✔ Crease 64: exact staged/synchronous Jacobi samples and compact numeric locality (15.014209ms)
+✔ Crease 128: exact staged/synchronous Jacobi samples and compact numeric locality (53.015041ms)
+✔ Crease 192: exact staged/synchronous Jacobi samples and compact numeric locality (228.996708ms)
+✔ Crease indents a plane and also contracts a curved footprint instead of only subtracting (66.597084ms)
+✔ Crease inverse map is orientation preserving with bounded derivative across hardness extremes (0.64525ms)
+✔ Crease 64 continuous: transformed mirror, staged cancellation, one undo and redo (133.932709ms)
+✔ Crease 64 Steady/Line: transformed mirror, staged cancellation, one undo and redo (168.517084ms)
+✔ Crease 128 continuous: transformed mirror, staged cancellation, one undo and redo (284.495584ms)
+✔ Crease 128 Steady/Line: transformed mirror, staged cancellation, one undo and redo (279.115667ms)
+✔ Crease 192 continuous: transformed mirror, staged cancellation, one undo and redo (788.003209ms)
+✔ Crease 192 Steady/Line: transformed mirror, staged cancellation, one undo and redo (868.595375ms)
+✔ cancel during partial Crease publication restores exact source and prior redo (102.073667ms)
+✔ Crease empty space, expanded negative lattice, and zero strength are safe (6.076958ms)
+✔ mirrored overlapping Crease has reflection symmetry and no nearest-applicator jump (22.58ms)
+✔ world/local Crease agree under rotation, translation and uniform scale (72.837625ms)
+✔ XR Crease uses shared registry, stages release, preserves chunk admission and cancels tracking loss (64.746417ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3209.49325
+Test command wall time: 3.34 s

@@ -1,0 +1,20 @@
+✔ six exact presets, neutral defaults and strict versioned display extension (0.624958ms)
+✔ legacy projects restore Neutral Grey and hidden grid after another project had custom preferences (10.79325ms)
+✔ every swatch and grid survive native and actual recovery encoding with no sculpt/history mutation (161.410792ms)
+✔ Studio updates immediately, passthrough always stays transparent and desktop background restores exactly (1.096584ms)
+✔ grid belongs to workspace, follows navigation, ignores rays and never affects framing or export sources (9.305292ms)
+✔ GLB geometry and mesh inventory stay identical after world changes and visible guide (12.04225ms)
+✔ world sections and all hit targets have bounded, disjoint large controls for every active tool (5.858792ms)
+✔ world uses shared scaled ray placement, neutral-trigger arming and closes with existing menu request (5.978917ms)
+✔ mirror and snap share existing state across tools; busy controls reject changes (3.503583ms)
+✔ environment menu uses existing exit path and requires fresh Enter; selected background survives AR round trip (3.928583ms)
+✔ unsupported passthrough is disabled with reason and cannot exit Studio or request AR (3.693208ms)
+✔ preferences wire existing diagnostics, performance and UI scale without history (2.9635ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 272.888916

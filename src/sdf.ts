@@ -3,7 +3,7 @@ import { identityTransform, toLocal, transformMatrix } from './transform';
 import type { Vec3, VolumeTransform } from './transform';
 import { Vector3 } from 'three';
 export type VoxelChangeListener = (index: number, before: number, after: number) => void;
-export type BrushMode = 'add' | 'subtract' | 'smooth';
+export type BrushMode = 'add' | 'subtract' | 'smooth' | 'flatten' | 'inflate' | 'scrape' | 'pinch' | 'crease';
 export type MirrorPlane = {enabled:boolean;axis: 'x'|'y'|'z';offset:number};
 export function validateMirrorPlane(plane:MirrorPlane):void{if(typeof plane.enabled!=='boolean'||!['x','y','z'].includes(plane.axis)||!Number.isFinite(plane.offset))throw new Error('Invalid mirror plane.');}
 export function reflectPoint(p:Point3,plane:MirrorPlane):Point3{return {...p,[plane.axis]:2*plane.offset-p[plane.axis]};}
@@ -82,6 +82,14 @@ export class SDFVolume implements VolumeStore {
     for(let z=0;z<2;z++)for(let y=0;y<2;y++)for(let x=0;x<2;x++)value+=this.values[this.index(base[0]+x,base[1]+y,base[2]+z)]*(x?t[0]:1-t[0])*(y?t[1]:1-t[1])*(z?t[2]:1-t[2]);
     return value+Math.hypot(...[point.x,point.y,point.z].map((v,a)=>Math.max(0,b.min[a]-v,v-b.max[a])));
   }
+  /** No allocation/clamping for validated interior resampling. The Pinch/Crease maps
+   * moves at most half a voxel from samples with a one-voxel boundary margin. */
+  private sampleInterior(px:number,py:number,pz:number):number{
+    const gx=(px+this.extent)/this.step-this.minimum[0],gy=(py+this.extent)/this.step-this.minimum[1],gz=(pz+this.extent)/this.step-this.minimum[2];
+    const x=Math.floor(gx),y=Math.floor(gy),z=Math.floor(gz),tx=gx-x,ty=gy-y,tz=gz-z;let value=0;
+    for(let k=0;k<2;k++)for(let j=0;j<2;j++)for(let i=0;i<2;i++)value+=this.values[this.index(x+i,y+j,z+k)]*(i?tx:1-tx)*(j?ty:1-ty)*(k?tz:1-tz);
+    return value;
+  }
   sampleWorld(point: Point3,transform=identityTransform()): number {return this.sampleLocal(toLocal(point,transform))*Math.min(...transform.scale);}
   worldBounds(transform: VolumeTransform=identityTransform()): VolumeBounds {
     const matrix=transformMatrix(transform),min: Vec3=[Infinity,Infinity,Infinity],max: Vec3=[-Infinity,-Infinity,-Infinity];
@@ -124,7 +132,16 @@ export class SDFVolume implements VolumeStore {
    * a radius-sized sphere with strength/hardness controlling interior field depth.
    */
   brush(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1, start:Point3=center, mirror?:MirrorPlane): Bounds | null {
+    const work=this.brushSteps(center,radius,mode,amount,record,hardness,freeSpace,strength,start,mirror);
+    let step=work.next();while(!step.done)step=work.next();return step.value;
+  }
+  /** Pinch/Crease resampling yields bounded batches before and during history publication.
+   * Existing synchronous callers drain the identical generator. */
+  *brushSteps(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1, start:Point3=center, mirror?:MirrorPlane):Generator<void,Bounds|null> {
     if (![center.x, center.y, center.z, radius, amount, hardness, strength].every(Number.isFinite) || radius <= 0 || amount <= 0 || (freeSpace && strength <= 0)) return null;
+    const resampling=mode==='pinch'||mode==='crease';
+    const advanced=mode==='flatten'||mode==='inflate'||mode==='scrape'||resampling;
+    if(advanced)freeSpace=false;
     amount = Math.min(amount, mode === 'smooth' ? 1 : this.step * 0.5);
     const [nx,ny,nz] = this.shape;
     if(![start.x,start.y,start.z].every(Number.isFinite)||mirror&&(!['x','y','z'].includes(mirror.axis)||!Number.isFinite(mirror.offset)))throw new Error('Invalid brush trajectory/plane.');
@@ -146,8 +163,15 @@ export class SDFVolume implements VolumeStore {
          if(this.values[this.index(x,y,z)]<=0){material=true;break;}
       if(!material)return null;
     }
-    let changed = false;
+    // Freeze tangent planes before Jacobi writes. Project the applicator centre
+    // onto the sampled zero set; distant empty space does not seed clay.
+    const plane=(c:Point3)=>{const value=this.sampleLocal(c),n=this.normalAt([c.x,c.y,c.z]);return {c,n,value};};
+    const primary=advanced?plane(center):null,secondary=advanced&&mirror?.enabled?plane(reflected):null;
+    if(advanced&&Math.abs(primary!.value)>radius&&(!secondary||Math.abs(secondary.value)>radius))return null;
+    const pinchPlanes=advanced?[primary!,...(secondary?[secondary]:[])]:[];
+    let changed = false, processed=0;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++) for (let y = bounds.min[1]; y <= bounds.max[1]; y++) for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
+      if(resampling&&processed++%128===127)yield;
       const i = this.index(x,y,z);
       const px=this.coordinate(x,0),py=this.coordinate(y,1),pz=this.coordinate(z,2);
       const d=Math.min(distance(px,py,pz,start,center),mirror?.enabled?distance(px,py,pz,reflectedStart,reflected):Infinity)/radius;
@@ -157,7 +181,33 @@ export class SDFVolume implements VolumeStore {
         const inner = mode === 'smooth' ? 0 : Math.max(0,Math.min(1,hardness))*0.9;
         const t = Math.max(0,(d-inner)/(1-inner));
         const falloff = (1 - t * t) ** 2;
-        if (mode === 'smooth') {
+        if (advanced) {
+          const useMirror=secondary&&distance(px,py,pz,reflected,reflected)<distance(px,py,pz,center,center);
+          const p=useMirror?secondary!:primary!;
+          if(resampling||Math.abs(p.value)<=radius){
+            // Negative inside: Inflate offsets the zero set outward. Flatten
+            // relaxes toward the local tangent plane; Scrape only removes its high side.
+            const target=p.n[0]*(px-p.c.x)+p.n[1]*(py-p.c.y)+p.n[2]*(pz-p.c.z)+(mode==='scrape'?0:p.value);
+            const delta=mode==='inflate'?-amount:Math.max(-amount,Math.min(amount,target-next));
+            if(resampling){
+              // Pull back through a tangential expansion: its inverse contracts
+              // the zero set. Convex C1 overlap blending avoids a mirror bisector seam.
+              let dx=0,dy=0,dz=0,weight=0;
+              // Crease adds a backward outward-normal component so the surface
+              // moves inward. Its tighter bound includes that normal displacement.
+              const crease=mode==='crease',normalDepth=crease?radius*.5:0;
+              const a=crease?Math.min(amount/(radius*1.5),(secondary?.01:.04)*(1-inner)):Math.min(amount/radius,(secondary?.02:.08)*(1-inner));
+              for(const plane of pinchPlanes){
+                if(Math.abs(plane.value)>radius)continue;
+                const rx=px-plane.c.x,ry=py-plane.c.y,rz=pz-plane.c.z,radial=Math.hypot(rx,ry,rz)/radius;
+                if(radial>=1)continue;
+                const t=Math.max(0,(radial-inner)/(1-inner)),w=(1-t*t)**2,dot=rx*plane.n[0]+ry*plane.n[1]+rz*plane.n[2];
+                dx+=w*w*(rx-dot*plane.n[0]+normalDepth*plane.n[0]);dy+=w*w*(ry-dot*plane.n[1]+normalDepth*plane.n[1]);dz+=w*w*(rz-dot*plane.n[2]+normalDepth*plane.n[2]);weight+=w;
+              }
+              if(weight>0)next=this.sampleInterior(px+a*dx/weight,py+a*dy/weight,pz+a*dz/weight);
+            }else next+=(mode==='scrape'?Math.max(0,delta):delta)*falloff;
+          }
+        } else if (mode === 'smooth') {
           const average = (this.values[i-1]+this.values[i+1]+this.values[i-nx]+this.values[i+nx]+this.values[i-nx*ny]+this.values[i+nx*ny]) / 6;
           next += (average - next) * amount * falloff;
         } else if(freeSpace) {
@@ -179,6 +229,7 @@ export class SDFVolume implements VolumeStore {
     }
     if (!changed) return null;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++) for (let y = bounds.min[1]; y <= bounds.max[1]; y++) for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
+      if(resampling&&processed++%128===127)yield;
       const i = this.index(x,y,z);
       if (this.values[i] !== this.scratch[i]) record?.(i,this.values[i],this.scratch[i]);
       this.values[i] = this.scratch[i];

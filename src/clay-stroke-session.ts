@@ -1,6 +1,6 @@
 import type {IndependentLayers} from './independent-layers';
 import type {SculptSettings} from './project';
-import type {Point3} from './sdf';
+import type {Bounds,Point3} from './sdf';
 import {uniformScale} from './transform';
 import {filterClayPath,clayReplay,snapClayPoint} from './clay-path';
 import type {PathPoint,ClayPathControls} from './clay-path';
@@ -13,6 +13,7 @@ export class ClayStrokeSession {
  private previousSampleCPU=0;private axis:'free'|'x'|'y'|'z'='free';
  private freeSpace=false;private snap=0;
  private id='';private settings!:SculptSettings;private steady=0;private straight=false;private radius=1;private started=0;private last=0;private previewTime=-Infinity;
+ private pending:Generator<void,Bounds|null>|null=null;private stagedDeformation=false;
  private queue:PathPoint[]=[];private cursor=0;private replayTime=0;
  constructor(private readonly layers:()=>IndependentLayers,private readonly changed:()=>void=()=>{},private readonly stagedMesh=false){}
  setRadius(worldRadius:number):void{if(this.phase==='drawing'&&this.settings.mode!=='smooth'&&Number.isFinite(worldRadius)&&worldRadius>0)this.radius=worldRadius/uniformScale(this.layers().active.layer.transform);}
@@ -20,10 +21,11 @@ export class ClayStrokeSession {
  accountFrameCPU(ms:number):void{if(this.phase==='drawing'&&Number.isFinite(ms)&&ms>=0)this.previousSampleCPU=Math.max(this.previousSampleCPU,ms);}
  get localRadius():number{return this.radius;}
  get active():boolean{return this.phase!=='idle';}
- get replayRemaining():number{return this.phase==='committing'?Math.max(0,this.queue.length-this.cursor):0;}
+ get replayRemaining():number{return (this.phase==='committing'||this.stagedDeformation&&this.phase==='drawing')?Math.max(0,this.queue.length-this.cursor)+(this.pending?1:0):0;}
  get buffered():boolean{return this.steady>0||this.straight;}
  begin(settings:SculptSettings,controls:ClayPathControls,time:number,freeSpace=false):void{
   if(this.active)throw new Error('Finish the current Clay stroke.');
+  this.pending=null;this.stagedDeformation=settings.mode==='pinch'||settings.mode==='crease';
   this.axis=controls.axis;this.snap=controls.snap;this.freeSpace=freeSpace;this.previousSampleCPU=0;
   const layers=this.layers();this.radius=settings.radius/uniformScale(layers.active.layer.transform);
   const smooth=settings.mode==='smooth';filterClayPath([],smooth?0:controls.steady,this.radius,smooth?false:controls.straightLine);layers.beginStroke();this.settings={...settings};this.steady=smooth?0:controls.steady;this.straight=!smooth&&controls.straightLine;this.started=this.last=time;this.id=layers.active.layer.id;this.raw.length=0;this.preview=[];this.previewTime=-Infinity;this.phase='drawing';this.queue=[];this.cursor=0;this.replayTime=0;
@@ -35,23 +37,30 @@ export class ClayStrokeSession {
   const processingStart=performance.now(),dt=(time-this.last)/1000;if(![point.x,point.y,point.z,time].every(Number.isFinite)||dt<0||dt>.15+this.previousSampleCPU/1000||this.raw.length>=8192)throw new Error('Clay tracking/sample budget interrupted.');
   point=this.projectPoint(point);
   const p={...point,t:(time-this.started)/1000,radius:this.radius};this.raw.push(p);this.last=time;
-  if(!this.buffered)this.layers().applyStrokeLocal(point,this.radius,this.settings.mode,this.settings.strength,dt,this.settings.hardness,this.freeSpace);
+  if(!this.buffered&&this.stagedDeformation){this.queue.push(p);this.pump();}
+  else if(!this.buffered)this.layers().applyStrokeLocal(point,this.radius,this.settings.mode,this.settings.strength,dt,this.settings.hardness,this.freeSpace);
   if(this.buffered&&time-this.previewTime>=33){const start=this.layers().metrics.enabled?performance.now():0;this.preview=filterClayPath(this.raw,this.steady,this.radius,this.straight);if(this.layers().metrics.enabled)this.layers().metrics.record('path',performance.now()-start);this.previewTime=time;}
   this.previousSampleCPU=performance.now()-processingStart;
  }
  end():void{
   if(this.phase!=='drawing')return;if(!this.valid())throw new Error('Clay target changed.');
-  if(!this.buffered){this.preview=this.raw;if(this.stagedMesh){this.phase='committing';return;}this.layers().finishStroke();this.phase='idle';this.changed();return;}
+  if(!this.buffered){this.preview=this.raw;if(this.stagedMesh||this.stagedDeformation){this.phase='committing';return;}this.layers().finishStroke();this.phase='idle';this.changed();return;}
   const start=this.layers().metrics.enabled?performance.now():0;this.preview=filterClayPath(this.raw,this.steady,this.radius,this.straight);this.queue=clayReplay(this.preview);if(this.layers().metrics.enabled)this.layers().metrics.record('path',performance.now()-start);this.phase='committing';
  }
  pump(budgetMs=4):boolean{
-  if(this.phase!=='committing')return false;if(!this.valid())throw new Error('Clay target changed during replay.');
+  if(this.phase!=='committing'&&!(this.phase==='drawing'&&this.stagedDeformation&&!this.buffered))return false;if(!this.valid())throw new Error('Clay target changed during replay.');
   const started=performance.now();let dabs=0;
-  while(this.cursor<this.queue.length&&dabs<64&&(dabs===0||performance.now()-started<budgetMs)){
-   const point=this.queue[this.cursor++],dt=point.t-this.replayTime;this.layers().applyStrokeLocal(point,point.radius??this.radius,this.settings.mode,this.settings.strength,dt,this.settings.hardness,this.freeSpace);this.replayTime=point.t;dabs++;
+  while((this.pending||this.cursor<this.queue.length)&&dabs<(this.stagedDeformation?2048:64)&&(dabs===0||performance.now()-started<budgetMs)){
+   if(this.stagedDeformation){
+    if(!this.pending){const point=this.queue[this.cursor++],dt=point.t-this.replayTime;this.replayTime=point.t;this.pending=this.layers().applyResamplingSteps(this.settings.mode as 'pinch'|'crease',point,point.radius??this.radius,this.settings.strength,dt,this.settings.hardness);}
+    const next=this.pending.next();dabs++;if(next.done)this.pending=null;
+   }else{
+    const point=this.queue[this.cursor++],dt=point.t-this.replayTime;this.layers().applyStrokeLocal(point,point.radius??this.radius,this.settings.mode,this.settings.strength,dt,this.settings.hardness,this.freeSpace);this.replayTime=point.t;dabs++;
+   }
   }
-  if(this.stagedMesh){this.layers().active.rebuild(CLAY_MESH_CHUNKS,Math.min(CLAY_MESH_BUDGET_MS,Math.max(0,budgetMs-(performance.now()-started))));if(this.layers().active.mesher.pendingChunks)return false;}
-  if(this.cursor===this.queue.length){this.layers().finishStroke();this.phase='idle';this.queue=[];this.changed();return true;}return false;
+  if(this.phase==='drawing')return false;
+  if(this.stagedMesh||this.stagedDeformation){this.layers().active.rebuild(CLAY_MESH_CHUNKS,Math.min(CLAY_MESH_BUDGET_MS,Math.max(0,budgetMs-(performance.now()-started))));if(this.layers().active.mesher.pendingChunks)return false;}
+  if(!this.pending&&this.cursor===this.queue.length){this.layers().finishStroke();this.phase='idle';this.queue=[];this.changed();return true;}return false;
  }
- cancel():void{if(this.active)this.layers().cancelStroke();this.phase='idle';this.queue=[];this.raw.length=0;this.preview=[];this.id='';this.changed();}
+ cancel():void{this.pending=null;if(this.active)this.layers().cancelStroke();this.phase='idle';this.queue=[];this.raw.length=0;this.preview=[];this.id='';this.changed();}
 }

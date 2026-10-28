@@ -15,7 +15,7 @@ export class XRMirrorPlane {
   this.border=new LineLoop(g,new LineBasicMaterial({color:'#ff3434',depthTest:false,depthWrite:false,toneMapped:false}));this.group.add(this.face,this.border,this.handle);this.group.name='Mirror plane · tool preference only';this.group.matrixAutoUpdate=false;this.group.visible=false;root.add(this.group);
  }
  sync():void{
-  const l=this.tools.port.layers(),m=l.symmetry;this.group.visible=m.enabled&&['clay','smooth','stamp'].includes(this.tools.active)&&l.viewMode==='separate';if(!this.group.visible)return;
+  const l=this.tools.port.layers(),m=l.symmetry;this.group.visible=m.enabled&&['clay','smooth','flatten','inflate','scrape','pinch','crease','stamp'].includes(this.tools.active)&&l.viewMode==='separate';if(!this.group.visible)return;
   const surface=l.active.surface.group;surface.updateWorldMatrix(true,false);const q=new Quaternion().setFromUnitVectors(new Vector3(0,0,1),new Vector3(m.axis==='x'?1:0,m.axis==='y'?1:0,m.axis==='z'?1:0)),p=new Vector3();p[m.axis]=m.offset;
   const size=Math.max(.3,Math.min(2,l.active.volume.extent*.7));this.group.matrix.compose(p,q,new Vector3(size,size,size)).premultiply(surface.matrixWorld);
   if(this.group.parent){this.group.parent.updateWorldMatrix(true,false);this.group.matrix.premultiply(new Matrix4().copy(this.group.parent.matrixWorld).invert());}this.group.updateWorldMatrix(false,true);

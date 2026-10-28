@@ -1,0 +1,1 @@
+Host canvas only · 360 polls CPU 3.70 ms · p95 0.100 ms · max 0.100 ms · 0 repaints · no renderer/Quest timing

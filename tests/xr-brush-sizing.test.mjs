@@ -1,3 +1,4 @@
+import {canvasContext} from '../scripts/fixtures/canvas-context.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Group,Matrix4,Quaternion,Vector3} from 'three';
@@ -80,7 +81,7 @@ test('Support left/right undo/redo semantic mapping is unchanged by Tool sizing'
 });
 
 test('temporary radius readout works without diagnostic panels, then disappears at idle',()=>{
- const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>({fillRect(){},fillText(t){draws.push(t);}})})};const f=fixture(),shortcuts=new XRSupportShortcuts();let view;
+ const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>canvasContext({fillRect(){},fillText(t){draws.push(t);}})})};const f=fixture(),shortcuts=new XRSupportShortcuts();let view;
  try{view=new XRShortcutView();view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});f.update(0,-1);view.paint(shortcuts,32,true,false,f.sizing.feedback);assert(view.mesh.visible);assert(draws.some(t=>t.startsWith('Radius ')));for(let i=0;i<60;i++)f.update();view.paint(shortcuts,1200,true,false,f.sizing.feedback);assert.equal(view.mesh.visible,false);}finally{view?.dispose();f.dispose();globalThis.document=original;}
 });
 

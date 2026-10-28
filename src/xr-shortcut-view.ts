@@ -1,3 +1,4 @@
+import {VR_UI,paintVRPanel,drawVRText} from './xr-ui-style';
 import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,Quaternion,SRGBColorSpace,Vector3} from 'three';
 import type {XRSupportShortcuts} from './xr-support-shortcuts';
 /** Temporary noninteractive menu card and short action toast, independent of diagnostics visibility. */
@@ -9,7 +10,7 @@ export class XRShortcutView {
  constructor(){
   this.canvas=document.createElement('canvas');this.canvas.width=1024;this.canvas.height=256;this.ctx=this.canvas.getContext('2d')!;
   this.texture=new CanvasTexture(this.canvas);this.texture.colorSpace=SRGBColorSpace;
-  this.mesh=new Mesh(new PlaneGeometry(.52,.13),new MeshBasicMaterial({map:this.texture,toneMapped:false,depthTest:false,depthWrite:false}));this.mesh.name='VR shortcut feedback / temporary menu request';this.mesh.renderOrder=20;this.mesh.visible=false;
+  this.mesh=new Mesh(new PlaneGeometry(.52,.13),new MeshBasicMaterial({map:this.texture,transparent:true,toneMapped:false,depthTest:false,depthWrite:false}));this.mesh.name='VR shortcut feedback / temporary menu request';this.mesh.renderOrder=20;this.mesh.visible=false;
  }
  start():void{this.placed=false;this.content='';this.mesh.visible=false;}
  stop():void{this.start();this.mesh.removeFromParent();}
@@ -24,7 +25,7 @@ export class XRShortcutView {
   this.mesh.visible=active&&this.placed&&!!title;if(!this.mesh.visible)return;
   const subtitle=notice&&title===notice?noticeHelp:shortcuts.menu?'Menu preview · return stick to centre to close':'Support stick · ← Undo  /  Redo →';
   const content=`${title}:${subtitle}:${shortcuts.successful}`;if(content===this.content)return;this.content=content;this.paintCount++;
-  const ctx=this.ctx;ctx.fillStyle='#203037';ctx.fillRect(0,0,1024,256);ctx.fillStyle='#b9d8ce';ctx.font='bold 42px sans-serif';ctx.fillText(title,32,90,960);ctx.fillStyle='#eef2f2';ctx.font='28px sans-serif';ctx.fillText(subtitle,32,164);this.texture.needsUpdate=true;
+  const ctx=this.ctx;paintVRPanel(ctx,1024,256);drawVRText(ctx,title,{x:32,y:26,width:960,height:108},42,VR_UI.text,true);drawVRText(ctx,subtitle,{x:32,y:146,width:960,height:84},30,VR_UI.muted);this.texture.needsUpdate=true;
  }
  dispose():void{this.stop();this.texture.dispose();this.mesh.geometry.dispose();this.mesh.material.dispose();}
 }

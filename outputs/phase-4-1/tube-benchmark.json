@@ -1,0 +1,74 @@
+{
+  "description": "Single host run, no renderer/XR/Quest timing. Generator yields every 128 samples; mesh batches admit at most two chunks / 3 ms. Slice maximum includes allocation/preparation and indivisible work. Quality residual measured against independently queried prepared field, not continuous-curve Hausdorff error.",
+  "results": [
+    {
+      "resolution": 64,
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "step": 0.050793650793650794,
+      "segments": 258,
+      "triangles": 9096,
+      "maxSurfaceResidual": 0.016332546737946606,
+      "residualInVoxels": 0.3215470139033238,
+      "samplingMs": 73.24441699999998,
+      "samplingSlices": 2049,
+      "samplingP95": 0.05229199999999423,
+      "samplingMax": 2.7399170000000055,
+      "meshingMs": 22.00200000000001,
+      "meshUpdates": 32,
+      "meshP95": 4.179292000000004,
+      "meshMax": 4.857874999999979,
+      "sourceGridBytes": 2097152,
+      "geometryBytes": 654912
+    },
+    {
+      "resolution": 128,
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "step": 0.02519685039370079,
+      "segments": 518,
+      "triangles": 37356,
+      "maxSurfaceResidual": 0.008167133230079199,
+      "residualInVoxels": 0.32413310006876817,
+      "samplingMs": 792.540917,
+      "samplingSlices": 16385,
+      "samplingP95": 0.07954199999994671,
+      "samplingMax": 1.1173750000000098,
+      "meshingMs": 52.709542000000056,
+      "meshUpdates": 258,
+      "meshP95": 1.844208999999978,
+      "meshMax": 3.928333000000066,
+      "sourceGridBytes": 16777216,
+      "geometryBytes": 2689632
+    },
+    {
+      "resolution": 192,
+      "dimensions": [
+        192,
+        192,
+        192
+      ],
+      "step": 0.016753926701570682,
+      "segments": 779,
+      "triangles": 84564,
+      "maxSurfaceResidual": 0.005425523889849759,
+      "residualInVoxels": 0.3238359571754074,
+      "samplingMs": 3009.560125,
+      "samplingSlices": 55297,
+      "samplingP95": 0.09874999999988177,
+      "samplingMax": 1.1192080000000715,
+      "meshingMs": 99.19804199999999,
+      "meshUpdates": 865,
+      "meshP95": 0.06395799999972951,
+      "meshMax": 5.856375000000298,
+      "sourceGridBytes": 56623104,
+      "geometryBytes": 6088608
+    }
+  ]
+}

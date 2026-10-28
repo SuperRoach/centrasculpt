@@ -1,0 +1,1 @@
+Host only · 360 cached updates CPU 1.90 ms · p95 0.000 ms · max 0.300 ms · 0 repaints · same background true · same grid true · excludes renderer/Quest

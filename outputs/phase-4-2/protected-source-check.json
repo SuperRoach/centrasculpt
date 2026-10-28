@@ -1,0 +1,15 @@
+{
+  "comparison": "Tracked diff sections match the pre-Phase-4.2 checkpoint; untracked tube sources were not edited in this phase.",
+  "unchangedIncomingSections": {
+    "src/sdf.ts": true,
+    "src/mesh.ts": true,
+    "src/history.ts": true,
+    "src/stroke.ts": true,
+    "src/clay-stroke-session.ts": true,
+    "src/independent-layers.ts": true,
+    "src/procedural-tube.ts": true,
+    "src/xr-tube-tool.ts": true,
+    "src/xr-clay-stroke.ts": true,
+    "src/xr-shape-stamp.ts": true
+  }
+}

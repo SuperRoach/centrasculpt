@@ -1,0 +1,58 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs xr-surface-follow pinch-brush crease-brush --test-concurrency=4
+
+Tests: 3/62 files · compiled 0, cached 86 · preparation 6 ms
+✔ Crease 64: exact staged/synchronous Jacobi samples and compact numeric locality (16.538292ms)
+✔ Crease 128: exact staged/synchronous Jacobi samples and compact numeric locality (60.647333ms)
+✔ Crease 192: exact staged/synchronous Jacobi samples and compact numeric locality (240.581ms)
+✔ Crease indents a plane and also contracts a curved footprint instead of only subtracting (83.121875ms)
+✔ Crease inverse map is orientation preserving with bounded derivative across hardness extremes (0.687ms)
+✔ Crease 64 continuous: transformed mirror, staged cancellation, one undo and redo (149.506584ms)
+✔ Crease 64 Steady/Line: transformed mirror, staged cancellation, one undo and redo (167.327875ms)
+✔ Crease 128 continuous: transformed mirror, staged cancellation, one undo and redo (262.856042ms)
+✔ Crease 128 Steady/Line: transformed mirror, staged cancellation, one undo and redo (334.752333ms)
+✔ Crease 192 continuous: transformed mirror, staged cancellation, one undo and redo (878.59675ms)
+✔ Crease 192 Steady/Line: transformed mirror, staged cancellation, one undo and redo (916.158333ms)
+✔ cancel during partial Crease publication restores exact source and prior redo (104.714167ms)
+✔ Crease empty space, expanded negative lattice, and zero strength are safe (6.145ms)
+✔ mirrored overlapping Crease has reflection symmetry and no nearest-applicator jump (23.243959ms)
+✔ world/local Crease agree under rotation, translation and uniform scale (75.159958ms)
+✔ XR Crease uses shared registry, stages release, preserves chunk admission and cancels tracking loss (64.186084ms)
+✔ Crease matches an independent tangential-plus-normal pullback, not a normal-only cutter (8.619292ms)
+✔ Crease 64 at allocated boundary stays finite and preserves boundary samples (2.899958ms)
+✔ Crease 128 at allocated boundary stays finite and preserves boundary samples (14.667542ms)
+✔ Crease 192 at allocated boundary stays finite and preserves boundary samples (47.866416ms)
+✔ Pinch 64: exact staged/synchronous Jacobi samples and compact numeric locality (16.197792ms)
+✔ Pinch 128: exact staged/synchronous Jacobi samples and compact numeric locality (59.633833ms)
+✔ Pinch 192: exact staged/synchronous Jacobi samples and compact numeric locality (243.005458ms)
+✔ Pinch contracts a curved footprint; a planar surface remains planar instead of becoming a groove (75.49125ms)
+✔ Pinch inverse map is orientation preserving with bounded derivative across hardness extremes (0.672167ms)
+✔ Pinch 64 continuous: transformed mirror, staged cancellation, one undo and redo (138.454ms)
+✔ Pinch 64 Steady/Line: transformed mirror, staged cancellation, one undo and redo (173.107959ms)
+✔ Pinch 128 continuous: transformed mirror, staged cancellation, one undo and redo (278.032208ms)
+✔ Pinch 128 Steady/Line: transformed mirror, staged cancellation, one undo and redo (293.744541ms)
+✔ Pinch 192 continuous: transformed mirror, staged cancellation, one undo and redo (897.199125ms)
+✔ Pinch 192 Steady/Line: transformed mirror, staged cancellation, one undo and redo (1036.407125ms)
+✔ cancel during partial Pinch publication restores exact source and prior redo (105.511208ms)
+✔ Pinch empty space, expanded negative lattice, and zero strength are safe (6.177125ms)
+✔ mirrored overlapping Pinch has reflection symmetry and no nearest-applicator jump (22.742042ms)
+✔ world/local Pinch agree under rotation, translation and uniform scale (78.009875ms)
+✔ XR Pinch uses shared registry, stages release, preserves chunk admission and cancels tracking loss (64.555666ms)
+✔ field fallback brackets the current zero crossing and rejects empty space, short reach and invalid rays (5.907125ms)
+✔ pinch Surface follow 64: two-second default hold survives live remeshing and commits one exact action (626.86ms)
+✔ crease Surface follow 64: two-second default hold survives live remeshing and commits one exact action (539.001959ms)
+✔ pinch Surface follow 128: two-second default hold survives live remeshing and commits one exact action (688.984125ms)
+✔ crease Surface follow 128: two-second default hold survives live remeshing and commits one exact action (673.8385ms)
+✔ active field picking survives a missing derived mesh, but never starts or continues a stroke over empty air (47.76575ms)
+✔ field fallback uses layer/workspace coordinates and retains tracking cancellation and redo (46.498125ms)
+✔ expanded negative lattice picking uses its local bounds and samples without writing (4.433375ms)
+ℹ tests 44
+ℹ suites 0
+ℹ pass 44
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3548.758417
+Test command wall time: 3.58 s
