@@ -11,7 +11,7 @@ export const CLAY_MESH_BUDGET_MS=3;
 export class ClayStrokeSession {
  readonly raw:PathPoint[]=[];preview:readonly PathPoint[]=[];phase:'idle'|'drawing'|'committing'='idle';
  private previousSampleCPU=0;private axis:'free'|'x'|'y'|'z'='free';
- private freeSpace=false;private snap=0;
+ private freeSpace=false;private snap=0;private rollingSamples=false;
  private id='';private settings!:SculptSettings;private steady=0;private straight=false;private radius=1;private started=0;private last=0;private previewTime=-Infinity;
  private pending:Generator<void,Bounds|null>|null=null;private stagedDeformation=false;
  private queue:PathPoint[]=[];private cursor=0;private replayTime=0;
@@ -23,9 +23,9 @@ export class ClayStrokeSession {
  get active():boolean{return this.phase!=='idle';}
  get replayRemaining():number{return (this.phase==='committing'||this.stagedDeformation&&this.phase==='drawing')?Math.max(0,this.queue.length-this.cursor)+(this.pending?1:0):0;}
  get buffered():boolean{return this.steady>0||this.straight;}
- begin(settings:SculptSettings,controls:ClayPathControls,time:number,freeSpace=false):void{
+ begin(settings:SculptSettings,controls:ClayPathControls,time:number,freeSpace=false,rollingSamples=false):void{
   if(this.active)throw new Error('Finish the current Clay stroke.');
-  this.pending=null;this.stagedDeformation=settings.mode==='pinch'||settings.mode==='crease';
+  this.pending=null;this.stagedDeformation=settings.mode==='pinch'||settings.mode==='crease';this.rollingSamples=rollingSamples;
   this.axis=controls.axis;this.snap=controls.snap;this.freeSpace=freeSpace;this.previousSampleCPU=0;
   const layers=this.layers();this.radius=settings.radius/uniformScale(layers.active.layer.transform);
   const smooth=settings.mode==='smooth';filterClayPath([],smooth?0:controls.steady,this.radius,smooth?false:controls.straightLine);layers.beginStroke();this.settings={...settings};this.steady=smooth?0:controls.steady;this.straight=!smooth&&controls.straightLine;this.started=this.last=time;this.id=layers.active.layer.id;this.raw.length=0;this.preview=[];this.previewTime=-Infinity;this.phase='drawing';this.queue=[];this.cursor=0;this.replayTime=0;
@@ -34,7 +34,11 @@ export class ClayStrokeSession {
  projectPoint(point:Point3):Point3{if(this.straight&&this.axis!=='free'&&this.raw.length){const first=this.raw[0];point={x:this.axis==='x'?point.x:first.x,y:this.axis==='y'?point.y:first.y,z:this.axis==='z'?point.z:first.z};}if(this.straight&&this.axis==='free'&&this.raw.length&&this.snap)point=snapClayPoint(this.raw[0],point,this.snap);return point;}
  sample(point:Point3,time:number):void{
   if(this.phase!=='drawing')return;if(!this.valid())throw new Error('Clay target changed.');
-  const processingStart=performance.now(),dt=(time-this.last)/1000;if(![point.x,point.y,point.z,time].every(Number.isFinite)||dt<0||dt>.15+this.previousSampleCPU/1000||this.raw.length>=8192)throw new Error('Clay tracking/sample budget interrupted.');
+  const processingStart=performance.now(),dt=(time-this.last)/1000;
+  // Long slow lathe holds keep every source application, but compact only the
+  // display trail. Buffered trajectories and staged deformation retain their limits.
+  if(this.raw.length>=8192&&this.rollingSamples&&!this.buffered&&!this.stagedDeformation){let write=1;for(let i=2;i<this.raw.length;i+=2)this.raw[write++]=this.raw[i];this.raw.length=write;}
+  if(![point.x,point.y,point.z,time].every(Number.isFinite)||dt<0||dt>.15+this.previousSampleCPU/1000||this.raw.length>=8192)throw new Error('Clay tracking/sample budget interrupted.');
   point=this.projectPoint(point);
   const p={...point,t:(time-this.started)/1000,radius:this.radius};this.raw.push(p);this.last=time;
   if(!this.buffered&&this.stagedDeformation){this.queue.push(p);this.pump();}

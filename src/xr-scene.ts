@@ -1,3 +1,4 @@
+import {Turntable} from './turntable';
 import {studioBackgroundColour,type WorldDisplayPreferences} from './world-settings';
 import {Box3,Color,Group,GridHelper,Matrix4,Mesh,PerspectiveCamera,Quaternion,Scene,Vector3} from 'three';
 import type {ColorRepresentation,Object3D} from 'three';
@@ -10,6 +11,7 @@ export class XRSceneRig {
  readonly controllerTracking=new Group();
  readonly workspaceRoot=new Group();
  readonly sculptureRoot=new Group();
+ readonly turntable=new Turntable();
  readonly groundGrid=new GridHelper(4,20,'#b5c4c9','#b5c4c9');
  private environment:'studio'|'passthrough'|null=null;
  private gridEnabled=false;
@@ -20,7 +22,7 @@ export class XRSceneRig {
  constructor(private readonly scene:Scene,readonly camera:PerspectiveCamera,readonly preferences:{background:ColorRepresentation}={background:'#808080'}){
   this.trackingOrigin.name='XR Tracking Origin';this.controllerTracking.name='Controller Tracking · foundation';this.workspaceRoot.name='Workspace Root';this.sculptureRoot.name='Sculpture Root';
   this.groundGrid.name='Studio ground guide · workspace local';this.groundGrid.visible=false;this.groundGrid.raycast=()=>{};this.groundGrid.material.transparent=true;this.groundGrid.material.opacity=.16;this.groundGrid.material.depthWrite=false;this.groundGrid.material.toneMapped=false;this.workspaceRoot.add(this.groundGrid);
-  this.trackingOrigin.add(camera,this.controllerTracking);this.workspaceRoot.add(this.sculptureRoot);scene.add(this.trackingOrigin,this.workspaceRoot);
+  this.trackingOrigin.add(camera,this.controllerTracking);this.workspaceRoot.add(this.turntable.group);this.turntable.group.add(this.sculptureRoot);scene.add(this.trackingOrigin,this.workspaceRoot);
  }
  /** Presentation-only: a single shared colour and fixed line geometry; no sculpture traversal per frame. */
  applyWorldSettings(settings:WorldDisplayPreferences):void{
@@ -44,7 +46,7 @@ export class XRSceneRig {
   this.environment=environment;this.groundGrid.visible=environment==='studio'&&this.gridEnabled;
   this.scene.background=environment==='passthrough'?null:new Color(this.preferences.background);
   const bounds=this.visibleBounds();if(bounds.isEmpty())bounds.set(new Vector3(-.5,-.5,-.5),new Vector3(.5,.5,.5));
-  bounds.getCenter(this.center);this.groundGrid.position.set(this.center.x,bounds.min.y-.002,this.center.z);const size=bounds.getSize(new Vector3()),diameter=Math.max(size.x,size.y,size.z);
+  bounds.getCenter(this.center);this.turntable.centre.copy(this.center);this.turntable.stop();this.groundGrid.position.set(this.center.x,bounds.min.y-.002,this.center.z);const size=bounds.getSize(new Vector3()),diameter=Math.max(size.x,size.y,size.z);
   this.presentationScale=.65/Math.max(diameter,.000001);
   this.trackingOrigin.position.set(0,0,0);this.trackingOrigin.quaternion.identity();this.trackingOrigin.scale.setScalar(1);
   camera.position.set(0,0,0);camera.quaternion.identity();camera.scale.setScalar(1);
@@ -64,7 +66,7 @@ export class XRSceneRig {
   this.workspaceRoot.position.copy(target.sub(offset));this.workspaceRoot.updateWorldMatrix(true,true);
  }
  exit():void {
-  const s=this.snapshot;if(!s)return;this.snapshot=null;this.environment=null;this.groundGrid.visible=false;this.pendingPlacement=false;this.hasHome=false;
+  this.turntable.stop();const s=this.snapshot;if(!s)return;this.snapshot=null;this.environment=null;this.groundGrid.visible=false;this.pendingPlacement=false;this.hasHome=false;
   this.scene.background=s.background;
   for(const value of s.transforms)restore(value);
   Object.assign(this.camera,{fov:s.fov,aspect:s.aspect,near:s.near,far:s.far,zoom:s.zoom});this.camera.projectionMatrix.copy(s.projection);this.camera.projectionMatrixInverse.copy(s.inverseProjection);

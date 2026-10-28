@@ -75,9 +75,10 @@ export class XRMenuView implements XRMenuInteraction {
   }
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();
   if(b.swatch&&b.colour){
-   roundedVRRect(ctx,r.x+20,r.y+24,88,88,18);ctx.fillStyle=b.colour;ctx.fill();ctx.strokeStyle=VR_UI.muted;ctx.lineWidth=2;ctx.stroke();
-   drawVRText(ctx,b.label,{x:r.x+124,y:r.y+24,width:r.width-144,height:88},VR_UI.label,style.text,true,'center');
-   if(b.selected){drawVRText(ctx,'✓',{x:r.x+22,y:r.y+44,width:84,height:48},VR_UI.control,parseInt(b.colour.slice(1,3),16)>130?'#101a20':'#ffffff',true,'center');}return;
+   const cy=r.y+r.height/2,labelHeight=VR_UI.label*1.05,checkHeight=VR_UI.control*1.05;
+   roundedVRRect(ctx,r.x+20,cy-44,88,88,18);ctx.fillStyle=b.colour;ctx.fill();ctx.strokeStyle=VR_UI.muted;ctx.lineWidth=2;ctx.stroke();
+   drawVRText(ctx,b.label,{x:r.x+124,y:cy-labelHeight/2,width:r.width-144,height:labelHeight},VR_UI.label,style.text,true,'center');
+   if(b.selected){drawVRText(ctx,'✓',{x:r.x+22,y:cy-checkHeight/2,width:84,height:checkHeight},VR_UI.control,parseInt(b.colour.slice(1,3),16)>130?'#101a20':'#ffffff',true,'center');}return;
   }
   if(b.colour){roundedVRRect(ctx,r.x+12,r.y+12,12,r.height-24,6);ctx.fillStyle=b.colour;ctx.fill();}
   // Navigation chevrons get their own aligned column instead of font-glyph spacing.

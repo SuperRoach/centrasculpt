@@ -1,0 +1,56 @@
+{
+  "description": "Host CPU only; cached mirror guide plus presentation-only rotation, then 12 RPM mirrored free-space Clay ring, radius .12, 150 poses at 30 Hz. Includes existing two-chunk XR rebuild admission and history; excludes rendering/GPU/Quest. Single run, no hard frame deadline.",
+  "rows": [
+    {
+      "resolution": 64,
+      "presentation900": {
+        "totalMs": 3.424,
+        "p95Ms": 0.011,
+        "maxMs": 0.475
+      },
+      "presentationRemesh": 0,
+      "lathe150": {
+        "totalMs": 201.95,
+        "p95Ms": 4.042,
+        "maxMs": 8.61
+      },
+      "samples": 301,
+      "drainFrames": 7,
+      "pendingChunks": 0
+    },
+    {
+      "resolution": 128,
+      "presentation900": {
+        "totalMs": 0.981,
+        "p95Ms": 0.001,
+        "maxMs": 0.043
+      },
+      "presentationRemesh": 0,
+      "lathe150": {
+        "totalMs": 316.394,
+        "p95Ms": 4.471,
+        "maxMs": 6.892
+      },
+      "samples": 301,
+      "drainFrames": 14,
+      "pendingChunks": 0
+    },
+    {
+      "resolution": 192,
+      "presentation900": {
+        "totalMs": 0.642,
+        "p95Ms": 0.001,
+        "maxMs": 0.013
+      },
+      "presentationRemesh": 0,
+      "lathe150": {
+        "totalMs": 629.57,
+        "p95Ms": 6.663,
+        "maxMs": 8.199
+      },
+      "samples": 301,
+      "drainFrames": 16,
+      "pendingChunks": 0
+    }
+  ]
+}

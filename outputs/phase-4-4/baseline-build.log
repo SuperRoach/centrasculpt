@@ -1,0 +1,21 @@
+
+> sdf-sculpt-studio@0.1.0 build
+> tsc && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 101 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                         0.36 kB │ gzip:   0.26 kB
+dist/assets/recovery-worker-Dg7BZHbZ.js                47.87 kB
+dist/assets/move-reconstruction-worker-C237xBLl.js    136.31 kB
+dist/assets/export-worker-B8WSLFTk.js                 169.94 kB
+dist/assets/index-CLIe2Rq-.css                         24.82 kB │ gzip:   6.13 kB
+dist/assets/index-Bozn_GBc.js                       1,114.40 kB │ gzip: 308.22 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.16s

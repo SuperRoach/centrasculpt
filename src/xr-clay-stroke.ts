@@ -1,3 +1,4 @@
+import {RotatingStrokeSampler,stableSculptMatrix,hasTurntable,turntablePivotWorld} from './turntable';
 import {sdfSurfaceHit} from './sdf-surface-hit';
 import {reflectPoint} from './sdf';
 import {BufferGeometry,Float32BufferAttribute,Group,Line,LineBasicMaterial,Matrix4,Raycaster,Vector3} from 'three';
@@ -20,13 +21,14 @@ export class XRClayStroke implements XRStrokeInteraction {
  private readonly hits:Intersection<Object3D>[]=[];
  private readonly line:Line;private readonly mirrorLine:Line;private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly local=new Vector3();private readonly inverse=new Matrix4();private readonly parentInverse=new Matrix4();private readonly anchor=new Matrix4();
  private boundsVolume:VolumeStore|null=null;private bounds:VolumeBounds|null=null;private placementNote='';private capturedPlacement:'free'|'surface'='free';
+ private rollingPath=false;private readonly rotatingSampler=new RotatingStrokeSampler();private readonly stableAnchor=new Matrix4();
  private processingMs=0;private processingMeasured=false;
  private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastPreview:unknown=null;private previewLength=0;
  constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed,true);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
  get liveSizing(){return this.session.phase==='drawing'&&this.capturedTool==='clay'?'clay-radius' as const:null;}
  get active():boolean{return this.session.active;}
  get feedback():string{if(this.placementNote)return this.placementNote;const label=this.tools.active==='smooth'?'Smooth':this.tools.active==='clay'?'Clay':this.tools.active[0].toUpperCase()+this.tools.active.slice(1);return this.session.phase==='committing'?`${label}: applying the preview · one undo action`:this.session.phase==='drawing'?this.session.buffered?`${label} preview · release trigger to apply`:`${label}: freehand`:this.message;}
- cancel():void{this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
+ cancel():void{this.rotatingSampler.reset();this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const metrics=this.layers().metrics,wasActive=this.active,start=performance.now();
   if(!wasActive){this.processingMs=0;this.processingMeasured=metrics.enabled;}
@@ -40,7 +42,8 @@ export class XRClayStroke implements XRStrokeInteraction {
   const valid=enabled&&(mode==='clay'||mode==='smooth'||mode==='flatten'||mode==='inflate'||mode==='scrape'||mode==='pinch'||mode==='crease')&&tool?.role==='tool'&&tool.connected&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&layers.viewMode==='separate'&&layers.project.layerStack.layers.some(l=>l.id===layers.project.activeLayerId)&&layers.active.layer.editable;
   if(!valid||this.active&&(tool!.connectionId!==this.owner||mode!==this.capturedTool||placement!==this.capturedPlacement)){this.cancel();return;}
   const runtime=layers.active;runtime.surface.group.updateWorldMatrix(true,true);
-  if(this.active&&runtime.surface.group.matrixWorld.elements.some((v,i)=>Math.abs(v-this.anchor.elements[i])>1e-9)){this.cancel();this.message='Stroke cancelled: target/workspace moved';return;}
+  if(this.active&&stableSculptMatrix(runtime.surface.group).elements.some((v,i)=>Math.abs(v-this.stableAnchor.elements[i])>1e-9)){this.cancel();this.message='Stroke cancelled: target/workspace moved';return;}
+  this.anchor.copy(runtime.surface.group.matrixWorld);
   try{
    if(this.liveSizing)this.session.setRadius(this.tools.port.settings().radius);
    const radius=this.active?this.session.localRadius:this.tools.port.settings().radius/uniformScale(runtime.layer.transform);
@@ -67,11 +70,17 @@ export class XRClayStroke implements XRStrokeInteraction {
    if(!this.active&&(!this.armed||!tool!.buttons.trigger.justPressed||!tool!.buttons.trigger.pressed))return;
    if(this.active&&!tool!.buttons.trigger.pressed){if(this.session.buffered&&hasTarget){this.recordController(time);this.session.sample(this.local,time);}this.session.end();this.armed=true;this.paint();return;}
    if(!hasTarget){this.cancel();this.message='Stroke cancelled: surface no longer under pointer';return;}
-   if(!this.active){this.controllerRaw.length=0;this.capturedTool=mode;this.capturedPlacement=placement;this.anchor.copy(runtime.surface.group.matrixWorld);this.session.begin(this.tools.port.settings(),this.tools.path,time-dt*1000,placement==='free');this.owner=tool!.connectionId;this.armed=false;this.message='';}
-   this.recordController(time);this.session.sample(this.local,time);if(!this.session.buffered)runtime.rebuild(CLAY_MESH_CHUNKS,CLAY_MESH_BUDGET_MS);this.paint();
+   if(!this.active){this.controllerRaw.length=0;this.capturedTool=mode;this.capturedPlacement=placement;this.anchor.copy(runtime.surface.group.matrixWorld);this.stableAnchor.copy(stableSculptMatrix(runtime.surface.group));this.rotatingSampler.reset();this.rollingPath=hasTurntable(runtime.surface.group);this.session.begin(this.tools.port.settings(),this.tools.path,time-dt*1000,placement==='free',this.rollingPath);this.owner=tool!.connectionId;this.armed=false;this.message='';}
+   this.recordController(time);
+   if(hasTurntable(runtime.surface.group)){
+    const working=this.local.clone().applyMatrix4(runtime.surface.group.matrixWorld);
+    this.rotatingSampler.sample(working,runtime.surface.group.matrixWorld,time,this.session.localRadius,(p,t)=>this.session.sample(p,t),turntablePivotWorld(runtime.surface.group));
+    this.anchor.copy(runtime.surface.group.matrixWorld);
+   }else this.session.sample(this.local,time);
+   if(!this.session.buffered)runtime.rebuild(CLAY_MESH_CHUNKS,CLAY_MESH_BUDGET_MS);this.paint();
   }catch(error){this.cancel();this.message=error instanceof Error?error.message:'Stroke cancelled';}
  }
- private recordController(time:number):void{this.controllerRaw.push({position:this.raycaster.ray.origin.toArray(),direction:this.raycaster.ray.direction.toArray(),time});}
+ private recordController(time:number):void{if(this.rollingPath&&this.controllerRaw.length>=8192){let write=1;for(let i=2;i<this.controllerRaw.length;i+=2)this.controllerRaw[write++]=this.controllerRaw[i];this.controllerRaw.length=write;}this.controllerRaw.push({position:this.raycaster.ray.origin.toArray(),direction:this.raycaster.ray.direction.toArray(),time});}
  private paint():void{
   this.material.color.set(this.tools.port.settings().mode==='subtract'?'#a04b36':this.tools.active==='smooth'?'#a8c9ee':'#9de6cf');
   this.preview.visible=this.active&&this.session.preview.length>0;if(!this.preview.visible)return;

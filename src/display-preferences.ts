@@ -38,7 +38,7 @@ export class LayerDisplayPreferences {
     this.colours.set(`${projectId}/${layerId}`,colour.toLowerCase());
   }
   snapshot(projectId:string,layers:readonly {id:string;order:number}[]):ProjectDisplayPreferences {
-    return {...(this.world.studioBackground==='neutral-grey'&&!this.world.groundGrid?{}:{world:{...this.world}}),...(this.vrUiScale==='normal'?{}:{vrUiScale:this.vrUiScale}),...(this.renderStyle==='normal'?{}:{renderStyle:this.renderStyle}),mode:this.mode,colours:Object.fromEntries(layers.map(layer=>[layer.id,this.colour(projectId,layer.id,layer.order)]))};
+    return {...(this.world.studioBackground==='neutral-grey'&&!this.world.groundGrid&&!this.world.mirrorGuide&&!this.world.turntable?{}:{world:structuredClone(this.world)}),...(this.vrUiScale==='normal'?{}:{vrUiScale:this.vrUiScale}),...(this.renderStyle==='normal'?{}:{renderStyle:this.renderStyle}),mode:this.mode,colours:Object.fromEntries(layers.map(layer=>[layer.id,this.colour(projectId,layer.id,layer.order)]))};
   }
   restore(projectId:string,layers:readonly {id:string;order:number}[],saved?:ProjectDisplayPreferences):void {
     const validated=saved===undefined?undefined:validateProjectDisplay(saved,layers.map(layer=>layer.id));
