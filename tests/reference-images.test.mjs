@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {XRControllers} from '../work/test-build/xr-controllers.mjs';
 import {XRControllerRoles} from '../work/test-build/xr-controller-roles.mjs';
 import {Group,Matrix4,Vector3,Scene,PerspectiveCamera,SRGBColorSpace,DoubleSide} from 'three';
-import {imageHeader,createReference,validateReferences,REFERENCE_LIMITS} from '../work/test-build/reference-images.mjs';
+import {imageHeader,createReference,validateReferences,validateReferenceFileName,REFERENCE_LIMITS} from '../work/test-build/reference-images.mjs';
 import {ReferenceView} from '../work/test-build/reference-view.mjs';
 import {createBaseProject} from '../work/test-build/layers.mjs';
 import {SDFVolume} from '../work/test-build/sdf.mjs';
@@ -35,7 +35,8 @@ test('count, aggregate source quota, identity, dimensions, transforms and enums 
  for(const patch of [{bytes:[]},{width:3},{mime:'image/jpeg'},{space:'hand'},{position:[Infinity,0,0]},{rotation:[0,NaN,0]},{size:0},{opacity:2},{locked:1}])assert.throws(()=>validateReferences([{...ref(),...patch}]));
  assert.throws(()=>validateReferences([ref(),ref()]));
  // Valid PNG structure padded with a bounded ancillary chunk, rather than unbounded base64.
- const big=()=>{const b=png(),n=3*1024**2,v=new Uint8Array(b.length+n+12);v.set(b.subarray(0,b.length-12));const offset=b.length-12;new DataView(v.buffer).setUint32(offset,n);v.set([116,69,88,116],offset+4);v.set(b.subarray(b.length-12),v.length-12);return v;};
+ const big=(n=3*1024**2)=>{const b=png(),v=new Uint8Array(b.length+n+12);v.set(b.subarray(0,b.length-12));const offset=b.length-12;new DataView(v.buffer).setUint32(offset,n);v.set([116,69,88,116],offset+4);v.set(b.subarray(b.length-12),v.length-12);return v;};
+ assert.equal(validateReferences([createReference(big(5*1024**2),'five-megabyte.png','accepted')]).length,1);
  assert.throws(()=>validateReferences(Array.from({length:5},(_,i)=>({...createReference(big(),'large',String(i))}))),/budget/);
 });
 test('native v5 embeds exact compressed bytes, all reference properties; legacy remains readable',()=>{
@@ -88,4 +89,30 @@ test('Flip X mirrors texture UVs without rotating panel, touching bytes or affec
 });
 test('clean image menu exposes Flip X and grouped size; secondary display/delete controls stay available',()=>{
  const l=fixture(),view=new ReferenceView(()=>l.display.references,new Group(),new Group()),tools=new EditorToolState({layers:()=>l,shape:new ShapePreviewModel(l.project.activeLayerId),settings:()=>settings,setSettings(){},mode:()=> 'sculpt',selectTool(){},selectTransform(){},busy:()=>false,changed(){}}),model=new XRMenuModel(tools,{references:view});try{l.display.references=[ref()];view.selected='r';model.setRequest('world');model.world.section='reference';let c=model.content();assert.equal(c.title,'REFERENCE IMAGE');assert(c.buttons.some(b=>b.id==='reference-flip-x'));assert(!c.buttons.some(b=>b.id==='world:reference-delete'));assert(c.labels.some(l=>l.text.startsWith('Size')));assert(c.buttons.find(b=>b.id==='reference-edit').disabled);model.activate('reference-flip-x');assert(l.display.references[0].flipX);assert(model.content().buttons.find(b=>b.id==='reference-flip-x').selected);model.activate('world:reference-more');c=model.content();assert(c.buttons.some(b=>b.id==='reference-side'));assert(c.buttons.some(b=>b.id==='world:reference-delete'));assert(!c.buttons.some(b=>b.id==='reference-delete-confirm'));for(const b of c.buttons)if(b.rect){assert(b.rect.x+b.rect.width<=MENU_SIZE);assert(b.rect.y+b.rect.height<=MENU_SIZE);}assert.equal(l.undoCount,0);}finally{view.dispose();l.dispose();}
+});
+test('desktop oversize error is persistent, opens the section, shows size and new 6 MiB limit, and can be dismissed',async()=>{
+ const prior=globalThis.document;
+ class Element{children=[];hidden=false;textContent='';open=false;append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=[...nodes];}setAttribute(){}scrollIntoView(){this.scrolled=true;}click(){this.onclick?.();}}
+ globalThis.document={createElement:()=>new Element()};const parent=new Element(),display={references:[]},view={selected:null,editing:false,error:'',sync(){}};
+ try{const {referenceUI}=await import('../work/test-build/reference-ui.mjs');const ui=referenceUI(()=>display,view,parent,()=>false),details=parent.children[0],picker=details.children.find(e=>e.type==='file'),alert=details.children.find(e=>e.className==='reference-import-error');picker.files=[{name:'large-photo.png',size:7*1024**2}];picker.onchange();await settle();assert(!alert.hidden);assert(details.open);assert(alert.scrolled);assert.match(alert.children[0].textContent,/large-photo.png.*7\.00 MiB.*6\.00 MiB/);for(let i=0;i<100;i++)ui.sync();assert(!alert.hidden);assert.match(alert.children[0].textContent,/7\.00 MiB/);alert.children[1].click();ui.sync();assert(alert.hidden);assert.equal(display.references.length,0);assert.equal(REFERENCE_LIMITS.fileBytes,6*1024**2);assert.equal(REFERENCE_LIMITS.totalBytes,12*1024**2);}finally{globalThis.document=prior;}
+});
+
+test('desktop extensions accept PNG/JPG/JPEG case-insensitively and explain missing, unsupported or deceptive suffixes',()=>{
+ for(const name of ['photo.png','PHOTO.PNG','photo.jpg','photo.JPEG'])assert.doesNotThrow(()=>validateReferenceFileName(name));
+ for(const name of ['photo','photo.webp','photo.png.exe'])assert.throws(()=>validateReferenceFileName(name),/Choose a \.png, \.jpg or \.jpeg/);
+ assert.throws(()=>validateReferenceFileName('renamed.jpg','image/png'),/contents are PNG.*Use \.png/);
+ assert.throws(()=>validateReferenceFileName('renamed.png','image/jpeg'),/contents are JPEG.*Use \.jpg or \.jpeg/);
+ assert.doesNotThrow(()=>validateReferenceFileName('valid.jpeg','image/jpeg'));
+ assert.doesNotThrow(()=>validateReferenceFileName('valid.PNG','image/png'));
+});
+test('valid screenshots with generic transfer MIME import using signature-validated MIME',async()=>{
+ const prior=globalThis.document,d=decoder();class Element{children=[];hidden=false;textContent='';append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=[...nodes];}setAttribute(){}scrollIntoView(){}}
+ globalThis.document={createElement:()=>new Element()};try{const {referenceUI}=await import('../work/test-build/reference-ui.mjs'),parent=new Element(),display={references:[]},view={selected:null,editing:false,error:'',sync(){}};referenceUI(()=>display,view,parent,()=>false);const details=parent.children[0],picker=details.children.find(e=>e.type==='file'),alert=details.children.find(e=>e.className==='reference-import-error');picker.files=[{name:'screenshot.png',type:'application/octet-stream',size:png().length,arrayBuffer:async()=>png().buffer}];picker.onchange();await settle();assert.equal(display.references.length,1);assert.equal(display.references[0].mime,'image/png');assert(alert.hidden);assert.equal(d.closed.length,1);}finally{globalThis.document=prior;d.restore();}
+});
+test('8.8 MP cap accepts Quest 3840 × 2160 and the exact boundary, rejects excess pixels and oversized sides',()=>{
+ const bytes=png(),v=new DataView(bytes.buffer);assert(bytes.length<REFERENCE_LIMITS.fileBytes);
+ for(const [width,height]of [[3840,2160],[4000,2200]]){v.setUint32(16,width);v.setUint32(20,height);assert.deepEqual(imageHeader(bytes),{mime:'image/png',width,height});}
+ v.setUint32(16,4000);v.setUint32(20,2201);assert.throws(()=>imageHeader(bytes),/4000 × 2201.*Limit: 4096 pixels per side and 8\.80 megapixels/);
+ v.setUint32(16,4097);v.setUint32(20,100);assert.throws(()=>imageHeader(bytes),/4097 × 100/);
+ assert.equal(REFERENCE_LIMITS.pixels,8_800_000);
 });

@@ -1,3 +1,4 @@
+import {ReferenceTransformTool} from './reference-transform';
 import {ReferenceView} from './reference-view';
 import {referenceUI} from './reference-ui';
 import {saveState,SAVE_LABELS} from './save-status';
@@ -58,6 +59,7 @@ const input=new InputOwnership();
 const stampClick=new StampClickGesture();
 let transformTools:LayerTransformTools|undefined;
 let ghostRotation:ShapeRotationTool|undefined;
+let referenceEditor:ReferenceTransformTool|undefined;
 let viewportTools:ReturnType<typeof createViewportTools>|undefined;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#e9e9e3');scene.add(layers.group,layers.composite.group);
 const shapeGhost=new ShapeGhost(()=>layers.project.layerStack);scene.add(shapeGhost.group);
@@ -104,13 +106,13 @@ function stopSculpt(commit=false) {
   const captured=activePointer;activePointer=null;input.end('sculpt');controls.enabled=input.cameraEnabled;if(desktopStroke.active){if(desktopStroke.phase==='drawing'&&(commit||!desktopStroke.buffered))desktopStroke.end();else if(!commit)desktopStroke.cancel();}else layers.finishStroke();syncStats();lastRebuild=performance.now();
   if(captured!==null&&renderer.domElement.hasPointerCapture(captured))renderer.domElement.releasePointerCapture(captured);
 }
-function stop(){stampClick.cancel();ghostRotation?.finish();transformTools?.finish();stopSculpt();}
+function stop(){referenceEditor?.setMode(null);stampClick.cancel();ghostRotation?.finish();transformTools?.finish();stopSculpt();}
 function updatePointer(e:PointerEvent) {const rect=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);pointerInside=true;}
 transformTools=new LayerTransformTools(camera,renderer.domElement,scene,()=>layers,input,{
-  beforeDrag:stopSculpt,camera:enabled=>{controls.enabled=enabled;},changed:syncTransformUI,error:text=>ui.projectMessage(text,true),busy:()=>loadingProject||ui.modalOpen||xrBlocked()||shapeGhost.model.enabled,
+  beforeDrag:stopSculpt,camera:enabled=>{controls.enabled=enabled;},changed:syncTransformUI,error:text=>ui.projectMessage(text,true),busy:()=>loadingProject||ui.modalOpen||xrBlocked()||shapeGhost.model.enabled||input.referenceEditing,
 });
 ghostRotation=new ShapeRotationTool(camera,renderer.domElement,scene,shapeGhost.model,()=>layers.project.layerStack,input,{
- beforeDrag:()=>{stampClick.cancel();transformTools?.finish();stopSculpt();},camera:enabled=>{controls.enabled=enabled;},changed:()=>{shapeGhost.sync();shapeLibraryUI.refresh();},error:text=>ui.projectMessage(text,true),busy:()=>loadingProject||ui.modalOpen||xrBlocked(),
+ beforeDrag:()=>{stampClick.cancel();transformTools?.finish();stopSculpt();},camera:enabled=>{controls.enabled=enabled;},changed:()=>{shapeGhost.sync();shapeLibraryUI.refresh();},error:text=>ui.projectMessage(text,true),busy:()=>loadingProject||ui.modalOpen||xrBlocked()||input.referenceEditing,
 });
 function toggleGhostRotation(mode:'rotate'|'translate'='rotate'):void {
  if(loadingProject||ui.modalOpen||xrBlocked())return;stop();
@@ -118,7 +120,7 @@ function toggleGhostRotation(mode:'rotate'|'translate'='rotate'):void {
  catch(error){ui.status(message(error));}
 }
 function applyShapeStamp(definition?:ShapeDefinition):void {
-  if(loadingProject||ui.modalOpen||xrBlocked()||!shapeGhost.model.canApply(layers.project.layerStack,loadingProject||ui.modalOpen||xrBlocked())||!input.cameraEnabled)return;
+  if(input.referenceEditing||loadingProject||ui.modalOpen||xrBlocked()||!shapeGhost.model.canApply(layers.project.layerStack,loadingProject||ui.modalOpen||xrBlocked())||!input.cameraEnabled)return;
   stop();try {
     const changed=layers.stampShape(definition??shapeGhost.model.futureStampIntent(layers.project.layerStack).definition),s=layers.lastStampStats!;
     ui.projectMessage(`Stamp ${changed?'applied':'unchanged'} · ${s.changedVoxels.toLocaleString()} voxels · evaluate ${s.evaluationMs.toFixed(1)} ms · mesh ${s.meshingMs.toFixed(1)} ms · total ${s.totalMs.toFixed(1)} ms · ${s.chunks}/${s.totalChunks} chunks`);
@@ -126,7 +128,7 @@ function applyShapeStamp(definition?:ShapeDefinition):void {
   }catch(error){ui.projectMessage(`Stamp failed: ${message(error)}`,true);}
 }
 function placePointerShape():boolean {
-  if(!shapeGhost.model.enabled||shapeGhost.model.manipulating||loadingProject||ui.modalOpen||xrBlocked()||!input.cameraEnabled||shapeGhost.model.availability(layers.project.layerStack))return false;
+  if(input.referenceEditing||!shapeGhost.model.enabled||shapeGhost.model.manipulating||loadingProject||ui.modalOpen||xrBlocked()||!input.cameraEnabled||shapeGhost.model.availability(layers.project.layerStack))return false;
   if(!shapeGhost.model.followPointer)return true;
   raycaster.setFromCamera(pointer,camera);
   const meshes:THREE.Object3D[]=[];(booleanPreview?layers.composite.group:layers.group).traverseVisible(object=>{if(object instanceof THREE.Mesh)meshes.push(object);});
@@ -154,6 +156,7 @@ syncViewportTools();
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());renderer.domElement.addEventListener('pointermove',updatePointer);
 renderer.domElement.addEventListener('pointerleave',()=>{pointerInside=false;cursor.visible=false;});
 renderer.domElement.addEventListener('pointerdown',e=>{
+  if(input.referenceEditing)return;
   if(shapeGhost.model.enabled){
     if(shapeGhost.model.manipulating){stampClick.cancel();return;}
     if(e.button!==0){stampClick.cancel();return;}
@@ -165,6 +168,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   catch(error){desktopStroke.cancel();input.end('sculpt');controls.enabled=input.cameraEnabled;ui.status(message(error));}
 });
 renderer.domElement.addEventListener('pointerup',event=>{
+  if(input.referenceEditing){stampClick.cancel();return;}
   const rect=renderer.domElement.getBoundingClientRect();if(event.buttons!==0||event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)stampClick.cancel();
   const definition=stampClick.complete(event.pointerId,event.button,event.clientX,event.clientY,layers.project.activeLayerId);
   if(definition)applyShapeStamp(definition);if(activePointer!==null)stopSculpt(true);else if(!desktopStroke.active)stop();
@@ -181,6 +185,7 @@ window.addEventListener('keydown',event=>{
   if(ui.modalOpen||xrBlocked())return;
   if(event.key==='Escape'&&shapeGhost.model.enabled&&!loadingProject){stop();shapeGhost.clear();shapeLibraryUI.refresh();transformTools?.sync();ui.status('Ghost hidden — sculpting available');return;}
   if(event.target instanceof Element&&event.target.closest('input:not([type="range"]),textarea,select,[contenteditable="true"]'))return;
+  if(input.referenceEditing&&!event.metaKey&&!event.ctrlKey&&!event.altKey){const mode=({w:'translate',e:'rotate',r:'scale'} as const)[event.key.toLowerCase() as 'w'|'e'|'r'];if(event.key==='Escape'||mode){event.preventDefault();referenceEditor?.setMode(event.key==='Escape'?null:mode);return;}}
   if(!event.metaKey&&!event.ctrlKey&&!event.altKey&&event.key.toLowerCase()==='i'&&!event.repeat){event.preventDefault();cycleRenderStyle();return;}
   if(!event.metaKey&&!event.ctrlKey&&!event.altKey&&event.key.toLowerCase()==='g'&&!event.repeat){event.preventDefault();toggleGhostRotation('translate');return;}
   if(!event.metaKey&&!event.ctrlKey&&!event.altKey&&event.key.toLowerCase()==='t'&&!event.repeat){event.preventDefault();toggleGhostRotation();return;}
@@ -369,7 +374,8 @@ const desktopPathGeometry=new THREE.BufferGeometry(),desktopPathMaterial=new THR
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
 const references=new ReferenceView(()=>display.references,xrRig.workspaceRoot,xrRig.turntable.group);
 window.addEventListener('pagehide',()=>references.clear());
-const referencesUI=referenceUI(()=>display,references,precisionPanel.parentElement!,()=>loadingProject||ui.modalOpen||xrBlocked());
+referenceEditor=new ReferenceTransformTool(camera,renderer.domElement,scene,references,input,{beforeDrag:()=>{stampClick.cancel();ghostRotation?.finish();transformTools?.finish();stopSculpt();},camera:enabled=>controls.enabled=enabled,changed:()=>{cursor.visible=false;transformTools?.sync();ghostRotation?.sync();},busy:()=>loadingProject||ui.modalOpen||xrBlocked(),error:text=>ui.projectMessage(text,true)});
+const referencesUI=referenceUI(()=>display,references,precisionPanel.parentElement!,()=>loadingProject||ui.modalOpen||xrBlocked(),referenceEditor);
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
@@ -394,7 +400,7 @@ const recoveryPanel=document.getElementById('recovery-slot')!;
 recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS</summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection"></select><p>Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh.</p><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></details><details><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
 const recoveryStatus=document.getElementById('recovery-status')!,recoveryAvailable=document.getElementById('recovery-available')!,recoverySelect=document.querySelector<HTMLSelectElement>('#recovery-selection')!,autosaveEnabled=document.querySelector<HTMLInputElement>('#autosave-enabled')!,recoveryConfirm=document.getElementById('recovery-confirm')!;
 let recoveryAction:'restore'|'discard'|null=null,recoveryListKey='',recoveryChoice='',recoveryWasBlocked=false,restoringRecovery=false;
-const recoveryReady=()=>!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active&&!xrExperience?.interaction?.active;
+const recoveryReady=()=>!input.transforming&&!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active&&!xrExperience?.interaction?.active;
 const recoveryKey=()=>JSON.stringify([layers.recoveryKey(),ui.settings,display.snapshot(layers.project.id,layers.project.layerStack.layers),editorTools?.snapshotPreferences()],(key,value)=>key==='bytes'&&value instanceof Uint8Array?value.byteLength:value);
 function updateSaveIndicator():void{
  const button=document.querySelector<HTMLButtonElement>('#header-save')!;
@@ -432,7 +438,7 @@ entryRecoveryDialog.addEventListener('close',()=>{
 function interruptSession(_reason:string):void{recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
 const lifecycle=new AppLifecycle(document,window,interruptSession,()=>{previous=performance.now();pointerInside=false;void recovery?.tick(Date.now(),true);});
 const recoveryTimer=setInterval(()=>{if(document.visibilityState==='visible'){const stats=stabilityMetrics.sample(layers,Date.now()),heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;stabilityText=`History ${(stats.historyBytes/1048576).toFixed(1)} MiB · recovery ${!recovery?.enabled?'off':recovery?.blocked?'choice needed':recovery?.warning?'warning':recovery?.active?'working':recovery?.lastSuccess?'saved':'waiting'} ${(recovery?.lastMs??0).toFixed(0)} ms`;document.getElementById('stability-status')!.textContent=`${stats.chunks} allocated / ${stats.meshChunks} mesh chunks · ${stats.vertices.toLocaleString()} vertices / ${stats.triangles.toLocaleString()} triangles. Grid ${(stats.voxelBytes/1048576).toFixed(1)} MiB · history ${(stats.historyBytes/1048576).toFixed(1)} MiB · derived Boolean ${(stats.compositeBytes/1048576).toFixed(1)} MiB. Pending Move ${stats.pendingMoveJobs} / Bake ${stats.pendingBakeJobs} / export ${Number(!!exportAbort)} / recovery ${Number(!!recovery?.active)}. Checkpoint ${((recovery?.lastBytes??0)/1048576).toFixed(1)} MiB / ${(recovery?.lastMs??0).toFixed(0)} ms, snapshot copy ${(recovery?.lastCopyMs??0).toFixed(1)} ms. Tracked ${(stats.trackedBytes/1048576).toFixed(1)} MiB (excludes JS/GPU overhead) · JS heap ${heap===undefined?'unavailable':(heap/1048576).toFixed(1)+' MiB'} · renderer ${renderer.info.memory.geometries} geometries / ${renderer.info.memory.textures} textures.${stats.pressure?' Resource pressure: save manually before further large edits.':''}`;void recovery?.tick();updateRecoveryUI();}},500);
-import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);references.dispose();lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
+import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);referenceEditor?.dispose();references.dispose();lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
 function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w=ui.viewport.clientWidth,h=ui.viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();
@@ -447,7 +453,7 @@ function pollComposite(now:number):void{
   }
 }
 renderer.setAnimationLoop((now,frame)=>{
-  referencesUI.sync();
+  referenceEditor?.sync();referencesUI.sync();
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
     desktopMirrorPlane.group.visible=false;desktopFieldCursor.hide();desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();

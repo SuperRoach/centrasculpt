@@ -1,8 +1,14 @@
 /** Bounded compressed source assets. Never geometry, history or controller ray children. */
-export const REFERENCE_LIMITS={count:6,fileBytes:4*1024**2,totalBytes:12*1024**2,dimension:4096,pixels:4*1024**2};
+export const REFERENCE_LIMITS={count:6,fileBytes:6*1024**2,totalBytes:12*1024**2,dimension:4096,pixels:8_800_000};
 export type ReferenceImage={id:string;name:string;bytes:Uint8Array;mime:'image/png'|'image/jpeg';width:number;height:number;space:'workspace'|'sculpture';position:[number,number,number];rotation:[number,number,number];size:number;opacity:number;visible:boolean;locked:boolean;twoSided:boolean;flipX?:boolean};
+/** Desktop filenames are checked separately from native reference display names. */
+export function validateReferenceFileName(name:string,mime?:ReferenceImage['mime']):void{
+ const extension=name.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
+ if(!extension||!['png','jpg','jpeg'].includes(extension))throw new Error(`“${name}” ${extension?`has an unsupported .${extension} extension`:'has no image file extension'}. Choose a .png, .jpg or .jpeg file.`);
+ if(mime&&(extension==='png'?'image/png':'image/jpeg')!==mime)throw new Error(`“${name}” has a .${extension} extension, but its contents are ${mime==='image/png'?'PNG':'JPEG'}. Use ${mime==='image/png'?'.png':'.jpg or .jpeg'} for this image.`);
+}
 export function imageHeader(bytes:Uint8Array):{mime:ReferenceImage['mime'];width:number;height:number}{
- if(bytes.length<24||bytes.length>REFERENCE_LIMITS.fileBytes)throw new Error('Reference must be a PNG/JPEG up to 4 MiB.');
+ if(bytes.length<24||bytes.length>REFERENCE_LIMITS.fileBytes)throw new Error('Reference must be a PNG/JPEG up to 6 MiB.');
  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let width=0,height=0,mime:ReferenceImage['mime'];
  if([137,80,78,71,13,10,26,10].every((n,i)=>bytes[i]===n)){
   if(v.getUint32(8)!==13||v.getUint32(12)!==0x49484452)throw new Error('Invalid PNG header.');
@@ -16,7 +22,8 @@ export function imageHeader(bytes:Uint8Array):{mime:ReferenceImage['mime'];width
    if([0xc0,0xc1,0xc2].includes(marker)){if(length<8)throw new Error('Invalid JPEG frame.');height=v.getUint16(p+3);width=v.getUint16(p+5);if(p+length+4<=bytes.length){let q=p+length;while(q+4<=bytes.length&&bytes[q]===255){const m=bytes[q+1];if(m===0xda||m===0xd9)break;const n=v.getUint16(q+2);if([0xc0,0xc1,0xc2].includes(m)||n<2||q+2+n>bytes.length)throw new Error('Invalid or repeated JPEG frame.');q+=2+n;}}break;}p+=length;
   }
  }else throw new Error('Only PNG and JPEG image signatures are supported.');
- if(!width||!height||width>REFERENCE_LIMITS.dimension||height>REFERENCE_LIMITS.dimension||width*height>REFERENCE_LIMITS.pixels)throw new Error('Reference exceeds 4096 per side or 4 megapixels.');
+ if(!width||!height)throw new Error('Image has invalid zero dimensions.');
+ if(width>REFERENCE_LIMITS.dimension||height>REFERENCE_LIMITS.dimension||width*height>REFERENCE_LIMITS.pixels)throw new Error(`Image is ${width} × ${height} pixels (${(width*height/1000000).toFixed(2)} megapixels). Limit: ${REFERENCE_LIMITS.dimension} pixels per side and ${(REFERENCE_LIMITS.pixels/1000000).toFixed(2)} megapixels. Resize the image before importing.`);
  return {mime,width,height};
 }
 export function validateReferences(value:unknown):ReferenceImage[]{

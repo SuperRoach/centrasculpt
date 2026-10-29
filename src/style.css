@@ -90,3 +90,24 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 #app details[open] > summary::before { transform: translateY(-2px) rotate(45deg); }
 #app #shape-library summary span { float: none; margin-left: auto; }
 #app summary:focus-visible { outline: 2px solid #80966d; outline-offset: 4px; border-radius: 3px; }
+
+/* Reference import errors stay visible until dismissed or a successful import. */
+.reference-import-error:not([hidden]) { margin: 12px 0; padding: 12px; border: 2px solid #a33427; border-radius: 10px; background: #fff1ed; color: #772519; overflow-wrap: anywhere; }
+.precision-settings .reference-import-error p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; font-weight: 600; }
+
+.reference-card { min-width: 0; margin: 10px 0; padding: 12px; border: 1px solid #cbd0c3; border-radius: 12px; }
+.reference-card.is-selected { border-color: #476b5b; background: #f5f8f0; }
+.reference-card-header { display:flex; min-width:0; }
+.precision-settings .reference-select { margin:0; width:100%; padding:0; border:0; background:none; text-align:left; font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.precision-settings .reference-meta { margin:4px 0 10px; font-size:11px; color:#586456; }
+.reference-actions, .reference-edit-toolbar { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
+.precision-settings .reference-card button { margin-left:0; }
+.reference-edit-toolbar button { flex:1; padding:7px 5px; }
+.reference-card button[aria-pressed="true"] { background:#dcebdc; border-color:#426b57; }
+.reference-numbers { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.reference-xyz { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+.reference-card label { display:block; min-width:0; font-size:11px; margin:8px 0; }
+.reference-card input, .reference-card select { box-sizing:border-box; width:100%; min-width:0; margin-top:4px; padding:6px; }
+.reference-card details { margin-top:12px; }
+.reference-card details summary { letter-spacing:0; font-size:12px; }
+.precision-settings .reference-hint { font-size:11px; color:#52604e; }
