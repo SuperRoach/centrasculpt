@@ -1,3 +1,4 @@
+import type {ReferenceView} from './reference-view';
 import {XRHaptics} from './xr-haptics';
 import type {XRAlternateTool} from './xr-alternate-tool';
 import {BoxGeometry,BufferGeometry,Float32BufferAttribute,Group,Line,LineBasicMaterial,Mesh,MeshBasicMaterial,Raycaster,RingGeometry,DoubleSide,SphereGeometry,Vector3} from 'three';
@@ -27,6 +28,7 @@ type Slot={feedback:ControllerFeedback;halo:Mesh<RingGeometry,MeshBasicMaterial>
 /** Three owns tracking matrices. This bridge only polls input and displays debug visuals in tracking space. */
 export class XRControllers {
  readonly haptics=new XRHaptics();
+ reportToolIssue(event:'cancel'|'error'):void{if(this.session?.visibilityState==='visible')this.haptics.report(this.input.byHand(this.roles.dominant),event);}
  readonly input:XRControllerInput;
  readonly shortcuts:XRSupportShortcuts;
  readonly grab?:WorkspaceNavigation;
@@ -46,11 +48,11 @@ export class XRControllers {
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();private readonly hits:Intersection<Object3D>[]=[];
  private readonly event=(event:XRInputSourceEvent)=>{if(this.session?.visibilityState==='visible')this.input.semantic(event.inputSource,event.type.startsWith('select')?'trigger':'grip',event.type.endsWith('start'));};
  private readonly visibility=()=>{if(this.session?.visibilityState!=='visible')this.suspend();};
- suspend():void{this.restoreMenuModels();this.shortcuts.reset();this.options.menus?.close();this.options.stroke?.cancel();this.options.alternate?.cancel();this.options.sizing?.reset();this.options.selection?.cancel();this.input.suspend();this.grab?.cancel();this.layerGrab?.cancel();this.root.visible=false;}
+ suspend():void{this.restoreMenuModels();this.shortcuts.reset();this.options.menus?.close();this.options.stroke?.cancel();this.options.alternate?.cancel();this.options.sizing?.reset();this.options.selection?.cancel();this.input.suspend();this.grab?.cancel();this.layerGrab?.cancel();this.haptics.clearIssues();this.root.visible=false;}
  private readonly ended=()=>this.stop();
  inputMs=0;private resetNoticeUntil=0;
- constructor(manager:Pick<WebXRManager,'getController'|'getControllerGrip'>,private readonly root:Group,readonly roles:XRControllerRoles,private readonly panel?:XRDiagnostics,private readonly changed:()=>void=()=>{},private readonly options:{alternate?:XRAlternateTool;selection?:XRLayerSelection;sizing?:XRAnalogToolControl;stroke?:XRStrokeInteraction;toolMode?:()=>EditorTool;menus?:XRMenuInteraction;shortcuts?:XRShortcutOptions;presentationStep?:(time:number,blocked:boolean,visible:boolean)=>void;workspace?:Object3D;layers?:()=>IndependentLayers;models?:ControllerModels;resetView?:()=>boolean;setPerformance?:(enabled:boolean)=>void}={}){
-  this.input=new XRControllerInput(roles);this.shortcuts=new XRSupportShortcuts(options.shortcuts);if(options.layers)this.layerGrab=new XRLayerGrab(options.layers);if(options.workspace)this.grab=new WorkspaceNavigation(options.workspace);root.visible=false;
+ constructor(manager:Pick<WebXRManager,'getController'|'getControllerGrip'>,private readonly root:Group,readonly roles:XRControllerRoles,private readonly panel?:XRDiagnostics,private readonly changed:()=>void=()=>{},private readonly options:{references?:ReferenceView;alternate?:XRAlternateTool;selection?:XRLayerSelection;sizing?:XRAnalogToolControl;stroke?:XRStrokeInteraction;toolMode?:()=>EditorTool;menus?:XRMenuInteraction;shortcuts?:XRShortcutOptions;presentationStep?:(time:number,blocked:boolean,visible:boolean)=>void;workspace?:Object3D;layers?:()=>IndependentLayers;models?:ControllerModels;resetView?:()=>boolean;setPerformance?:(enabled:boolean)=>void}={}){
+  this.input=new XRControllerInput(roles);this.shortcuts=new XRSupportShortcuts(options.shortcuts);if(options.layers)this.layerGrab=new XRLayerGrab(options.layers,event=>this.reportToolIssue(event));if(options.workspace)this.grab=new WorkspaceNavigation(options.workspace);root.visible=false;
   const bodyGeometry=new BoxGeometry(.035,.075,.045),indicatorGeometry=new SphereGeometry(.008,8,6),ringGeometry=new RingGeometry(.03,.032,24),lineGeometry=new BufferGeometry();lineGeometry.setAttribute('position',new Float32BufferAttribute([0,0,0,0,0,-1.5],3));this.resources.push(bodyGeometry,indicatorGeometry,ringGeometry,lineGeometry);
   const slots:Slot[]=[];
   for(let index=0;index<2;index++){
@@ -78,6 +80,7 @@ export class XRControllers {
   const start=performance.now(),active=this.session?.visibilityState==='visible';
   for(const state of this.input.states){const slot=this.slots[state.slot];this.input.setTracking(state.slot,!!active&&state.connected&&state.source?.targetRayMode==='tracked-pointer'&&!state.source.hand&&slot.ray.visible,!!active&&state.connected&&state.source?.targetRayMode==='tracked-pointer'&&!state.source.hand&&slot.grip.visible);}
   this.input.update(!!active);this.root.visible=!!active;
+  const hapticTool=this.input.byHand(this.roles.dominant);if(hapticTool&&(hapticTool.buttons.trigger.justPressed||hapticTool.buttons.grip.justPressed))this.haptics.beginGesture(hapticTool);
   if(this.input.states.some(s=>(s.role==='support'||this.options.toolMode?.()!=='stamp')&&(s.buttons.grip.pressed||s.buttons.grip.rawValue>=.45)))this.options.stroke?.cancel();
   const supportState=this.input.byHand(this.roles.support);
   if(this.options.alternate?.active&&(!supportState?.tracked||!supportState.gripTracked)){this.options.stroke?.cancel();this.options.alternate.cancel();this.input.suspend();}
@@ -134,23 +137,25 @@ export class XRControllers {
    }
   }
   const strokeTool=this.input.byHand(this.roles.dominant);if(strokeTool){this.slots[strokeTool.slot].ray.updateWorldMatrix(true,false);this.slots[strokeTool.slot].grip.updateWorldMatrix(true,false);}
+  const referenceOwned=this.options.references?.step(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.options.stroke?.active&&!this.grab?.active&&!this.layerGrab?.active)??false;
   const priorMode=this.options.toolMode?.()??'clay',wasDrawing=!!this.options.stroke?.active;
-  this.options.alternate?.update(this.input.byHand(this.roles.support),strokeTool,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.menuGripBlocked,wasDrawing);
+  this.options.alternate?.update(this.input.byHand(this.roles.support),strokeTool,!!active&&!referenceOwned&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.menuGripBlocked,wasDrawing);
   this.lastTool=this.options.toolMode?.()??'clay';
   if(priorMode!==this.lastTool)this.haptics.pulse(strokeTool,'tool',time);
-  this.options.sizing?.update(strokeTool,this.input.states,time,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active,!!this.options.stroke?.active,!!this.options.alternate?.active,this.options.stroke?.liveSizing);
-  this.options.presentationStep?.(time,anyGrip||!!this.grab?.active||!!this.layerGrab?.active||!!this.shortcuts.menu,!!active&&!!strokeTool?.tracked&&!!strokeTool.gripTracked);
-  this.options.stroke?.update(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,time,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active&&!this.menuGripBlocked&&!this.input.states.some(s=>(s.role==='support'||this.options.toolMode?.()!=='stamp')&&(s.buttons.grip.pressed||s.buttons.grip.rawValue>=.45)),strokeTool?this.slots[strokeTool.slot].grip.matrixWorld:undefined);
-  if(wasDrawing!==!!this.options.stroke?.active&&(this.options.toolMode?.()==='clay'||this.options.toolMode?.()==='smooth'))this.haptics.pulse(strokeTool,this.options.stroke?.active?'stroke-start':'stroke-end',time);
-  if(this.gesture!=='idle'&&this.gesture!==this.lastHapticGesture)this.haptics.pulse(this.input.byHand(this.gesture==='workspace'?this.roles.support:this.roles.dominant),'grab',time);
+  this.options.sizing?.update(strokeTool,this.input.states,time,!!active&&!referenceOwned&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active,!!this.options.stroke?.active,!!this.options.alternate?.active,this.options.stroke?.liveSizing);
+  this.options.presentationStep?.(time,referenceOwned||anyGrip||!!this.grab?.active||!!this.layerGrab?.active||!!this.shortcuts.menu,!!active&&!!strokeTool?.tracked&&!!strokeTool.gripTracked);
+  this.options.stroke?.update(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,time,!!active&&!referenceOwned&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active&&!this.menuGripBlocked&&!this.input.states.some(s=>(s.role==='support'||this.options.toolMode?.()!=='stamp')&&(s.buttons.grip.pressed||s.buttons.grip.rawValue>=.45)),strokeTool?this.slots[strokeTool.slot].grip.matrixWorld:undefined);
+  const issueOwned=this.haptics.flush(strokeTool,time);
+  if(!issueOwned&&wasDrawing!==!!this.options.stroke?.active&&(this.options.toolMode?.()==='clay'||this.options.toolMode?.()==='smooth'))this.haptics.pulse(strokeTool,this.options.stroke?.active?'stroke-start':'stroke-end',time);
+  if(!issueOwned&&this.gesture!=='idle'&&this.gesture!==this.lastHapticGesture)this.haptics.pulse(this.input.byHand(this.gesture==='workspace'?this.roles.support:this.roles.dominant),'grab',time);
   this.lastHapticGesture=this.gesture;
-  const selectionDistance=this.options.selection?.update(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,time,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active&&!anyGrip&&!this.menuGripBlocked,!!active)??null;
+  const selectionDistance=this.options.selection?.update(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,time,!!active&&!referenceOwned&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active&&!anyGrip&&!this.menuGripBlocked,!!active)??null;
   if(selectedBefore!==this.options.layers?.().project.activeLayerId)this.haptics.pulse(strokeTool,'selection',time);
   if(mode==='transform'&&strokeTool&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!this.grab?.active&&!this.layerGrab?.active&&!anyGrip&&strokeTool.tracked){const slot=this.slots[strokeTool.slot];slot.rayVisual.visible=true;slot.line.scale.z=(selectionDistance??1.5)/1.5;slot.line.material.color.set(selectionDistance!==null?'#b4d1ef':'#79cde5');}
   if(this.panel){this.panel.feedback=this.resetNoticeUntil>time?'Workspace view reset':this.options.sizing?.feedback||this.options.alternate?.feedback||this.options.selection?.feedback||this.options.stroke?.feedback||(time<this.shortcuts.until?this.shortcuts.message:'')||feedbackMessage||`Tool: ${this.options.toolMode?.()??mode} · Support grip: workspace · Both: rotate/zoom`;this.panel.interaction=this.options.stroke?.active?'sculpting':this.shortcuts.menu?'menu':this.layerGrab?.active?'layer-grab':this.grab?.state??'idle';this.panel.demand=demand||!!this.options.sizing?.feedback||!!this.shortcuts.menu||time<this.shortcuts.until;this.panel.support=this.roles.support;}
   this.panel?.paint(time,this.input.states,this.inputMs);this.inputMs=performance.now()-start;
  }
- stop():void{this.restoreMenuModels();this.shortcuts.reset();this.options.menus?.close();this.options.stroke?.cancel();this.options.alternate?.cancel();this.options.sizing?.reset();this.options.selection?.cancel();this.gesture='idle';this.lastHapticGesture='idle';this.haptics.reset();this.menuGripBlocked=false;this.resetNoticeUntil=0;this.unbind();this.grab?.cancel();this.layerGrab?.cancel();this.options.models?.stop();this.input.reset();this.root.visible=false;this.panel?.stop();for(const slot of this.slots){slot.feedback.reset();slot.halo.visible=false;slot.rayVisual.removeFromParent();slot.gripVisual.removeFromParent();slot.rayVisual.visible=slot.gripVisual.visible=false;}}
+ stop():void{this.options.references?.cancel();this.restoreMenuModels();this.shortcuts.reset();this.options.menus?.close();this.options.stroke?.cancel();this.options.alternate?.cancel();this.options.sizing?.reset();this.options.selection?.cancel();this.gesture='idle';this.lastHapticGesture='idle';this.haptics.reset();this.menuGripBlocked=false;this.resetNoticeUntil=0;this.unbind();this.grab?.cancel();this.layerGrab?.cancel();this.options.models?.stop();this.input.reset();this.root.visible=false;this.panel?.stop();for(const slot of this.slots){slot.feedback.reset();slot.halo.visible=false;slot.rayVisual.removeFromParent();slot.gripVisual.removeFromParent();slot.rayVisual.visible=slot.gripVisual.visible=false;}}
  describe():string{return this.input.states.filter(s=>s.connected).map(s=>`${s.handedness}/${s.role}: ${s.tracked?'tracked':'pose lost'} · ${s.mapping} · model ${this.options.models?.entries[s.slot].status??'simple'} ${this.options.models?.entries[s.slot].asset?.profile??''} · trigger ${s.buttons.trigger.value.toFixed(2)} · grip ${s.buttons.grip.value.toFixed(2)} · stick ${s.stick.x.toFixed(2)},${s.stick.y.toFixed(2)}`).join(' | ')||'No connected controllers. Editing remains disabled.';}
  dispose():void{this.stop();for(const slot of this.slots){slot.ray.removeEventListener('connected',slot.connected);slot.ray.removeEventListener('disconnected',slot.disconnected);this.root.remove(slot.ray,slot.grip);}for(const resource of this.resources)resource.dispose();this.panel?.dispose();this.options.models?.dispose();}
 }

@@ -28,7 +28,7 @@ export class XRMoveTool implements XRStrokeInteraction {
  private readonly filteredDisplacement=new Vector3();private readonly worldScale=new Vector3();
  private readonly inverseStartRotation=new Quaternion();private readonly startRotation=new Quaternion();private readonly wristRotation=new Quaternion();private readonly poseRotation=new Matrix4();
  private readonly inverse=new Matrix4();private readonly anchor=new Matrix4();private readonly markerMatrix=new Matrix4();private readonly parentInverse=new Matrix4();
- constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly pulse:(event:'grab'|'release')=>void=()=>{},private readonly committed:()=>void=()=>{}){
+ constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly pulse:(event:'grab'|'release')=>void=()=>{},private readonly committed:()=>void=()=>{},private readonly issue:(event:'cancel'|'error')=>void=()=>{}){
   this.influence=new XRBrushPreview(root);this.influence.group.name='Move influence · not project data';this.influence.mesh.visible=false;
   const points:number[]=[];for(let plane=0;plane<3;plane++)for(let i=0;i<64;i++)for(const t of [i/64*2*Math.PI,(i+1)/64*2*Math.PI]){const p=[0,0,0];p[(plane+1)%3]=Math.cos(t);p[(plane+2)%3]=Math.sin(t);points.push(...p);}
   const geometry=new BufferGeometry();geometry.setAttribute('position',new Float32BufferAttribute(points,3));
@@ -39,9 +39,9 @@ export class XRMoveTool implements XRStrokeInteraction {
  get active():boolean{return this.grabbing;}
  get notifying():boolean{return this.until>this.currentTime;}
  private release():void{this.preview.restore();this.tools.endPreview(this);this.capturedLayers?.endPreview(this);this.grabbing=false;this.capturedLayers=null;this.runtime=null;this.capture=null;this.owner=0;this.influence.hide();this.marker.visible=false;}
- cancel():void{const pending=!!this.commitAbort,notice=this.notifying&&this.feedback.startsWith('Move cancelled');this.commitGeneration++;this.commitAbort?.abort();this.commitAbort=null;this.release();this.preview.cancel();this.rayChunks.length=0;this.hits.length=0;this.armed=false;if(pending){this.feedback='Move cancelled · source kept · release trigger to rearm';this.until=this.currentTime+1600;}else if(!notice){this.feedback='';this.until=0;}this.hoverChunk=null;this.targetState='none';}
+ cancel():void{if(this.active||this.commitAbort)this.issue('cancel');const pending=!!this.commitAbort,notice=this.notifying&&this.feedback.startsWith('Move cancelled');this.commitGeneration++;this.commitAbort?.abort();this.commitAbort=null;this.release();this.preview.cancel();this.rayChunks.length=0;this.hits.length=0;this.armed=false;if(pending){this.feedback='Move cancelled · source kept · release trigger to rearm';this.until=this.currentTime+1600;}else if(!notice){this.feedback='';this.until=0;}this.hoverChunk=null;this.targetState='none';}
  update(tool:XRControllerState|undefined,aim:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
-  const l=this.layers(),start=performance.now();if(Number.isFinite(time))this.currentTime=time;try{this.step(l,tool,aim,time,enabled,gripPose);}catch(error){this.cancel();this.feedback=error instanceof Error?error.message:'Move preview cancelled';this.until=time+1200;}finally{this.lastMs=performance.now()-start;if(l.metrics.enabled)l.metrics.movePreview.add(this.lastMs);}
+  const l=this.layers(),start=performance.now();if(Number.isFinite(time))this.currentTime=time;try{this.step(l,tool,aim,time,enabled,gripPose);}catch(error){this.cancel();this.issue('error');this.feedback=error instanceof Error?error.message:'Move preview cancelled';this.until=time+1200;}finally{this.lastMs=performance.now()-start;if(l.metrics.enabled)l.metrics.movePreview.add(this.lastMs);}
  }
  private step(l:IndependentLayers,tool:XRControllerState|undefined,aim:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const pose=gripPose??aim;
@@ -104,7 +104,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   const guard=()=>{if(!owned()||!this.runtime)return false;const surface=this.runtime.surface.group;surface.updateWorldMatrix(true,false);return surface.matrixWorld.elements.every((v,i)=>Math.abs(v-capture.worldMatrix[i])<=1e-9);};
   void l.commitMove(this,this.preview.field,abort.signal,p=>{if(guard())this.commitMessage=`Move · ${p.stage} ${Math.round(p.completed/Math.max(1,p.total)*100)}% · preview held`;},()=>{if(!guard())throw new Error('Move cancelled.');this.preview.restore();},guard).then(committed=>{
    if(!owned())return;this.commitAbort=null;this.release();this.armed=false;this.feedback=committed?'Move committed · ready to edit · one Undo action':'Move unchanged · no undo action';this.until=this.currentTime+1800;if(committed){this.pulse('release');this.committed();}
-  }).catch(error=>{if(!owned())return;this.commitAbort=null;this.release();this.preview.cancel();this.armed=false;this.feedback=`Move failed · source kept · ${error instanceof Error?error.message:'retry with a smaller influence'}`;this.until=this.currentTime+2500;});
+  }).catch(error=>{if(!owned())return;this.issue('error');this.commitAbort=null;this.release();this.preview.cancel();this.armed=false;this.feedback=`Move failed · source kept · ${error instanceof Error?error.message:'retry with a smaller influence'}`;this.until=this.currentTime+2500;});
  }
  private paint(surface:Object3D,center:Vector3,radius:number,held:boolean):void{
   this.influence.show(surface,center,radius);this.influence.mesh.material.color.set(held?'#99cfff':'#aec4de');const color=this.targetState==='locked'?'#e8b174':held?'#99cfff':'#aec4de';this.boundary.material.color.set(color);this.marker.material.color.set(color);

@@ -1,0 +1,1 @@
+{ "hostOnly": true, "updates": 900, "totalCPU": 0.39999999990686774, "p95": 0, "max": 0.09999999997671694, "sameTextures": true, "undo": 0, "excludes": "renderer, headset, decoding" }

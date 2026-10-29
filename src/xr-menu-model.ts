@@ -1,7 +1,8 @@
+import {MOVE_VARIANTS,type MoveVariant} from './tool-preferences';
 import {XRWorldMenu,type XRWorldMenuPort} from './xr-world-menu';
 import {MAX_PROJECT_LAYERS} from './project';
 import {volumeLabel} from './volume-store';
-import {EDITOR_TOOLS} from './editor-tool-state';
+import {EDITOR_TOOLS,VR_WHEEL_TOOLS,MOVE_VARIANT_LABELS} from './editor-tool-state';
 import type {EditorToolState,EditorTool} from './editor-tool-state';
 import type {XRMenuRequest} from './xr-support-shortcuts';
 export type MenuRect={x:number;y:number;width:number;height:number};
@@ -15,9 +16,10 @@ export class XRMenuModel {
  request:XRMenuRequest|null=null;page:XRMenuRequest='tool-wheel';optionPage=0;hover:string|null=null;feedback='';
  private merge:{project:unknown;id:string;other?:string;resolution:number}|null=null;private mergeAbort:AbortController|null=null;
  private resetTarget:{project:unknown;id:string}|null=null;
+ private moveVariants=false;
  readonly world:XRWorldMenu;
  constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);}
- setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.world.section='home';this.hover=null;this.feedback='';}
+ setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
  content():MenuContent{const content=this.buildContent();content.buttons.push({id:'ui-scale',label:`UI · ${this.tools.port.layers().display.vrUiScale==='large'?'Large':'Default'}`,rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
  private buildContent():MenuContent{
   if(this.page==='world')return this.world.content();
@@ -29,13 +31,18 @@ export class XRMenuModel {
    else {buttons.push({id:'merge-resolution',label:`Output ${state.resolution}³ · tap to change`,rect:{x:40,y:440,width:1072,height:100},disabled:running},{id:'confirm-merge',label:'Merge these two layers',rect:{x:40,y:640,width:1072,height:100},disabled:this.tools.busy||running});}
    return {title:running?'MERGING…':state.other?'MERGE TWO LAYERS?':'CHOOSE LAYER TO MERGE',subtitle:l.project.layerStack.get(state.id).name,buttons,labels:state.other?[{text:l.project.layerStack.get(state.other).name,x:52,y:310},{text:'Union · originals kept hidden · one Undo',x:52,y:370},{text:'Lower resolution can lose fine detail',x:52,y:590}]:[],footer:this.feedback||'Hold Support stick · release cancels'};
   }
-  const buttons:MenuButton[]=[],labels:MenuContent['labels']=[],title=this.page==='tool-wheel'?'TOOL WHEEL':this.page==='layers'?'LAYERS':`${EDITOR_TOOLS.find(t=>t.id===this.tools.active)?.label.toUpperCase()} OPTIONS`;
+  if(this.page==='tool-options'&&this.tools.moveFamily&&this.moveVariants){
+   const buttons:MenuButton[]=[{id:'tools',label:'‹ Tools',rect:{x:40,y:140,width:240,height:74}},{id:'variant-settings',label:'Variant settings',detail:this.tools.contextLabel,disabled:this.tools.busy,rect:{x:40,y:844,width:1072,height:136}}];
+   MOVE_VARIANTS.forEach((variant,i)=>buttons.push({id:`move-variant:${variant}`,label:MOVE_VARIANT_LABELS[variant],selected:this.tools.lastMoveVariant===variant,disabled:this.tools.busy,rect:{x:40+(i%2)*548,y:244+Math.floor(i/2)*180,width:524,height:156}}));
+   return {title:'MOVE VARIANTS',subtitle:`Current · ${this.tools.contextLabel}`,buttons,labels:[],footer:this.feedback||'Tool trigger selects · release Support stick to close'};
+  }
+  const buttons:MenuButton[]=[],labels:MenuContent['labels']=[],title=this.page==='tool-wheel'?'TOOL WHEEL':this.page==='layers'?'LAYERS':this.tools.moveFamily?this.tools.contextLabel.toUpperCase():`${this.tools.contextLabel.toUpperCase()} OPTIONS`;
   const add=(id:string,label:string,x:number,y:number,width:number,height:number,selected=false,disabled=false,detail?:string)=>buttons.push({id,label,rect:{x,y,width,height},selected,disabled,detail});
   if(this.page==='tool-wheel'){
    add('world','World Settings',760,140,352,74,false,this.tools.busy);
    add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',40,140,300,74,!!this.tools.path.snap,this.tools.busy);
-   EDITOR_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.detail,sector:i,selected:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
-   add('options','Options',436,518,280,144,false,false,EDITOR_TOOLS.find(t=>t.id===this.tools.active)?.label);
+   VR_WHEEL_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.id==='move'?MOVE_VARIANT_LABELS[this.tools.lastMoveVariant]:tool.detail,sector:i,selected:tool.id==='move'?this.tools.moveFamily:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
+   add('options','Options',436,518,280,144,false,false,this.tools.contextLabel);
   }else if(this.page==='layers'){
    const layers=this.tools.port.layers();
    const full=layers.project.layerStack.layers.length>=MAX_PROJECT_LAYERS;
@@ -66,7 +73,7 @@ export class XRMenuModel {
   for(const b of content.buttons)if(b.rect&&x>=b.rect.x&&x<=b.rect.x+b.rect.width&&y>=b.rect.y&&y<=b.rect.y+b.rect.height)return b.id;
   if(this.page==='tool-wheel'){
    const dx=x-WHEEL.x,dy=y-WHEEL.y,r=Math.hypot(dx,dy);if(r<WHEEL.inner||r>WHEEL.outer)return null;
-   const angle=((Math.atan2(dy,dx)+Math.PI/2+Math.PI/EDITOR_TOOLS.length)%(2*Math.PI)+2*Math.PI)%(2*Math.PI),sector=Math.floor(angle/(2*Math.PI/EDITOR_TOOLS.length));
+   const angle=((Math.atan2(dy,dx)+Math.PI/2+Math.PI/VR_WHEEL_TOOLS.length)%(2*Math.PI)+2*Math.PI)%(2*Math.PI),sector=Math.floor(angle/(2*Math.PI/VR_WHEEL_TOOLS.length));
    return content.buttons.find(b=>b.sector===sector)?.id??null;
   }return null;
  }
@@ -92,7 +99,10 @@ export class XRMenuModel {
    else if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.project.activeLayerId};}
    else if(id==='cancel-reset')this.resetTarget=null;
    else if(id==='confirm-reset'){const target=this.resetTarget;this.resetTarget=null;if(target&&this.tools.port.layers().project===target.project)this.tools.resetLayerTransform(target.id);}
-   else if(action==='tool'){this.tools.select(value as EditorTool);this.page='tool-options';this.optionPage=0;}
+   else if(id==='move-variants'){this.moveVariants=true;}
+   else if(id==='variant-settings'){this.moveVariants=false;this.optionPage=0;}
+   else if(action==='move-variant'){this.tools.selectMoveVariant(value as MoveVariant);this.moveVariants=false;this.optionPage=0;}
+   else if(action==='tool'){if(value==='move')this.tools.selectMoveGroup();else this.tools.select(value as EditorTool);this.moveVariants=value==='move';this.page='tool-options';this.optionPage=0;}
    else if(id==='options'){this.page='tool-options';this.optionPage=0;}
    else if(id==='tools'){this.page='tool-wheel';this.optionPage=0;}
    else if(id==='next')this.optionPage++;else if(id==='prev')this.optionPage--;

@@ -1,5 +1,5 @@
 import {VR_UI,VR_UI_SCALES,drawVRText,paintVRPanel,roundedVRRect,vrControlStyle} from './xr-ui-style';
-import {EDITOR_TOOLS} from './editor-tool-state';
+import {VR_WHEEL_TOOLS} from './editor-tool-state';
 import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,SphereGeometry,Quaternion,Raycaster,SRGBColorSpace,Vector3} from 'three';
 import type {Matrix4} from 'three';
 import type {XRControllerState} from './xr-input';
@@ -67,7 +67,7 @@ export class XRMenuView implements XRMenuInteraction {
   const ctx=this.ctx,hover=b.id===this.model.hover&&!b.disabled,style=vrControlStyle(b.disabled,hover,b.selected,this.slider===b.id);
   if(b.slider){const r=b.rect!,u=Math.max(0,Math.min(1,(b.slider.value-b.slider.min)/(b.slider.max-b.slider.min)));roundedVRRect(ctx,r.x,r.y,r.width,r.height,18);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();ctx.strokeStyle=b.disabled?VR_UI.disabled:VR_UI.accent;ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(r.x+20,r.y+r.height/2);ctx.lineTo(r.x+r.width-20,r.y+r.height/2);ctx.stroke();ctx.fillStyle=style.text;ctx.beginPath();ctx.arc(r.x+20+u*(r.width-40),r.y+r.height/2,17,0,Math.PI*2);ctx.fill();return;}
   if(b.sector!==undefined){
-   const angle=-Math.PI/2+b.sector*Math.PI*2/EDITOR_TOOLS.length,x=WHEEL.x+Math.cos(angle)*WHEEL.labelRadius,y=WHEEL.y+Math.sin(angle)*WHEEL.labelRadius;
+   const angle=-Math.PI/2+b.sector*Math.PI*2/VR_WHEEL_TOOLS.length,x=WHEEL.x+Math.cos(angle)*WHEEL.labelRadius,y=WHEEL.y+Math.sin(angle)*WHEEL.labelRadius;
    roundedVRRect(ctx,x-78,y-59,156,118,20);ctx.fillStyle=b.disabled?'rgba(25,34,40,.76)':hover?style.fill:b.selected?style.fill:'rgba(17,28,35,.86)';ctx.fill();
    if(hover||b.selected){ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();}
    this.icon(b.id.slice(5),x,y-34,style.text);const label=b.id==='tool:stamp'?'Shape Stamp':b.id==='tool:transform'?'Transform':b.id==='tool:edit-spline'?'Edit Spline':b.id==='tool:move'?'Move':b.label;

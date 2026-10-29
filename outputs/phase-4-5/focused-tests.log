@@ -1,0 +1,70 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs reference-images world-settings xr-menus
+
+Tests: 3/66 files · compiled 1, cached 90 · preparation 46 ms
+✔ signature/header validation rejects unsupported, truncated, oversized and bomb dimensions (0.970334ms)
+✔ count, aggregate source quota, identity, dimensions, transforms and enums are bounded (0.70175ms)
+✔ native v5 embeds exact compressed bytes, all reference properties; legacy remains readable (16.031125ms)
+✔ actual recovery worker includes portable image bytes and leaves original byte buffers usable (45.004167ms)
+✔ reference rendering is unlit sRGB, aspect preserving, nonraycast, with edit-only border and complete resource disposal (1.548542ms)
+✔ pending decode closes late bitmaps on project replacement or session cleanup (0.39575ms)
+✔ workspace references ignore turntable, sculpture references follow; navigation transforms both and space switch preserves pose (1.969ms)
+✔ Studio and transparent Passthrough preserve visible panels; lifecycle clear rebuilds assets (1.072083ms)
+✔ explicit edit trigger translates/rotates selected unlocked image; disabled, locked, pose loss and fresh-press guards (1.372958ms)
+✔ references never enter native source history or GLB result (16.274083ms)
+✔ World Settings references use bounded readable hit areas and explicit deletion confirmation (5.721958ms)
+✔ actual left controller routing keeps grips/navigation and menus ahead of reference editing (9.955875ms)
+✔ actual right controller routing keeps grips/navigation and menus ahead of reference editing (4.717709ms)
+✔ decoder mismatch is visible error and closes bitmap without uploading a texture (0.554584ms)
+✔ locked, unselected, hidden and missed panels never take sculpt input even with edit enabled (0.594084ms)
+✔ existing sculpt Undo/Redo stays exact across image edits, hide, lock and removal (15.575167ms)
+✔ JPEG validates SOI/SOF, dimensions, end marker and rejects repeated frame declarations (0.219584ms)
+✔ six exact presets, neutral defaults and strict versioned display extension (0.751ms)
+✔ legacy projects restore Neutral Grey and hidden grid after another project had custom preferences (13.775208ms)
+✔ every swatch and grid survive native and actual recovery encoding with no sculpt/history mutation (210.048209ms)
+✔ Studio updates immediately, passthrough always stays transparent and desktop background restores exactly (1.738375ms)
+✔ grid belongs to workspace, follows navigation, ignores rays and never affects framing or export sources (10.492458ms)
+✔ GLB geometry and mesh inventory stay identical after world changes and visible guide (13.6715ms)
+✔ world sections and all hit targets have bounded, disjoint large controls for every active tool (7.452292ms)
+✔ world uses shared scaled ray placement, neutral-trigger arming and closes with existing menu request (6.572334ms)
+✔ mirror and snap share existing state across tools; busy controls reject changes (4.275375ms)
+✔ environment menu uses existing exit path and requires fresh Enter; selected background survives AR round trip (4.377959ms)
+✔ unsupported passthrough is disabled with reason and cannot exit Studio or request AR (4.493625ms)
+✔ preferences wire existing diagnostics, performance and UI scale without history (3.259416ms)
+✔ Default is midway between former Normal and Large; retired Small files migrate and never re-save Small (4.526833ms)
+✔ World Large UI toggle is selected only when on, toggles back to Default, and respects busy guards (2.690375ms)
+✔ Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly (13.928ms)
+✔ radial and rectangular hit tests align with every visible target, including experimental Move (6.715709ms)
+✔ Clay/Smooth options update the same desktop settings without voxel/history changes (11.357416ms)
+✔ data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp (6.564792ms)
+✔ Transform options edit metadata with existing undo and native persistence, never SDF resampling (6.58925ms)
+✔ Layers panel selects visible, hidden or locked rows and toggles flags using existing commands (80.953333ms)
+✔ busy/current edit guards reject menu business commands instead of committing an edit (3.495292ms)
+✔ tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect (6.441334ms)
+✔ view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity (2.997833ms)
+✔ view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions (2.508542ms)
+✔ interactive menus select shared tools/layers with left dominance; old shortcuts and grips remain exclusive (7.031041ms)
+✔ interactive menus select shared tools/layers with right dominance; old shortcuts and grips remain exclusive (4.737042ms)
+✔ Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm (2.541666ms)
+✔ menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak (3.000208ms)
+✔ interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held (0.095459ms)
+✔ numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only (3.045417ms)
+✔ eight layer rows, paginated options and radial targets stay within the usable menu surface (218.204416ms)
+✔ VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history (20.666709ms)
+✔ VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors (9.978708ms)
+✔ Tool Hand trigger adds a VR layer only once per press (4.087709ms)
+✔ interactive menu renders after transparent scene panels and previews (1.656834ms)
+✔ menu pointer overlays the panel and clears on dismissal (left) (3.406792ms)
+✔ menu pointer overlays the panel and clears on dismissal (right) (2.596291ms)
+✔ controller overlay includes realistic model meshes, restores materials and handles session cleanup (2.218542ms)
+✔ menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled (2.719709ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 498.815875
+Test command wall time: 0.57 s

@@ -1,0 +1,286 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs xr-menus xr-ui-design xr-alternate-haptics advanced-brush rotation-integration
+
+Tests: 5/66 files · compiled 4, cached 87 · preparation 76 ms
+✔ flatten 64: finite, compact support, deterministic and correct sign (16.665083ms)
+✔ inflate 64: finite, compact support, deterministic and correct sign (17.178709ms)
+✔ scrape 64: finite, compact support, deterministic and correct sign (11.684167ms)
+✔ flatten 128: finite, compact support, deterministic and correct sign (66.477959ms)
+✔ inflate 128: finite, compact support, deterministic and correct sign (63.508125ms)
+✔ scrape 128: finite, compact support, deterministic and correct sign (64.662458ms)
+✔ flatten 192: finite, compact support, deterministic and correct sign (248.045542ms)
+✔ inflate 192: finite, compact support, deterministic and correct sign (216.017334ms)
+✔ scrape 192: finite, compact support, deterministic and correct sign (188.629084ms)
+✔ flatten 64 transformed layer, mirror, freehand staged cancel and exact undo/redo (138.992625ms)
+✔ flatten 64 transformed layer, mirror, Line staged cancel and exact undo/redo (64.489375ms)
+✔ inflate 64 transformed layer, mirror, freehand staged cancel and exact undo/redo (74.332792ms)
+✔ inflate 64 transformed layer, mirror, Line staged cancel and exact undo/redo (72.331708ms)
+✔ scrape 64 transformed layer, mirror, freehand staged cancel and exact undo/redo (71.160042ms)
+✔ scrape 64 transformed layer, mirror, Line staged cancel and exact undo/redo (58.409958ms)
+✔ flatten 128 transformed layer, mirror, freehand staged cancel and exact undo/redo (213.775375ms)
+✔ flatten 128 transformed layer, mirror, Line staged cancel and exact undo/redo (207.230875ms)
+✔ inflate 128 transformed layer, mirror, freehand staged cancel and exact undo/redo (205.605ms)
+✔ inflate 128 transformed layer, mirror, Line staged cancel and exact undo/redo (203.223042ms)
+✔ scrape 128 transformed layer, mirror, freehand staged cancel and exact undo/redo (199.057917ms)
+✔ scrape 128 transformed layer, mirror, Line staged cancel and exact undo/redo (176.903541ms)
+✔ flatten 192 transformed layer, mirror, freehand staged cancel and exact undo/redo (526.5055ms)
+✔ flatten 192 transformed layer, mirror, Line staged cancel and exact undo/redo (439.171833ms)
+✔ inflate 192 transformed layer, mirror, freehand staged cancel and exact undo/redo (515.568875ms)
+✔ inflate 192 transformed layer, mirror, Line staged cancel and exact undo/redo (456.312083ms)
+✔ scrape 192 transformed layer, mirror, freehand staged cancel and exact undo/redo (512.150167ms)
+✔ scrape 192 transformed layer, mirror, Line staged cancel and exact undo/redo (441.146041ms)
+✔ Flatten relaxes a curved sphere toward its tangent plane; Scrape never adds (28.744125ms)
+✔ expanded negative lattice uses the same local field coordinates and compact writes (10.102917ms)
+✔ rotate 64: noncumulative preview, localized candidates, seam normals, persistent surface agreement, exact history and reload (435.877167ms)
+✔ rotate 192: noncumulative preview, localized candidates, seam normals, persistent surface agreement, exact history and reload (4073.909167ms)
+✔ twist 64: noncumulative preview, localized candidates, seam normals, persistent surface agreement, exact history and reload (311.975459ms)
+✔ twist 192: noncumulative preview, localized candidates, seam normals, persistent surface agreement, exact history and reload (3607.400583ms)
+✔ alternate blocked by menu requires release/repress (20.806ms)
+✔ alternate blocked by grab requires release/repress (16.258958ms)
+✔ alternate blocked by diagnostics requires release/repress (11.989042ms)
+✔ alternate blocked by hidden requires release/repress (9.771209ms)
+✔ alternate snapshots exact Subtract settings/path, restores without native/history changes (14.441167ms)
+✔ release alternate during Smooth stroke preserves transaction, commits once then restores (17.404041ms)
+✔ press alternate during buffered Clay defers across replay until finished (13.336042ms)
+✔ role cancellation restores override and held Support cannot reenter (5.610333ms)
+✔ disconnect cancellation restores override and held Support cannot reenter (5.909791ms)
+✔ tracking cancellation restores override and held Support cannot reenter (6.349375ms)
+✔ session cancellation restores override and held Support cannot reenter (5.191917ms)
+✔ configurable Off/Opposite/Smooth; connection changes need release (5.310583ms)
+✔ haptic strengths/durations subtle; shared cooldown, pending gate and disable (3.161333ms)
+✔ haptics tolerate absent, false, throwing/rejected actuators and lost tracking (0.496792ms)
+✔ bridge left Tool / reversed slots restores on visibility (7.124833ms)
+✔ bridge left Tool / reversed slots restores on disconnect (9.372916ms)
+✔ bridge left Tool / reversed slots restores on role (6.532583ms)
+✔ bridge left Tool / reversed slots restores on tracking (6.862417ms)
+✔ bridge left Tool / reversed slots restores on grip (7.317083ms)
+✔ bridge left Tool / reversed slots restores on stop (5.431709ms)
+✔ bridge right Tool / reversed slots restores on visibility (5.726959ms)
+✔ bridge right Tool / reversed slots restores on disconnect (5.241667ms)
+✔ bridge right Tool / reversed slots restores on role (4.654917ms)
+✔ bridge right Tool / reversed slots restores on tracking (5.634959ms)
+✔ bridge right Tool / reversed slots restores on grip (5.40575ms)
+✔ bridge right Tool / reversed slots restores on stop (4.230833ms)
+✔ 100 rapid alternate-tool cycles preserve primary settings, native bytes and history (8.820625ms)
+✔ tool issue haptics coalesce to one short error, bypass a recent success cooldown and never repeat without a new gesture (1.707167ms)
+✔ issue notifications drop on disable, source/connection changes, tracking loss and reset; no stale pulses (0.362667ms)
+✔ real Clay reports cancellation only for active work and error separately; ordinary release stays successful (15.9575ms)
+✔ controller issue alert reaches only the left Tool and suppresses success-end for that frame (1.180792ms)
+✔ controller issue alert reaches only the right Tool and suppresses success-end for that frame (0.733375ms)
+✖ Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly (15.657125ms)
+✖ radial and rectangular hit tests align with every visible target, including experimental Move (6.287584ms)
+✔ Clay/Smooth options update the same desktop settings without voxel/history changes (9.262708ms)
+✔ data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp (5.433625ms)
+✔ Transform options edit metadata with existing undo and native persistence, never SDF resampling (8.023542ms)
+✔ Layers panel selects visible, hidden or locked rows and toggles flags using existing commands (78.630333ms)
+✔ busy/current edit guards reject menu business commands instead of committing an edit (3.043917ms)
+✔ tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect (5.684375ms)
+✖ view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity (3.114125ms)
+✔ view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions (2.822209ms)
+✖ interactive menus select shared tools/layers with left dominance; old shortcuts and grips remain exclusive (5.243834ms)
+✖ interactive menus select shared tools/layers with right dominance; old shortcuts and grips remain exclusive (3.552667ms)
+✔ Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm (3.3325ms)
+✔ menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak (3.801917ms)
+✔ interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held (0.150083ms)
+✔ numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only (3.424ms)
+✔ eight layer rows, paginated options and radial targets stay within the usable menu surface (221.051042ms)
+✔ VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history (15.83425ms)
+✔ VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors (10.047125ms)
+✔ Tool Hand trigger adds a VR layer only once per press (4.689459ms)
+✔ interactive menu renders after transparent scene panels and previews (1.969084ms)
+✔ menu pointer overlays the panel and clears on dismissal (left) (3.643333ms)
+✔ menu pointer overlays the panel and clears on dismissal (right) (2.211584ms)
+✔ controller overlay includes realistic model meshes, restores materials and handles session cleanup (2.293666ms)
+✔ menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled (2.94425ms)
+✔ fixed large typography wraps words and unbroken labels within explicit bounds without squeezed fonts (0.65075ms)
+✖ floating wheel preserves all twelve invisible radial sectors, boundaries, transparent gaps and tool accessibility (13.236875ms)
+✔ wheel drawing clears alpha and omits the full panel backing; rectangular palettes keep rounded backing (8.175666ms)
+✖ every option row, slider, layer row, page navigation and scale control remains bounded and disjoint (267.615458ms)
+✔ UI scale is display-only and round-trips through native files and the actual recovery worker (71.716084ms)
+✖ all UI sizes keep ray UV hits and cursor aligned while sculpture/workspace scale remains untouched (7.071166ms)
+✔ disabled, hover, selected and active slider states have distinct non-colour-only affordances (4.359125ms)
+✔ side diagnostics/performance panels retain separation at every scale, lifecycle and depth semantics (0.625208ms)
+ℹ tests 98
+ℹ suites 0
+ℹ pass 90
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8492.673625
+
+✖ failing tests:
+
+test at tests/xr-menus.test.mjs:30:1
+✖ Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly (15.657125ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert(model.content().title.includes('OPTIONS'))
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:32:163)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests/xr-menus.test.mjs:36:1
+✖ radial and rectangular hit tests align with every visible target, including experimental Move (6.287584ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'tool:flatten'
+  - 'tool:inflate'
+          ^
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:37:145)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'tool:flatten',
+    expected: 'tool:inflate',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/xr-menus.test.mjs:84:1
+✖ view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity (3.114125ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'tool:inflate'
+  - 'tool:stamp'
+          ^
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:85:408)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'tool:inflate',
+    expected: 'tool:stamp',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/xr-menus.test.mjs:102:36
+✖ interactive menus select shared tools/layers with left dominance; old shortcuts and grips remain exclusive (5.243834ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'tube'
+  - 'transform'
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:103:191)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'tube',
+    expected: 'transform',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/xr-menus.test.mjs:102:36
+✖ interactive menus select shared tools/layers with right dominance; old shortcuts and grips remain exclusive (3.552667ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'tube'
+  - 'transform'
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-menus.test.mjs:103:191)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'tube',
+    expected: 'transform',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/xr-ui-design.test.mjs:29:1
+✖ floating wheel preserves all twelve invisible radial sectors, boundaries, transparent gaps and tool accessibility (13.236875ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'tool:flatten'
+  - 'tool:inflate'
+          ^
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-ui-design.test.mjs:30:211)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'tool:flatten',
+    expected: 'tool:inflate',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/xr-ui-design.test.mjs:38:1
+✖ every option row, slider, layer row, page navigation and scale control remains bounded and disjoint (267.615458ms)
+  TypeError: Cannot read properties of undefined (reading 'disabled')
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-ui-design.test.mjs:40:274)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at tests/xr-ui-design.test.mjs:48:1
+✖ all UI sizes keep ray UV hits and cursor aligned while sculpture/workspace scale remains untouched (7.071166ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'tool:move'
+  - 'tool:tube'
+          ^
+  
+      at TestContext.<anonymous> (file:///Users/brettjames/development/vrappPOC/tests/xr-ui-design.test.mjs:49:637)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'tool:move',
+    expected: 'tool:tube',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+Test command wall time: 8.60 s

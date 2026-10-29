@@ -1,10 +1,13 @@
+import type {ReferenceView} from './reference-view';
 import type {Turntable} from './turntable';
 import {STUDIO_BACKGROUNDS,mirrorGuideSettings,turntableSettings} from './world-settings';
 import type {EditorToolState} from './editor-tool-state';
 import type {MenuContent,MenuButton} from './xr-menu-model';
 import type {XRSessionController} from './xr-session';
-export type WorldSection='home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot';
+export type WorldSection='home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot'|'references'|'reference'|'reference-pose'|'reference-delete'|'reference-more';
 export interface XRWorldMenuPort {
+ references?:ReferenceView;
+ importReferences?:()=>void;
  turntable?:()=>Turntable;
  centreTurntable?:()=>void;
  session:()=>XRSessionController;
@@ -22,14 +25,44 @@ export class XRWorldMenu {
   const buttons:MenuButton[]=[{id:'tools',label:'‹ Tools',rect:{x:40,y:140,width:240,height:74}}];
   const labels:MenuContent['labels']=[];
   const add=(id:string,label:string,y:number,detail?:string,selected=false,disabled=busy)=>buttons.push({id,label,detail,selected,disabled,rect:{x:40,y,width:1072,height:136}});
-  if(this.section!=='home')buttons.push({id:'world:home',label:'‹ World Settings',rect:{x:300,y:140,width:440,height:74}});
+  if(this.section!=='home')buttons.push({id:this.section.startsWith('reference')&&this.section!=='references'?'world:references':'world:home',label:this.section.startsWith('reference')&&this.section!=='references'?'‹ Reference images':'‹ World Settings',rect:{x:300,y:140,width:440,height:74}});
   let subtitle='Environment · background · guides · turntable · preferences';
   if(this.section==='home'){
    add('world:environment','Environment',244,'Studio or Passthrough');
    add('world:background','Studio Background',394,'Colour swatches · ground grid');
    add('world:guides','Guides and Constraints',544,'Mirror symmetry · angle snap');
    add('world:preferences','Preferences',694,'VR UI size · diagnostics · performance');
-   add('world:turntable','Turntable',844,'Presentation rotation · live Clay / Smooth / Stamp');
+   buttons.push({id:'world:references',label:'References',detail:'Import on desktop · place and inspect in VR',disabled:busy,rect:{x:588,y:844,width:524,height:136}});
+   buttons.push({id:'world:turntable',label:'Turntable',detail:'Presentation rotation · live sculpting',disabled:busy,rect:{x:40,y:844,width:524,height:136}});
+  }else if(this.section==='references'){
+   subtitle='References · self-contained PNG/JPEG · import on desktop';
+   add('reference-import','Import images…',244,'Exit XR to use the browser file picker');
+   layers.display.references.forEach((r,i)=>buttons.push({id:`reference-select:${r.id}`,label:r.name,detail:`${r.visible?'Visible':'Hidden'} · ${r.locked?'Locked':'Unlocked'} · ${r.space}`,selected:this.port?.references?.selected===r.id,disabled:busy,rect:{x:40+(i%2)*548,y:404+Math.floor(i/2)*160,width:524,height:144}}));
+   add('reference-edit',`Edit references · ${this.port?.references?.editing?'On':'Off'}`,904,'Selected unlocked panel: point + hold trigger, move/rotate wrist',!!this.port?.references?.editing);
+  }else if(this.section==='reference'||this.section==='reference-pose'||this.section==='reference-delete'||this.section==='reference-more'){
+   const r=layers.display.references.find(r=>r.id===this.port?.references?.selected);subtitle=r?.name??'Choose a reference';
+   if(r&&this.section==='reference-delete'){add('reference-delete-confirm','Delete this reference',394,r.name);add('world:reference','Cancel',544);}
+   else if(r&&this.section==='reference-pose'){
+    for(let i=0;i<3;i++){const y=244+i*150;labels.push({text:`${'XYZ'[i]} · ${r.position[i].toFixed(2)}`,x:56,y,width:500,height:90});for(const [j,sign]of [-1,1].entries())buttons.push({id:`ref-pos:${i}:${sign}`,label:sign<0?'−':'+',disabled:busy||r.locked,rect:{x:760+j*180,y,width:160,height:110}});}
+    add('reference-face','Face opposite direction',694,'Rotate 180° around local Y',false,busy||r.locked);add('reference-reset','Reset transform',844,undefined,false,busy||r.locked);
+   }else if(r&&this.section==='reference-more'){
+    add('world:reference','‹ Image controls',244);
+    add('world:reference-pose','Precise placement',394,'Position · face direction · reset');
+    add('reference-side',r.twoSided?'Two-sided · On':'Two-sided · Off',544,'Show the image from either side',r.twoSided);
+    add('world:reference-delete','Delete image…',844,'Asks for confirmation');
+   }else if(r){
+    const cell=(id:string,label:string,x:number,y:number,detail?:string,selected=false,disabled=busy)=>buttons.push({id,label,detail,selected,disabled,rect:{x,y,width:524,height:112}});
+    cell('reference-visible',r.visible?'Visible · On':'Visible · Off',40,244,undefined,r.visible);
+    cell('reference-lock',r.locked?'Locked':'Unlocked',588,244,undefined,r.locked);
+    add('reference-edit',this.port?.references?.editing?'Finish placing':'Place image',384,r.locked?'Unlock this image to move it':'Point at image · hold trigger · move or rotate hand',!!this.port?.references?.editing,busy||r.locked);
+    labels.push({text:`Size · ${r.size.toFixed(2)}`,x:340,y:576,width:460,height:90});
+    buttons.push({id:'reference-smaller',label:'−',disabled:busy||r.locked||r.size<=.05,rect:{x:40,y:554,width:250,height:112}},{id:'reference-larger',label:'+',disabled:busy||r.locked||r.size>=10,rect:{x:862,y:554,width:250,height:112}});
+    cell('reference-flip-x','Flip X',40,704,'Mirror image horizontally',!!r.flipX);
+    cell('reference-opacity',`Opacity · ${Math.round(r.opacity*100)}%`,588,704,'Tap to adjust',false,busy||r.locked);
+    cell('reference-space',r.space==='workspace'?'Workspace anchor':'Sculpture anchor',40,864,r.space==='workspace'?'Stays outside turntable rotation':'Follows turntable rotation');
+    cell('world:reference-more','More settings…',588,864,'Placement · two-sided · delete');
+
+   }
   }else if(this.section==='environment'){
    subtitle='Environment · changing mode exits XR';
    const session=this.port?.session(),available=session?.availability;
@@ -77,9 +110,31 @@ export class XRWorldMenu {
    add('world-diagnostics',`In-headset diagnostics · ${this.port?.diagnostics()?'On':'Off'}`,394,this.port?'Controller status and control hints':'Unavailable in this preview',!!this.port?.diagnostics(),busy||!this.port);
    add('world-performance',`VR performance · ${this.port?.performance()?'On':'Off'}`,544,this.port?'Existing performance panel and sampling':'Unavailable in this preview',!!this.port?.performance(),busy||!this.port);
   }
-  return {title:'WORLD SETTINGS',subtitle,buttons,labels,footer:'Hold Support stick · Tool trigger selects · release to close'};
+  if(this.port?.references?.error&&this.section.startsWith('reference'))subtitle=this.port.references.error;
+  return {title:this.section==='reference'?'REFERENCE IMAGE':this.section==='reference-more'?'IMAGE SETTINGS':'WORLD SETTINGS',subtitle,buttons,labels,footer:'Hold Support stick · Tool trigger selects · release to close'};
  }
  activate(id:string):boolean{
+  const refs=this.port?.references,records=this.tools.port.layers().display.references,r=records.find(r=>r.id===refs?.selected);
+  if(id.startsWith('reference-select:')){if(refs)refs.selected=id.slice(17);this.section='reference';return true;}
+  if(id==='reference-import'){this.port?.importReferences?.();return true;}
+  if(id==='reference-edit'){if(refs){refs.editing=!refs.editing;refs.cancel();}return true;}
+  if(id.startsWith('reference-')||id.startsWith('ref-pos:')){
+   if(!r)return false;
+   if(id==='reference-visible')r.visible=!r.visible;
+   else if(id==='reference-lock')r.locked=!r.locked;
+   else if(id==='reference-space')refs?.switchSpace(r);
+   else if(id==='reference-delete-confirm'){this.tools.port.layers().display.references=records.filter(v=>v!==r);this.section='references';}
+   else if(id==='reference-flip-x')r.flipX=!r.flipX;
+   else if(id==='reference-side')r.twoSided=!r.twoSided;
+   else if(!r.locked){
+    if(id==='reference-smaller')r.size=Math.max(.05,r.size/1.1);else if(id==='reference-larger')r.size=Math.min(10,r.size*1.1);
+    else if(id==='reference-opacity')r.opacity=r.opacity<=.25?1:Math.max(.05,r.opacity-.25);
+    else if(id==='reference-face')r.rotation[1]=(r.rotation[1]+Math.PI)%(Math.PI*2);
+    else if(id==='reference-reset'){r.position=[1,0,0];r.rotation=[0,0,0];r.size=1;}
+    else if(id.startsWith('ref-pos:')){const [,axis,sign]=id.split(':');r.position[Number(axis)]=Math.max(-1000,Math.min(1000,r.position[Number(axis)]+Number(sign)*.05));}
+   }
+   refs?.cancel();this.tools.port.changed();return true;
+  }
   if(id.startsWith('world:')){this.section=id.slice(6) as WorldSection;return true;}
   const layers=this.tools.port.layers();
   const worldGuide=()=>layers.display.world.mirrorGuide??=(mirrorGuideSettings(layers.display.world));

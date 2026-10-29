@@ -24,11 +24,11 @@ export class XRClayStroke implements XRStrokeInteraction {
  private rollingPath=false;private readonly rotatingSampler=new RotatingStrokeSampler();private readonly stableAnchor=new Matrix4();
  private processingMs=0;private processingMeasured=false;
  private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastPreview:unknown=null;private previewLength=0;
- constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed,true);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
+ constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{},private readonly issue:(event:'cancel'|'error')=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed,true);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
  get liveSizing(){return this.session.phase==='drawing'&&this.capturedTool==='clay'?'clay-radius' as const:null;}
  get active():boolean{return this.session.active;}
  get feedback():string{if(this.placementNote)return this.placementNote;const label=this.tools.active==='smooth'?'Smooth':this.tools.active==='clay'?'Clay':this.tools.active[0].toUpperCase()+this.tools.active.slice(1);return this.session.phase==='committing'?`${label}: applying the preview · one undo action`:this.session.phase==='drawing'?this.session.buffered?`${label} preview · release trigger to apply`:`${label}: freehand`:this.message;}
- cancel():void{this.rotatingSampler.reset();this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
+ cancel():void{if(this.active)this.issue('cancel');this.rotatingSampler.reset();this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
  update(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const metrics=this.layers().metrics,wasActive=this.active,start=performance.now();
   if(!wasActive){this.processingMs=0;this.processingMeasured=metrics.enabled;}
@@ -78,7 +78,7 @@ export class XRClayStroke implements XRStrokeInteraction {
     this.anchor.copy(runtime.surface.group.matrixWorld);
    }else this.session.sample(this.local,time);
    if(!this.session.buffered)runtime.rebuild(CLAY_MESH_CHUNKS,CLAY_MESH_BUDGET_MS);this.paint();
-  }catch(error){this.cancel();this.message=error instanceof Error?error.message:'Stroke cancelled';}
+  }catch(error){this.cancel();this.issue('error');this.message=error instanceof Error?error.message:'Stroke cancelled';}
  }
  private recordController(time:number):void{if(this.rollingPath&&this.controllerRaw.length>=8192){let write=1;for(let i=2;i<this.controllerRaw.length;i+=2)this.controllerRaw[write++]=this.controllerRaw[i];this.controllerRaw.length=write;}this.controllerRaw.push({position:this.raycaster.ray.origin.toArray(),direction:this.raycaster.ray.direction.toArray(),time});}
  private paint():void{

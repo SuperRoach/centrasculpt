@@ -7,7 +7,7 @@ import {XRMenuModel,MENU_SIZE,WHEEL,OPTIONS_PER_PAGE} from '../work/test-build/x
 import {XRMenuView} from '../work/test-build/xr-menu-view.mjs';
 import {XRDiagnostics} from '../work/test-build/xr-diagnostics.mjs';
 import {XRPerformancePanel} from '../work/test-build/xr-performance.mjs';
-import {EditorToolState,EDITOR_TOOLS} from '../work/test-build/editor-tool-state.mjs';
+import {EditorToolState,EDITOR_TOOLS,VR_WHEEL_TOOLS} from '../work/test-build/editor-tool-state.mjs';
 import {IndependentLayers} from '../work/test-build/independent-layers.mjs';
 import {SDFVolume} from '../work/test-build/sdf.mjs';
 import {createBaseProject} from '../work/test-build/layers.mjs';
@@ -26,10 +26,10 @@ test('fixed large typography wraps words and unbroken labels within explicit bou
  const c=canvasContext();c.font='32px sans-serif';for(const text of ['Local influence radius · layer coordinates','A'.repeat(200),'A long layer name with 日本語 and punctuation / transforms']){const box={x:56,y:244,width:300,height:78},lines=layoutVRText(c,text,box,32);assert(lines.length>0);for(const line of lines){assert(line.x>=box.x);assert(line.y+line.height<=box.y+box.height);assert(line.width<=box.width);}}
  assert(VR_UI.label>=32);assert(VR_UI.value>=36);assert(VR_UI.detail>=28);assert(VR_UI.radial>=30);assert.equal(OPTIONS_PER_PAGE,5);
 });
-test('floating wheel preserves all twelve invisible radial sectors, boundaries, transparent gaps and tool accessibility',()=>{
- const f=fixture();try{f.model.setRequest('tool-wheel');assert.equal(EDITOR_TOOLS.length,12);for(let i=0;i<12;i++){const angle=-Math.PI/2+i*Math.PI/6;for(const r of [WHEEL.inner+.01,250,WHEEL.outer-.01])assert.equal(f.model.hit(WHEEL.x+Math.cos(angle)*r,WHEEL.y+Math.sin(angle)*r),`tool:${EDITOR_TOOLS[i].id}`);assert.equal(f.model.hit(WHEEL.x+Math.cos(angle)*(WHEEL.outer+1),WHEEL.y+Math.sin(angle)*(WHEEL.outer+1)),null);}
- for(let i=0;i<12;i++)for(let j=i+1;j<12;j++){const ai=-Math.PI/2+i*Math.PI/6,aj=-Math.PI/2+j*Math.PI/6;assert(Math.abs(Math.cos(ai)-Math.cos(aj))*WHEEL.labelRadius>=156-1e-8||Math.abs(Math.sin(ai)-Math.sin(aj))*WHEEL.labelRadius>=118-1e-8,'floating cards overlap');}
- for(const t of EDITOR_TOOLS){f.model.activate(`tool:${t.id}`);assert.equal(f.tools.active,t.id);assert.equal(f.model.page,'tool-options');f.model.activate('tools');}assert.equal(f.layers.undoCount,0);
+test('floating wheel preserves all nine visible radial sectors, boundaries, transparent gaps and tool accessibility',()=>{
+ const f=fixture();try{f.model.setRequest('tool-wheel');assert.equal(EDITOR_TOOLS.length,12);assert.equal(VR_WHEEL_TOOLS.length,9);for(let i=0;i<VR_WHEEL_TOOLS.length;i++){const angle=-Math.PI/2+i*Math.PI*2/VR_WHEEL_TOOLS.length;for(const r of [WHEEL.inner+.01,250,WHEEL.outer-.01])assert.equal(f.model.hit(WHEEL.x+Math.cos(angle)*r,WHEEL.y+Math.sin(angle)*r),`tool:${VR_WHEEL_TOOLS[i].id}`);assert.equal(f.model.hit(WHEEL.x+Math.cos(angle)*(WHEEL.outer+1),WHEEL.y+Math.sin(angle)*(WHEEL.outer+1)),null);}
+ for(let i=0;i<VR_WHEEL_TOOLS.length;i++)for(let j=i+1;j<VR_WHEEL_TOOLS.length;j++){const ai=-Math.PI/2+i*Math.PI*2/VR_WHEEL_TOOLS.length,aj=-Math.PI/2+j*Math.PI*2/VR_WHEEL_TOOLS.length;assert(Math.abs(Math.cos(ai)-Math.cos(aj))*WHEEL.labelRadius>=156-1e-8||Math.abs(Math.sin(ai)-Math.sin(aj))*WHEEL.labelRadius>=118-1e-8,'floating cards overlap');}
+ for(const t of VR_WHEEL_TOOLS){f.model.activate(`tool:${t.id}`);assert.equal(f.tools.active,t.id);assert.equal(f.model.page,'tool-options');f.model.activate('tools');}assert.equal(f.layers.undoCount,0);
  }finally{f.dispose();}
 });
 test('wheel drawing clears alpha and omits the full panel backing; rectangular palettes keep rounded backing',()=>{
@@ -37,7 +37,7 @@ test('wheel drawing clears alpha and omits the full panel backing; rectangular p
 });
 test('every option row, slider, layer row, page navigation and scale control remains bounded and disjoint',()=>{
  const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');const validate=content=>{const rects=content.buttons.filter(b=>b.rect);for(const b of rects){const r=b.rect;assert(r.x>=0&&r.y>=0&&r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);assert.equal(f.model.hit(...center(b)),b.id);for(const other of rects){if(b===other)continue;const s=other.rect;assert(r.x+r.width<=s.x||s.x+s.width<=r.x||r.y+r.height<=s.y||s.y+s.height<=r.y,`${b.id} overlaps ${other.id}`);}}for(const l of content.labels)if(l.width){assert(l.x+l.width<=MENU_SIZE);assert(l.y+l.height<1040);}};
- validate(f.model.content());for(const tool of EDITOR_TOOLS){f.model.setRequest(null);f.model.setRequest('tool-wheel');f.model.activate(`tool:${tool.id}`);let pages=0;for(;;){validate(f.model.content());assert(++pages<12);if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert.equal(pages,Math.ceil(f.tools.options().length/OPTIONS_PER_PAGE));}
+ validate(f.model.content());for(const tool of EDITOR_TOOLS){f.model.setRequest(null);f.model.setRequest('tool-wheel');f.tools.select(tool.id);f.model.page='tool-options';let pages=0;for(;;){validate(f.model.content());assert(++pages<12);if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert.equal(pages,Math.ceil(f.tools.options().length/OPTIONS_PER_PAGE));}
  }finally{f.dispose();}
 });
 test('UI scale is display-only and round-trips through native files and the actual recovery worker',async()=>{
@@ -46,7 +46,7 @@ test('UI scale is display-only and round-trips through native files and the actu
  }finally{globalThis.Worker=oldWorker;f.dispose();}
 });
 test('all UI sizes keep ray UV hits and cursor aligned while sculpture/workspace scale remains untouched',()=>{
- const c=canvas(),f=fixture(),view=new XRMenuView(f.model);try{const root=new Group(),workspace=new Group();root.add(view.mesh);workspace.add(f.layers.group);workspace.scale.setScalar(.4);workspace.position.set(2,1,-1);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const tool=state();for(const [size,factor] of Object.entries(VR_UI_SCALES)){f.layers.display.vrUiScale=size;view.update('tool-wheel',tool,undefined,0,true);const a=-Math.PI/2+7*Math.PI*2/12,x=WHEEL.x+Math.cos(a)*WHEEL.labelRadius,y=WHEEL.y+Math.sin(a)*WHEEL.labelRadius;view.update('tool-wheel',tool,pose(view,x,y),200,true);assert.equal(view.mesh.scale.x,factor);assert.equal(f.model.hover,`tool:${EDITOR_TOOLS[7].id}`);assert(view.cursor.visible);const world=view.cursor.getWorldPosition(new Vector3());assert(world.distanceTo(new Vector3((x/MENU_SIZE-.5)*.72,(.5-y/MENU_SIZE)*.72,.002).applyMatrix4(view.mesh.matrixWorld))<1e-6);assert.equal(workspace.scale.x,.4);assert.equal(f.layers.active.layer.transform.scale[0],1);}
+ const c=canvas(),f=fixture(),view=new XRMenuView(f.model);try{const root=new Group(),workspace=new Group();root.add(view.mesh);workspace.add(f.layers.group);workspace.scale.setScalar(.4);workspace.position.set(2,1,-1);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const tool=state();for(const [size,factor] of Object.entries(VR_UI_SCALES)){f.layers.display.vrUiScale=size;view.update('tool-wheel',tool,undefined,0,true);const a=-Math.PI/2+7*Math.PI*2/VR_WHEEL_TOOLS.length,x=WHEEL.x+Math.cos(a)*WHEEL.labelRadius,y=WHEEL.y+Math.sin(a)*WHEEL.labelRadius;view.update('tool-wheel',tool,pose(view,x,y),200,true);assert.equal(view.mesh.scale.x,factor);assert.equal(f.model.hover,`tool:${VR_WHEEL_TOOLS[7].id}`);assert(view.cursor.visible);const world=view.cursor.getWorldPosition(new Vector3());assert(world.distanceTo(new Vector3((x/MENU_SIZE-.5)*.72,(.5-y/MENU_SIZE)*.72,.002).applyMatrix4(view.mesh.matrixWorld))<1e-6);assert.equal(workspace.scale.x,.4);assert.equal(f.layers.active.layer.transform.scale[0],1);}
  view.close();assert(!view.cursor.visible);assert(!view.mesh.visible);
  }finally{view.dispose();f.dispose();c.restore();}
 });

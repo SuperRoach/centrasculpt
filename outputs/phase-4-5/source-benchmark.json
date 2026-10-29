@@ -1,0 +1,52 @@
+{
+  "description": "CPU only; two independent layers: active tested resolution plus untouched inactive 64³. 16³-cell chunks; radius .22, strength .35, hardness .5, stationary pole, dt 1/60. Includes active-layer routing, local conversion, sparse history and dirty marking; excludes rendering/GPU, UI and picking. Initial active mesh is first-run; brush/mesh times are warm medians. Transform mean covers 1000 metadata/scene updates only, verifies no changed voxels or mesh allocations and no remesh.",
+  "runtime": "v26.8.1",
+  "platform": "darwin",
+  "rows": [
+    {
+      "resolution": 64,
+      "triangles": 31536,
+      "fullMeshMs": 50,
+      "localMeshMedianMs": 10,
+      "brushMedianMs": 0.27,
+      "smoothMedianMs": 0.19,
+      "changedChunks": 8,
+      "totalChunks": 64,
+      "resampleFrom64Ms": 13,
+      "denseSdfAndScratchMiB": 2,
+      "inactive64Unchanged": true,
+      "transformMeanMs": 0.0023,
+      "transformNoRemesh": true
+    },
+    {
+      "resolution": 128,
+      "triangles": 128304,
+      "fullMeshMs": 97.9,
+      "localMeshMedianMs": 7.5,
+      "brushMedianMs": 0.82,
+      "smoothMedianMs": 0.55,
+      "changedChunks": 8,
+      "totalChunks": 512,
+      "resampleFrom64Ms": 74.8,
+      "denseSdfAndScratchMiB": 16,
+      "inactive64Unchanged": true,
+      "transformMeanMs": 0.003,
+      "transformNoRemesh": true
+    },
+    {
+      "resolution": 192,
+      "triangles": 290352,
+      "fullMeshMs": 243.3,
+      "localMeshMedianMs": 7.2,
+      "brushMedianMs": 1.62,
+      "smoothMedianMs": 1.73,
+      "changedChunks": 12,
+      "totalChunks": 1728,
+      "resampleFrom64Ms": 227,
+      "denseSdfAndScratchMiB": 54,
+      "inactive64Unchanged": true,
+      "transformMeanMs": 0.0077,
+      "transformNoRemesh": true
+    }
+  ]
+}

@@ -9,7 +9,7 @@ export type EncodedSnapshot={data:ArrayBuffer;checksum:number;milliseconds:numbe
 /** Native codec adapter with independent immutable values; no GPU/undo/preview state. */
 export async function captureProject(layers:IndependentLayers,settings:ProjectSettings,display:ProjectDisplayPreferences|undefined,tools:ToolPreferences|undefined,signal:AbortSignal,current:()=>boolean,maxBytes=256*1024**2):Promise<{snapshot:ProjectSnapshot;copyMs:number;temporaryBytes:number}>{
  if(!layers.recoveryReady)throw new Error('Recovery waits for completed edits.');
- const samples=layers.project.layerStack.layers.reduce((n,l)=>n+volumeSampleCount(l.volume),0),temporaryBytes=samples*16+65536;
+ const samples=layers.project.layerStack.layers.reduce((n,l)=>n+volumeSampleCount(l.volume),0),temporaryBytes=samples*16+65536+(display?.references?.reduce((n,r)=>n+r.bytes.byteLength,0)??0)*4;
  if(layers.trackedBytes+layers.composite.trackedBytes+temporaryBytes>maxBytes)throw new Error('Recovery memory safety estimate reached. Save manually or reduce retained history; last checkpoint kept.');
  const start=performance.now(),check=()=>{if(signal.aborted||!current()||!layers.recoveryReady)throw new Error('Recovery snapshot interrupted by an edit.');};check();
  const snapshot:ProjectSnapshot={id:layers.project.id,name:layers.project.name,activeLayerId:layers.project.activeLayerId,settings:structuredClone(settings),displayPreferences:display===undefined?undefined:structuredClone(display),toolPreferences:tools===undefined?undefined:structuredClone(tools),layers:[]};

@@ -1,0 +1,59 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs move-submenu xr-menus
+
+Tests: 2/67 files · compiled 0, cached 91 · preparation 7 ms
+✔ wheel removes three grouped brushes while registry and desktop exact-engine access remain (23.380667ms)
+✔ non-elastic: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (15.693042ms)
+✔ elastic: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (13.168ms)
+✔ rotate-twist: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (13.39275ms)
+✔ pinch: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (12.296667ms)
+✔ crease: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (10.327292ms)
+✔ scrape: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (9.731625ms)
+✔ Support alternate restores non-elastic, exact settings and Move configuration after release/cancel (9.687375ms)
+✔ Support alternate restores elastic, exact settings and Move configuration after release/cancel (7.30175ms)
+✔ Support alternate restores rotate-twist, exact settings and Move configuration after release/cancel (7.598834ms)
+✔ Support alternate restores pinch, exact settings and Move configuration after release/cancel (7.296417ms)
+✔ Support alternate restores crease, exact settings and Move configuration after release/cancel (7.378875ms)
+✔ Support alternate restores scrape, exact settings and Move configuration after release/cancel (7.150833ms)
+✔ native and actual recovery retain remembered brush while another tool is active; legacy Move preferences migrate without engine changes (241.235ms)
+✔ pinch: submenu vs exact selection produces identical mirrored strokes and exact Undo/Redo (94.513041ms)
+✔ crease: submenu vs exact selection produces identical mirrored strokes and exact Undo/Redo (78.294375ms)
+✔ scrape: submenu vs exact selection produces identical mirrored strokes and exact Undo/Redo (79.368416ms)
+✔ busy menus reject variant switches and XR Studio/Passthrough lifecycle preserves recall (7.57375ms)
+✔ Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly (12.230375ms)
+✔ radial and rectangular hit tests align with every visible target, including experimental Move (5.78875ms)
+✔ Clay/Smooth options update the same desktop settings without voxel/history changes (8.989875ms)
+✔ data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp (6.426791ms)
+✔ Transform options edit metadata with existing undo and native persistence, never SDF resampling (4.652833ms)
+✔ Layers panel selects visible, hidden or locked rows and toggles flags using existing commands (72.029291ms)
+✔ busy/current edit guards reject menu business commands instead of committing an edit (2.54775ms)
+✔ tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect (5.509083ms)
+✔ view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity (3.053709ms)
+✔ view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions (3.043916ms)
+✔ interactive menus select shared tools/layers with left dominance; old shortcuts and grips remain exclusive (5.783875ms)
+✔ interactive menus select shared tools/layers with right dominance; old shortcuts and grips remain exclusive (4.593583ms)
+✔ Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm (3.026834ms)
+✔ menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak (2.716459ms)
+✔ interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held (0.246208ms)
+✔ numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only (2.739125ms)
+✔ eight layer rows, paginated options and radial targets stay within the usable menu surface (216.028125ms)
+✔ VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history (20.05725ms)
+✔ VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors (9.877041ms)
+✔ Tool Hand trigger adds a VR layer only once per press (4.672291ms)
+✔ interactive menu renders after transparent scene panels and previews (1.757ms)
+✔ menu pointer overlays the panel and clears on dismissal (left) (3.138ms)
+✔ menu pointer overlays the panel and clears on dismissal (right) (3.150667ms)
+✔ controller overlay includes realistic model meshes, restores materials and handles session cleanup (2.1735ms)
+✔ menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled (1.931291ms)
+✔ Move submenu left: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush (5.079916ms)
+✔ Move submenu right: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush (2.977917ms)
+ℹ tests 45
+ℹ suites 0
+ℹ pass 45
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 702.53825
+Test command wall time: 0.74 s

@@ -1,7 +1,8 @@
+import {XRClayStroke} from '../work/test-build/xr-clay-stroke.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Group,Matrix4,Quaternion,Vector3,Mesh,BoxGeometry,MeshBasicMaterial} from 'three';
-import {EditorToolState,EDITOR_TOOLS} from '../work/test-build/editor-tool-state.mjs';
+import {EditorToolState,EDITOR_TOOLS,VR_WHEEL_TOOLS} from '../work/test-build/editor-tool-state.mjs';
 import {XRMenuModel,MENU_SIZE,WHEEL} from '../work/test-build/xr-menu-model.mjs';
 import {XRMenuView} from '../work/test-build/xr-menu-view.mjs';
 import {XRControllers} from '../work/test-build/xr-controllers.mjs';
@@ -24,17 +25,17 @@ function fixture(){
 }
 function fakeDocument(){const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({}, {get:()=>()=>{}})})};return ()=>globalThis.document=original;}
 const toolState=()=>({connectionId:7,role:'tool',connected:true,tracked:true,gripTracked:true,buttons:{trigger:{pressed:false,rawValue:0,justPressed:false},grip:{pressed:false,rawValue:0}}});
-function buttonPoint(model,id){const button=model.content().buttons.find(b=>b.id===id);assert(button,`missing ${id}`);if(button.rect)return [button.rect.x+button.rect.width/2,button.rect.y+button.rect.height/2];const a=-Math.PI/2+button.sector*Math.PI*2/EDITOR_TOOLS.length;return [WHEEL.x+Math.cos(a)*WHEEL.labelRadius,WHEEL.y+Math.sin(a)*WHEEL.labelRadius];}
+function buttonPoint(model,id){const button=model.content().buttons.find(b=>b.id===id);assert(button,`missing ${id}`);if(button.rect)return [button.rect.x+button.rect.width/2,button.rect.y+button.rect.height/2];const a=-Math.PI/2+button.sector*Math.PI*2/VR_WHEEL_TOOLS.length;return [WHEEL.x+Math.cos(a)*WHEEL.labelRadius,WHEEL.y+Math.sin(a)*WHEEL.labelRadius];}
 function rayPose(view,x,y){view.mesh.updateWorldMatrix(true,false);const target=new Vector3((x/MENU_SIZE-.5)*.72,(.5-y/MENU_SIZE)*.72,0).applyMatrix4(view.mesh.matrixWorld),normal=new Vector3(0,0,1).transformDirection(view.mesh.matrixWorld);return new Matrix4().compose(target.addScaledVector(normal,.6),view.mesh.getWorldQuaternion(new Quaternion()),new Vector3(1,1,1));}
 function trigger(state,pressed){state.buttons.trigger={pressed,rawValue:pressed?1:0,justPressed:pressed};}
 test('Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly',()=>{
  const f=fixture();try{const {model,tools}=f;assert.equal(model.request,null);model.setRequest('tool-wheel');assert.equal(model.content().title,'TOOL WHEEL');assert(model.content().buttons.find(b=>b.id==='tool:clay').selected);
- for(const id of ['smooth','stamp','transform','move','clay']){model.activate(`tool:${id}`);assert.equal(tools.active,id);assert.equal(model.page,'tool-options');assert(model.content().title.includes('OPTIONS'));model.activate('tools');assert(model.content().buttons.find(b=>b.id===`tool:${id}`).selected);}
+ for(const id of ['smooth','stamp','transform','move','clay']){model.activate(`tool:${id}`);assert.equal(tools.active,id);assert.equal(model.page,'tool-options');assert(model.content().title.includes(id==='move'?'MOVE':'OPTIONS'));model.activate('tools');assert(model.content().buttons.find(b=>b.id===`tool:${id}`).selected);}
  model.activate('tool:move');assert.equal(tools.active,'move');assert.equal(model.feedback,'');model.activate('tools');model.activate('tool:clay');model.setRequest(null);model.activate('tool:smooth');assert.equal(tools.active,'clay');assert.equal(model.hover,null);assert.equal(model.hit(576,280),null);assert.equal(f.layers.undoCount,0);
  }finally{f.dispose();}
 });
 test('radial and rectangular hit tests align with every visible target, including experimental Move',()=>{
- const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');for(const definition of EDITOR_TOOLS){const id=`tool:${definition.id}`;assert.equal(m.hit(...buttonPoint(m,id)),id);}
+ const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');for(const definition of VR_WHEEL_TOOLS){const id=`tool:${definition.id}`;assert.equal(m.hit(...buttonPoint(m,id)),id);}
  assert.equal(m.hit(576,590),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1100,1050]])assert.equal(m.hit(...point),null);
  m.activate('options');for(const b of m.content().buttons)assert.equal(m.hit(...buttonPoint(m,b.id)),b.id);
  }finally{f.dispose();}
@@ -94,10 +95,11 @@ test('view caches canvas content, stays fixed during a hold, reanchors per openi
 });
 function source(hand){return {handedness:hand,profiles:['meta-quest-touch-plus'],targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping:'xr-standard',axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false,touched:false}))}};}
 class Session extends EventTarget{visibilityState='visible';}
-function bridgeFixture(hand){const f=fixture(),restore=fakeDocument(),view=new XRMenuView(f.model),rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),workspace=new Group(),roles=new XRControllerRoles();roles.setDominant(hand);workspace.add(f.layers.group);root.add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});
- const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{workspace,layers:()=>f.layers,toolMode:()=>f.tools.active,menus:view,shortcuts:{interactiveMenus:true,commands:projectHistoryShortcuts(()=>f.layers)}}),support=source(hand==='left'?'right':'left'),tool=source(hand),session=new Session();bridge.start(session);rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});let time=0;
+function bridgeFixture(hand,sculpt=false){const f=fixture(),restore=fakeDocument(),view=new XRMenuView(f.model),rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),workspace=new Group(),roles=new XRControllerRoles();roles.setDominant(hand);workspace.add(f.layers.group);root.add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});
+ const clay=sculpt?new XRClayStroke(()=>f.layers,f.tools,root):undefined;
+ const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{stroke:clay,workspace,layers:()=>f.layers,toolMode:()=>f.tools.active,menus:view,shortcuts:{interactiveMenus:true,commands:projectHistoryShortcuts(()=>f.layers)}}),support=source(hand==='left'?'right':'left'),tool=source(hand),session=new Session();bridge.start(session);rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});let time=0;
  const update=()=>bridge.update(time+=16),press=(s,index,down)=>{Object.assign(s.gamepad.buttons[index],{value:down?1:0,pressed:down});update();},stick=(x=0,y=0)=>{support.gamepad.axes=[0,0,x,y];update();},point=id=>{const p=rayPose(view,...buttonPoint(f.model,id));p.decompose(rays[0].position,rays[0].quaternion,rays[0].scale);update();};update();
- return {...f,view,bridge,rays,grips,tool,support,session,update,press,stick,point,dispose(){bridge.dispose();view.dispose();f.dispose();restore();}};
+ return {...f,clay,view,bridge,rays,grips,tool,support,session,update,press,stick,point,dispose(){bridge.dispose();clay?.dispose();view.dispose();f.dispose();restore();}};
 }
 for(const hand of ['left','right'])test(`interactive menus select shared tools/layers with ${hand} dominance; old shortcuts and grips remain exclusive`,()=>{
  const h=bridgeFixture(hand);try{h.stick(0,-1);assert.equal(h.model.request,'tool-wheel');assert(h.bridge.slots[0].rayVisual.visible);h.point('tool:transform');h.press(h.tool,0,true);assert.equal(h.tools.active,'transform');assert.equal(h.model.page,'tool-options');assert.equal(h.layers.transforming,false);assert.equal(h.layers.undoCount,0);h.update();assert.equal(h.layers.undoCount,0);h.press(h.tool,0,false);h.point('inc:layer-0');h.press(h.tool,0,true);assert.equal(h.layers.active.layer.transform.position[0],.1);assert.equal(h.layers.undoCount,1);h.press(h.tool,0,false);h.stick();assert.equal(h.view.active,false);
@@ -197,4 +199,7 @@ test('menu starts a fresh foreground depth layer for each eye while controller s
  const body=h.bridge.slots[0].body;assert.equal(body.material.depthTest,true);assert.equal(body.material.depthWrite,true);assert(body.renderOrder>h.view.mesh.renderOrder);
  h.stick();assert.equal(body.material.depthTest,true);assert.equal(body.material.depthWrite,true);
  }finally{h.dispose();}
+});
+for(const hand of ['left','right'])test(`Move submenu ${hand}: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush`,()=>{
+ const h=bridgeFixture(hand,true);try{const values=h.layers.active.volume.values.slice();h.stick(0,-1);h.point('tool:move');h.press(h.tool,0,true);assert.equal(h.model.content().title,'MOVE VARIANTS');h.press(h.tool,0,false);h.point('move-variant:pinch');h.press(h.tool,0,true);assert.equal(h.tools.active,'pinch');assert(!h.clay.active);assert.equal(h.layers.undoCount,0);h.stick();h.update();assert(!h.clay.active);assert.deepEqual(h.layers.active.volume.values,values);h.grips[0].position.set(.7,0,.12);h.press(h.tool,0,false);h.press(h.tool,0,true);assert(h.clay.active);h.bridge.suspend();assert(!h.clay.active);assert.equal(h.layers.undoCount,0);assert.equal(h.tools.lastMoveVariant,'pinch');}finally{h.dispose();}
 });

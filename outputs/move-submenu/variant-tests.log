@@ -1,0 +1,32 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs move-submenu
+
+Tests: 1/67 files · compiled 1, cached 90 · preparation 52 ms
+✔ wheel removes three grouped brushes while registry and desktop exact-engine access remain (25.101792ms)
+✔ non-elastic: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (24.781ms)
+✔ elastic: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (17.513916ms)
+✔ rotate-twist: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (11.329791ms)
+✔ pinch: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (9.887125ms)
+✔ crease: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (8.380584ms)
+✔ scrape: submenu routes original engine, shows only relevant settings, recalls across menus and other tools (7.549208ms)
+✔ Support alternate restores non-elastic, exact settings and Move configuration after release/cancel (8.042209ms)
+✔ Support alternate restores elastic, exact settings and Move configuration after release/cancel (7.544083ms)
+✔ Support alternate restores rotate-twist, exact settings and Move configuration after release/cancel (7.559375ms)
+✔ Support alternate restores pinch, exact settings and Move configuration after release/cancel (7.310125ms)
+✔ Support alternate restores crease, exact settings and Move configuration after release/cancel (7.619083ms)
+✔ Support alternate restores scrape, exact settings and Move configuration after release/cancel (7.741959ms)
+✔ native and actual recovery retain remembered brush while another tool is active; legacy Move preferences migrate without engine changes (220.062791ms)
+✔ pinch: submenu vs exact selection produces identical mirrored strokes and exact Undo/Redo (92.194666ms)
+✔ crease: submenu vs exact selection produces identical mirrored strokes and exact Undo/Redo (76.56825ms)
+✔ scrape: submenu vs exact selection produces identical mirrored strokes and exact Undo/Redo (81.3985ms)
+✔ busy menus reject variant switches and XR Studio/Passthrough lifecycle preserves recall (7.818625ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 718.195083
+Test command wall time: 0.81 s

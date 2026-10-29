@@ -1,0 +1,46 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs xr-alternate-haptics
+
+Tests: 1/66 files · compiled 0, cached 91 · preparation 5 ms
+✔ alternate blocked by menu requires release/repress (16.560833ms)
+✔ alternate blocked by grab requires release/repress (12.160875ms)
+✔ alternate blocked by diagnostics requires release/repress (8.22175ms)
+✔ alternate blocked by hidden requires release/repress (5.288625ms)
+✔ alternate snapshots exact Subtract settings/path, restores without native/history changes (11.926625ms)
+✔ release alternate during Smooth stroke preserves transaction, commits once then restores (13.585833ms)
+✔ press alternate during buffered Clay defers across replay until finished (11.158459ms)
+✔ role cancellation restores override and held Support cannot reenter (4.45525ms)
+✔ disconnect cancellation restores override and held Support cannot reenter (4.49325ms)
+✔ tracking cancellation restores override and held Support cannot reenter (4.508792ms)
+✔ session cancellation restores override and held Support cannot reenter (3.7655ms)
+✔ configurable Off/Opposite/Smooth; connection changes need release (3.85225ms)
+✔ haptic strengths/durations subtle; shared cooldown, pending gate and disable (2.1285ms)
+✔ haptics tolerate absent, false, throwing/rejected actuators and lost tracking (0.319333ms)
+✔ bridge left Tool / reversed slots restores on visibility (5.320291ms)
+✔ bridge left Tool / reversed slots restores on disconnect (8.722833ms)
+✔ bridge left Tool / reversed slots restores on role (6.496625ms)
+✔ bridge left Tool / reversed slots restores on tracking (5.279291ms)
+✔ bridge left Tool / reversed slots restores on grip (4.827542ms)
+✔ bridge left Tool / reversed slots restores on stop (4.428833ms)
+✔ bridge right Tool / reversed slots restores on visibility (4.505166ms)
+✔ bridge right Tool / reversed slots restores on disconnect (4.363541ms)
+✔ bridge right Tool / reversed slots restores on role (4.384667ms)
+✔ bridge right Tool / reversed slots restores on tracking (4.402916ms)
+✔ bridge right Tool / reversed slots restores on grip (4.295333ms)
+✔ bridge right Tool / reversed slots restores on stop (3.593959ms)
+✔ 100 rapid alternate-tool cycles preserve primary settings, native bytes and history (6.949125ms)
+✔ tool issue haptics coalesce to one short error, bypass a recent success cooldown and never repeat without a new gesture (1.1245ms)
+✔ issue notifications drop on disable, source/connection changes, tracking loss and reset; no stale pulses (0.1255ms)
+✔ real Clay reports cancellation only for active work and error separately; ordinary release stays successful (12.969541ms)
+✔ controller issue alert reaches only the left Tool and suppresses success-end for that frame (0.536041ms)
+✔ controller issue alert reaches only the right Tool and suppresses success-end for that frame (0.25125ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 236.276
+Test command wall time: 0.26 s

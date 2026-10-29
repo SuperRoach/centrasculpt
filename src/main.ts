@@ -1,3 +1,5 @@
+import {ReferenceView} from './reference-view';
+import {referenceUI} from './reference-ui';
 import {saveState,SAVE_LABELS} from './save-status';
 import {RecoveryController} from './recovery';
 import {IndexedRecoveryStore,type RecoveryRecord} from './recovery-store';
@@ -365,10 +367,13 @@ ui.onBrushSelection(mode=>{try{editorTools!.select(mode==='add'||mode==='subtrac
 const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopFieldCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorPlane=new XRMirrorPlane(editorTools!,desktopPreviewRoot);
 const desktopPathGeometry=new THREE.BufferGeometry(),desktopPathMaterial=new THREE.LineBasicMaterial({color:'#267c78',depthTest:false});const desktopPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopMirrorPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopPaths=new THREE.Group();desktopPaths.matrixAutoUpdate=false;desktopPaths.add(desktopPath,desktopMirrorPath);scene.add(desktopPaths);
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
+const references=new ReferenceView(()=>display.references,xrRig.workspaceRoot,xrRig.turntable.group);
+window.addEventListener('pagehide',()=>references.clear());
+const referencesUI=referenceUI(()=>display,references,precisionPanel.parentElement!,()=>loadingProject||ui.modalOpen||xrBlocked());
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
- tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
+ references,importReferences:referencesUI.import,tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
  sculptureInfo:()=>({activeResolution:volumeLabel(layers.active.layer.volume),resolutions:layers.project.layerStack.layers.map(layer=>`${volumeLabel(layer.volume)}`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
  blockedReason:()=>!recovery?.initialized?'Checking local recovery storage…':recovery.blocked&&recovery.enabled?'Review saved recovery before entering.':ui.modalOpen?'Close the open dialog before entering.':loadingProject?'Wait for the current project operation to finish.':'Wait for Boolean Preview to finish, or select Separate Layers.',
  entryResolvable:()=>!!recovery?.initialized&&recovery.enabled&&recovery.blocked&&!loadingProject&&!ui.modalOpen&&layers.recoveryReady,
@@ -390,7 +395,7 @@ recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autos
 const recoveryStatus=document.getElementById('recovery-status')!,recoveryAvailable=document.getElementById('recovery-available')!,recoverySelect=document.querySelector<HTMLSelectElement>('#recovery-selection')!,autosaveEnabled=document.querySelector<HTMLInputElement>('#autosave-enabled')!,recoveryConfirm=document.getElementById('recovery-confirm')!;
 let recoveryAction:'restore'|'discard'|null=null,recoveryListKey='',recoveryChoice='',recoveryWasBlocked=false,restoringRecovery=false;
 const recoveryReady=()=>!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active&&!xrExperience?.interaction?.active;
-const recoveryKey=()=>JSON.stringify([layers.recoveryKey(),ui.settings,display.snapshot(layers.project.id,layers.project.layerStack.layers),editorTools?.snapshotPreferences()]);
+const recoveryKey=()=>JSON.stringify([layers.recoveryKey(),ui.settings,display.snapshot(layers.project.id,layers.project.layerStack.layers),editorTools?.snapshotPreferences()],(key,value)=>key==='bytes'&&value instanceof Uint8Array?value.byteLength:value);
 function updateSaveIndicator():void{
  const button=document.querySelector<HTMLButtonElement>('#header-save')!;
  const key=recoveryKey(),record=recovery?.records.find(r=>r.projectId===layers.project.id&&r.revision===key);
@@ -427,7 +432,7 @@ entryRecoveryDialog.addEventListener('close',()=>{
 function interruptSession(_reason:string):void{recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
 const lifecycle=new AppLifecycle(document,window,interruptSession,()=>{previous=performance.now();pointerInside=false;void recovery?.tick(Date.now(),true);});
 const recoveryTimer=setInterval(()=>{if(document.visibilityState==='visible'){const stats=stabilityMetrics.sample(layers,Date.now()),heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;stabilityText=`History ${(stats.historyBytes/1048576).toFixed(1)} MiB · recovery ${!recovery?.enabled?'off':recovery?.blocked?'choice needed':recovery?.warning?'warning':recovery?.active?'working':recovery?.lastSuccess?'saved':'waiting'} ${(recovery?.lastMs??0).toFixed(0)} ms`;document.getElementById('stability-status')!.textContent=`${stats.chunks} allocated / ${stats.meshChunks} mesh chunks · ${stats.vertices.toLocaleString()} vertices / ${stats.triangles.toLocaleString()} triangles. Grid ${(stats.voxelBytes/1048576).toFixed(1)} MiB · history ${(stats.historyBytes/1048576).toFixed(1)} MiB · derived Boolean ${(stats.compositeBytes/1048576).toFixed(1)} MiB. Pending Move ${stats.pendingMoveJobs} / Bake ${stats.pendingBakeJobs} / export ${Number(!!exportAbort)} / recovery ${Number(!!recovery?.active)}. Checkpoint ${((recovery?.lastBytes??0)/1048576).toFixed(1)} MiB / ${(recovery?.lastMs??0).toFixed(0)} ms, snapshot copy ${(recovery?.lastCopyMs??0).toFixed(1)} ms. Tracked ${(stats.trackedBytes/1048576).toFixed(1)} MiB (excludes JS/GPU overhead) · JS heap ${heap===undefined?'unavailable':(heap/1048576).toFixed(1)+' MiB'} · renderer ${renderer.info.memory.geometries} geometries / ${renderer.info.memory.textures} textures.${stats.pressure?' Resource pressure: save manually before further large edits.':''}`;void recovery?.tick();updateRecoveryUI();}},500);
-import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
+import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);references.dispose();lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
 function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w=ui.viewport.clientWidth,h=ui.viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();
@@ -442,6 +447,7 @@ function pollComposite(now:number):void{
   }
 }
 renderer.setAnimationLoop((now,frame)=>{
+  referencesUI.sync();
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
     desktopMirrorPlane.group.visible=false;desktopFieldCursor.hide();desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();

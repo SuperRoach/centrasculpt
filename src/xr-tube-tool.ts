@@ -21,10 +21,11 @@ export class XRTubeTool implements XRStrokeInteraction{
  get active():boolean{return this.held||this.radiusHeld||!!this.pending;}
  get liveSizing():'tube-radius'|null{return this.held&&this.capturedMode==='tube'?'tube-radius':null;}
  get feedback():string{return this.pending?'Regenerating Tube · source preserved until ready':this.note;}
- constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly changed:()=>void=()=>{}){
+ constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly changed:()=>void=()=>{},private readonly issue:(event:'cancel'|'error')=>void=()=>{}){
   this.lineGeometry.setAttribute('position',this.linePositions);this.skinGeometry.setAttribute('position',this.skinPositions);this.preview.matrixAutoUpdate=false;this.preview.add(this.skin,this.line,this.guides);root.add(this.preview);this.preview.visible=false;
  }
  cancel():void{
+  if(this.active)this.issue('cancel');
   this.pending?.abort();this.pending=null;this.held=false;this.radiusHeld=false;this.armed=false;this.stickArmed=false;this.draft=null;this.raw=[];this.preview.visible=false;this.cacheKey='';this.release();
  }
  private release():void{this.capturedLayers?.endPreview(this);this.tools.endPreview(this);this.capturedLayers=undefined;}
@@ -32,7 +33,7 @@ export class XRTubeTool implements XRStrokeInteraction{
  private finish():void{
   const source=this.draft;if(!source){this.cancel();return;}const l=this.layers(),id=this.capturedMode==='edit-spline'?this.target:undefined;
   this.release();this.held=false;this.radiusHeld=false;const abort=new AbortController();this.pending=abort;
-  void l.regenerateTube(source,id,abort.signal).then(()=>{if(this.pending!==abort)return;this.note='Tube ready · Edit Spline to reshape';this.changed();}).catch(error=>{if(this.pending===abort)this.note=error instanceof Error?error.message:String(error);}).finally(()=>{if(this.pending===abort){this.pending=null;this.draft=null;this.preview.visible=false;this.cacheKey='';}});
+  void l.regenerateTube(source,id,abort.signal).then(()=>{if(this.pending!==abort)return;this.note='Tube ready · Edit Spline to reshape';this.changed();}).catch(error=>{if(this.pending===abort){this.issue('error');this.note=error instanceof Error?error.message:String(error);}}).finally(()=>{if(this.pending===abort){this.pending=null;this.draft=null;this.preview.visible=false;this.cacheKey='';}});
  }
  private paint(source:TubeSource,matrix:Matrix4,handles:boolean):void{
   const key=JSON.stringify([source,handles,this.tools.splinePointId]);this.preview.visible=true;this.preview.matrix.copy(matrix);if(this.preview.parent){this.preview.parent.updateWorldMatrix(true,false);this.preview.matrix.premultiply(this.preview.parent.matrixWorld.clone().invert());}this.preview.updateWorldMatrix(false,true);if(key===this.cacheKey)return;this.cacheKey=key;
@@ -81,7 +82,7 @@ export class XRTubeTool implements XRStrokeInteraction{
    if(this.held){const point=this.draft!.points.find(p=>p.id===this.pointId)!,p=this.ray.ray.at(this.distance,new Vector3()).applyMatrix4(this.anchor.clone().invert()).add(this.offset);point.position=p.toArray();if(!tool.buttons.trigger.pressed)this.finish();}
    else if(this.radiusHeld&&Math.abs(stick)<.12)this.finish();
    if(this.draft)this.paint(this.draft,this.anchor,true);
-  }catch(error){this.cancel();this.note=error instanceof Error?error.message:'Tube cancelled';}
+  }catch(error){this.cancel();this.issue('error');this.note=error instanceof Error?error.message:'Tube cancelled';}
  }
  dispose():void{this.cancel();this.preview.removeFromParent();this.skinGeometry.dispose();this.skinMaterial.dispose();this.lineGeometry.dispose();this.lineMaterial.dispose();this.handleGeometry.dispose();this.handleMaterial.dispose();}
 }
