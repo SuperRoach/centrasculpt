@@ -1,11 +1,14 @@
+import {defaultLighting,LIGHT_IDS,LIGHT_COLOURS,type LightId} from './lighting';
+import type {LightRig} from './light-rig';
 import type {ReferenceView} from './reference-view';
 import type {Turntable} from './turntable';
 import {STUDIO_BACKGROUNDS,mirrorGuideSettings,turntableSettings} from './world-settings';
 import type {EditorToolState} from './editor-tool-state';
 import type {MenuContent,MenuButton} from './xr-menu-model';
 import type {XRSessionController} from './xr-session';
-export type WorldSection='home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot'|'references'|'reference'|'reference-pose'|'reference-delete'|'reference-more';
+export type WorldSection='lighting'|'light'|'light-colour'|'light-position'|'inspection'|'home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot'|'references'|'reference'|'reference-pose'|'reference-delete'|'reference-more';
 export interface XRWorldMenuPort {
+ lighting?:LightRig;
  references?:ReferenceView;
  importReferences?:()=>void;
  turntable?:()=>Turntable;
@@ -19,6 +22,7 @@ export interface XRWorldMenuPort {
 /** Dedicated world navigation reuses the existing menu canvas, scale, ray and trigger owner. */
 export class XRWorldMenu {
  section:WorldSection='home';
+ private light:LightId='key';
  constructor(private readonly tools:EditorToolState,private readonly port?:XRWorldMenuPort){}
  content():MenuContent{
   const layers=this.tools.port.layers(),world=layers.display.world,busy=this.tools.busy;
@@ -31,9 +35,41 @@ export class XRWorldMenu {
    add('world:environment','Environment',244,'Studio or Passthrough');
    add('world:background','Studio Background',394,'Colour swatches · ground grid');
    add('world:guides','Guides and Constraints',544,'Mirror symmetry · angle snap');
-   add('world:preferences','Preferences',694,'VR UI size · diagnostics · performance');
+   buttons.push({id:'world:preferences',label:'Preferences',disabled:busy,rect:{x:40,y:694,width:524,height:136}},{id:'world:lighting',label:'Lighting',detail:'Three-point rig · inspection',disabled:busy,rect:{x:588,y:694,width:524,height:136}});
    buttons.push({id:'world:references',label:'References',detail:'Import on desktop · place and inspect in VR',disabled:busy,rect:{x:588,y:844,width:524,height:136}});
    buttons.push({id:'world:turntable',label:'Turntable',detail:'Presentation rotation · live sculpting',disabled:busy,rect:{x:40,y:844,width:524,height:136}});
+  }else if(['lighting','light','light-colour','light-position','inspection'].includes(this.section)){
+   const rig=this.port?.lighting,s=layers.display.lighting??defaultLighting(),p=s.lights[this.light];
+   subtitle='Lighting · workspace equipment · no shadows';
+   if(this.section==='lighting'){
+    add('lighting-enable',`Three-Point Lighting · ${s.enabled?'On':'Off'}`,244,'Off restores original illumination',s.enabled);
+    LIGHT_IDS.forEach((id,i)=>buttons.push({id:`lighting-select:${id}`,label:`${id[0].toUpperCase()+id.slice(1)} Light`,detail:`${s.lights[id].enabled?'On':'Off'} · ${s.lights[id].intensity.toFixed(1)}`,disabled:busy,rect:{x:40+i*364,y:404,width:344,height:136}}));
+    add('lighting-edit',`Edit Lights · ${rig?.editing?'On':'Off'}`,564,'Key 1 / Fill 2 / Rim 3 · point + hold Tool trigger',!!rig?.editing,busy||!rig||!s.enabled||!!rig?.inspection.enabled);
+    add('world:inspection','Inspection Light',724,'Temporary rotating illumination · separate from Turntable');
+    add('lighting-reset','Reset All Lights',884,'Restore positions, colours and intensities');
+   }else if(this.section==='inspection'){
+    const i=rig?.inspection;subtitle='Inspection · temporary override · settings not saved';
+    add('inspection-enable',`Inspection Light · ${i?.enabled?'On':'Off'}`,244,'Overrides rig until switched off',!!i?.enabled,busy||!rig);
+    add('inspection-pause',i?.paused?'Resume':'Pause',394,'Keeps current angle',!!i?.paused,busy||!rig);
+    add('inspection-reverse','Reverse direction',544,`Speed · ${i?.speed??6} degrees / second`,false,busy||!rig);
+    buttons.push({id:'inspection-slower',label:'Slower',disabled:busy||!rig,rect:{x:40,y:694,width:524,height:136}},{id:'inspection-faster',label:'Faster',disabled:busy||!rig,rect:{x:588,y:694,width:524,height:136}});
+    add('inspection-reset','Reset angle',844,undefined,false,busy||!rig);
+   }else if(this.section==='light-colour'){
+    subtitle=`${this.light.toUpperCase()} · Colour`;
+    LIGHT_COLOURS.forEach((c,i)=>buttons.push({id:`lighting-colour:${c}`,label:['Warm white','Cool white','White','Peach','Sky','Lavender'][i],colour:c,swatch:true,selected:p.colour===c,disabled:busy,rect:{x:40+(i%2)*548,y:244+Math.floor(i/2)*150,width:524,height:136}}));
+    add('world:light','‹ Light settings',844);
+   }else if(this.section==='light-position'){
+    subtitle=`${this.light.toUpperCase()} · workspace position · aims at saved target`;
+    for(let i=0;i<3;i++){const y=244+i*150;labels.push({text:`${'XYZ'[i]} · ${p.position[i].toFixed(2)}`,x:56,y,width:650,height:90});for(const [j,sign]of [-1,1].entries())buttons.push({id:`lighting-position:${i}:${sign}`,label:sign<0?'−':'+',disabled:busy,rect:{x:760+j*180,y,width:160,height:110}});}
+    add('world:light','‹ Light settings',844);
+   }else{
+    subtitle=`${this.light.toUpperCase()} LIGHT · directional · distance does not change brightness`;
+    add('lighting-individual',`Enabled · ${p.enabled?'On':'Off'}`,244,undefined,p.enabled);
+    add('world:light-colour','Colour',394,p.colour);
+    labels.push({text:`Intensity · ${p.intensity.toFixed(1)}`,x:300,y:560,width:550,height:90});
+    buttons.push({id:'lighting-dimmer',label:'−',disabled:busy||p.intensity<=0,rect:{x:40,y:544,width:240,height:110}},{id:'lighting-brighter',label:'+',disabled:busy||p.intensity>=6,rect:{x:872,y:544,width:240,height:110}});
+    add('world:light-position','Position / direction',694,'Or use Edit Lights to grab the wireframe handle');add('lighting-reset-one','Reset this light',844);
+   }
   }else if(this.section==='references'){
    subtitle='References · self-contained PNG/JPEG · import on desktop';
    add('reference-import','Import images…',244,'Exit XR to use the browser file picker');
@@ -114,10 +150,27 @@ export class XRWorldMenu {
   return {title:this.section==='reference'?'REFERENCE IMAGE':this.section==='reference-more'?'IMAGE SETTINGS':'WORLD SETTINGS',subtitle,buttons,labels,footer:'Hold Support stick · Tool trigger selects · release to close'};
  }
  activate(id:string):boolean{
+  if(id.startsWith('lighting-')||id.startsWith('inspection-')){
+   if(this.tools.busy)return true;
+   const display=this.tools.port.layers().display,rig=this.port?.lighting;
+   const s=display.lighting??=rig?.preset()??defaultLighting(),p=s.lights[this.light];
+   if(id.startsWith('lighting-select:')){this.light=id.slice(16) as LightId;this.section='light';}
+   else if(id==='lighting-enable'){s.enabled=!s.enabled;if(!s.enabled&&rig)rig.editing=false;}
+   else if(id==='lighting-edit'&&rig){rig.sync();rig.editing=!rig.editing;rig.cancel();if(rig.editing&&this.port?.references){this.port.references.editing=false;this.port.references.cancel();}}
+   else if(id==='lighting-individual')p.enabled=!p.enabled;
+   else if(id.startsWith('lighting-colour:'))p.colour=id.slice(16);
+   else if(id==='lighting-dimmer'||id==='lighting-brighter')p.intensity=Math.max(0,Math.min(6,Math.round((p.intensity+(id==='lighting-brighter'?.2:-.2))*10)/10));
+   else if(id.startsWith('lighting-position:')){const [,axis,sign]=id.split(':');const a=Number(axis),v=Math.max(-1000,Math.min(1000,p.position[a]+Number(sign)*.1));if(p.position.some((n,i)=>Math.abs((i===a?v:n)-p.target[i])>=.001))p.position[a]=v;}
+   else if(id==='lighting-reset')s.lights=(rig?.preset()??defaultLighting()).lights;
+   else if(id==='lighting-reset-one')s.lights[this.light]=(rig?.preset()??defaultLighting()).lights[this.light];
+   else if(rig){const i=rig.inspection;if(id==='inspection-enable'){rig.sync();i.enabled=!i.enabled;rig.editing=false;}else if(id==='inspection-pause')i.paused=!i.paused;else if(id==='inspection-reverse')i.direction*=-1;else if(id==='inspection-reset')rig.resetInspection();else if(id==='inspection-slower'||id==='inspection-faster')i.speed=Math.max(1,Math.min(30,i.speed+(id==='inspection-faster'?1:-1)));}
+   rig?.cancel();this.tools.port.changed();return true;
+  }
+
   const refs=this.port?.references,records=this.tools.port.layers().display.references,r=records.find(r=>r.id===refs?.selected);
   if(id.startsWith('reference-select:')){if(refs)refs.selected=id.slice(17);this.section='reference';return true;}
   if(id==='reference-import'){this.port?.importReferences?.();return true;}
-  if(id==='reference-edit'){if(refs){refs.editing=!refs.editing;refs.cancel();}return true;}
+  if(id==='reference-edit'){if(this.port?.lighting){this.port.lighting.editing=false;this.port.lighting.cancel();}if(refs){refs.editing=!refs.editing;refs.cancel();}return true;}
   if(id.startsWith('reference-')||id.startsWith('ref-pos:')){
    if(!r)return false;
    if(id==='reference-visible')r.visible=!r.visible;

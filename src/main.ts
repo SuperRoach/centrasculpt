@@ -1,3 +1,5 @@
+import {LightRig} from './light-rig';
+import {lightingUI} from './lighting-ui';
 import {ReferenceTransformTool} from './reference-transform';
 import {ReferenceView} from './reference-view';
 import {referenceUI} from './reference-ui';
@@ -74,7 +76,7 @@ function createCameraControls() {
   orbit.mouseButtons={LEFT:null as unknown as THREE.MOUSE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.ROTATE};return orbit;
 }
 let controls=createCameraControls();
-scene.add(new THREE.HemisphereLight(0xffffff,0x687267,2.7));
+const ambient=new THREE.HemisphereLight(0xffffff,0x687267,2.7);scene.add(ambient);
 const light=new THREE.DirectionalLight(0xfff4df,3.4);light.position.set(-3,5,4);scene.add(light);
 const fill=new THREE.DirectionalLight(0xd6eaff,1.4);fill.position.set(4,1,-2);scene.add(fill);
 const grid=new THREE.GridHelper(8,40,0xc9cdc2,0xdaddd3);grid.position.y=-1.12;scene.add(grid);
@@ -372,6 +374,8 @@ ui.onBrushSelection(mode=>{try{editorTools!.select(mode==='add'||mode==='subtrac
 const desktopPreviewRoot=new THREE.Group();scene.add(desktopPreviewRoot);const desktopFieldCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorCursor=new XRBrushPreview(desktopPreviewRoot);const desktopMirrorPlane=new XRMirrorPlane(editorTools!,desktopPreviewRoot);
 const desktopPathGeometry=new THREE.BufferGeometry(),desktopPathMaterial=new THREE.LineBasicMaterial({color:'#267c78',depthTest:false});const desktopPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopMirrorPath=new THREE.Line(desktopPathGeometry,desktopPathMaterial),desktopPaths=new THREE.Group();desktopPaths.matrixAutoUpdate=false;desktopPaths.add(desktopPath,desktopMirrorPath);scene.add(desktopPaths);
 const xrRig=new XRSceneRig(scene,camera);xrRig.sculptureRoot.add(layers.group,layers.composite.group);
+const lighting=new LightRig(()=>display.lighting,xrRig.workspaceRoot,light,fill,ambient,()=>{xrRig.sculptureRoot.updateMatrix();xrRig.turntable.group.updateMatrix();return xrRig.visibleBounds().getCenter(new THREE.Vector3()).applyMatrix4(xrRig.sculptureRoot.matrix).applyMatrix4(xrRig.turntable.group.matrix);});
+const lightUI=lightingUI(()=>display,lighting,precisionPanel.parentElement!,()=>loadingProject||ui.modalOpen||xrBlocked());
 const references=new ReferenceView(()=>display.references,xrRig.workspaceRoot,xrRig.turntable.group);
 window.addEventListener('pagehide',()=>references.clear());
 referenceEditor=new ReferenceTransformTool(camera,renderer.domElement,scene,references,input,{beforeDrag:()=>{stampClick.cancel();ghostRotation?.finish();transformTools?.finish();stopSculpt();},camera:enabled=>controls.enabled=enabled,changed:()=>{cursor.visible=false;transformTools?.sync();ghostRotation?.sync();},busy:()=>loadingProject||ui.modalOpen||xrBlocked(),error:text=>ui.projectMessage(text,true)});
@@ -379,7 +383,7 @@ const referencesUI=referenceUI(()=>display,references,precisionPanel.parentEleme
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
- references,importReferences:referencesUI.import,tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
+ lighting,references,importReferences:referencesUI.import,tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
  sculptureInfo:()=>({activeResolution:volumeLabel(layers.active.layer.volume),resolutions:layers.project.layerStack.layers.map(layer=>`${volumeLabel(layer.volume)}`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
  blockedReason:()=>!recovery?.initialized?'Checking local recovery storage…':recovery.blocked&&recovery.enabled?'Review saved recovery before entering.':ui.modalOpen?'Close the open dialog before entering.':loadingProject?'Wait for the current project operation to finish.':'Wait for Boolean Preview to finish, or select Separate Layers.',
  entryResolvable:()=>!!recovery?.initialized&&recovery.enabled&&recovery.blocked&&!loadingProject&&!ui.modalOpen&&layers.recoveryReady,
@@ -438,7 +442,7 @@ entryRecoveryDialog.addEventListener('close',()=>{
 function interruptSession(_reason:string):void{recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
 const lifecycle=new AppLifecycle(document,window,interruptSession,()=>{previous=performance.now();pointerInside=false;void recovery?.tick(Date.now(),true);});
 const recoveryTimer=setInterval(()=>{if(document.visibilityState==='visible'){const stats=stabilityMetrics.sample(layers,Date.now()),heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;stabilityText=`History ${(stats.historyBytes/1048576).toFixed(1)} MiB · recovery ${!recovery?.enabled?'off':recovery?.blocked?'choice needed':recovery?.warning?'warning':recovery?.active?'working':recovery?.lastSuccess?'saved':'waiting'} ${(recovery?.lastMs??0).toFixed(0)} ms`;document.getElementById('stability-status')!.textContent=`${stats.chunks} allocated / ${stats.meshChunks} mesh chunks · ${stats.vertices.toLocaleString()} vertices / ${stats.triangles.toLocaleString()} triangles. Grid ${(stats.voxelBytes/1048576).toFixed(1)} MiB · history ${(stats.historyBytes/1048576).toFixed(1)} MiB · derived Boolean ${(stats.compositeBytes/1048576).toFixed(1)} MiB. Pending Move ${stats.pendingMoveJobs} / Bake ${stats.pendingBakeJobs} / export ${Number(!!exportAbort)} / recovery ${Number(!!recovery?.active)}. Checkpoint ${((recovery?.lastBytes??0)/1048576).toFixed(1)} MiB / ${(recovery?.lastMs??0).toFixed(0)} ms, snapshot copy ${(recovery?.lastCopyMs??0).toFixed(1)} ms. Tracked ${(stats.trackedBytes/1048576).toFixed(1)} MiB (excludes JS/GPU overhead) · JS heap ${heap===undefined?'unavailable':(heap/1048576).toFixed(1)+' MiB'} · renderer ${renderer.info.memory.geometries} geometries / ${renderer.info.memory.textures} textures.${stats.pressure?' Resource pressure: save manually before further large edits.':''}`;void recovery?.tick();updateRecoveryUI();}},500);
-import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);referenceEditor?.dispose();references.dispose();lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
+import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);lighting.dispose();referenceEditor?.dispose();references.dispose();lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
 function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w=ui.viewport.clientWidth,h=ui.viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();
@@ -453,6 +457,7 @@ function pollComposite(now:number):void{
   }
 }
 renderer.setAnimationLoop((now,frame)=>{
+  lighting.sync(now,document.visibilityState!=='hidden');lightUI.sync();
   referenceEditor?.sync();referencesUI.sync();
   renderEmulatorFrame?.(now);
   if(xrBlocked()){

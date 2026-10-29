@@ -1,0 +1,34 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs lighting
+
+Tests: 1/69 files · compiled 1, cached 95 · preparation 60 ms
+✔ three-point defaults are independent, bounded, optional and legacy lighting is untouched (2.11225ms)
+✔ validator rejects nonfinite, excessive, coincident, invalid type and malformed project metadata (0.183583ms)
+✔ rig toggles restore exact original positions, targets, colours and intensity repeatedly (0.500208ms)
+✔ key enable, colour, intensity and directional aiming are independent of distance (0.389666ms)
+✔ fill enable, colour, intensity and directional aiming are independent of distance (0.237375ms)
+✔ rim enable, colour, intensity and directional aiming are independent of distance (0.193542ms)
+✔ light grab is neutral-armed, preserves offset, follows controller and release stores workspace position (0.473291ms)
+✔ misses in edit mode reserve trigger and do not begin a drag (0.227041ms)
+✔ tracking loss, menu ownership, connection changes and stop cancel and require a neutral trigger (0.340959ms)
+✔ workspace scaling/rotation maps grabs back to local coordinates while Turntable never rotates rig (0.752542ms)
+✔ inspection rotates only its light with bounded time, pause, reverse, reset and original restoration (0.273291ms)
+✔ Studio and transparent Passthrough retain environment and source framing (0.535167ms)
+✔ native save/load and actual recovery worker preserve lighting without source/history/export changes (47.108042ms)
+✔ fixed light/geometry/material resources survive 10k updates and disposal restores borrowed lights once (9.683ms)
+✔ all lighting menu targets are disjoint and controls update rig settings and reset independently (10.060792ms)
+✔ actual left controller light ownership blocks sculpt, alternate, layer grab; navigation and menu stay available (8.03775ms)
+✔ actual right controller light ownership blocks sculpt, alternate, layer grab; navigation and menu stay available (5.93375ms)
+✔ new presets and reset target the current sculpture centre only on explicit actions (0.439583ms)
+✔ Normal, Matte and Glossy materials and unlit references remain independent of rig changes (0.754666ms)
+✔ tool selection during the menu update cancels light editing in the same frame (0.337375ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 145.619042
+Test command wall time: 0.23 s

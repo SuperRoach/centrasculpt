@@ -1,10 +1,11 @@
+import {validateLighting,type LightingSettings} from './lighting';
 import {validateReferences,type ReferenceImage} from './reference-images';
 import {defaultWorldSettings,validateWorldSettings,type WorldDisplayPreferences} from './world-settings';
 import {validateVRUIScale,type VRUIScale} from './xr-ui-style';
 import {validateRenderStyle,type RenderStyle} from './render-style';
 export type ViewportMode='clay'|'layer-colours';
 const palette=['#aabd8d','#d68d70','#86aeca','#c29ac9','#dfc574','#78b7a9','#d293ac','#929fc9'];
-export type ProjectDisplayPreferences={mode:ViewportMode;colours:Record<string,string>;renderStyle?:RenderStyle;vrUiScale?:VRUIScale;world?:WorldDisplayPreferences;references?:ReferenceImage[]};
+export type ProjectDisplayPreferences={mode:ViewportMode;colours:Record<string,string>;renderStyle?:RenderStyle;vrUiScale?:VRUIScale;world?:WorldDisplayPreferences;lighting?:LightingSettings;references?:ReferenceImage[]};
 /** Optional native-project display metadata, kept separate from SDF data and export materials. */
 export function validateProjectDisplay(value: unknown,layerIds: readonly string[]):ProjectDisplayPreferences {
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid project display preferences.');
@@ -16,10 +17,11 @@ export function validateProjectDisplay(value: unknown,layerIds: readonly string[
   const renderStyle=data.renderStyle===undefined?undefined:validateRenderStyle(data.renderStyle==='wireframe'?'normal':data.renderStyle);
   const vrUiScale=data.vrUiScale===undefined?undefined:validateVRUIScale(data.vrUiScale);
   const world=data.world===undefined?undefined:validateWorldSettings(data.world);
-  return {...(data.references===undefined?{}:{references:validateReferences(data.references)}),...(world===undefined?{}:{world}),...(vrUiScale===undefined?{}:{vrUiScale}),...(renderStyle===undefined?{}:{renderStyle}),mode:data.mode,colours:Object.fromEntries(entries.map(([id,colour])=>[id,(colour as string).toLowerCase()]))};
+  return {...(data.lighting===undefined?{}:{lighting:validateLighting(data.lighting)}),...(data.references===undefined?{}:{references:validateReferences(data.references)}),...(world===undefined?{}:{world}),...(vrUiScale===undefined?{}:{vrUiScale}),...(renderStyle===undefined?{}:{renderStyle}),mode:data.mode,colours:Object.fromEntries(entries.map(([id,colour])=>[id,(colour as string).toLowerCase()]))};
 }
 /** Runtime display preferences with an explicit native-project snapshot boundary. */
 export class LayerDisplayPreferences {
+  lighting?:LightingSettings;
   references:ReferenceImage[]=[];
   world=defaultWorldSettings();
   vrUiScale:VRUIScale='normal';
@@ -40,10 +42,11 @@ export class LayerDisplayPreferences {
     this.colours.set(`${projectId}/${layerId}`,colour.toLowerCase());
   }
   snapshot(projectId:string,layers:readonly {id:string;order:number}[]):ProjectDisplayPreferences {
-    return {...(this.references.length?{references:this.references}:{}),...(this.world.studioBackground==='neutral-grey'&&!this.world.groundGrid&&!this.world.mirrorGuide&&!this.world.turntable?{}:{world:structuredClone(this.world)}),...(this.vrUiScale==='normal'?{}:{vrUiScale:this.vrUiScale}),...(this.renderStyle==='normal'?{}:{renderStyle:this.renderStyle}),mode:this.mode,colours:Object.fromEntries(layers.map(layer=>[layer.id,this.colour(projectId,layer.id,layer.order)]))};
+    return {...(this.lighting?{lighting:structuredClone(this.lighting)}:{}),...(this.references.length?{references:this.references}:{}),...(this.world.studioBackground==='neutral-grey'&&!this.world.groundGrid&&!this.world.mirrorGuide&&!this.world.turntable?{}:{world:structuredClone(this.world)}),...(this.vrUiScale==='normal'?{}:{vrUiScale:this.vrUiScale}),...(this.renderStyle==='normal'?{}:{renderStyle:this.renderStyle}),mode:this.mode,colours:Object.fromEntries(layers.map(layer=>[layer.id,this.colour(projectId,layer.id,layer.order)]))};
   }
   restore(projectId:string,layers:readonly {id:string;order:number}[],saved?:ProjectDisplayPreferences):void {
     const validated=saved===undefined?undefined:validateProjectDisplay(saved,layers.map(layer=>layer.id));
+    this.lighting=validated?.lighting;
     this.references=validated?.references??[];
     this.world=validated?.world??defaultWorldSettings();
     this.vrUiScale=validated?.vrUiScale??'normal';this.mode=validated?.mode??'layer-colours';this.renderStyle=validated?.renderStyle??'normal';
