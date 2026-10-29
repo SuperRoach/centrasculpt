@@ -18,7 +18,7 @@ export function createUI() {
     <header><a class="brand" href="./" aria-label="Centra Sculpt home"><span class="brand-mark" aria-hidden="true">◎</span><span>Centra <em>Sculpt</em></span></a><span class="subtitle">A SPACE TO SHAPE</span><div id="xr-entry-slot"></div><button type="button" id="header-save" data-state="unsaved" aria-label="Save project — Unsaved changes" title="Unsaved changes · Click to save project"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></svg><span class="save-state-dot" aria-hidden="true"></span></button><span id="header-save-status" class="sr-only" role="status"></span></header>
     <main><aside><div class="eyebrow">YOUR TOOLKIT</div><h1>Make room<br>for an idea.</h1><p class="intro">Build up. Carve away.<br>See where the form takes you.</p>
     <div id="recovery-slot"></div><div id="xr-diagnostics-slot"></div><div id="shape-library-slot"></div>
-    <section><label>SCULPT BRUSH</label><div class="modes"><button id="add" class="active" aria-pressed="true"><b>＋</b> Add</button><button id="subtract" aria-pressed="false"><b>−</b> Subtract</button><button id="smooth" aria-pressed="false"><b>≈</b> Smooth</button><button id="flatten">Flatten</button><button id="inflate">Inflate</button><button id="scrape">Scrape</button><button id="pinch">Pinch</button><button id="crease">Crease</button></div>
+    <section><label>SCULPT BRUSH</label><div class="modes"><button id="add" class="active" aria-pressed="true"><b>＋</b> Add</button><button id="subtract" aria-pressed="false"><b>−</b> Subtract</button><button id="smooth" aria-pressed="false"><b>≈</b> Smooth</button><button id="flatten">Flatten</button><button id="inflate">Inflate</button><button id="scrape">Scrape</button><button id="pinch">Pinch</button><button id="crease">Crease</button><button id="mask">Mask Paint</button><button id="mask-erase">Mask Erase</button></div>
     <div class="range-label"><label for="radius">BRUSH RADIUS · WORLD</label><output id="radius-value">0.220</output></div><input id="radius" type="range" min="${BRUSH_RADIUS_LIMITS.min}" max="${BRUSH_RADIUS_LIMITS.max}" step="0.01" value="0.22"/><div class="range-ends"><span>Fine detail</span><span>Broad strokes</span></div>
     <div class="range-label strength-label"><label for="strength">BRUSH STRENGTH</label><output id="strength-value">35%</output></div><input id="strength" type="range" min="0.01" max="1" step="0.01" value="0.35"/><div class="range-ends"><span>Gentle</span><span>Strong</span></div>
     <div class="range-label strength-label"><label for="hardness">BRUSH HARDNESS</label><output id="hardness-value">0%</output></div><input id="hardness" type="range" min="0" max="1" step="0.01" value="0"/><div class="range-ends"><span>Soft clay</span><span>Sharp edge · Smooth unchanged</span></div>
@@ -47,12 +47,12 @@ export function createUI() {
   let clayMode:'add'|'subtract'='add';
   function setMode(value: BrushMode): void {
     mode = value;if(value==='add'||value==='subtract')clayMode=value;
-    for (const other of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease']) {
+    for (const other of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease','mask','mask-erase']) {
       document.getElementById(other)!.classList.toggle('active', other === value);
       document.getElementById(other)!.setAttribute('aria-pressed', String(other === value));
     }
   }
-  for (const value of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease'] as const) document.getElementById(value)!.addEventListener('click',()=>brushSelection?brushSelection(value):setMode(value));
+  for (const value of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease','mask','mask-erase'] as const) document.getElementById(value)!.addEventListener('click',()=>brushSelection?brushSelection(value):setMode(value));
   const radius = document.querySelector<HTMLInputElement>('#radius')!;
   radius.addEventListener('input', () => document.getElementById('radius-value')!.textContent = Number(radius.value).toFixed(3));
   const strength = document.querySelector<HTMLInputElement>('#strength')!;

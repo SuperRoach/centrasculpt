@@ -1,3 +1,4 @@
+import {sculptMask} from './sculpt-mask';
 import {requireLegacyCubicGrid} from './volume-store';
 import type { VolumeStore } from './volume-store';
 import { SDFVolume } from './sdf';
@@ -17,5 +18,6 @@ export function resampleVolume(source: VolumeStore, resolution: number): SDFVolu
     for(let dz=0;dz<2;dz++)for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)value+=samples[source.index(ix+dx,iy+dy,iz+dz)]*(dx?tx:1-tx)*(dy?ty:1-ty)*(dz?tz:1-tz);
     target.values[target.index(x,y,z)]=value;
   }
+  const mask=sculptMask(source),nextMask=sculptMask(target);if(!mask.empty)for(let z=0;z<resolution;z++)for(let y=0;y<resolution;y++)for(let x=0;x<resolution;x++)nextMask.write(target.index(x,y,z),mask.sample({x:target.coordinate(x,0),y:target.coordinate(y,1),z:target.coordinate(z,2)}));
   return target;
 }

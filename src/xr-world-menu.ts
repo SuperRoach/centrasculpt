@@ -44,7 +44,7 @@ export class XRWorldMenu {
    if(this.section==='lighting'){
     add('lighting-enable',`Three-Point Lighting · ${s.enabled?'On':'Off'}`,244,'Off restores original illumination',s.enabled);
     LIGHT_IDS.forEach((id,i)=>buttons.push({id:`lighting-select:${id}`,label:`${id[0].toUpperCase()+id.slice(1)} Light`,detail:`${s.lights[id].enabled?'On':'Off'} · ${s.lights[id].intensity.toFixed(1)}`,disabled:busy,rect:{x:40+i*364,y:404,width:344,height:136}}));
-    add('lighting-edit',`Edit Lights · ${rig?.editing?'On':'Off'}`,564,'Key 1 / Fill 2 / Rim 3 · point + hold Tool trigger',!!rig?.editing,busy||!rig||!s.enabled||!!rig?.inspection.enabled);
+    add('lighting-edit',`Edit Lights · ${rig?.editing?'On':'Off'}`,564,'Key 1 / Fill 2 / Rim 3 · Tool trigger · move hand + turn wrist',!!rig?.editing,busy||!rig||!s.enabled||!!rig?.inspection.enabled);
     add('world:inspection','Inspection Light',724,'Temporary rotating illumination · separate from Turntable');
     add('lighting-reset','Reset All Lights',884,'Restore positions, colours and intensities');
    }else if(this.section==='inspection'){
@@ -68,7 +68,7 @@ export class XRWorldMenu {
     add('world:light-colour','Colour',394,p.colour);
     labels.push({text:`Intensity · ${p.intensity.toFixed(1)}`,x:300,y:560,width:550,height:90});
     buttons.push({id:'lighting-dimmer',label:'−',disabled:busy||p.intensity<=0,rect:{x:40,y:544,width:240,height:110}},{id:'lighting-brighter',label:'+',disabled:busy||p.intensity>=6,rect:{x:872,y:544,width:240,height:110}});
-    add('world:light-position','Position / direction',694,'Or use Edit Lights to grab the wireframe handle');add('lighting-reset-one','Reset this light',844);
+    add('world:light-position','Position / direction',694,'Edit Lights: hold Tool trigger to move and aim');add('lighting-reset-one','Reset this light',844);
    }
   }else if(this.section==='references'){
    subtitle='References · self-contained PNG/JPEG · import on desktop';

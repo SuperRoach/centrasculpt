@@ -1,9 +1,10 @@
+import {sculptMask} from './sculpt-mask';
 import type { VolumeStore, VolumeRegion, VolumeBounds } from './volume-store';
 import { identityTransform, toLocal, transformMatrix } from './transform';
 import type { Vec3, VolumeTransform } from './transform';
 import { Vector3 } from 'three';
 export type VoxelChangeListener = (index: number, before: number, after: number) => void;
-export type BrushMode = 'add' | 'subtract' | 'smooth' | 'flatten' | 'inflate' | 'scrape' | 'pinch' | 'crease';
+export type BrushMode = 'add' | 'subtract' | 'smooth' | 'flatten' | 'inflate' | 'scrape' | 'pinch' | 'crease' | 'mask' | 'mask-erase';
 export type MirrorPlane = {enabled:boolean;axis: 'x'|'y'|'z';offset:number};
 export function validateMirrorPlane(plane:MirrorPlane):void{if(typeof plane.enabled!=='boolean'||!['x','y','z'].includes(plane.axis)||!Number.isFinite(plane.offset))throw new Error('Invalid mirror plane.');}
 export function reflectPoint(p:Point3,plane:MirrorPlane):Point3{return {...p,[plane.axis]:2*plane.offset-p[plane.axis]};}
@@ -139,6 +140,17 @@ export class SDFVolume implements VolumeStore {
    * Existing synchronous callers drain the identical generator. */
   *brushSteps(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1, start:Point3=center, mirror?:MirrorPlane):Generator<void,Bounds|null> {
     if (![center.x, center.y, center.z, radius, amount, hardness, strength].every(Number.isFinite) || radius <= 0 || amount <= 0 || (freeSpace && strength <= 0)) return null;
+    if(mode==='mask'||mode==='mask-erase'){
+      const mask=sculptMask(this),points=[center,...(mirror?.enabled?[reflectPoint(center,mirror)]:[])],bounds:Bounds={min:[...this.shape],max:[0,0,0]};let changed=false,processed=0;
+      // Union of symmetric applicators: overlap never doubles protection strength.
+      const lo=[0,1,2].map(a=>Math.max(0,Math.floor((Math.min(...points.map(c=>[c.x,c.y,c.z][a]))-radius+this.extent)/this.step-this.minimum[a]))),hi=[0,1,2].map(a=>Math.min(this.shape[a]-1,Math.ceil((Math.max(...points.map(c=>[c.x,c.y,c.z][a]))+radius+this.extent)/this.step-this.minimum[a])));
+      for(let z=lo[2];z<=hi[2];z++)for(let y=lo[1];y<=hi[1];y++)for(let x=lo[0];x<=hi[0];x++){
+       if(processed++%128===127)yield;const px=this.coordinate(x,0),py=this.coordinate(y,1),pz=this.coordinate(z,2);let d=Infinity;for(const c of points)d=Math.min(d,Math.hypot(px-c.x,py-c.y,pz-c.z)/radius);if(d>=1)continue;
+       const inner=Math.max(0,Math.min(.9,hardness*.9)),t=Math.max(0,(d-inner)/(1-inner)),w=(1-t*t)**2,id=this.index(x,y,z),old=mask.read(id),next=Math.fround(mode==='mask'?Math.min(1,old+Math.min(1,amount)*w):Math.max(0,old-Math.min(1,amount)*w));
+       if(next!==old){mask.write(id,next);changed=true;[x,y,z].forEach((v,a)=>{bounds.min[a]=Math.min(bounds.min[a],v);bounds.max[a]=Math.max(bounds.max[a],v);});}
+      }return changed?bounds:null;
+    }
+    const protection=sculptMask(this);
     const resampling=mode==='pinch'||mode==='crease';
     const advanced=mode==='flatten'||mode==='inflate'||mode==='scrape'||resampling;
     if(advanced)freeSpace=false;
@@ -224,6 +236,7 @@ export class SDFVolume implements VolumeStore {
         } else next += (mode === 'add' ? -1 : 1) * amount * falloff;
       }
       // Bounded fields remain finite even through prolonged repeated strokes.
+      next=protection.blend(i,this.values[i],next);
       this.scratch[i] = Math.max(-this.extent * 4, Math.min(this.extent * 4, next));
       changed ||= this.scratch[i] !== this.values[i];
     }

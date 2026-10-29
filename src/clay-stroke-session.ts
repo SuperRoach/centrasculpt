@@ -25,10 +25,10 @@ export class ClayStrokeSession {
  get buffered():boolean{return this.steady>0||this.straight;}
  begin(settings:SculptSettings,controls:ClayPathControls,time:number,freeSpace=false,rollingSamples=false):void{
   if(this.active)throw new Error('Finish the current Clay stroke.');
-  this.pending=null;this.stagedDeformation=settings.mode==='pinch'||settings.mode==='crease';this.rollingSamples=rollingSamples;
+  this.pending=null;this.stagedDeformation=settings.mode==='pinch'||settings.mode==='crease'||settings.mode==='mask'||settings.mode==='mask-erase';this.rollingSamples=rollingSamples;
   this.axis=controls.axis;this.snap=controls.snap;this.freeSpace=freeSpace;this.previousSampleCPU=0;
   const layers=this.layers();this.radius=settings.radius/uniformScale(layers.active.layer.transform);
-  const smooth=settings.mode==='smooth';filterClayPath([],smooth?0:controls.steady,this.radius,smooth?false:controls.straightLine);layers.beginStroke();this.settings={...settings};this.steady=smooth?0:controls.steady;this.straight=!smooth&&controls.straightLine;this.started=this.last=time;this.id=layers.active.layer.id;this.raw.length=0;this.preview=[];this.previewTime=-Infinity;this.phase='drawing';this.queue=[];this.cursor=0;this.replayTime=0;
+  const smooth=settings.mode==='smooth';filterClayPath([],smooth?0:controls.steady,this.radius,smooth?false:controls.straightLine);layers.beginStroke(settings.mode==='mask'||settings.mode==='mask-erase');this.settings={...settings};this.steady=smooth?0:controls.steady;this.straight=!smooth&&controls.straightLine;this.started=this.last=time;this.id=layers.active.layer.id;this.raw.length=0;this.preview=[];this.previewTime=-Infinity;this.phase='drawing';this.queue=[];this.cursor=0;this.replayTime=0;
  }
  valid():boolean{const layers=this.layers();return layers.project.activeLayerId===this.id&&layers.drawing&&layers.active.layer.editable;}
  projectPoint(point:Point3):Point3{if(this.straight&&this.axis!=='free'&&this.raw.length){const first=this.raw[0];point={x:this.axis==='x'?point.x:first.x,y:this.axis==='y'?point.y:first.y,z:this.axis==='z'?point.z:first.z};}if(this.straight&&this.axis==='free'&&this.raw.length&&this.snap)point=snapClayPoint(this.raw[0],point,this.snap);return point;}
@@ -56,7 +56,7 @@ export class ClayStrokeSession {
   const started=performance.now();let dabs=0;
   while((this.pending||this.cursor<this.queue.length)&&dabs<(this.stagedDeformation?2048:64)&&(dabs===0||performance.now()-started<budgetMs)){
    if(this.stagedDeformation){
-    if(!this.pending){const point=this.queue[this.cursor++],dt=point.t-this.replayTime;this.replayTime=point.t;this.pending=this.layers().applyResamplingSteps(this.settings.mode as 'pinch'|'crease',point,point.radius??this.radius,this.settings.strength,dt,this.settings.hardness);}
+    if(!this.pending){const point=this.queue[this.cursor++],dt=point.t-this.replayTime;this.replayTime=point.t;this.pending=this.layers().applyResamplingSteps(this.settings.mode as 'pinch'|'crease'|'mask'|'mask-erase',point,point.radius??this.radius,this.settings.strength,dt,this.settings.hardness);}
     const next=this.pending.next();dabs++;if(next.done)this.pending=null;
    }else{
     const point=this.queue[this.cursor++],dt=point.t-this.replayTime;this.layers().applyStrokeLocal(point,point.radius??this.radius,this.settings.mode,this.settings.strength,dt,this.settings.hardness,this.freeSpace);this.replayTime=point.t;dabs++;

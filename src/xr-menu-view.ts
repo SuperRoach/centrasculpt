@@ -61,7 +61,7 @@ export class XRMenuView implements XRMenuInteraction {
   drawVRText(ctx,content.subtitle,{x:40,y:92,width:776,height:38},VR_UI.detail,VR_UI.muted);
   for(const b of content.buttons)this.button(b);
   for(const label of content.labels)drawVRText(ctx,label.text,{x:label.x,y:label.y,width:label.width??MENU_SIZE-label.x-44,height:label.height??46},label.small?VR_UI.label:label.value?VR_UI.value:VR_UI.label,label.small?VR_UI.muted:VR_UI.text);
-  drawVRText(ctx,content.footer,{x:40,y:1048,width:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
+  drawVRText(ctx,content.footer,{x:wheel?388:40,y:1048,width:wheel?724:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
  }
  private button(b:MenuButton):void{
   const ctx=this.ctx,hover=b.id===this.model.hover&&!b.disabled,style=vrControlStyle(b.disabled,hover,b.selected,this.slider===b.id);
@@ -74,6 +74,7 @@ export class XRMenuView implements XRMenuInteraction {
    drawVRText(ctx,label,{x:x-74,y:y-10,width:148,height:70},VR_UI.radial,style.text,true,'center');return;
   }
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();
+  if(b.id==='tool:mask'){this.icon('mask',r.x+48,r.y+r.height/2,style.text);drawVRText(ctx,b.label,{x:r.x+88,y:r.y+(r.height-VR_UI.value*1.15)/2,width:r.width-108,height:VR_UI.value*1.15},VR_UI.value,style.text,true,'center');return;}
   if(b.swatch&&b.colour){
    const cy=r.y+r.height/2,labelHeight=VR_UI.label*1.05,checkHeight=VR_UI.control*1.05;
    roundedVRRect(ctx,r.x+20,cy-44,88,88,18);ctx.fillStyle=b.colour;ctx.fill();ctx.strokeStyle=VR_UI.muted;ctx.lineWidth=2;ctx.stroke();
@@ -97,6 +98,11 @@ export class XRMenuView implements XRMenuInteraction {
  private icon(id:string,x:number,y:number,colour:string):void{
   const c=this.ctx;c.save();c.translate(x,y);c.scale(.85,.85);c.strokeStyle=colour;c.fillStyle=colour;c.lineWidth=4;c.lineCap='round';c.lineJoin='round';c.beginPath();
   if(id==='clay'||id==='inflate'){c.arc(0,0,14,0,Math.PI*2);c.moveTo(-7,0);c.lineTo(7,0);if(id==='clay'){c.moveTo(0,-7);c.lineTo(0,7);}else{c.moveTo(-20,0);c.lineTo(-26,0);c.moveTo(20,0);c.lineTo(26,0);}}
+  else if(id==='mask'){
+   // A half-shaded shield communicates painted protection at headset scale.
+   c.moveTo(0,-23);c.lineTo(-21,-17);c.lineTo(-21,1);c.bezierCurveTo(-21,15,-9,24,0,29);c.closePath();c.save();c.globalAlpha=.32;c.fill();c.restore();c.beginPath();
+   c.moveTo(0,-23);c.lineTo(21,-17);c.lineTo(21,1);c.bezierCurveTo(21,15,9,24,0,29);c.bezierCurveTo(-9,24,-21,15,-21,1);c.lineTo(-21,-17);c.closePath();c.moveTo(0,-20);c.lineTo(0,24);
+  }
   else if(id==='smooth'){c.moveTo(-24,5);c.bezierCurveTo(-12,-22,5,22,24,-5);}
   else if(id==='tube'||id==='edit-spline'){c.moveTo(-24,12);c.bezierCurveTo(-15,-24,8,24,24,-12);if(id==='tube'){c.moveTo(-24,3);c.bezierCurveTo(-15,-33,8,15,24,-21);}else{for(const p of [[-24,12],[0,0],[24,-12]]){c.moveTo(p[0]+5,p[1]);c.arc(p[0],p[1],5,0,Math.PI*2);}}}
   else if(id==='stamp'){c.rect(-15,-12,30,26);c.moveTo(-22,21);c.lineTo(22,21);c.moveTo(0,-12);c.lineTo(0,-22);}

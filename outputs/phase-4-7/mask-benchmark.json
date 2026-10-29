@@ -1,0 +1,56 @@
+{
+  "environment": "Node host CPU only; sequential warm-process measurements. No XR render/GPU, frame time, thermals, or physical Quest claim.",
+  "results": [
+    {
+      "resolution": 64,
+      "paintDabs": 20,
+      "paintCPUms": 6.428208999999981,
+      "dabP50ms": 0.180499999999995,
+      "dabMaxMs": 1.1349170000000015,
+      "batchP99ms": 0.08504199999998718,
+      "batchMaxMs": 0.13787499999997976,
+      "yieldCount": 410,
+      "maskBytes": 43520,
+      "overlayFullCPUms": 7.060083999999989,
+      "overlayAttributeBytes": 170352,
+      "meshRevisionUnchanged": true,
+      "invert1000CPUms": 0.06412499999999,
+      "nativeMaskBytes": 9545,
+      "nativeSaveCPUms": 8.077082999999988
+    },
+    {
+      "resolution": 128,
+      "paintDabs": 20,
+      "paintCPUms": 23.874709000000053,
+      "dabP50ms": 0.9422500000000014,
+      "dabMaxMs": 2.720542000000023,
+      "batchP99ms": 0.03695799999997007,
+      "batchMaxMs": 0.253832999999986,
+      "yieldCount": 2720,
+      "maskBytes": 254592,
+      "overlayFullCPUms": 12.116999999999962,
+      "overlayAttributeBytes": 362112,
+      "meshRevisionUnchanged": true,
+      "invert1000CPUms": 0.010333000000002812,
+      "nativeMaskBytes": 77161,
+      "nativeSaveCPUms": 39.896208
+    },
+    {
+      "resolution": 192,
+      "paintDabs": 20,
+      "paintCPUms": 44.222999999999956,
+      "dabP50ms": 2.096416999999974,
+      "dabMaxMs": 3.091083000000026,
+      "batchP99ms": 0.012500000000045475,
+      "batchMaxMs": 0.13900000000001,
+      "yieldCount": 8516,
+      "maskBytes": 844288,
+      "overlayFullCPUms": 13.300207999999998,
+      "overlayAttributeBytes": 499824,
+      "meshRevisionUnchanged": true,
+      "invert1000CPUms": 0.010207999999920503,
+      "nativeMaskBytes": 262186,
+      "nativeSaveCPUms": 311.271334
+    }
+  ]
+}

@@ -141,7 +141,7 @@ export class XRControllers {
   // A menu can change tools after the frame's initial mode check.
   if(this.options.toolMode&&mode!==this.options.toolMode()&&this.options.lighting){this.options.lighting.editing=false;this.options.lighting.cancel();}
   const strokeTool=this.input.byHand(this.roles.dominant);if(strokeTool){this.slots[strokeTool.slot].ray.updateWorldMatrix(true,false);this.slots[strokeTool.slot].grip.updateWorldMatrix(true,false);}
-  const lightOwned=this.options.lighting?.step(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.options.stroke?.active&&!this.grab?.active&&!this.layerGrab?.active)??false;
+  const lightOwned=this.options.lighting?.step(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,!!active&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.options.stroke?.active&&!this.grab?.active&&!this.layerGrab?.active,strokeTool?this.slots[strokeTool.slot].grip.matrixWorld:undefined)??false;
   const referenceOwned=this.options.references?.step(strokeTool,strokeTool?this.slots[strokeTool.slot].ray.matrixWorld:undefined,!!active&&!lightOwned&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.options.stroke?.active&&!this.grab?.active&&!this.layerGrab?.active)??false;
   const priorMode=this.options.toolMode?.()??'clay',wasDrawing=!!this.options.stroke?.active;
   this.options.alternate?.update(this.input.byHand(this.roles.support),strokeTool,!!active&&!lightOwned&&!referenceOwned&&!menuWasOpen&&!this.shortcuts.menu&&!diagnosticOwned&&!anyGrip&&!this.menuGripBlocked,wasDrawing);

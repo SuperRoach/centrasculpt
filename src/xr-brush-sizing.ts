@@ -19,7 +19,7 @@ export class XRBrushSizing implements XRAnalogToolControl {
   const dt=this.lastTime===null?0:Math.max(0,Math.min(.05,(time-this.lastTime)/1000));this.lastTime=time;
   // Only the active alternate brush reserves Support trigger for its hold.
   // Tool trigger, every grip and all higher-priority owners still block sizing.
-  const live=liveSizing==='tube-radius'&&mode==='tube'||liveSizing==='clay-radius'&&mode==='clay'||liveSizing==='move-falloff'&&mode==='move';
+  const live=liveSizing==='tube-radius'&&mode==='tube'||liveSizing==='clay-radius'&&(mode==='clay'||mode==='mask')||liveSizing==='move-falloff'&&mode==='move';
   const blocked=!enabled||!live&&(busy||this.tools.busy)||states.some(s=>s.connected&&(s.buttons.grip.pressed||s.buttons.grip.rawValue>=.45||(!(live&&s.role==='tool'||alternateActive&&binding==='brush-radius'&&s.role==='support'&&s.tracked&&s.gripTracked)&&(s.buttons.trigger.pressed||s.buttons.trigger.rawValue>=.45))));
   if(blocked){this.armed=false;this.feedback='';return false;}
   const x=Math.max(-1,Math.min(1,tool.stick.x)),y=Math.max(-1,Math.min(1,tool.stick.y)),magnitude=Math.hypot(x,y);

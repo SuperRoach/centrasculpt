@@ -1,4 +1,5 @@
-import {Matrix4,Mesh,MeshStandardMaterial,Sphere,Vector3} from 'three';
+import {surfaceMask} from './sculpt-mask';
+import {BufferAttribute,Matrix4,Mesh,MeshStandardMaterial,Sphere,Vector3} from 'three';
 import type {Group,Material,BufferGeometry} from 'three';
 import type {ChunkSpatialIndex} from './chunk-spatial-index';
 import {RadialMoveField} from './move-field';
@@ -68,10 +69,11 @@ export class MoveMeshPreview {
     if(count){affected+=count;chosen.push({mesh,material:mesh.material});}
    }
    if(!affected)throw new Error('No vertices inside Move influence · increase radius.');
+   const mask=surfaceMask(surface);if(mask)for(const {mesh}of chosen){const p=mesh.geometry.getAttribute('position');let weights=mesh.geometry.getAttribute('sculptMaskWeight') as BufferAttribute|undefined;if(mask.empty&&!weights)continue;if(!weights){weights=new BufferAttribute(new Float32Array(p.count),1);mesh.geometry.setAttribute('sculptMaskWeight',weights);}const point={x:0,y:0,z:0};for(let i=0;i<p.count;i++){point.x=p.getX(i);point.y=p.getY(i);point.z=p.getZ(i);weights.setX(i,mask.sample(point));}weights.needsUpdate=true;if(performance.now()-start>budgetMs)throw new Error('Masked Move preparation took too long · reduce radius and retry.');}
    const staged=chosen.map(({mesh,material})=>{
     let preview=this.materials.get(material);
-    if(!preview){preview=material.clone();preview.name='Experimental Move preview · render only';
-     preview.onBeforeCompile=shader=>{Object.assign(shader.uniforms,this.uniforms);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+MOVE_PREVIEW_GLSL).replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nvec3 moveN=moveNormal(position,objectNormal);\nobjectNormal=dot(moveN,moveN)>1e-12?normalize(moveN):objectNormal;`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed += moveInteraction>0.5?rotationalMove(position)-position:(moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position));');};
+    if(!preview){preview=material.clone();Object.assign(preview,{defaultAttributeValues:{sculptMaskWeight:[0]}});preview.name='Experimental Move preview · render only';
+     preview.onBeforeCompile=(shader,renderer)=>{material.onBeforeCompile(shader,renderer);if(!shader.vertexShader.includes('attribute float sculptMaskWeight;'))shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute float sculptMaskWeight;');Object.assign(shader.uniforms,this.uniforms);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+MOVE_PREVIEW_GLSL).replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nvec3 moveN=moveNormal(position,objectNormal);\nobjectNormal=dot(moveN,moveN)>1e-12?normalize(moveN):objectNormal;`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed += (1.0-sculptMaskWeight)*(moveInteraction>0.5?rotationalMove(position)-position:(moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position)));');};
      preview.customProgramCacheKey=()=> 'centra-move-preview-v4-rotation';this.materials.set(material,preview);
     }
     return {mesh,material:mesh.material,preview,culled:mesh.frustumCulled,geometry:mesh.geometry};

@@ -1,3 +1,4 @@
+import {copySculptMask} from './sculpt-mask';
 import {SDFVolume} from './sdf';
 import type {DenseAllocator} from './sdf';
 import type {VolumeBounds} from './volume-store';
@@ -54,6 +55,7 @@ export function prepareDenseGrowth(source:SDFVolume,footprint:VolumeBounds,optio
  for(let z=0;z<old[2];z++)for(let y=0;y<old[1];y++){
   const begin=source.index(0,y,z);next.values.set(source.values.subarray(begin,begin+old[0]),next.index(ox,y+oy,z+oz));
  }
+ copySculptMask(source,next);
  const stats={allocationMs,copyMs:performance.now()-copyStart,totalMs:performance.now()-start};
  metadata.set(next,{expansions:(metadata.get(source)?.expansions??0)+1,lastExpansionMs:stats.totalMs});
  return {source,volume:next,plan,stats};

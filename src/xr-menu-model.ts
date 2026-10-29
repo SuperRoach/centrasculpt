@@ -39,6 +39,7 @@ export class XRMenuModel {
   const buttons:MenuButton[]=[],labels:MenuContent['labels']=[],title=this.page==='tool-wheel'?'TOOL WHEEL':this.page==='layers'?'LAYERS':this.tools.moveFamily?this.tools.contextLabel.toUpperCase():`${this.tools.contextLabel.toUpperCase()} OPTIONS`;
   const add=(id:string,label:string,x:number,y:number,width:number,height:number,selected=false,disabled=false,detail?:string)=>buttons.push({id,label,rect:{x,y,width,height},selected,disabled,detail});
   if(this.page==='tool-wheel'){
+   add('tool:mask','Mask',40,1030,320,78,this.tools.active==='mask',this.tools.busy);
    add('world','World Settings',760,140,352,74,false,this.tools.busy);
    add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',40,140,300,74,!!this.tools.path.snap,this.tools.busy);
    VR_WHEEL_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.id==='move'?MOVE_VARIANT_LABELS[this.tools.lastMoveVariant]:tool.detail,sector:i,selected:tool.id==='move'?this.tools.moveFamily:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
@@ -86,6 +87,7 @@ export class XRMenuModel {
    if(id==='world'){this.page='world';this.world.section='home';}
    else if(this.page==='world'&&this.world.activate(id)){}
    else if(id==='ui-scale'||id==='world-ui-scale'){const l=this.tools.port.layers();l.display.vrUiScale=l.display.vrUiScale==='large'?'normal':'large';this.tools.port.changed();}
+   else if(id.startsWith('mask-'))this.tools.maskAction(id);
    else if(id.startsWith('tube-')){void this.tools.splineAction(id).catch(error=>{this.feedback=error instanceof Error?error.message:'Spline action failed';});}
    else if(id==='snap-toggle')this.tools.adjust('global-snap',1);
    else if(id==='merge-layers'){const l=this.tools.port.layers();this.merge={project:l.project,id:l.project.activeLayerId,resolution:128};}

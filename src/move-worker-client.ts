@@ -1,3 +1,4 @@
+import {sculptMask} from './sculpt-mask';
 import {Mesh} from 'three';
 import type {Group} from 'three';
 import type {SDFVolume} from './sdf';
@@ -9,7 +10,7 @@ let generation=0;
  * Worker startup/runtime failures reject without retrying expensive work on the render thread. */
 export async function reconstructMoveAsync(surface:Group,next:SDFVolume,field:RadialMoveField,work:MoveWork,maxBytes:number,progress:(p:MoveProgress)=>void):ReturnType<typeof reconstructMove>{
  if(typeof Worker==='undefined')return reconstructMove(surface,next,field,work,maxBytes,progress);
- const id=++generation,positions:Float32Array[]=[];let snapshotBytes=next.values.byteLength*2;
+ const id=++generation,positions:Float32Array[]=[];let snapshotBytes=next.values.byteLength*2+sculptMask(next).memoryBytes*2;
  for(const o of surface.children)if(o instanceof Mesh)snapshotBytes+=o.geometry.getAttribute('position').count*12;
  // Preserve existing large-volume support when worker duplication exceeds the cap.
  let vertices=0;for(const o of surface.children)if(o instanceof Mesh)vertices+=o.geometry.getAttribute('position').count;
@@ -26,6 +27,6 @@ export async function reconstructMoveAsync(surface:Group,next:SDFVolume,field:Ra
   work.signal.addEventListener('abort',abort,{once:true});
   worker.onerror=e=>{cleanup();reject(new Error(`Move worker failed: ${e.message}`));};
   worker.onmessage=({data:d})=>{if(d.id!==id)return;try{work.check();if(d.error)throw new Error(d.error);if(d.progress){progress(d.progress);return;}cleanup();resolve(d.result);}catch(error){cleanup();reject(error);}};
-  worker.postMessage({id,positions,values,resolution:next.resolution,extent:next.extent,layout:{dimensions:next.dimensions,latticeMin:next.latticeMin},maxBytes:maxBytes-snapshotBytes,field:{center:field.center.toArray(),radius:field.radius,falloff:field.falloff,mode:field.mode,stiffness:field.stiffness,delta:field.delta.toArray(),interaction:field.interaction,axis:field.axis.toArray(),angle:field.angle}},[values.buffer,...positions.map(p=>p.buffer)]);
+  worker.postMessage({id,positions,values,mask:sculptMask(next).snapshot(),resolution:next.resolution,extent:next.extent,layout:{dimensions:next.dimensions,latticeMin:next.latticeMin},maxBytes:maxBytes-snapshotBytes,field:{center:field.center.toArray(),radius:field.radius,falloff:field.falloff,mode:field.mode,stiffness:field.stiffness,delta:field.delta.toArray(),interaction:field.interaction,axis:field.axis.toArray(),angle:field.angle}},[values.buffer,...positions.map(p=>p.buffer)]);
  }));}finally{cleanup();worker.terminate();}
 }

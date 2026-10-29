@@ -1,3 +1,4 @@
+import {sculptMask} from './sculpt-mask';
 import type { SdfLayer } from './layers';
 import {reflectPoint} from './sdf';
 import type {MirrorPlane} from './sdf';
@@ -36,7 +37,7 @@ export function* prepareStampSteps(layer:SdfLayer,value:unknown,maxStagingBytes=
   const dx=Math.max(box.min[0]-p.x,0,p.x-box.max[0]),dy=Math.max(box.min[1]-p.y,0,p.y-box.max[1]),dz=Math.max(box.min[2]-p.z,0,p.z-box.max[2]);
   const outside=dx>0||dy>0||dz>0;
   if(outside){const lower=Math.hypot(dx,dy,dz);if(d.operation==='add'?old<=lower:old>=-lower)continue;}
-  evaluated++;const distance=Math.min(shape.sampleWorld(p),mirror?.enabled?shape.sampleWorld(reflectPoint(p,mirror)):Infinity),next=Math.fround(d.operation==='add'?Math.min(old,distance):Math.max(old,-distance));
+  evaluated++;const distance=Math.min(shape.sampleWorld(p),mirror?.enabled?shape.sampleWorld(reflectPoint(p,mirror)):Infinity),next=sculptMask(volume).blend(index,old,d.operation==='add'?Math.min(old,distance):Math.max(old,-distance));
   if(!Number.isFinite(next)||Math.abs(next)>limit||((x===0||y===0||z===0||x===dims[0]-1||y===dims[1]-1||z===dims[2]-1)&&next<=0))throw new Error('Stamp exceeds the supported SDF distance or positive-boundary limits. Reduce its dimensions.');
   if(next===old)continue;
   if((indices.length+count+1)*12>maxStagingBytes)throw new Error('Stamp exceeds the staging/history memory safety limit. Source voxels and redo were kept.');

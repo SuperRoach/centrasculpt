@@ -1,3 +1,5 @@
+import {sculptMask,registerMaskSurface,copySculptMask,maskSnapshotBytes,type MaskSnapshot} from './sculpt-mask';
+import {MaskOverlay} from './mask-overlay';
 import {evaluateTube,validateTube,type TubeSource} from './procedural-tube';
 import type {ExportSource} from './export-mesh';
 import {reconstructMoveAsync} from './move-worker-client';
@@ -39,6 +41,7 @@ export class LayerRuntime {
   surface: ChunkSurface;
   readonly history: SculptHistory;
   readonly material: MeshStandardMaterial;
+  readonly maskOverlay=new MaskOverlay();
   metrics?:SculptMetrics;
   expansions=0;lastExpansionMs=0;
   triangles=0;
@@ -49,7 +52,7 @@ export class LayerRuntime {
   brushTotal=0;
   brushFrames=0;
   constructor(readonly layer: SdfLayer,neutral: MeshStandardMaterial,public volume=layer.volume,deferMesh=false) {
-    this.material=neutral.clone();this.surface=new ChunkSurface(this.material);
+    this.material=neutral.clone();this.maskOverlay.bind(this.material);this.surface=new ChunkSurface(this.material);registerMaskSurface(this.surface.group,()=>this.volume);
     this.surface.group.userData.layerId=layer.id;
     this.mesher=new IncrementalMesher(volume);
     this.history=new SculptHistory(volume,32*1024*1024,100,layer.id,()=>layer.editable);
@@ -67,7 +70,8 @@ export type MoveCommitStats={backend:'worker'|'cooperative';waitMs:number;sliceP
 type BakeState={ids:string[];orders:Record<string,number>;visibility:Record<string,boolean>;activeId:string;view:SurfaceView};
 type BakeEntry={kind:'bake';layerId:string;runtime:LayerRuntime;before:BakeState;after:BakeState;index:number};
 type TubeEntry={kind:'tube';layerId:string;before:{source:TubeSource;volume:VolumeStore};after:{source:TubeSource;volume:VolumeStore}};
-type TimelineEntry=TubeEntry|BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
+type MaskEntry={kind:'mask';layerId:string;before:MaskSnapshot;after:MaskSnapshot};
+type TimelineEntry=MaskEntry|TubeEntry|BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
 
 /** Owns one independent rendering/editing runtime per layer. The derived compositor only reads these independent sources. */
 export class IndependentLayers {
@@ -102,6 +106,11 @@ export class IndependentLayers {
   private strokeMirror:MirrorPlane={enabled:false,axis:'x',offset:0};
   private strokePoint:Point3|null=null;
   private strokeLayer: string|null=null;
+  private maskBefore:MaskSnapshot|null=null;maskOverlayVisible=true;
+  private trimMaskHistory():void{let bytes=0,count=0;for(const entry of [...this.future,...this.past].reverse())if(entry.kind==='mask'){bytes+=maskSnapshotBytes(entry.before)+maskSnapshotBytes(entry.after);count++;if(count>1&&(bytes>32*1024**2||count>100)){this.past=this.past.filter(e=>e!==entry);this.future=this.future.filter(e=>e!==entry);}}}
+  updateMaskOverlays(budgetMs=2):void{const deadline=performance.now()+budgetMs;for(const runtime of this.runtimes.values())runtime.maskOverlay.update(runtime.surface.group,runtime.volume,this.maskOverlayVisible,deadline);}
+  maskOperation(operation:'invert'|'clear'|'all'):void{this.assertAvailable();this.finishStroke();this.finishTransform();const r=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(r.layer);const mask=sculptMask(r.volume);if(operation==='clear'&&mask.empty||operation==='all'&&mask.defaultValue===1&&mask.entryCount===0)return;const before=mask.snapshot();if(operation==='invert')mask.invert();else mask.uniform(operation==='all'?1:0);this.discardFuture();this.past.push({kind:'mask',layerId:r.layer.id,before,after:mask.snapshot()});this.trimMaskHistory();this.committedRevision++;this.updateMaskOverlays();}
+
   private readonly stroke=new ClayStroke();
   constructor(readonly project: SculptProject,readonly display=new LayerDisplayPreferences()) {
     this.composite=new BooleanComposite(project,this.compositeMaterial,192,this.neutral);
@@ -114,8 +123,8 @@ export class IndependentLayers {
    * Includes retained Bake runtimes; excludes pending Maps, derived CSG and JS/GPU overhead. */
   get recoveryReady():boolean{return !this.tubePending&&!this.disposed&&!this.drawing&&!this.transforming&&!this.previewing&&!this.deforming&&!this.baking&&!this.pendingChunks;}
   recoveryKey():string{return JSON.stringify([this.project.id,this.committedRevision,this.project.activeLayerId,this.project.layerStack.layers.map(l=>[l.metadata(),l.volume.dimensions,l.volume.latticeMin])]);}
-  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}return {voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingTubeJobs:Number(this.tubePending),tubeStagingBytes:this.tubeStagingBytes,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
-  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}const caches=new Set<VolumeStore>();for(const e of [...this.past,...this.future])if(e.kind==='tube'){caches.add(e.before.volume);caches.add(e.after.volume);}for(const v of caches)if(![...held].some(r=>r.volume===v))bytes+=volumeSampleCount(v)*8;return bytes+this.tubeStagingBytes+this.moveStagingBytes+this.backgroundBytes;}
+  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}const maskBytes=[...held].reduce((n,r)=>n+sculptMask(r.volume).memoryBytes,0),maskHistoryBytes=[...this.past,...this.future].reduce((n,e)=>n+(e.kind==='mask'?maskSnapshotBytes(e.before)+maskSnapshotBytes(e.after):0),0);return {maskBytes,maskHistoryBytes,voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingTubeJobs:Number(this.tubePending),tubeStagingBytes:this.tubeStagingBytes,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
+  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes+sculptMask(r.volume).memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}const caches=new Set<VolumeStore>();for(const e of [...this.past,...this.future])if(e.kind==='tube'){caches.add(e.before.volume);caches.add(e.after.volume);}for(const v of caches)if(![...held].some(r=>r.volume===v))bytes+=volumeSampleCount(v)*8;for(const e of [...this.past,...this.future])if(e.kind==='mask')bytes+=maskSnapshotBytes(e.before)+maskSnapshotBytes(e.after);return bytes+(this.maskBefore?maskSnapshotBytes(this.maskBefore):0)+this.tubeStagingBytes+this.moveStagingBytes+this.backgroundBytes;}
   get pendingChunks():number{let count=0;for(const r of this.runtimes.values())count+=r.mesher.pendingChunks;return count;}
   get active(): LayerRuntime {return this.runtime(this.project.activeLayerId);}
   runtime(id: string): LayerRuntime {const runtime=this.runtimes.get(id);if(!runtime)throw new Error('Layer runtime does not exist.');return runtime;}
@@ -168,11 +177,11 @@ export class IndependentLayers {
   }
   private assertSculptable(layer:SdfLayer):void{if(layer.procedural)throw new Error('Bake the procedural tube to a sculpt layer before brushing.');}
   select(id: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.select(id);}
-  beginStroke(): void {
+  beginStroke(mask=false): void {
     validateMirrorPlane(this.symmetry);
     if(this.transformSession)throw new Error('Finish the transform before sculpting.');
     if(this.strokeLayer)throw new Error('Finish the current stroke first.');
-    const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.history.begin();this.strokeLayer=runtime.layer.id;this.strokeMirror={...this.symmetry};this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
+    const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);uniformScale(runtime.layer.transform);runtime.history.pendingBudgetBytes=Math.max(0,(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);if(mask)this.maskBefore=sculptMask(runtime.volume).snapshot();else runtime.history.begin();this.strokeLayer=runtime.layer.id;this.strokeMirror={...this.symmetry};this.stroke.reset();this.strokePoint=null;this.metrics.beginStroke();
   }
   applyStroke(worldPoint: Point3,radius: number,mode: BrushMode,strength: number,dt: number,hardness: number): Bounds|null {
     if(!this.strokeLayer)return null;const layer=this.runtime(this.strokeLayer).layer;return this.applyStrokeLocal(toLocal(worldPoint,layer.transform),radius/uniformScale(layer.transform),mode,strength,dt,hardness);
@@ -181,6 +190,7 @@ export class IndependentLayers {
   applyStrokeLocal(point:Point3,radius:number,mode:BrushMode,strength:number,dt:number,hardness:number,freeSpace=false):Bounds|null {
     if(!this.strokeLayer)return null;
     const runtime=this.editableRuntime(this.strokeLayer);
+    if((mode==='mask'||mode==='mask-erase')!==!!this.maskBefore)throw new Error('Stroke kind changed; cancel before switching mask/sculpt tools.');
     if(![point.x,point.y,point.z,radius,strength,dt,hardness].every(Number.isFinite)||radius<=0||strength<=0||dt<=0)return null;
     const start=performance.now();
     if(mode==='add'&&Number.isFinite(radius)&&radius>0&&[point.x,point.y,point.z].every(Number.isFinite)){
@@ -189,20 +199,22 @@ export class IndependentLayers {
       for(let a=0;a<3;a++){now[a]=Math.max(...points.map(p=>[p.x,p.y,p.z][a]));before[a]=Math.min(...points.map(p=>[p.x,p.y,p.z][a]));}
       this.growRuntime(runtime,{min:now.map((v,a)=>Math.min(v,before[a])-radius) as [number,number,number],max:now.map((v,a)=>Math.max(v,before[a])+radius) as [number,number,number]});
     }
-    const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>runtime.mesher.invalidate(bounds),freeSpace,this.strokeMirror);
-    this.strokePoint={...point};this.composite.invalidateLayer(runtime.layer,dirty);
+    const dirty=this.stroke.apply(runtime.layer.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,bounds=>{if(!this.maskBefore)runtime.mesher.invalidate(bounds);},freeSpace,this.strokeMirror);
+    this.strokePoint={...point};if(!this.maskBefore)this.composite.invalidateLayer(runtime.layer,dirty);
     runtime.brushMs=performance.now()-start;runtime.brushTotal+=runtime.brushMs;runtime.brushFrames++;this.metrics.record('brush',runtime.brushMs);return dirty;
   }
   /** Preserve the Pinch entry point for existing clients/tests. */
   *applyPinchSteps(point:Point3,radius:number,strength:number,dt:number,hardness:number):Generator<void,Bounds|null>{return yield* this.applyResamplingSteps('pinch',point,radius,strength,dt,hardness);}
   /** Cooperatively evaluate/publish Pinch/Crease against the same captured history owner. */
-  *applyResamplingSteps(mode:'pinch'|'crease',point:Point3,radius:number,strength:number,dt:number,hardness:number):Generator<void,Bounds|null>{
+  *applyResamplingSteps(mode:'pinch'|'crease'|'mask'|'mask-erase',point:Point3,radius:number,strength:number,dt:number,hardness:number):Generator<void,Bounds|null>{
     if(!this.strokeLayer)return null;
     const runtime=this.editableRuntime(this.strokeLayer);
-    const work=this.stroke.applySteps(runtime.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,b=>runtime.mesher.invalidate(b),false,this.strokeMirror);
+    if((mode==='mask'||mode==='mask-erase')!==!!this.maskBefore)throw new Error('Stroke kind changed; cancel before switching mask/sculpt tools.');
+    const work=this.stroke.applySteps(runtime.volume,point,radius,mode,strength,dt,runtime.history.record,hardness,b=>{if(!this.maskBefore)runtime.mesher.invalidate(b);},false,this.strokeMirror);
     let step:IteratorResult<void,Bounds|null>,cpu=0;
     do{const start=performance.now();step=work.next();cpu+=performance.now()-start;if(!step.done)yield;}while(!step.done);
-    const dirty=step.value;this.strokePoint={...point};this.composite.invalidateLayer(runtime.layer,dirty);
+    if(this.maskBefore&&this.trackedBytes>(this.growthLimits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes))throw new Error('Mask history memory safety limit reached; cancel the unfinished stroke.');
+    const dirty=step.value;this.strokePoint={...point};if(!this.maskBefore)this.composite.invalidateLayer(runtime.layer,dirty);
     // Completed input-sample CPU only: exclude time suspended between frames.
     runtime.brushMs=cpu;runtime.brushTotal+=cpu;runtime.brushFrames++;this.metrics.record('brush',cpu);return dirty;
   }
@@ -210,12 +222,14 @@ export class IndependentLayers {
   finishStroke(): void {
     if(!this.strokeLayer)return;
     const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;
+    if(this.maskBefore){const mask=sculptMask(runtime.volume),before=this.maskBefore;this.maskBefore=null;this.strokeLayer=null;this.stroke.reset();this.strokePoint=null;const after=mask.snapshot();if(before.base!==after.base||before.inverted!==after.inverted||before.pages.size!==after.pages.size||[...before.pages].some(([id,data])=>data!==after.pages.get(id))){this.discardFuture();this.past.push({kind:'mask',layerId:runtime.layer.id,before,after});this.trimMaskHistory();this.committedRevision++;}this.metrics.endStroke(0);this.updateMaskOverlays();return;}
     let committed=false;try{committed=runtime.history.commit();}catch(error){this.cancelStroke();throw error;}
     this.strokeLayer=null;this.stroke.reset();this.strokePoint=null;if(committed)this.recordCommit(runtime.layer.id);
     const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
   cancelStroke():void {
     if(!this.strokeLayer)return;const runtime=this.runtime(this.strokeLayer),started=this.metrics.enabled?performance.now():0;this.strokeLayer=null;this.stroke.reset();this.strokePoint=null;
+    if(this.maskBefore){sculptMask(runtime.volume).restore(this.maskBefore);this.maskBefore=null;this.metrics.endStroke(0);this.updateMaskOverlays();return;}
     const dirty=runtime.history.cancel((index,before,after)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0)));this.composite.invalidateLayer(runtime.layer,dirty);const overhead=this.metrics.enabled?performance.now()-started:0;runtime.rebuild();this.metrics.endStroke(overhead);
   }
   private recordCommit(id: string): void {this.committedRevision++;
@@ -257,7 +271,8 @@ export class IndependentLayers {
     this.assertAvailable();this.finishStroke();this.finishTransform();const from=redo?this.future:this.past,to=redo?this.past:this.future,entry=from.at(-1);if(!entry)return null;
     if(entry.kind==='bake'){this.replayBake(entry,redo);this.committedRevision++;from.pop();to.push(entry);return this.project.activeLayerId;}
     const layer=this.project.layerStack.get(entry.layerId);
-    if(entry.kind==='tube'){layer.assertEditable();const state=redo?entry.after:entry.before,old=this.runtime(layer.id),next=new LayerRuntime(layer,this.neutral,state.volume);layer.volume=state.volume;layer.procedural=validateTube(state.source);this.group.remove(old.surface.group);old.dispose();this.install(next);for(const e of [...this.past,...this.future])if(e.kind==='bake'&&e.layerId===layer.id)e.runtime=next;this.composite.invalidate();}
+    if(entry.kind==='mask'){layer.assertEditable();sculptMask(layer.volume).restore(redo?entry.after:entry.before);this.updateMaskOverlays();}
+    else if(entry.kind==='tube'){layer.assertEditable();const state=redo?entry.after:entry.before,old=this.runtime(layer.id),next=new LayerRuntime(layer,this.neutral,state.volume);layer.volume=state.volume;layer.procedural=validateTube(state.source);this.group.remove(old.surface.group);old.dispose();this.install(next);for(const e of [...this.past,...this.future])if(e.kind==='bake'&&e.layerId===layer.id)e.runtime=next;this.composite.invalidate();}
     else if(entry.kind==='order')this.restoreOrder(redo?entry.after:entry.before);
     else if(entry.kind==='operation') {if(layer.locked)throw new Error('Unlock the layer to change its operation.');layer.operation=redo?entry.after:entry.before;}
     else {
@@ -318,6 +333,7 @@ export class IndependentLayers {
   duplicate(id: string): SdfLayer {this.assertAvailable();
     this.finishStroke();this.finishTransform();const source=this.project.layerStack.get(id),n=source.volume.resolution;this.assertCapacity(volumeSampleCount(source.volume),undefined,1);
     const volume=new SDFVolume(n,source.volume.extent,false,{dimensions:source.volume.dimensions,latticeMin:source.volume.latticeMin??[0,0,0]}),dense=source.volume.getDenseView();
+    copySculptMask(source.volume,volume);
     volume.values.set(dense??source.volume.readRegion({min:[0,0,0],max:source.volume.dimensions.map(n=>n-1) as [number,number,number]}).values);
     const {id:unused,...metadata}=source.metadata();void unused;
     const layer=new SdfLayer(volume,{...metadata,name:this.uniqueName(`${source.name.slice(0,123)} copy`)}),runtime=new LayerRuntime(layer,this.neutral);
@@ -487,19 +503,19 @@ export class IndependentLayers {
   /** Atomic branch command owned by XRMoveTool's existing preview lock. */
   async commitMove(owner:object,input:RadialMoveField,signal:AbortSignal,progress:(p:MoveProgress)=>void=()=>{},beforePublish:()=>void=()=>{},externalGuard:()=>boolean=()=>true):Promise<boolean>{
     if(this.disposed||this.movePending||this.baking||this.previewOwner!==owner||this.drawing||this.transforming)throw new Error('Move does not own the editable source.');
-    const runtime=this.active,source=runtime.volume,sourceSurface=runtime.surface,sourceMesher=runtime.mesher,transform=copyTransform(runtime.layer.transform),revision=sourceSurface.revision,project=this.project.id,start=performance.now();
+    const runtime=this.active,source=runtime.volume,sourceSurface=runtime.surface,sourceMesher=runtime.mesher,transform=copyTransform(runtime.layer.transform),revision=sourceSurface.revision,maskRevision=sculptMask(source).revision,project=this.project.id,start=performance.now();
     this.assertSculptable(runtime.layer);
     if(runtime.layer.volume!==source||!(source instanceof SDFVolume)||!runtime.layer.editable||this.viewMode!=='separate'||sourceMesher.pendingChunks)throw new Error('Move needs a ready, visible, unlocked dense source in Separate Layers.');
     if(input.interaction==='translate'?input.delta.length()<source.step*1e-4:Math.abs(input.angle)*input.radius<source.step*1e-4)return false;
     const field=new RadialMoveField();field.capture(input.center,input.radius,input.falloff,1);field.setDisplacement(input.delta);field.configure(input.mode,input.stiffness);field.interaction=input.interaction;field.setRotation(input.axis,input.angle);
     const limits={...this.growthLimits},footprint=field.affectedBounds();for(let a=0;a<3;a++){footprint.min[a]-=source.step*3;footprint.max[a]+=source.step*3;}
     const plan=planDenseGrowth(source,footprint,limits),layout=plan??{dimensions:source.dimensions,latticeMin:source.latticeMin},samples=layout.dimensions.reduce((n,v)=>n*v,1);this.assertCapacity(samples,runtime.layer.id);
-    const limit=limits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes,base=this.trackedBytes,candidateStorage=samples*8;
+    const limit=limits.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes,base=this.trackedBytes,candidateStorage=samples*8+sculptMask(source).memoryBytes*3;
     let geometryBytes=0;for(const o of sourceSurface.group.children)if('geometry' in o){const g=(o as import('three').Mesh).geometry;for(const a of Object.values(g.attributes))geometryBytes+=a.array.byteLength;}
     const available=limit-base-candidateStorage-geometryBytes-runtime.history.memoryBytes/3;
     if(available<=0)throw new Error('Move exceeds the source/candidate/history memory safety estimate.');
     this.movePending=true;this.moveStagingBytes=candidateStorage;
-    const guard=()=>!this.disposed&&this.previewOwner===owner&&this.project.id===project&&this.active===runtime&&runtime.volume===source&&runtime.layer.volume===source&&runtime.surface===sourceSurface&&sourceSurface.revision===revision&&runtime.layer.editable&&sameTransform(runtime.layer.transform,transform)&&this.viewMode==='separate'&&externalGuard();
+    const guard=()=>!this.disposed&&this.previewOwner===owner&&this.project.id===project&&this.active===runtime&&runtime.volume===source&&runtime.layer.volume===source&&runtime.surface===sourceSurface&&sourceSurface.revision===revision&&sculptMask(source).revision===maskRevision&&runtime.layer.editable&&sameTransform(runtime.layer.transform,transform)&&this.viewMode==='separate'&&externalGuard();
     const work=new MoveWork(signal,guard);let mesher:IncrementalMesher|undefined,stagedSurface:ChunkSurface|undefined;
     try{
       const next=await copyMoveVolume(source,layout,work,progress),result=await reconstructMoveAsync(sourceSurface.group,next,field,work,available,progress),patch=result.patch;
@@ -520,7 +536,7 @@ export class IndependentLayers {
       work.check();beforePublish();work.check();
       // All arrays, history remaps, mesh extraction, display index and timeline
       // allocations precede this synchronous publication. No await below.
-      history.publish();adopt();runtime.volume=runtime.layer.volume=next;runtime.mesher=mesher;runtime.surface=stagedSurface;
+      history.publish();adopt();runtime.volume=runtime.layer.volume=next;runtime.mesher=mesher;runtime.surface=stagedSurface;registerMaskSurface(stagedSurface.group,()=>runtime.volume);
       this.group.children[slot]=stagedSurface.group;stagedSurface.group.parent=this.group;sourceSurface.group.parent=null;
       runtime.triangles=mesher.triangles;runtime.totalChunks=mesher.allocatedChunks;runtime.lastChanged=dirtyChunks;runtime.lastMeshMs=meshMs;if(plan){runtime.expansions++;runtime.lastExpansionMs=performance.now()-start;}
       this.committedRevision++;this.past=past;this.future=future;this.lastMoveStats=stats;invalidateComposite();mesher=undefined;stagedSurface=undefined;
