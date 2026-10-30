@@ -51,7 +51,7 @@ test('deletion discards only deleted-layer history, resolves active selection, a
 });
 test('rename and reorder retain stable IDs, colours, voxels and history',()=>{
  const c=create(),a=c.active.layer,b=c.create(64);const colour=c.display.colour(c.project.id,b.id,b.order),before=b.volume.values.slice();stroke(c,a.id);
- c.rename(b.id,'Independent detail');c.move(b.id,-1);assert.equal(c.project.layerStack.layers[0].id,b.id);assert.equal(b.name,'Independent detail');assert.equal(c.display.colour(c.project.id,b.id,b.order),colour);assert.deepEqual(b.volume.values,before);assert.equal(c.undoCount,2);c.undo();assert.equal(c.undoCount,1);assert.equal(c.project.layerStack.layers[0].id,a.id);c.undo(true);const copy=c.duplicate(a.id);assert.notEqual(c.display.colour(c.project.id,copy.id,copy.order),c.display.colour(c.project.id,b.id,b.order));c.dispose();
+ c.rename(b.id,'Independent detail');c.move(b.id,-1);assert.equal(c.project.layerStack.layers[0].id,b.id);assert.equal(b.name,'Independent detail');assert.equal(c.display.colour(c.project.id,b.id,b.order),colour);assert.deepEqual(b.volume.values,before);assert.equal(c.undoCount,3);c.undo();assert.equal(c.undoCount,2);assert.equal(c.project.layerStack.layers[0].id,a.id);c.undo(true);const copy=c.duplicate(a.id);assert.notEqual(c.display.colour(c.project.id,copy.id,copy.order),c.display.colour(c.project.id,b.id,b.order));c.dispose();
 });
 test('Clay and Layer Colours affect materials only and never enter native metadata or voxel payloads',()=>{
  const c=create(),a=c.active.layer,b=c.create(64),before=saveSculptProject(c.project),aData=a.volume.values.slice();

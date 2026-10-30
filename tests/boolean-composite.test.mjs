@@ -70,7 +70,7 @@ test('empty positive layers participate correctly; hidden excluded and locked st
 test('operation changes and reorder undo/redo retain independent voxels and update evaluation',()=>{
  const c=create(),a=c.active.layer,b=c.create(64),aBefore=a.volume.values.slice(),bBefore=b.volume.values.slice();c.setActiveTransform(pose(.7));
  c.setOperation(b.id,'difference');assert(evaluateComposite(c.project.layerStack.layers,p(.5))>0);c.undo();assert.equal(b.operation,'union');c.undo(true);assert.equal(b.operation,'difference');
- c.move(b.id,-1);assert.equal(c.project.layerStack.layers[0].id,b.id);assert(evaluateComposite(c.project.layerStack.layers,p(.5))<0);c.undo();assert.equal(c.project.layerStack.layers[0].id,a.id);assert(evaluateComposite(c.project.layerStack.layers,p(.5))>0);c.undo(true);
+ c.move(b.id,-1);assert.equal(c.project.layerStack.layers[0].id,b.id);assert(evaluateComposite(c.project.layerStack.layers,p(.5))>0,'display reorder preserves Boolean evaluation');c.undo();assert.equal(c.project.layerStack.layers[0].id,a.id);assert(evaluateComposite(c.project.layerStack.layers,p(.5))>0);c.undo(true);
  assert.deepEqual(a.volume.values,aBefore);assert.deepEqual(b.volume.values,bBefore);c.dispose();
 });
 test('metadata no-ops preserve redo, new operations clear it, deletion and resampling retain valid entries',()=>{

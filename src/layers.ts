@@ -1,3 +1,4 @@
+import {LayerHierarchy} from './layer-hierarchy';
 import {validateTube,type TubeSource} from './procedural-tube';
 import type {ToolPreferences} from './tool-preferences';
 import type { ProjectDisplayPreferences } from './display-preferences';
@@ -30,9 +31,14 @@ export class SdfLayer {
   procedural?:TubeSource;
   readonly id: string;
   name: string;
-  transform: VolumeTransform;
-  visible: boolean;
-  locked: boolean;
+  readonly kind='layer';
+  hierarchy?:LayerHierarchy;
+  private pose:VolumeTransform=identityTransform();private shown=true;private frozen=false;
+  get localTransform(){return this.pose;}set localTransform(v:VolumeTransform){this.pose=v;}
+  get transform():VolumeTransform{return this.hierarchy?.world(this.id)??this.pose;}set transform(v:VolumeTransform){this.pose=this.hierarchy?.toParent(this.id,v)??v;}
+  get localVisible(){return this.shown;}get localLocked(){return this.frozen;}
+  get visible():boolean{return this.shown&&(this.hierarchy?.parentsVisible(this.id)??true);}set visible(v:boolean){this.shown=v;}
+  get locked():boolean{return this.frozen||(this.hierarchy?.parentsLocked(this.id)??false);}set locked(v:boolean){this.frozen=v;}
   operation: LayerOperation;
   order: number;
   constructor(public volume: VolumeStore,metadata: Partial<LayerMetadata>={}) {
@@ -43,7 +49,7 @@ export class SdfLayer {
   get voxelSize() {return this.volume.voxelSize;}
   get editable(): boolean {return this.visible&&!this.locked;}
   assertEditable(): void {if(!this.visible)throw new Error(`Layer “${this.name}” is hidden.`);if(this.locked)throw new Error(`Layer “${this.name}” is locked.`);}
-  metadata(): LayerMetadata {return validateLayerMetadata({procedural:this.procedural,id:this.id,name:this.name,transform:this.transform,visible:this.visible,locked:this.locked,operation:this.operation,order:this.order});}
+  metadata(): LayerMetadata {return validateLayerMetadata({procedural:this.procedural,id:this.id,name:this.name,transform:this.localTransform,visible:this.localVisible,locked:this.localLocked,operation:this.operation,order:this.order});}
 }
 /** Reject accidental aliasing rather than silently cloning, merging or resampling any layer. */
 export function assertIndependentLayerVolumes(layers: readonly SdfLayer[]): void {
@@ -58,9 +64,12 @@ export function assertIndependentLayerVolumes(layers: readonly SdfLayer[]): void
 export class LayerStack {
   private readonly entries: SdfLayer[];
   private selected: string;
+  readonly hierarchy:LayerHierarchy;
+  get compositionLayers():readonly SdfLayer[]{return this.hierarchy.compositionOrder.map(id=>this.get(id));}
   constructor(layers: SdfLayer[],activeLayerId=layers[0]?.id) {
     if(!layers.length||new Set(layers.map(l=>l.id)).size!==layers.length||new Set(layers.map(l=>l.order)).size!==layers.length)throw new Error('Layer IDs and ordering must be unique; a project needs at least one layer.');
     assertIndependentLayerVolumes(layers);layers.forEach(l=>l.metadata());this.entries=[...layers].sort((a,b)=>a.order-b.order);
+    this.hierarchy=new LayerHierarchy(this);for(const layer of this.entries)this.hierarchy.bind(layer);
     this.selected=validateId(activeLayerId);this.select(this.selected);
   }
   get layers(): readonly SdfLayer[] {return [...this.entries];}
@@ -72,17 +81,17 @@ export class LayerStack {
   insert(layer: SdfLayer,index=this.entries.length): void {
     if(this.entries.some(entry=>entry.id===layer.id))throw new Error('Layer ID already exists.');
     if(!Number.isInteger(index)||index<0||index>this.entries.length)throw new Error('Invalid layer position.');
-    layer.metadata();assertIndependentLayerVolumes([...this.entries,layer]);this.entries.splice(index,0,layer);this.entries.forEach((entry,i)=>entry.order=i);this.selected=layer.id;
+    layer.metadata();assertIndependentLayerVolumes([...this.entries,layer]);this.entries.splice(index,0,layer);this.hierarchy.bind(layer);this.entries.forEach((entry,i)=>entry.order=i);this.selected=layer.id;
   }
   remove(id: string): SdfLayer {
     if(this.entries.length===1)throw new Error('Keep at least one layer in the project.');
-    const layer=this.get(id),index=this.entries.indexOf(layer);this.entries.splice(index,1);
+    const layer=this.get(id),index=this.entries.indexOf(layer);this.entries.splice(index,1);this.hierarchy.forget(id);layer.hierarchy=undefined;
     if(this.selected===id)this.selected=this.entries[Math.min(index,this.entries.length-1)].id;
     this.entries.forEach((entry,i)=>entry.order=i);return layer;
   }
   move(id: string,index: number): void {
     if(!Number.isInteger(index)||index<0||index>=this.entries.length)throw new Error('Invalid layer position.');
-    const layer=this.get(id);this.entries.splice(this.entries.indexOf(layer),1);this.entries.splice(index,0,layer);this.entries.forEach((entry,i)=>entry.order=i);
+    const layer=this.get(id);this.entries.splice(this.entries.indexOf(layer),1);this.entries.splice(index,0,layer);this.hierarchy.bind(layer);this.entries.forEach((entry,i)=>entry.order=i);
   }
 }
 export class SculptProject {

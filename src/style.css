@@ -122,3 +122,10 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 .lighting-panel input[type=checkbox] { width: 20px; min-height: 20px; }
 .lighting-panel summary { font-size: 13px; font-weight: 600; cursor: pointer; }
 .lighting-panel p { font-size: 12px; line-height: 1.5; letter-spacing: 0; }
+
+.recovery-confirm-actions { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 8px; margin-top: 8px; }
+.recovery-panel .recovery-confirm-actions button { min-width: 0; margin: 0; }
+#confirm-recovery { background: #344b2b; border-color: #344b2b; color: #fff; font-weight: 600; }
+#confirm-recovery:hover:not(:disabled) { background: #48623b; }
+
+.hierarchy-row{border:1px solid #d5dece;border-radius:10px;margin:8px 0;padding:9px;display:flex;flex-wrap:wrap;gap:6px}.hierarchy-row.active{border-color:#738f55;background:#f0f5e8}.hierarchy-row input:not([type=color]),.hierarchy-row select,.hierarchy-row details{width:100%;min-width:0;margin:0}.hierarchy-row p{font-size:11px;margin:4px 0}.hierarchy-row button{flex:1 1 42%;min-width:0;padding:10px 6px}.hierarchy-row button:first-child{flex-basis:100%}.hierarchy-palette>button{width:100%;margin:8px 0}

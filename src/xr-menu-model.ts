@@ -1,3 +1,4 @@
+import {LayerPaletteModel} from './layer-palette';
 import {MOVE_VARIANTS,type MoveVariant} from './tool-preferences';
 import {XRWorldMenu,type XRWorldMenuPort} from './xr-world-menu';
 import {MAX_PROJECT_LAYERS} from './project';
@@ -17,14 +18,15 @@ export class XRMenuModel {
  private merge:{project:unknown;id:string;other?:string;resolution:number}|null=null;private mergeAbort:AbortController|null=null;
  private resetTarget:{project:unknown;id:string}|null=null;
  private moveVariants=false;
- readonly world:XRWorldMenu;
- constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);}
- setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
+ readonly world:XRWorldMenu;readonly palette:LayerPaletteModel;
+ constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);this.palette=new LayerPaletteModel(tools);}
+ setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
  content():MenuContent{const content=this.buildContent();content.buttons.push({id:'ui-scale',label:`UI · ${this.tools.port.layers().display.vrUiScale==='large'?'Large':'Default'}`,rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
  private buildContent():MenuContent{
   if(this.page==='world')return this.world.content();
-  if(this.resetTarget&&(this.tools.active!=='transform'||this.tools.busy||this.tools.port.layers().project!==this.resetTarget.project||this.tools.port.layers().project.activeLayerId!==this.resetTarget.id)){this.resetTarget=null;this.feedback='Reset cancelled: selection or interaction changed';}
-  if(this.resetTarget){const l=this.tools.port.layers().active.layer;return {title:'RESET LAYER TRANSFORM?',subtitle:l.name,labels:[{text:'Position 0 · rotation 0 · uniform scale 1',x:60,y:320},{text:'Permanent layer edit · one Undo action',x:60,y:390},{text:'Workspace navigation stays unchanged',x:60,y:460}],buttons:[{id:'cancel-reset',label:'Cancel',rect:{x:60,y:600,width:480,height:110}},{id:'confirm-reset',label:'Reset layer',disabled:!l.editable,rect:{x:600,y:600,width:480,height:110}}],footer:'Release trigger, then confirm or cancel'};}
+  if(this.page==='layers'&&!this.merge)return this.palette.content();
+  if(this.resetTarget&&(this.tools.active!=='transform'||this.tools.busy||this.tools.port.layers().project!==this.resetTarget.project||this.tools.port.layers().transformNode.id!==this.resetTarget.id)){this.resetTarget=null;this.feedback='Reset cancelled: selection or interaction changed';}
+  if(this.resetTarget){const l=this.tools.port.layers().transformNode;return {title:'RESET LAYER TRANSFORM?',subtitle:l.name,labels:[{text:'Position 0 · rotation 0 · uniform scale 1',x:60,y:320},{text:'Permanent layer edit · one Undo action',x:60,y:390},{text:'Workspace navigation stays unchanged',x:60,y:460}],buttons:[{id:'cancel-reset',label:'Cancel',rect:{x:60,y:600,width:480,height:110}},{id:'confirm-reset',label:'Reset layer',disabled:!l.editable,rect:{x:600,y:600,width:480,height:110}}],footer:'Release trigger, then confirm or cancel'};}
   if(this.merge){const state=this.merge,l=this.tools.port.layers();if(l.project!==state.project||l.project.activeLayerId!==state.id&&!this.mergeAbort){this.merge=null;this.feedback='Merge cancelled: selected layer changed';return this.content();}
    const running=!!this.mergeAbort,buttons:MenuButton[]=[{id:'cancel-merge',label:running?'Cancel merge':'‹ Back to Layers',rect:{x:40,y:150,width:1072,height:68}}];
    if(!state.other){l.project.layerStack.layers.filter(x=>x.id!==state.id).forEach((layer,i)=>buttons.push({id:`merge-target:${layer.id}`,label:layer.name,rect:{x:40,y:240+i*100,width:1072,height:82},disabled:this.tools.busy}));}
@@ -84,7 +86,8 @@ export class XRMenuModel {
   const button=this.content().buttons.find(b=>b.id===id);if(!button||button.disabled){this.feedback='Unavailable';return;}
   try{
    const separator=id.indexOf(':'),action=separator<0?id:id.slice(0,separator),value=id.slice(separator+1);
-   if(id==='world'){this.page='world';this.world.section='home';}
+   if(this.palette.activate(id)){}
+   else if(id==='world'){this.page='world';this.world.section='home';}
    else if(this.page==='world'&&this.world.activate(id)){}
    else if(id==='ui-scale'||id==='world-ui-scale'){const l=this.tools.port.layers();l.display.vrUiScale=l.display.vrUiScale==='large'?'normal':'large';this.tools.port.changed();}
    else if(id.startsWith('mask-'))this.tools.maskAction(id);
@@ -98,7 +101,7 @@ export class XRMenuModel {
     void l.bake({name:'Merged sculpture',resolution:state.resolution,hideSources:true,sourceIds:[state.id,state.other!]},abort.signal,p=>{this.feedback=`${p.stage} ${p.completed}/${p.total}`;}).then(()=>{if(this.mergeAbort!==abort)return;this.mergeAbort=null;this.merge=null;this.feedback='Merged · originals hidden · Undo restores';this.tools.port.shape.sync(l.project.layerStack);this.tools.port.changed();}).catch(error=>{if(this.mergeAbort!==abort)return;this.mergeAbort=null;this.feedback=error instanceof Error?error.message:'Merge failed; sources kept';});
    }
    else if(id==='reset-stamp-offset')this.tools.resetStampOffset();
-   else if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.project.activeLayerId};}
+   else if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.transformNode.id};}
    else if(id==='cancel-reset')this.resetTarget=null;
    else if(id==='confirm-reset'){const target=this.resetTarget;this.resetTarget=null;if(target&&this.tools.port.layers().project===target.project)this.tools.resetLayerTransform(target.id);}
    else if(id==='move-variants'){this.moveVariants=true;}

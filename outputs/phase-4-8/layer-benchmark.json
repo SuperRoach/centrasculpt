@@ -1,0 +1,65 @@
+{
+  "environment": "Node host only. Duplicate wall time includes cooperative timer waits. Group-update CPU excludes renderer/GPU and physical Quest frame time. Tracked bytes are conservative source/geometry/history estimates.",
+  "results": [
+    {
+      "resolution": 64,
+      "samples": 262144,
+      "duplicateWallMs": 78.92679200000003,
+      "cooperativeProgressEvents": 36,
+      "observedPeakTrackedBytes": 8737664,
+      "independentBuffers": true,
+      "groupUpdates": 1000,
+      "groupUpdateCPUms": 16.67670900000053,
+      "groupUpdateP50ms": 0.013082999999994627,
+      "groupUpdateP99ms": 0.06220899999999574,
+      "groupUpdateMaxMs": 0.18650000000002365,
+      "pendingRemeshChunks": 0,
+      "sourceBuffersUnchanged": true,
+      "sourceGeometryUnchanged": true
+    },
+    {
+      "resolution": 128,
+      "samples": 2097152,
+      "duplicateWallMs": 501.78925,
+      "cooperativeProgressEvents": 288,
+      "observedPeakTrackedBytes": 52032384,
+      "independentBuffers": true,
+      "groupUpdates": 1000,
+      "groupUpdateCPUms": 23.19513599999982,
+      "groupUpdateP50ms": 0.02033300000005056,
+      "groupUpdateP99ms": 0.0645000000000664,
+      "groupUpdateMaxMs": 0.2390420000000404,
+      "pendingRemeshChunks": 0,
+      "sourceBuffersUnchanged": true,
+      "sourceGeometryUnchanged": true
+    },
+    {
+      "resolution": 192,
+      "samples": 7077888,
+      "duplicateWallMs": 1704.145,
+      "cooperativeProgressEvents": 976,
+      "observedPeakTrackedBytes": 155059072,
+      "independentBuffers": true,
+      "groupUpdates": 1000,
+      "groupUpdateCPUms": 32.25832600000376,
+      "groupUpdateP50ms": 0.029415999999855558,
+      "groupUpdateP99ms": 0.06750000000010914,
+      "groupUpdateMaxMs": 0.23387500000035288,
+      "pendingRemeshChunks": 0,
+      "sourceBuffersUnchanged": true,
+      "sourceGeometryUnchanged": true
+    }
+  ],
+  "largeScene": {
+    "layers": 8,
+    "groups": 32,
+    "maximumGroupDepth": 8,
+    "updates": 500,
+    "cpuMs": 85.08873200000471,
+    "p99ms": 0.301665999999841,
+    "maxMs": 0.4940000000001419,
+    "trackedBytes": 36275482,
+    "pendingRemeshChunks": 0,
+    "visibleHierarchyRows": 40
+  }
+}

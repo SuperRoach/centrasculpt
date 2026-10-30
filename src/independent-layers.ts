@@ -1,3 +1,5 @@
+import {LayerGroup,type HierarchyState,matrixTransform} from './layer-hierarchy';
+import {transformMatrix} from './transform';
 import {sculptMask,registerMaskSurface,copySculptMask,maskSnapshotBytes,type MaskSnapshot} from './sculpt-mask';
 import {MaskOverlay} from './mask-overlay';
 import {evaluateTube,validateTube,type TubeSource} from './procedural-tube';
@@ -67,11 +69,12 @@ export class LayerRuntime {
   dispose(): void {this.mesher.dispose();this.material.dispose();this.surface.clear();}
 }
 export type MoveCommitStats={backend:'worker'|'cooperative';waitMs:number;slicePercentiles:{p50:number;p95:number;p99:number};wallMs:number;cpuMs:number;meshingMs:number;changedVoxels:number;sampled:number;indexBytes:number;patchBytes:number;estimatedPeakBytes:number;maxSliceMs:number;dirtyChunks:number;grew:boolean;slices:number};
-type BakeState={ids:string[];orders:Record<string,number>;visibility:Record<string,boolean>;activeId:string;view:SurfaceView};
+type BakeState={hierarchy?:HierarchyState;selectedGroup?:string|null;ids:string[];orders:Record<string,number>;visibility:Record<string,boolean>;activeId:string;view:SurfaceView};
 type BakeEntry={kind:'bake';layerId:string;runtime:LayerRuntime;before:BakeState;after:BakeState;index:number};
 type TubeEntry={kind:'tube';layerId:string;before:{source:TubeSource;volume:VolumeStore};after:{source:TubeSource;volume:VolumeStore}};
 type MaskEntry={kind:'mask';layerId:string;before:MaskSnapshot;after:MaskSnapshot};
-type TimelineEntry=MaskEntry|TubeEntry|BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
+type HierarchyEntry={kind:'hierarchy';layerId:string;before:HierarchyState;after:HierarchyState;removed:LayerRuntime[];bytes:number;activeBefore:string;activeAfter:string;selectedBefore:string|null;selectedAfter:string|null};
+type TimelineEntry={kind:'name';layerId:string;before:string;after:string}|HierarchyEntry|MaskEntry|TubeEntry|BakeEntry|{kind:'voxels';layerId:string}|{kind:'transform';layerId:string;before:VolumeTransform;after:VolumeTransform}|{kind:'operation';layerId:string;before:LayerOperation;after:LayerOperation}|{kind:'order';layerId:string;before:string[];after:string[]};
 
 /** Owns one independent rendering/editing runtime per layer. The derived compositor only reads these independent sources. */
 export class IndependentLayers {
@@ -86,7 +89,7 @@ export class IndependentLayers {
   lastStampStats:{evaluationMs:number;meshingMs:number;totalMs:number;changedVoxels:number;scanned:number;evaluated:number;chunks:number;totalChunks:number}|null=null;
   private previewOwner:object|null=null;
   get previewing():boolean{return this.previewOwner!==null;}
-  beginPreview(owner:object):void{this.assertAvailable();if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');this.previewOwner=owner;}
+  beginPreview(owner:object):void{this.assertAvailable();if(this.selectedGroupId)throw new Error('Select a child layer to use this tool.');if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');this.previewOwner=owner;}
   endPreview(owner:object):void{if(this.previewOwner===owner)this.previewOwner=null;}
   private tubePending=false;private tubeStagingBytes=0;
   get generatingTube():boolean{return this.tubePending;}
@@ -100,7 +103,26 @@ export class IndependentLayers {
   backgroundBytes=0;interruptBackground:()=>void=()=>{};
   private past: TimelineEntry[]=[];
   private future: TimelineEntry[]=[];
-  private transformSession:{layerId:string;before:VolumeTransform}|null=null;
+  private transformSession:{layerId:string;before:VolumeTransform;hierarchyBefore?:HierarchyState}|null=null;
+  selectedGroupId:string|null=null;readonly collapsedGroups=new Set<string>();private readonly groupProxy=new Group();private readonly retainedHierarchy=new Set<LayerRuntime>();private copyPending=false;private copyStagingBytes=0;
+  get duplicating(){return this.copyPending;}
+  get transformNode(){return this.selectedGroupId?this.project.layerStack.hierarchy.get(this.selectedGroupId):this.active.layer;}
+  get transformObject(){return this.selectedGroupId?this.groupProxy:this.active.surface.group;}
+  get sourceEditable(){return !this.selectedGroupId&&this.active.layer.editable;}
+  selectGroup(id:string):void{this.assertAvailable();this.finishStroke();this.finishTransform();if(!(this.project.layerStack.hierarchy.get(id) instanceof LayerGroup))throw new Error('Select a group.');this.selectedGroupId=id;this.syncPresentation();}
+  hierarchyRows(){return this.project.layerStack.hierarchy.rows(this.collapsedGroups);}
+  private replayHierarchy(target:HierarchyState,other:HierarchyState):void{const h=this.project.layerStack.hierarchy,current=h.snapshot(),next=structuredClone(target);for(const node of [...next.layers,...next.groups]){const now=[...current.layers,...current.groups].find(n=>n.id===node.id),opposite=[...other.layers,...other.groups].find(n=>n.id===node.id);if(!now||!opposite)continue;for(const key of ['name','visible','locked','transform','parentId'] as const)if(JSON.stringify(node[key])===JSON.stringify(opposite[key]))Object.assign(node,{[key]:structuredClone(now[key])});}for(const extra of current.layers)if(!next.layers.some(n=>n.id===extra.id)){next.layers.push(extra);next.order.push(extra.id);next.compositionOrder.push(extra.id);}h.restore(next);}
+  private releaseHierarchyOrphans():void{const kept=new Set([...this.past,...this.future].flatMap(e=>e.kind==='hierarchy'?e.removed:[]));for(const r of this.retainedHierarchy)if(!this.runtimes.has(r.layer.id)&&!kept.has(r)){r.dispose();this.display.remove(this.project.id,r.layer.id);this.retainedHierarchy.delete(r);}}
+  private recordHierarchy(before:HierarchyState,activeBefore:string,selectedBefore:string|null,removed:LayerRuntime[]=[]):void{const after=this.project.layerStack.hierarchy.snapshot();if(JSON.stringify(before)===JSON.stringify(after))return;this.discardFuture();this.past.push({kind:'hierarchy',layerId:this.selectedGroupId??this.project.activeLayerId,before,after,removed,bytes:(JSON.stringify(before).length+JSON.stringify(after).length)*2,activeBefore,activeAfter:this.project.activeLayerId,selectedBefore,selectedAfter:this.selectedGroupId});for(const r of removed)this.retainedHierarchy.add(r);let excess=this.past.filter(e=>e.kind==='hierarchy').length-100;this.past=this.past.filter(e=>e.kind!=='hierarchy'||excess--<=0);this.releaseHierarchyOrphans();this.committedRevision++;this.syncPresentation();this.composite.invalidate();}
+  private hierarchyEdit(work:()=>void):void{this.assertAvailable();this.finishStroke();this.finishTransform();const h=this.project.layerStack.hierarchy,before=h.snapshot(),active=this.project.activeLayerId,selected=this.selectedGroupId;try{work();this.recordHierarchy(before,active,selected);}catch(error){h.restore(before);this.selectedGroupId=selected;throw error;}}
+  createGroup(name='Group'):string{let id='';this.hierarchyEdit(()=>{id=this.project.layerStack.hierarchy.create(name);this.selectedGroupId=id;});return id;}
+  reparent(id:string,parentId:string|null):void{this.hierarchyEdit(()=>{const h=this.project.layerStack.hierarchy;h.get(id).assertEditable();if(parentId)h.get(parentId).assertEditable();h.reparent(id,parentId);});}
+  renameNode(id:string,name:string):void{this.assertAvailable();this.finishStroke();this.finishTransform();const n=this.project.layerStack.hierarchy.get(id);if(n.locked)throw new Error('Unlock the node before renaming.');name=validateName(name.trim());if(name===n.name)return;const before=n.name;n.name=name;this.discardFuture();this.past.push({kind:'name',layerId:id,before,after:name});let excess=this.past.filter(e=>e.kind==='name').length-100;this.past=this.past.filter(e=>e.kind!=='name'||excess--<=0);this.committedRevision++;this.syncPresentation();}
+  setNodeFlag(id:string,flag:'visible'|'locked',value:boolean):void{if(!this.project.layerStack.hierarchy.groups.some(g=>g.id===id)){this.setFlag(id,flag,value);return;}this.hierarchyEdit(()=>{const h=this.project.layerStack.hierarchy;if(h.parentsLocked(id))throw new Error('Unlock the parent group.');h.get(id)[flag]=value;});}
+  moveBoolean(id:string,delta:number):void{this.hierarchyEdit(()=>{const layer=this.project.layerStack.get(id);if(layer.locked)throw new Error('Unlock the layer before changing Boolean order.');const h=this.project.layerStack.hierarchy,state=h.snapshot(),index=state.compositionOrder.indexOf(id),next=index+delta;if(next<0||next>=state.compositionOrder.length)throw new Error('Already at the edge of the Boolean sequence.');state.compositionOrder.splice(index,1);state.compositionOrder.splice(next,0,id);h.restore(state);});}
+  moveNode(id:string,delta:number):void{this.hierarchyEdit(()=>{const h=this.project.layerStack.hierarchy;h.get(id).assertEditable();const siblings=h.children(h.parent(id)),at=siblings.indexOf(id),target=siblings[at+delta];if(!target)throw new Error('Already at the edge of this group.');const state=h.snapshot(),a=state.order.indexOf(id),b=state.order.indexOf(target);state.order.splice(a,1);state.order.splice(b,0,id);h.restore(state);});}
+  deleteGroup(id:string,children:'keep'|'delete'='keep'):void{this.assertAvailable();this.finishStroke();this.finishTransform();const stack=this.project.layerStack,h=stack.hierarchy,node=h.get(id);if(!(node instanceof LayerGroup))throw new Error('Select a group.');node.assertEditable();const before=h.snapshot(),active=this.project.activeLayerId,selected=this.selectedGroupId,descendants=h.descendants(id),removed=children==='delete'?descendants.filter(n=>stack.layers.some(l=>l.id===n)).map(n=>this.runtime(n)):[];if(removed.length>=stack.layers.length)throw new Error('Keep at least one sculpt layer.');if(children==='delete'&&descendants.some(n=>h.get(n).locked))throw new Error('Unlock descendants before deleting them.');try{if(children==='keep')for(const child of h.children(id))h.reparent(child,node.parentId);const state=h.snapshot(),gone=new Set([id,...(children==='delete'?descendants:[])]);state.groups=state.groups.filter(g=>!gone.has(g.id));state.layers=state.layers.filter(l=>!gone.has(l.id));state.order=state.order.filter(n=>!gone.has(n));state.compositionOrder=state.compositionOrder.filter(n=>!gone.has(n));for(const r of removed){stack.remove(r.layer.id);this.runtimes.delete(r.layer.id);this.group.remove(r.surface.group);}h.restore(state);this.selectedGroupId=null;this.recordHierarchy(before,active,selected,removed);}catch(error){for(const r of removed)if(!this.runtimes.has(r.layer.id)){stack.insert(r.layer);this.install(r);}h.restore(before);this.selectedGroupId=selected;throw error;}}
+
   growthLimits:Partial<DenseGrowthLimits>={};
   readonly symmetry:MirrorPlane={enabled:false,axis:'x',offset:0};
   private strokeMirror:MirrorPlane={enabled:false,axis:'x',offset:0};
@@ -121,10 +143,10 @@ export class IndependentLayers {
   }
   /** Lower bound: current source grids+scratch, source geometry and retained payloads.
    * Includes retained Bake runtimes; excludes pending Maps, derived CSG and JS/GPU overhead. */
-  get recoveryReady():boolean{return !this.tubePending&&!this.disposed&&!this.drawing&&!this.transforming&&!this.previewing&&!this.deforming&&!this.baking&&!this.pendingChunks;}
-  recoveryKey():string{return JSON.stringify([this.project.id,this.committedRevision,this.project.activeLayerId,this.project.layerStack.layers.map(l=>[l.metadata(),l.volume.dimensions,l.volume.latticeMin])]);}
-  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}const maskBytes=[...held].reduce((n,r)=>n+sculptMask(r.volume).memoryBytes,0),maskHistoryBytes=[...this.past,...this.future].reduce((n,e)=>n+(e.kind==='mask'?maskSnapshotBytes(e.before)+maskSnapshotBytes(e.after):0),0);return {maskBytes,maskHistoryBytes,voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingTubeJobs:Number(this.tubePending),tubeStagingBytes:this.tubeStagingBytes,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
-  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes+sculptMask(r.volume).memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}const caches=new Set<VolumeStore>();for(const e of [...this.past,...this.future])if(e.kind==='tube'){caches.add(e.before.volume);caches.add(e.after.volume);}for(const v of caches)if(![...held].some(r=>r.volume===v))bytes+=volumeSampleCount(v)*8;for(const e of [...this.past,...this.future])if(e.kind==='mask')bytes+=maskSnapshotBytes(e.before)+maskSnapshotBytes(e.after);return bytes+(this.maskBefore?maskSnapshotBytes(this.maskBefore):0)+this.tubeStagingBytes+this.moveStagingBytes+this.backgroundBytes;}
+  get recoveryReady():boolean{return !this.copyPending&&!this.tubePending&&!this.disposed&&!this.drawing&&!this.transforming&&!this.previewing&&!this.deforming&&!this.baking&&!this.pendingChunks;}
+  recoveryKey():string{return JSON.stringify([this.project.id,this.committedRevision,this.project.layerStack.hierarchy.snapshot(),this.project.activeLayerId,this.project.layerStack.layers.map(l=>[l.metadata(),l.volume.dimensions,l.volume.latticeMin])]);}
+  resourceStats(){let voxelBytes=0,geometryBytes=0,historyBytes=0,pendingHistoryBytes=0,chunks=0,meshChunks=0,vertices=0,triangles=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);else if(entry.kind==='hierarchy')for(const r of entry.removed)held.add(r);for(const r of held){voxelBytes+=volumeSampleCount(r.volume)*8;historyBytes+=r.history.memoryBytes;pendingHistoryBytes+=r.history.pendingMemoryEstimate;geometryBytes+=r.mesher.ownedGeometryBytes;chunks+=r.mesher.allocatedChunks;for(const mesh of r.surface.group.children){const count=(mesh as Mesh).geometry?.getAttribute('position').count??0;vertices+=count;triangles+=count/3;if(count)meshChunks++;}}const maskBytes=[...held].reduce((n,r)=>n+sculptMask(r.volume).memoryBytes,0),maskHistoryBytes=[...this.past,...this.future].reduce((n,e)=>n+(e.kind==='mask'?maskSnapshotBytes(e.before)+maskSnapshotBytes(e.after):0),0);return {maskBytes,maskHistoryBytes,voxelBytes,geometryBytes,historyBytes,pendingHistoryBytes,chunks,meshChunks,vertices,triangles,retainedRuntimes:held.size,pendingTubeJobs:Number(this.tubePending),tubeStagingBytes:this.tubeStagingBytes,pendingMoveJobs:Number(this.deforming),pendingBakeJobs:Number(this.baking),backgroundBytes:this.backgroundBytes,compositeBytes:this.composite.trackedBytes};}
+  get trackedBytes():number{let bytes=0;const held=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')held.add(entry.runtime);else if(entry.kind==='hierarchy')for(const r of entry.removed)held.add(r);for(const r of held){bytes+=volumeSampleCount(r.volume)*8+r.history.memoryBytes+sculptMask(r.volume).memoryBytes;for(const mesh of r.surface.group.children){const geometry=(mesh as import('three').Mesh).geometry;if(geometry){for(const attr of Object.values(geometry.attributes))bytes+=attr.array.byteLength;if(geometry.index)bytes+=geometry.index.array.byteLength;}}}const caches=new Set<VolumeStore>();for(const e of [...this.past,...this.future])if(e.kind==='tube'){caches.add(e.before.volume);caches.add(e.after.volume);}for(const v of caches)if(![...held].some(r=>r.volume===v))bytes+=volumeSampleCount(v)*8;for(const e of [...this.past,...this.future]){if(e.kind==='hierarchy')bytes+=e.bytes;if(e.kind==='name')bytes+=(e.before.length+e.after.length)*2;}for(const e of [...this.past,...this.future])if(e.kind==='mask')bytes+=maskSnapshotBytes(e.before)+maskSnapshotBytes(e.after);return bytes+this.copyStagingBytes+(this.maskBefore?maskSnapshotBytes(this.maskBefore):0)+this.tubeStagingBytes+this.moveStagingBytes+this.backgroundBytes;}
   get pendingChunks():number{let count=0;for(const r of this.runtimes.values())count+=r.mesher.pendingChunks;return count;}
   get active(): LayerRuntime {return this.runtime(this.project.activeLayerId);}
   runtime(id: string): LayerRuntime {const runtime=this.runtimes.get(id);if(!runtime)throw new Error('Layer runtime does not exist.');return runtime;}
@@ -132,8 +154,9 @@ export class IndependentLayers {
   get redoCount(): number {return this.future.length;}
   get transforming():boolean {return this.transformSession!==null;}
   get drawing(): boolean {return this.strokeLayer!==null;}
-  private assertAvailable():void {this.interruptBackground();if(this.tubePending)throw new Error('Wait for tube regeneration or cancel it.');if(this.disposed)throw new Error('Project is closed.');if(this.previewOwner)throw new Error('Finish the Move preview first.');if(this.movePending)throw new Error('Wait for Move reconstruction to finish or cancel it.');if(this.baking)throw new Error('Wait for Bake to finish or cancel it.');}
-  private editableRuntime(id: string): LayerRuntime {
+  private assertAvailable():void {this.interruptBackground();if(this.copyPending)throw new Error('Wait for layer duplication or cancel it.');if(this.tubePending)throw new Error('Wait for tube regeneration or cancel it.');if(this.disposed)throw new Error('Project is closed.');if(this.previewOwner)throw new Error('Finish the Move preview first.');if(this.movePending)throw new Error('Wait for Move reconstruction to finish or cancel it.');if(this.baking)throw new Error('Wait for Bake to finish or cancel it.');}
+  private editableRuntime(id: string,history=false): LayerRuntime {
+    if(this.selectedGroupId&&!history)throw new Error('Select a child layer to sculpt. Groups contain no SDF.');
     this.assertAvailable();
     assertIndependentLayerVolumes(this.project.layerStack.layers);
     const runtime=this.runtime(id);
@@ -144,11 +167,14 @@ export class IndependentLayers {
   private assertCapacity(additional=0,replacing?:string,extraLayers=0,reactivating?:string): void {
     const layers=this.project.layerStack.layers;
     const held=new Set<LayerRuntime>();for(const entry of this.future)if(entry.kind==='bake'&&!this.runtimes.has(entry.layerId)&&entry.layerId!==reactivating)held.add(entry.runtime);
+    for(const r of this.retainedHierarchy)if(!this.runtimes.has(r.layer.id)&&r.layer.id!==reactivating)held.add(r);
+    if(additional&&!reactivating&&this.trackedBytes+additional*8>256*1024**2)throw new Error('Layer allocation exceeds the memory safety budget.');
     const samples=layers.reduce((sum,layer)=>sum+(layer.id===replacing?0:volumeSampleCount(layer.volume)),0)+additional+[...held].reduce((sum,r)=>sum+volumeSampleCount(r.volume),0);
     if(layers.length+extraLayers>MAX_PROJECT_LAYERS)throw new Error('Maximum of 8 independent layers reached.');
     if(samples>MAX_PROJECT_VOXELS)throw new Error('Project voxel budget exceeded. Explicitly reduce a layer resolution or delete a layer; existing layers were kept.');
   }
   syncPresentation(): void {
+    if(this.selectedGroupId){const n=this.transformNode,t=n.transform;this.groupProxy.name=n.name;this.groupProxy.position.fromArray(t.position);this.groupProxy.rotation.set(...t.rotation,'XYZ');this.groupProxy.scale.fromArray(t.scale);if(this.groupProxy.parent!==this.group)this.group.add(this.groupProxy);}else this.groupProxy.removeFromParent();
     applyRenderStyle(this.compositeMaterial,this.display.renderStyle);
     this.compositeMaterial.color.copy(this.neutral.color);
     for(const layer of this.project.layerStack.layers) {
@@ -176,7 +202,7 @@ export class IndependentLayers {
     publishMesh();publishHistory();runtime.volume=runtime.layer.volume=next;runtime.totalChunks=runtime.mesher.allocatedChunks;runtime.history.pendingBudgetBytes=Math.max(0,(options.maxTransientBytes??DENSE_GROWTH_LIMITS.maxTransientBytes)-this.trackedBytes);runtime.expansions++;runtime.lastExpansionMs=performance.now()-expansionStart;this.composite.invalidateLayer(runtime.layer);return true;
   }
   private assertSculptable(layer:SdfLayer):void{if(layer.procedural)throw new Error('Bake the procedural tube to a sculpt layer before brushing.');}
-  select(id: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.select(id);}
+  select(id: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.select(id);this.selectedGroupId=null;this.groupProxy.removeFromParent();}
   beginStroke(mask=false): void {
     validateMirrorPlane(this.symmetry);
     if(this.transformSession)throw new Error('Finish the transform before sculpting.');
@@ -241,17 +267,17 @@ export class IndependentLayers {
   }
   beginTransform():void {
     this.finishStroke();if(this.transformSession)throw new Error('A transform is already active.');
-    const runtime=this.editableRuntime(this.project.activeLayerId);
-    this.transformSession={layerId:runtime.layer.id,before:copyTransform(runtime.layer.transform)};
+    this.assertAvailable();const node=this.transformNode;node.assertEditable();
+    this.transformSession={layerId:node.id,before:copyTransform(node.transform),hierarchyBefore:this.selectedGroupId?this.project.layerStack.hierarchy.snapshot():undefined};
   }
   updateTransform(value:unknown):void {
     if(!this.transformSession)throw new Error('No transform transaction is active.');
-    const runtime=this.editableRuntime(this.transformSession.layerId);
-    runtime.layer.transform=validateTransformEdit(value,this.transformSession.before);this.syncLayerPose(runtime.layer.id);
+    if(this.transformNode.id!==this.transformSession.layerId)throw new Error('Transform selection changed.');const node=this.transformNode;node.assertEditable();node.transform=validateTransformEdit(value,this.transformSession.before);if(node instanceof LayerGroup)this.syncPresentation();else this.syncLayerPose(node.id);
   }
   finishTransform():boolean {
     const session=this.transformSession;if(!session)return false;this.transformSession=null;
-    const after=copyTransform(this.project.layerStack.get(session.layerId).transform);
+    const after=copyTransform(this.project.layerStack.hierarchy.get(session.layerId).transform);
+    if(session.hierarchyBefore){if(sameTransform(session.before,after))return false;this.recordHierarchy(session.hierarchyBefore,this.project.activeLayerId,this.selectedGroupId);return true;}
     if(sameTransform(session.before,after))return false;
     this.discardFuture();
     this.past.push({kind:'transform',layerId:session.layerId,before:session.before,after});
@@ -260,7 +286,7 @@ export class IndependentLayers {
   }
   cancelTransform():void {
     const session=this.transformSession;if(!session)return;this.transformSession=null;
-    this.project.layerStack.get(session.layerId).transform=copyTransform(session.before);this.syncLayerPose(session.layerId);
+    this.project.layerStack.hierarchy.get(session.layerId).transform=copyTransform(session.before);if(session.hierarchyBefore)this.syncPresentation();else this.syncLayerPose(session.layerId);
   }
   setActiveTransform(value:unknown):boolean {this.beginTransform();try{this.updateTransform(value);return this.finishTransform();}catch(error){this.cancelTransform();throw error;}}
   private syncLayerPose(id:string):void {
@@ -269,6 +295,8 @@ export class IndependentLayers {
   }
   undo(redo=false): string|null {
     this.assertAvailable();this.finishStroke();this.finishTransform();const from=redo?this.future:this.past,to=redo?this.past:this.future,entry=from.at(-1);if(!entry)return null;
+    if(entry.kind==='name'){this.project.layerStack.hierarchy.get(entry.layerId).name=redo?entry.after:entry.before;from.pop();to.push(entry);this.committedRevision++;this.syncPresentation();return entry.layerId;}
+    if(entry.kind==='hierarchy'){const stack=this.project.layerStack,h=stack.hierarchy;if(redo){entry.removed=entry.removed.map(r=>{const live=this.runtime(r.layer.id);this.retainedHierarchy.delete(r);this.retainedHierarchy.add(live);return live;});for(const r of entry.removed){stack.remove(r.layer.id);this.runtimes.delete(r.layer.id);this.group.remove(r.surface.group);}}else for(const r of entry.removed){this.assertCapacity(volumeSampleCount(r.volume),undefined,1,r.layer.id);stack.insert(r.layer);this.install(r);}this.replayHierarchy(redo?entry.after:entry.before,redo?entry.before:entry.after);stack.select(redo?entry.activeAfter:entry.activeBefore);this.selectedGroupId=redo?entry.selectedAfter:entry.selectedBefore;from.pop();to.push(entry);this.committedRevision++;this.syncPresentation();this.composite.invalidate();return this.selectedGroupId??this.project.activeLayerId;}
     if(entry.kind==='bake'){this.replayBake(entry,redo);this.committedRevision++;from.pop();to.push(entry);return this.project.activeLayerId;}
     const layer=this.project.layerStack.get(entry.layerId);
     if(entry.kind==='mask'){layer.assertEditable();sculptMask(layer.volume).restore(redo?entry.after:entry.before);this.updateMaskOverlays();}
@@ -276,7 +304,7 @@ export class IndependentLayers {
     else if(entry.kind==='order')this.restoreOrder(redo?entry.after:entry.before);
     else if(entry.kind==='operation') {if(layer.locked)throw new Error('Unlock the layer to change its operation.');layer.operation=redo?entry.after:entry.before;}
     else {
-      const runtime=this.editableRuntime(entry.layerId);
+      const runtime=this.editableRuntime(entry.layerId,true);
       if(entry.kind==='transform') {runtime.layer.transform=copyTransform(redo?entry.after:entry.before);this.syncLayerPose(entry.layerId);}
       else {const record=(index:number,before:number,after:number)=>runtime.mesher.invalidateSample(index,(before<0)!==(after<0));const dirty=redo?runtime.history.redo(record):runtime.history.undo(record);if(!dirty)throw new Error('History payload unavailable.');runtime.rebuild();this.composite.invalidateLayer(layer,dirty);}
     }
@@ -328,26 +356,35 @@ export class IndependentLayers {
     this.assertCapacity(resolution**3,undefined,1);
     const volume=new SDFVolume(resolution,1.6,!empty);if(empty)volume.values.fill(volume.extent*4);
     const layer=new SdfLayer(volume,{name:this.uniqueName(`Layer ${this.project.layerStack.layers.length+1}`),order:this.project.layerStack.layers.length});
-    const runtime=new LayerRuntime(layer,this.neutral);this.project.layerStack.insert(layer);this.install(runtime);this.syncPresentation();return layer;
+    const runtime=new LayerRuntime(layer,this.neutral);this.project.layerStack.insert(layer);this.selectedGroupId=null;this.install(runtime);this.syncPresentation();return layer;
   }
+  async duplicateAsync(id:string,signal?:AbortSignal,progress?:(text:string)=>void):Promise<SdfLayer>{
+    this.assertAvailable();this.finishStroke();this.finishTransform();const source=this.project.layerStack.get(id);source.assertEditable();this.assertCapacity(volumeSampleCount(source.volume),undefined,1);const before=this.bakeState(),metadata=source.metadata(),original=source.volume,copyBytes=volumeSampleCount(original)*8+sculptMask(original).memoryBytes;
+    if(this.trackedBytes+copyBytes>256*1024**2)throw new Error('Duplicate exceeds the memory safety budget.');this.copyPending=true;this.copyStagingBytes=copyBytes;let candidate:LayerRuntime|undefined;
+    const check=()=>{if(signal?.aborted||this.disposed||!source.editable||source.volume!==original||JSON.stringify(source.metadata())!==JSON.stringify(metadata))throw new Error('Duplication cancelled; original and redo kept.');};
+    try{check();const volume=new SDFVolume(original.resolution,original.extent,false,{dimensions:original.dimensions,latticeMin:original.latticeMin??[0,0,0]});
+      for(let i=0;i<volume.values.length;i+=16384){check();const end=Math.min(volume.values.length,i+16384),dense=original.getDenseView();if(dense)volume.values.set(dense.subarray(i,end),i);else for(let j=i;j<end;j++)volume.values[j]=original.readVoxel(j);if(i%65536===0){progress?.('Copying layer…');await yieldBake();}}
+      copySculptMask(original,volume);const {id:unused,...copy}=metadata;void unused;const layer=new SdfLayer(volume,{...copy,name:this.uniqueName(`${source.name.slice(0,123)} copy`)});candidate=new LayerRuntime(layer,this.neutral,volume,true);const triangleBudget=MAX_PROJECT_TRIANGLES-[...this.runtimes.values()].reduce((n,r)=>n+r.triangles,0);
+      while(candidate.mesher.pendingChunks){check();candidate.rebuild(2,3);this.copyStagingBytes=copyBytes+candidate.mesher.ownedGeometryBytes;if(this.trackedBytes>256*1024**2||candidate.triangles>triangleBudget)throw new Error('Duplicate exceeds geometry or memory safety budget.');progress?.('Preparing duplicate…');await yieldBake();}
+      check();const index=this.project.layerStack.layers.findIndex(l=>l.id===id);this.project.layerStack.insert(layer,index+1);const state=this.project.layerStack.hierarchy.snapshot();state.layers.find(l=>l.id===layer.id)!.parentId=this.project.layerStack.hierarchy.parent(id);this.project.layerStack.hierarchy.restore(state);this.install(candidate);this.selectedGroupId=null;this.display.setColour(this.project.id,layer.id,this.display.colour(this.project.id,id,source.order));this.discardFuture();this.past.push({kind:'bake',layerId:layer.id,runtime:candidate,before,after:this.bakeState(),index:index+1});candidate=undefined;this.committedRevision++;this.syncPresentation();return layer;
+    }finally{candidate?.dispose();this.copyPending=false;this.copyStagingBytes=0;}
+  }
+  groupNode(id:string,name='Group'):string{let group='';this.hierarchyEdit(()=>{const h=this.project.layerStack.hierarchy;h.get(id).assertEditable();group=h.create(name,h.parent(id));h.reparent(id,group);this.selectedGroupId=group;});return group;}
   duplicate(id: string): SdfLayer {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const source=this.project.layerStack.get(id),n=source.volume.resolution;this.assertCapacity(volumeSampleCount(source.volume),undefined,1);
+    this.finishStroke();this.finishTransform();const source=this.project.layerStack.get(id),n=source.volume.resolution;source.assertEditable();const before=this.bakeState();this.assertCapacity(volumeSampleCount(source.volume),undefined,1);if(this.trackedBytes+volumeSampleCount(source.volume)*8+sculptMask(source.volume).memoryBytes>256*1024**2)throw new Error('Duplicate exceeds the memory safety budget.');
     const volume=new SDFVolume(n,source.volume.extent,false,{dimensions:source.volume.dimensions,latticeMin:source.volume.latticeMin??[0,0,0]}),dense=source.volume.getDenseView();
     copySculptMask(source.volume,volume);
     volume.values.set(dense??source.volume.readRegion({min:[0,0,0],max:source.volume.dimensions.map(n=>n-1) as [number,number,number]}).values);
     const {id:unused,...metadata}=source.metadata();void unused;
     const layer=new SdfLayer(volume,{...metadata,name:this.uniqueName(`${source.name.slice(0,123)} copy`)}),runtime=new LayerRuntime(layer,this.neutral);
-    const index=this.project.layerStack.layers.findIndex(l=>l.id===id);this.project.layerStack.insert(layer,index+1);this.install(runtime);this.syncPresentation();return layer;
+    const index=this.project.layerStack.layers.findIndex(l=>l.id===id);this.project.layerStack.insert(layer,index+1);const state=this.project.layerStack.hierarchy.snapshot();state.layers.find(l=>l.id===layer.id)!.parentId=this.project.layerStack.hierarchy.parent(source.id);this.project.layerStack.hierarchy.restore(state);this.install(runtime);this.selectedGroupId=null;this.display.setColour(this.project.id,layer.id,this.display.colour(this.project.id,source.id,source.order));this.discardFuture();this.past.push({kind:'bake',layerId:layer.id,runtime,before,after:this.bakeState(),index:index+1});this.committedRevision++;this.syncPresentation();return layer;
   }
   remove(id: string): void {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const runtime=this.runtime(id);this.project.layerStack.remove(id);this.group.remove(runtime.surface.group);runtime.dispose();this.runtimes.delete(id);
-    this.past=this.past.filter(entry=>entry.layerId!==id);this.future=this.future.filter(entry=>entry.layerId!==id);this.display.remove(this.project.id,id);this.syncPresentation();
+    this.finishStroke();this.finishTransform();const runtime=this.runtime(id);this.project.layerStack.remove(id);this.group.remove(runtime.surface.group);this.retainedHierarchy.delete(runtime);runtime.dispose();this.runtimes.delete(id);
+    this.past=this.past.filter(entry=>entry.layerId!==id&&entry.kind!=='hierarchy');this.future=this.future.filter(entry=>entry.layerId!==id&&entry.kind!=='hierarchy');this.releaseHierarchyOrphans();this.display.remove(this.project.id,id);this.syncPresentation();
   }
-  rename(id: string,name: string): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.get(id).name=validateName(name.trim());this.syncPresentation();}
-  move(id: string,delta: number): void {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const stack=this.project.layerStack,index=stack.layers.findIndex(l=>l.id===id),before=stack.layers.map(l=>l.id);stack.move(id,index+delta);
-    const after=stack.layers.map(l=>l.id);if(before.join()!==after.join())this.recordMetadata({kind:'order',layerId:id,before,after});this.syncPresentation();
-  }
+  rename(id: string,name: string): void {this.renameNode(id,name);}
+  move(id:string,delta:number):void{this.moveNode(id,delta);}
   private restoreOrder(ids:string[]):void {
     const stack=this.project.layerStack,existing=new Set(stack.layers.map(l=>l.id));
     const ordered=[...ids.filter(id=>existing.has(id)),...stack.layers.map(l=>l.id).filter(id=>!ids.includes(id))];
@@ -365,7 +402,7 @@ export class IndependentLayers {
     if(layer.operation===operation)return;const before=layer.operation;layer.operation=operation;
     this.recordMetadata({kind:'operation',layerId:id,before,after:operation});
   }
-  setFlag(id: string,flag:'visible'|'locked',value: boolean): void {this.assertAvailable();this.finishStroke();this.finishTransform();this.project.layerStack.get(id)[flag]=value;this.syncPresentation();}
+  setFlag(id: string,flag:'visible'|'locked',value: boolean): void {this.assertAvailable();this.finishStroke();this.finishTransform();if(this.project.layerStack.hierarchy.parentsLocked(id))throw new Error('Unlock the parent group.');this.project.layerStack.get(id)[flag]=value;this.syncPresentation();}
   resampleActive(resolution: number): void {this.assertAvailable();
     this.finishStroke();this.finishTransform();const runtime=this.editableRuntime(this.project.activeLayerId);this.assertSculptable(runtime.layer);
     if(![64,128,192].includes(resolution))throw new Error('Choose 64³, 128³ or 192³.');
@@ -383,12 +420,14 @@ export class IndependentLayers {
   }
   private discardFuture():void {
     for(const entry of this.future)if(entry.kind==='bake'&&!this.runtimes.has(entry.layerId)){entry.runtime.dispose();this.display.remove(this.project.id,entry.layerId);}
-    this.future=[];for(const runtime of this.runtimes.values())runtime.history.discardRedo();
+    this.future=[];this.releaseHierarchyOrphans();for(const runtime of this.runtimes.values())runtime.history.discardRedo();
   }
-  private bakeState():BakeState {return {ids:this.project.layerStack.layers.map(l=>l.id),orders:Object.fromEntries(this.project.layerStack.layers.map(l=>[l.id,l.order])),visibility:Object.fromEntries(this.project.layerStack.layers.map(l=>[l.id,l.visible])),activeId:this.project.activeLayerId,view:this.viewMode};}
+  private bakeState():BakeState {return {hierarchy:this.project.layerStack.hierarchy.snapshot(),selectedGroup:this.selectedGroupId,ids:this.project.layerStack.layers.map(l=>l.id),orders:Object.fromEntries(this.project.layerStack.layers.map(l=>[l.id,l.order])),visibility:Object.fromEntries(this.project.layerStack.layers.map(l=>[l.id,l.visible])),activeId:this.project.activeLayerId,view:this.viewMode};}
+  private restoreCompatibleHierarchy(target:HierarchyState):void{const h=this.project.layerStack.hierarchy,current=h.snapshot(),ids=new Set(current.layers.map(l=>l.id)),state=structuredClone(target);state.layers=state.layers.filter(l=>ids.has(l.id));for(const leaf of current.layers)if(!state.layers.some(l=>l.id===leaf.id))state.layers.push(leaf);for(const group of current.groups)if(!state.groups.some(g=>g.id===group.id))state.groups.push(group);const all=new Set([...state.layers,...state.groups].map(n=>n.id));state.order=[...state.order.filter(id=>all.has(id)),...current.order.filter(id=>!state.order.includes(id))];state.compositionOrder=[...state.compositionOrder.filter(id=>ids.has(id)),...current.compositionOrder.filter(id=>!state.compositionOrder.includes(id))];h.restore(state);}
   private restoreBakeState(state:BakeState):void {
     const stack=this.project.layerStack;
     for(const layer of stack.layers)if(layer.id in state.visibility)layer.visible=state.visibility[layer.id];
+    if(state.hierarchy)this.restoreCompatibleHierarchy(state.hierarchy);this.selectedGroupId=state.selectedGroup??null;
     this.restoreOrder(state.ids);if(stack.layers.length===state.ids.length&&stack.layers.every(l=>l.id in state.orders))for(const layer of stack.layers)layer.order=state.orders[layer.id];
     stack.select(stack.layers.some(l=>l.id===state.activeId)?state.activeId:stack.layers[0].id);this.viewMode=state.view;
     this.syncPresentation();this.composite.invalidate();
@@ -400,7 +439,7 @@ export class IndependentLayers {
       stack.insert(entry.runtime.layer,Math.min(entry.index,stack.layers.length));this.install(entry.runtime);this.restoreBakeState(entry.after);
     }else{
       if(stack.layers.length===1)throw new Error('Cannot undo Bake after all original layers were deleted. Keep at least one other layer.');
-      entry.runtime=this.runtime(entry.layerId);entry.after.visibility[entry.layerId]=entry.runtime.layer.visible;stack.remove(entry.layerId);this.group.remove(entry.runtime.surface.group);this.runtimes.delete(entry.layerId);this.restoreBakeState(entry.before);
+      entry.runtime=this.runtime(entry.layerId);entry.after.visibility[entry.layerId]=entry.runtime.layer.localVisible;if(entry.after.hierarchy){const saved=entry.after.hierarchy.layers.find(l=>l.id===entry.layerId),now=stack.hierarchy.snapshot().layers.find(l=>l.id===entry.layerId);if(saved&&now)Object.assign(saved,now);}stack.remove(entry.layerId);this.group.remove(entry.runtime.surface.group);this.runtimes.delete(entry.layerId);this.restoreBakeState(entry.before);
     }
   }
   bakePlan(resolution:number,sourceIds?:string[]){this.assertAvailable();this.assertCapacity(resolution**3,undefined,1);return planBake(this.project,resolution,sourceIds);}
@@ -451,7 +490,7 @@ export class IndependentLayers {
       if(this.trackedBytes+volumeSampleCount(volume)*8>256*1024**2)throw new Error('Tube Bake exceeds the staging memory budget.');
       for(let i=0;i<volume.values.length;i+=16384){check();for(let j=i;j<Math.min(volume.values.length,i+16384);j++)volume.values[j]=original.readVoxel(j);await yieldBake();}
       const samplingMs=performance.now()-start,{id:unused,procedural:unusedSource,...metadataCopy}=source.metadata();void unused;void unusedSource;
-      const layer=new SdfLayer(volume,{...metadataCopy,name:validated.name,locked:false,visible:true,operation:'union',order:this.project.layerStack.layers.length});
+      const layer=new SdfLayer(volume,{...metadataCopy,transform:copyTransform(source.transform),name:validated.name,locked:false,visible:true,operation:'union',order:this.project.layerStack.layers.length});
       candidate=new LayerRuntime(layer,this.neutral,volume,true);const meshStart=performance.now(),budget=MAX_PROJECT_TRIANGLES-[...this.runtimes.values()].reduce((n,r)=>n+r.triangles,0);
       while(candidate.mesher.pendingChunks){check();candidate.rebuild(2,3);if(candidate.triangles>budget)throw new Error('Tube Bake exceeds the project triangle budget.');await yieldBake();}
       check();this.project.layerStack.insert(layer);this.install(candidate);this.discardFuture();this.viewMode='separate';
@@ -465,7 +504,7 @@ export class IndependentLayers {
   /** Source-first atomic regeneration. No source/cache publication before all slices
    * and chunks succeed. One in-flight candidate, cancelled on ownership changes. */
   async regenerateTube(value:TubeSource,id?:string,signal?:AbortSignal):Promise<SdfLayer>{
-    this.assertAvailable();if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');
+    this.assertAvailable();if(this.selectedGroupId)throw new Error('Select a child layer for procedural editing.');if(this.drawing||this.transforming)throw new Error('Finish the current edit first.');
     const source=validateTube(value),old=id?this.runtime(id):undefined;
     if(old){old.layer.assertEditable();if(!old.layer.procedural)throw new Error('Select a procedural tube.');}
     const activeId=this.project.activeLayerId,metadata=old?JSON.stringify(old.layer.metadata()):'',before=this.bakeState();
@@ -568,5 +607,5 @@ export class IndependentLayers {
     }
     if(!group.children.length)throw new Error('No visible surface to export.');return group;
   }
-  dispose(): void {this.disposed=true;this.composite.dispose();const all=new Set(this.runtimes.values());for(const entry of [...this.past,...this.future])if(entry.kind==='bake')all.add(entry.runtime);for(const runtime of all)runtime.dispose();this.past=[];this.future=[];this.runtimes.clear();this.group.clear();this.compositeMaterial.dispose();this.neutral.dispose();}
+  dispose(): void {this.disposed=true;this.composite.dispose();const all=new Set([...this.runtimes.values(),...this.retainedHierarchy]);for(const entry of [...this.past,...this.future])if(entry.kind==='bake')all.add(entry.runtime);else if(entry.kind==='hierarchy')for(const r of entry.removed)all.add(r);for(const runtime of all)runtime.dispose();this.past=[];this.future=[];this.runtimes.clear();this.retainedHierarchy.clear();this.group.clear();this.compositeMaterial.dispose();this.neutral.dispose();}
 }

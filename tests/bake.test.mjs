@@ -83,7 +83,7 @@ test('native round trip treats baked output as an ordinary independent layer and
 });
 test('baked layers retain normal transform rename lock visibility and independent resampling behavior',async()=>{
  const c=create(),before=sourceCopy(c),baked=await c.bake(options());c.setActiveTransform(pose);c.rename(baked.id,'Renamed');c.setFlag(baked.id,'locked',true);assert.throws(()=>c.beginStroke());c.setFlag(baked.id,'locked',false);c.resampleActive(128);const values=c.active.layer.volume.values;
- c.undo();assert.deepEqual(baked.transform.rotation,[0,0,0]);c.undo();assert.equal(c.project.layerStack.layers.length,1);c.undo(true);assert.equal(c.active.layer.volume.values,values);assert.equal(c.active.layer.volume.resolution,128);assert.equal(c.active.layer.name,'Renamed');sourcesPreserved(c,before);c.dispose();
+ c.undo();assert.notEqual(baked.name,'Renamed');c.undo();assert.deepEqual(baked.transform.rotation,[0,0,0]);c.undo();assert.equal(c.project.layerStack.layers.length,1);c.undo(true);assert.equal(c.active.layer.volume.values,values);assert.equal(c.active.layer.volume.resolution,128);c.undo(true);c.undo(true);assert.equal(c.active.layer.name,'Renamed');sourcesPreserved(c,before);c.dispose();
 });
 test('both GLB workflows export the baked layer only while sources are hidden, with neutral materials',async()=>{
  const c=create(),b=c.create(64);c.setActiveTransform(pose);c.setOperation(b.id,'difference');const baked=await c.bake(options()),before=saveSculptProject(c.project);c.composite.setQuality(64);await c.composite.flush();
@@ -101,9 +101,9 @@ test('lower output resolution can lose a tiny feature while high output retains 
  const before=source.values.slice(),low=await sampleBake(project,lowPlan),high=await sampleBake(project,highPlan),point={x:center[0],y:center[1],z:center[2]},transform=plan=>({position:plan.center,rotation:[0,0,0],scale:[plan.scale,plan.scale,plan.scale]});
  assert(low.volume.sampleWorld(point,transform(lowPlan))>0);assert(high.volume.sampleWorld(point,transform(highPlan))<0);assert.deepEqual(source.values,before);
 });
-test('reversing two visible Boolean operands changes the baked field in the expected order',async()=>{
+test('reordering visible rows preserves the explicit Boolean sequence in Bake',async()=>{
  const c=create(),b=c.create(64);c.setActiveTransform(pose);c.setOperation(b.id,'difference');const before=prepareComposite(c.project.layerStack.layers);assert(before(.4,0,.2)>0);
- c.move(b.id,-1);const baked=await c.bake(options());assert(baked.volume.sampleWorld({x:.4,y:0,z:.2},baked.transform)<0);c.dispose();
+ c.move(b.id,-1);const baked=await c.bake(options());assert(baked.volume.sampleWorld({x:.4,y:0,z:.2},baked.transform)>0);c.dispose();
 });
 test('non-overlapping union bakes both components and source 192³ stays independent',async()=>{
  const c=create(192),b=c.create(64);c.setActiveTransform({...pose,position:[2.3,0,0]});const before=sourceCopy(c),baked=await c.bake(options());

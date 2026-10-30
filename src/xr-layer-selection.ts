@@ -33,19 +33,23 @@ export class XRLayerSelection {
    for(const layer of layers.project.layerStack.layers){if(!layer.visible)continue;const surface=layers.runtime(layer.id).surface.group;if(!surface.visible)continue;surface.updateWorldMatrix(true,true);this.hits.length=0;this.raycaster.intersectObject(surface,true,this.hits);const hit=this.hits.find(h=>h.object.visible);if(hit&&(distance===null||hit.distance<distance-1e-6)){distance=hit.distance;this.hoveredId=layer.id;}}
    this.raycastMs=performance.now()-start;
    if(!tool!.buttons.trigger.pressed&&tool!.buttons.trigger.rawValue<.45)this.armed=true;
-   else if(tool!.buttons.trigger.pressed){const select=this.armed&&tool!.buttons.trigger.justPressed;this.armed=false;if(select&&this.hoveredId&&this.hoveredId!==layers.project.activeLayerId)this.tools.selectLayer(this.hoveredId);}
+   else if(tool!.buttons.trigger.pressed){const select=this.armed&&tool!.buttons.trigger.justPressed;this.armed=false;if(select&&this.hoveredId&&(this.hoveredId!==layers.project.activeLayerId||!!layers.selectedGroupId))this.tools.selectLayer(this.hoveredId);}
   }else this.armed=false;
   const start=performance.now(),current=layers.active.layer;
-  this.draw(this.selected,layers.active,layers.viewMode==='separate'&&current.visible);
+  if(layers.selectedGroupId&&layers.viewMode==='separate')this.drawGroup(layers.selectedGroupId);else this.draw(this.selected,layers.active,layers.viewMode==='separate'&&current.visible);
   this.draw(this.hover,this.hoveredId?layers.runtime(this.hoveredId):layers.active,!!this.hoveredId&&this.hoveredId!==current.id);
-  this.feedback=!transform?'':layers.viewMode!=='separate'?'Selection · use Separate Layers':`Selected: ${current.name}${current.locked?' · Locked':!current.visible?' · Hidden':''}`;
+  this.feedback=!transform?'':layers.viewMode!=='separate'?'Selection · use Separate Layers':`Selected: ${layers.transformNode.name}${current.locked?' · Locked':!current.visible?' · Hidden':''}`;
   if(transform&&layers.transforming)this.feedback+=' · Moving / rotating';
   if(this.hoveredId&&this.hoveredId!==current.id)this.feedback+=` · Pointing: ${layers.project.layerStack.get(this.hoveredId).name}`;
   this.visualMs=performance.now()-start;return distance;
  }
- private draw(line:LineSegments,runtime:LayerRuntime,visible:boolean):void {
-  line.visible=false;if(!visible)return;const surface=runtime.surface;let cached=this.cache.get(surface);
+ private bounds(runtime:LayerRuntime):{revision:number;box:Box3}{const surface=runtime.surface;let cached=this.cache.get(surface);
   if(!cached||cached.revision!==surface.revision){const box=cached?.box??new Box3();box.makeEmpty();for(const object of surface.group.children)if(object instanceof Mesh){if(!object.geometry.boundingBox)object.geometry.computeBoundingBox();if(object.geometry.boundingBox)box.union(object.geometry.boundingBox);}cached={revision:surface.revision,box};this.cache.set(surface,cached);this.boundsBuilds++;}
+return cached;}
+ private readonly assemblyBox=new Box3();private readonly childBox=new Box3();
+ private drawGroup(id:string):void{const l=this.layers(),line=this.selected;line.visible=false;this.assemblyBox.makeEmpty();for(const leaf of l.project.layerStack.hierarchy.descendants(id)){const source=l.project.layerStack.layers.find(n=>n.id===leaf);if(!source?.visible)continue;const runtime=l.runtime(leaf),box=this.bounds(runtime).box;runtime.surface.group.updateWorldMatrix(true,false);this.childBox.copy(box).applyMatrix4(runtime.surface.group.matrixWorld);this.assemblyBox.union(this.childBox);}if(this.assemblyBox.isEmpty())return;this.assemblyBox.getCenter(this.center);this.assemblyBox.getSize(this.size).multiplyScalar(1.006);line.matrix.makeScale(this.size.x,this.size.y,this.size.z).setPosition(this.center);this.group.updateWorldMatrix(true,false);line.matrix.premultiply(this.inverse.copy(this.group.matrixWorld).invert());line.visible=true;line.updateWorldMatrix(false,false);}
+ private draw(line:LineSegments,runtime:LayerRuntime,visible:boolean):void {
+  line.visible=false;if(!visible)return;const surface=runtime.surface,cached=this.bounds(runtime);
   if(cached.box.isEmpty())return;cached.box.getCenter(this.center);cached.box.getSize(this.size);this.size.multiplyScalar(1.006);this.local.makeScale(this.size.x,this.size.y,this.size.z);this.local.setPosition(this.center);surface.group.updateWorldMatrix(true,false);line.matrix.copy(surface.group.matrixWorld).multiply(this.local);this.group.updateWorldMatrix(true,false);this.inverse.copy(this.group.matrixWorld).invert();line.matrix.premultiply(this.inverse);line.visible=true;line.updateWorldMatrix(false,false);
  }
  dispose():void{this.cancel();this.selected.geometry.dispose();(this.selected.material as LineBasicMaterial).dispose();(this.hover.material as LineBasicMaterial).dispose();this.group.removeFromParent();}

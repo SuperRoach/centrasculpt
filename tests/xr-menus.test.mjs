@@ -65,7 +65,7 @@ test('Transform options edit metadata with existing undo and native persistence,
  }finally{f.dispose();}
 });
 test('Layers panel selects visible, hidden or locked rows and toggles flags using existing commands',()=>{
- const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,9);
+ const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,14);
  m.activate(`select:${first.id}`);assert.equal(f.layers.project.activeLayerId,first.id);assert(m.content().buttons.find(b=>b.id===`select:${first.id}`).selected);m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert.equal(first.visible,false);assert.equal(first.locked,true);m.activate(`select:${second.id}`);assert.equal(f.layers.project.activeLayerId,second.id);m.activate(`select:${first.id}`);assert.equal(f.layers.active.layer.id,first.id);
  const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.activeLayerId,first.id);assert.equal(opened.layerStack.active.visible,false);assert.equal(opened.layerStack.active.locked,true);assert.deepEqual(first.volume.getDenseView(),a);assert.deepEqual(second.volume.getDenseView(),b);assert.equal(f.layers.undoCount,0);assert.equal(f.layers.project.layerStack.layers.length,2);
  m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert(first.visible&&!first.locked);assert(f.changed>=6);
@@ -128,7 +128,7 @@ test('numeric bounds clamp, brush settings retain the existing native save/load 
  }finally{f.dispose();}
 });
 test('eight layer rows, paginated options and radial targets stay within the usable menu surface',()=>{
- const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,27);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
+ const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,22);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
  f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<10;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
  }finally{f.dispose();}
 });

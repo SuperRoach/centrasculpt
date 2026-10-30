@@ -1,9 +1,10 @@
+import {validateHierarchy} from './layer-hierarchy';
 import {REFERENCE_LIMITS} from './reference-images';
 import {validateToolPreferences} from './tool-preferences';
 import {requireLegacyCubicGrid,isLegacyCubicGrid,volumeSampleCount} from './volume-store';
 import {BRUSH_RADIUS_LIMITS} from './brush-settings';
 import {validateProjectDisplay,type ProjectDisplayPreferences} from './display-preferences';
-import { SculptProject, LayerStack, SdfLayer, createBaseProject, validateId, validateName, validateLayerMetadata } from './layers';
+import { SculptProject, LayerStack, SdfLayer, assertIndependentLayerVolumes, createBaseProject, validateId, validateName, validateLayerMetadata } from './layers';
 import type { VolumeStore } from './volume-store';
 import { SDFVolume } from './sdf';
 import { MAX_RESOLUTION } from './resolution';
@@ -12,7 +13,7 @@ import type { BrushMode } from './sdf';
 export type SculptSettings = { mode: BrushMode; radius: number; strength: number; hardness: number };
 export type ProjectSettings = SculptSettings & { camera: { position: [number,number,number]; target: [number,number,number] } };
 const MAGIC = [70,79,82,77,83,68,70,0]; // FORMSDF\0
-export const PROJECT_VERSION = 6;
+export const PROJECT_VERSION = 7;
 export const MAX_PROJECT_RESOLUTION = MAX_RESOLUTION;
 export const MAX_PROJECT_TRIANGLES = 1_000_000;
 export const MAX_PROJECT_LAYERS=8;
@@ -126,16 +127,16 @@ export function saveSculptProject(project: SculptProject,display:ProjectDisplayP
     const result={...metadata,mask:maskDescriptor,grid:{dimensions:volume.dimensions,extent:volume.extent,voxelSize:volume.voxelSize,initialResolution:volume.resolution,latticeMin:volume.latticeMin??[0,0,0]},voxelOffset:offset,voxelCount:count};offset+=count;return result;
   });
   // Revalidate identity/order/selection after metadata may have been edited by clients.
-  new LayerStack([...layers],project.activeLayerId);
+  assertIndependentLayerVolumes(layers);if(new Set(layers.map(l=>l.id)).size!==layers.length||new Set(layers.map(l=>l.order)).size!==layers.length)throw new Error('Layer IDs and ordering must be unique.');project.layerStack.get(project.activeLayerId);
   const displayPreferences=display===undefined?undefined:validateProjectDisplay(display,layers.map(layer=>layer.id));
   const assets=displayPreferences?.references??[];
   let assetOffset=0;
   const references=assets.map(({bytes,...record})=>{const descriptor={...record,byteOffset:assetOffset,byteLength:bytes.length};assetOffset+=bytes.length;return descriptor;});
   const storedDisplay=displayPreferences?{...displayPreferences,references:assets.length?references:undefined}:undefined;
-  const metadata=new TextEncoder().encode(JSON.stringify({toolPreferences:project.toolPreferences===undefined?undefined:validateToolPreferences(project.toolPreferences),displayPreferences:storedDisplay,id:validateId(project.id),name:validateName(project.name),activeLayerId:project.activeLayerId,settings,voxelEncoding:'float32-le',layers:descriptors}));
+  const metadata=new TextEncoder().encode(JSON.stringify({hierarchy:project.layerStack.hierarchy.enabled?validateHierarchy(project.layerStack.hierarchy.snapshot(),layers.map(l=>l.id)):undefined,toolPreferences:project.toolPreferences===undefined?undefined:validateToolPreferences(project.toolPreferences),displayPreferences:storedDisplay,id:validateId(project.id),name:validateName(project.name),activeLayerId:project.activeLayerId,settings,voxelEncoding:'float32-le',layers:descriptors}));
   if(metadata.length>65536)throw new Error('Project metadata exceeds the supported limit.');
   const buffer=new ArrayBuffer(16+metadata.length+offset*4+maskBytes+assetOffset),bytes=new Uint8Array(buffer),view=new DataView(buffer);
-  bytes.set(MAGIC);view.setUint32(8,hasMasks?6:assets.length?5:layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
+  bytes.set(MAGIC);view.setUint32(8,project.layerStack.hierarchy.enabled?7:hasMasks?6:assets.length?5:layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
   let index=0;
   for(const layer of layers)for(let i=0;i<volumeSampleCount(layer.volume);i++)view.setFloat32(16+metadata.length+index++*4,layer.volume.readVoxel(i),true);
   let maskStart=16+metadata.length+offset*4;if(hasMasks)for(const mask of maskPayloads)for(const [id,value]of mask.mask.entries()){view.setUint32(maskStart,id,true);view.setFloat32(maskStart+4,value,true);maskStart+=8;}
@@ -148,7 +149,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
   if(!MAGIC.every((v,i)=>bytes[i]===v))throw new Error('This is not a Centra Sculpt project (.form).');
   const version=view.getUint32(8,true);
   if(version===1||version===2) {const legacy=openLegacyProject(buffer);return createBaseProject(legacy.volume,legacy.settings,true);}
-  if(version!==3&&version!==4&&version!==5&&version!==6)throw new Error('Unsupported project version. This app supports versions 1–6.');
+  if(version!==3&&version!==4&&version!==5&&version!==6&&version!==7)throw new Error('Unsupported project version. This app supports versions 1–7.');
   const length=view.getUint32(12,true);
   if(length<2||length>65536||16+length>buffer.byteLength)throw new Error('Invalid project metadata length.');
   let metadata: Record<string,unknown>;
@@ -178,7 +179,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     return new SdfLayer(volume,layer);
   });
   let assetStart=16+length+expectedOffset*4;
-  if(version===6){let offset=0;for(let a=0;a<layers.length;a++){const descriptor=object(object(metadata.layers[a]).mask),count=descriptor.count,base=descriptor.base;if(descriptor.encoding!=='sparse-f32-le'||(base!==0&&base!==1)||!Number.isSafeInteger(count)||typeof count!=='number'||count<0||count>volumeSampleCount(layers[a].volume)||descriptor.byteOffset!==offset||assetStart+offset+count*8>buffer.byteLength)throw new Error('Invalid mask payload.');const mask=sculptMask(layers[a].volume);mask.uniform(base);let previous=-1;for(let i=0;i<count;i++){const id=view.getUint32(assetStart+offset,true),value=view.getFloat32(assetStart+offset+4,true);if(id<=previous||id>=volumeSampleCount(layers[a].volume)||!Number.isFinite(value)||value<0||value>1||value===base)throw new Error('Invalid mask samples.');mask.write(id,value);previous=id;offset+=8;}}assetStart+=offset;}else if(metadata.layers.some(v=>object(v).mask!==undefined))throw new Error('Masks require project version 6.');
+  if(version>=6&&(metadata.layers as Record<string,unknown>[]).some(l=>l.mask!==undefined)){let offset=0;for(let a=0;a<layers.length;a++){const descriptor=object(object(metadata.layers[a]).mask),count=descriptor.count,base=descriptor.base;if(descriptor.encoding!=='sparse-f32-le'||(base!==0&&base!==1)||!Number.isSafeInteger(count)||typeof count!=='number'||count<0||count>volumeSampleCount(layers[a].volume)||descriptor.byteOffset!==offset||assetStart+offset+count*8>buffer.byteLength)throw new Error('Invalid mask payload.');const mask=sculptMask(layers[a].volume);mask.uniform(base);let previous=-1;for(let i=0;i<count;i++){const id=view.getUint32(assetStart+offset,true),value=view.getFloat32(assetStart+offset+4,true);if(id<=previous||id>=volumeSampleCount(layers[a].volume)||!Number.isFinite(value)||value<0||value>1||value===base)throw new Error('Invalid mask samples.');mask.write(id,value);previous=id;offset+=8;}}assetStart+=offset;}else if(metadata.layers.some(v=>object(v).mask!==undefined))throw new Error('Masks require project version 6.');
   const savedDisplay=metadata.displayPreferences as {references?:Record<string,unknown>[]} | undefined;
   if(savedDisplay?.references!==undefined){
    if(version<5||!Array.isArray(savedDisplay.references)||savedDisplay.references.length>REFERENCE_LIMITS.count)throw new Error('Invalid reference records.');
@@ -186,7 +187,8 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
    savedDisplay.references=savedDisplay.references.map(r=>{const n=r.byteLength;if(r.byteOffset!==offset||typeof n!=='number'||!Number.isSafeInteger(n)||n<24||n>REFERENCE_LIMITS.fileBytes||offset+n>REFERENCE_LIMITS.totalBytes||assetStart+offset+n>buffer.byteLength)throw new Error('Invalid reference payload.');const bytes=new Uint8Array(buffer.slice(assetStart+offset,assetStart+offset+n));offset+=n;const {byteOffset,byteLength,...record}=r;return {...record,bytes};});assetStart+=offset;
   }
   if(buffer.byteLength!==assetStart)throw new Error('Unexpected trailing voxel data.');
-  const project=new SculptProject(new LayerStack(layers,active),settings,name,id);
+  const stack=new LayerStack(layers,active);if(metadata.hierarchy!==undefined){if(version!==7)throw new Error('Hierarchy requires project version 7.');stack.hierarchy.restore(metadata.hierarchy);}
+  const project=new SculptProject(stack,settings,name,id);
   if(metadata.toolPreferences!==undefined)project.toolPreferences=validateToolPreferences(metadata.toolPreferences);
   if(metadata.displayPreferences!==undefined)project.displayPreferences=validateProjectDisplay(metadata.displayPreferences,layers.map(layer=>layer.id));
   return project;

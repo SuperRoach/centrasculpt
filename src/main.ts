@@ -37,6 +37,7 @@ import { createUI } from './ui';
 import {XRMirrorPlane} from './xr-mirror-plane';
 import type { BakePlan } from './bake';
 import { DEFAULT_RESOLUTION } from './resolution';
+import {DesktopLayerPalette} from './layer-palette';
 import { saveSculptProject, openSculptProject, MAX_PROJECT_BYTES } from './project';
 import { IndependentLayers } from './independent-layers';
 import { InputOwnership } from './interaction';
@@ -96,13 +97,15 @@ function syncStats() {
   }
   ui.history(layers.undoCount,layers.redoCount,loadingProject||xrBlocked());
 }
-function syncTransformUI(){syncViewportTools();ui.transformState(layers.active.layer.transform,layers.active.layer.editable,input.mode,input.space,loadingProject||xrBlocked());syncStats();}
+function syncTransformUI(){syncViewportTools();ui.transformState(layers.transformNode.transform,layers.transformNode.editable,input.mode,input.space,loadingProject||xrBlocked());syncStats();}
 function refresh() {
   exportEstimate();
   syncView();
   ui.layerRows(layers.project.layerStack.layers,layers.project.activeLayerId,layer=>display.colour(layers.project.id,layer.id,layer.order));
+  desktopLayers?.render();
   ui.resolution(layers.active.layer.volume.resolution);syncRenderStyle();ui.viewportMode(display.mode);syncTransformUI();transformTools?.sync();
 }
+var desktopLayers:DesktopLayerPalette|undefined;
 const desktopStroke=new ClayStrokeSession(()=>layers,()=>refresh());
 function stopSculpt(commit=false) {
   const captured=activePointer;activePointer=null;input.end('sculpt');controls.enabled=input.cameraEnabled;if(desktopStroke.active){if(desktopStroke.phase==='drawing'&&(commit||!desktopStroke.buffered))desktopStroke.end();else if(!commit)desktopStroke.cancel();}else layers.finishStroke();syncStats();lastRebuild=performance.now();
@@ -151,7 +154,7 @@ function chooseWorkspace(tool:WorkspaceTool,fromXR=false):void {
   syncTransformUI();cursor.visible=false;ui.status(tool==='boolean'?'Boolean shapes · position and click once to stamp':`${tool==='smooth'?'Smooth':'Brush'} tool · ${layers.active.layer.name}`);
 }
 function chooseLayerMode(mode:EditorMode,fromXR=false):void {
-  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;editorTools?.clearMoveSelection();stop();shapeLibraryUI.setOpen(false,fromXR);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.active.layer.name}`);
+  if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;editorTools?.clearMoveSelection();stop();shapeLibraryUI.setOpen(false,fromXR);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.transformNode.name}`);
 }
 viewportTools=createViewportTools(ui.viewport,chooseWorkspace,chooseLayerMode);
 syncViewportTools();
@@ -197,7 +200,7 @@ window.addEventListener('keydown',event=>{
   if(!event.metaKey&&!event.ctrlKey&&!event.altKey&&!input.transforming) {
     const mode=({w:'translate',e:'rotate',r:'scale'} as Record<string,EditorMode>)[event.key.toLowerCase()];
     if(mode&&shapeGhost.model.enabled){event.preventDefault();ui.status('Hide the shape ghost to use layer gizmos. Ghost pose fields are in Shape Library.');return;}
-    if(mode){event.preventDefault();stop();transformTools!.setMode(mode);syncTransformUI();ui.status(`${mode} · ${layers.active.layer.name}`);return;}
+    if(mode){event.preventDefault();stop();transformTools!.setMode(mode);syncTransformUI();ui.status(`${mode} · ${layers.transformNode.name}`);return;}
   }
   if((event.metaKey||event.ctrlKey)&&!event.altKey&&event.key.toLowerCase()==='z'){event.preventDefault();if(!event.repeat)changeHistory(event.shiftKey);}
 });
@@ -234,13 +237,13 @@ ui.onTransformAction(action=>{
     else if(action.type==='reset')layers.setActiveTransform(identityTransform());
     else {
       if(!Number.isFinite(action.value))throw new Error('Enter a finite transform value.');
-      const next=copyTransform(layers.active.layer.transform),axis='xyz'.indexOf(action.field[1]);
+      const next=copyTransform(layers.transformNode.transform),axis='xyz'.indexOf(action.field[1]);
       if(action.field==='scale')next.scale=[action.value,action.value,action.value];
       else if(action.field[0]==='p')next.position[axis]=action.value;
       else next.rotation[axis]=action.value*Math.PI/180;
       layers.setActiveTransform(next);
     }
-    cursor.visible=false;ui.status(`${layers.active.layer.name} · ${input.mode} · transforms use metadata only`);
+    cursor.visible=false;ui.status(`${layers.transformNode.name} · ${input.mode} · transforms use metadata only`);
   }catch(error){ui.projectMessage(message(error),true);}
   syncTransformUI();transformTools!.sync();
 });
@@ -248,7 +251,7 @@ ui.onLayerAction(async(action,id,value)=>{
   if(loadingProject||xrBlocked())return;stop();
   try {
     if(action==='new'||action==='new-empty')return await heavy('Creating independent layer…',()=>{layers.create(Number(value),action==='new-empty');ui.projectMessage('Independent layer created. Overlapping volumes remain separate.');});
-    if(action==='duplicate')return await heavy('Copying independent voxel data…',()=>{layers.duplicate(id);ui.projectMessage('Layer duplicated with independent voxel storage and fresh history.');});
+    if(action==='duplicate'){await layers.duplicateAsync(id,undefined,text=>ui.projectMessage(text));refresh();return;}
     if(action==='delete') {
       const layer=layers.project.layerStack.get(id);
       if(await ui.confirmDelete(layer.name)){layers.remove(id);ui.projectMessage(`Deleted ${layer.name}. Only its history was removed.`);}
@@ -366,6 +369,7 @@ editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settin
  selectTool:tool=>{if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease'){chooseWorkspace('brush',true);return;}if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
 });
+desktopLayers=new DesktopLayerPalette(()=>layers,document.getElementById('layer-list')!,()=>{stop();chooseLayerMode('translate');refresh();},()=>refresh(),text=>ui.projectMessage(text,true),()=>loadingProject||ui.modalOpen||xrBlocked(),()=>stop());desktopLayers.render();
 const precisionPanel=document.createElement('details');precisionPanel.className='precision-settings';const precisionTitle=document.createElement('summary');precisionTitle.textContent='PRECISION · SHARED TOOL SETTINGS';const precisionOptions=document.createElement('div');precisionPanel.append(precisionTitle,precisionOptions);document.querySelector('#radius')!.closest('section')!.append(precisionPanel);
 let precisionKey='';
 const tubeToolButtons=document.createElement('div');for(const [tool,label] of [['tube','Tube (VR drawing)'],['edit-spline','Edit Spline']] as const){const button=document.createElement('button');button.textContent=label;button.onclick=()=>{try{editorTools!.select(tool);}catch(error){ui.status(message(error));}};tubeToolButtons.append(button);}precisionPanel.before(tubeToolButtons);
@@ -401,7 +405,7 @@ xrExperience=new XRExperience(renderer,xrRig,{
 },!!renderEmulatorFrame);
 void xrExperience.check();
 const recoveryPanel=document.getElementById('recovery-slot')!;
-recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS</summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection"></select><p>Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh.</p><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></details><details><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
+recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS</summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
 const recoveryStatus=document.getElementById('recovery-status')!,recoveryAvailable=document.getElementById('recovery-available')!,recoverySelect=document.querySelector<HTMLSelectElement>('#recovery-selection')!,autosaveEnabled=document.querySelector<HTMLInputElement>('#autosave-enabled')!,recoveryConfirm=document.getElementById('recovery-confirm')!;
 let recoveryAction:'restore'|'discard'|null=null,recoveryListKey='',recoveryChoice='',recoveryWasBlocked=false,restoringRecovery=false;
 const recoveryReady=()=>!input.transforming&&!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active&&!xrExperience?.interaction?.active;

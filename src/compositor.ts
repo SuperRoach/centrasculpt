@@ -32,7 +32,8 @@ export function prepareLayerSampler(layer:SdfLayer):(x:number,y:number,z:number)
   };
 }
 export function prepareComposite(layers:readonly SdfLayer[]):(x:number,y:number,z:number)=>number {
-  const sources=layers.filter(l=>l.visible).map(layer=>({sample:prepareLayerSampler(layer),operation:layer.operation}));
+  const ordering=layers[0]?.hierarchy?.compositionOrder;const ordered=ordering?[...layers].sort((a,b)=>ordering.indexOf(a.id)-ordering.indexOf(b.id)):layers;
+  const sources=ordered.filter(l=>l.visible).map(layer=>({sample:prepareLayerSampler(layer),operation:layer.operation}));
   return (x,y,z)=>{
     if(!sources.length)return 1;
     let result=sources[0].sample(x,y,z);
@@ -75,7 +76,7 @@ export class BooleanComposite {
   stats:CompositeStats|null=null;
   constructor(readonly project:SculptProject,private readonly material:Material,private cap=192,private readonly exportMaterial:Material=material){this.group.name='Boolean Preview';}
   setQuality(cap:number):void {if(![64,128,192].includes(cap))throw new Error('Choose a composite cap of 64³, 128³ or 192³.');if(cap!==this.cap){this.cap=cap;this.invalidate();}}
-  private metadataKey():string {return JSON.stringify(this.project.layerStack.layers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent,l.volume.dimensions,l.volume.bounds]));}
+  private metadataKey():string {return JSON.stringify(this.project.layerStack.compositionLayers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent,l.volume.dimensions,l.volume.bounds]));}
   syncMetadata():void {const key=this.metadataKey();if(key!==this.fingerprint){this.fingerprint=key;this.invalidate();}}
   /** Allocate cache invalidation before an atomic source publication. */
   prepareInvalidation():()=>void{const regions:Bounds[]=[];return ()=>{this.full=true;this.regions=regions;this.version++;this.lastEdit=performance.now();};}
@@ -109,10 +110,10 @@ export class BooleanComposite {
   async flush():Promise<void> {this.syncMetadata();while(!this.disposed&&(this.running||this.pending)){await (this.running??this.rebuild());this.syncMetadata();}}
   private async build():Promise<boolean> {
     if(!this.pending)return false;
-    const version=this.version,start=performance.now(),layout=compositeLayout(this.project.layerStack.layers,this.cap),key=JSON.stringify(layout),layoutChanged=key!==JSON.stringify(this.layout);
+    const version=this.version,start=performance.now(),layout=compositeLayout(this.project.layerStack.compositionLayers,this.cap),key=JSON.stringify(layout),layoutChanged=key!==JSON.stringify(this.layout);
     const full=this.full||layoutChanged||!this.volume;
     if(layoutChanged||!this.volume){this.mesher?.dispose();this.surface?.clear();this.group.clear();this.volume=new SDFVolume(layout.resolution,layout.extent,false);this.mesher=new IncrementalMesher(this.volume);this.surface=new ChunkSurface(this.material);this.group.add(this.surface.group);this.group.position.fromArray(layout.center);this.layout=layout;}
-    const volume=this.volume!,n=volume.resolution,evaluate=prepareComposite(this.project.layerStack.layers),regions=full?[{min:[0,0,0],max:[n-1,n-1,n-1]} as Bounds]:this.regions.map(r=>({min:[...r.min],max:[...r.max]} as Bounds));
+    const volume=this.volume!,n=volume.resolution,evaluate=prepareComposite(this.project.layerStack.compositionLayers),regions=full?[{min:[0,0,0],max:[n-1,n-1,n-1]} as Bounds]:this.regions.map(r=>({min:[...r.min],max:[...r.max]} as Bounds));
     let samplingMs=0,samples=0;
     for(const region of regions)for(let z=region.min[2];z<=region.max[2];z++){
       const batch=performance.now(),wz=volume.coordinate(z)+layout.center[2];

@@ -11,13 +11,13 @@ export type BakePlan={resolution:number;center:Vec3;extent:number;scale:number;m
 export type BakeProgress={stage:'sampling'|'meshing';completed:number;total:number};
 export type BakeStats={samplingMs:number;meshingMs:number;totalMs:number;resolution:number;triangles:number;worldStep:number;gridBytes:number};
 function bakeSources(project:SculptProject,ids?:readonly string[]){
- if(!ids)return project.layerStack.layers;
+ if(!ids)return project.layerStack.compositionLayers;
  if(ids.length!==2||new Set(ids).size!==2||ids.some(id=>typeof id!=='string'))throw new Error('Choose two different layers to merge.');
- return ids.map(id=>{const l=project.layerStack.get(id);return new SdfLayer(l.volume,{...l.metadata(),visible:true,operation:'union'});});
+ return ids.map(id=>{const l=project.layerStack.get(id);return new SdfLayer(l.volume,{...l.metadata(),transform:l.transform,visible:true,operation:'union'});});
 }
 export function planBake(project:SculptProject,resolution:number,sourceIds?:string[]):BakePlan {
   if(![64,128,192].includes(resolution))throw new Error('Bake resolution must be 64³, 128³ or 192³.');
-  const layers=project.layerStack.layers,sources=bakeSources(project,sourceIds),visible=sources.filter(l=>l.visible);
+  const layers=project.layerStack.compositionLayers,sources=bakeSources(project,sourceIds),visible=sources.filter(l=>l.visible);
   if(!visible.length)throw new Error('Show at least one source layer before baking.');
   if(layers.length>=MAX_PROJECT_LAYERS)throw new Error('Bake needs room for a new layer (maximum 8). Original layers are never deleted.');
   if(!Number.isSafeInteger(Math.max(...layers.map(l=>l.order))+1))throw new Error('Layer ordering is outside the supported Bake range. Reorder sources before baking.');
