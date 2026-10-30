@@ -1,3 +1,5 @@
+import {sculptPaint} from './sculpt-paint';
+import {Color,BufferAttribute,MeshStandardMaterial} from 'three';
 import type {ExportSource} from './export-mesh';
 import { Group, Vector3 } from 'three';
 import type { Material } from 'three';
@@ -41,6 +43,14 @@ export function prepareComposite(layers:readonly SdfLayer[]):(x:number,y:number,
     return result;
   };
 }
+/** Winning CSG operand supplies colour, including the cutter on difference faces. */
+export function prepareCompositeColour(layers:readonly SdfLayer[],base:(l:SdfLayer)=>Color=()=>new Color('#afbd94')):(p:Vector3,out:Color)=>Color{
+ const sources=layers.filter(l=>l.visible).map(l=>({layer:l,sample:prepareLayerSampler(l),inverse:transformMatrix(l.transform).invert(),base:base(l).clone()})),local=new Vector3();
+ return (p,out)=>{if(!sources.length)return out.set('#afbd94');let owner=sources[0],distance=owner.sample(p.x,p.y,p.z);
+  for(let i=1;i<sources.length;i++){const s=sources[i],d=s.sample(p.x,p.y,p.z),value=s.layer.operation==='difference'?-d:d;if(s.layer.operation==='union'?value<distance:value>distance){owner=s;distance=value;}}
+  local.copy(p).applyMatrix4(owner.inverse);return sculptPaint(owner.layer.volume).sample(local,owner.base,out);
+ };
+}
 export function evaluateComposite(layers:readonly SdfLayer[],point:Point3):number {return prepareComposite(layers)(point.x,point.y,point.z);}
 export type CompositeLayout={resolution:number;extent:number;center:[number,number,number];desiredStep:number;capped:boolean};
 /** One independent derived world grid. Sampling tries to match the finest world voxel,
@@ -61,6 +71,9 @@ const yieldUI=()=>new Promise<void>(resolve=>setTimeout(resolve,0));
 /** Disposable rendering cache, never part of native serialization or source history. */
 export class BooleanComposite {
   readonly group=new Group();
+  paintBase:(l:SdfLayer)=>Color=()=>new Color('#afbd94');
+  private readonly paintedExport=new MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:.68,metalness:.03});
+  private paintAttributes(geometry:import('three').BufferGeometry):Float32Array|undefined{if(!this.project.layerStack.layers.some(l=>l.visible&&!sculptPaint(l.volume).empty))return;const sample=prepareCompositeColour(this.project.layerStack.compositionLayers,this.paintBase),p=geometry.getAttribute('position'),out=new Float32Array(p.count*3),point=new Vector3(),colour=new Color();for(let i=0;i<p.count;i++){point.fromBufferAttribute(p,i).add(this.group.position);sample(point,colour).toArray(out,i*3);}return out;}
   private surface:ChunkSurface|null=null;
   private mesher:IncrementalMesher|null=null;
   private volume:SDFVolume|null=null;
@@ -76,7 +89,7 @@ export class BooleanComposite {
   stats:CompositeStats|null=null;
   constructor(readonly project:SculptProject,private readonly material:Material,private cap=192,private readonly exportMaterial:Material=material){this.group.name='Boolean Preview';}
   setQuality(cap:number):void {if(![64,128,192].includes(cap))throw new Error('Choose a composite cap of 64³, 128³ or 192³.');if(cap!==this.cap){this.cap=cap;this.invalidate();}}
-  private metadataKey():string {return JSON.stringify(this.project.layerStack.compositionLayers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent,l.volume.dimensions,l.volume.bounds]));}
+  private metadataKey():string {return JSON.stringify(this.project.layerStack.compositionLayers.map(l=>[l.id,l.visible,l.operation,l.order,l.transform,l.volume.resolution,l.volume.extent,l.volume.dimensions,l.volume.bounds,sculptPaint(l.volume).revision]));}
   syncMetadata():void {const key=this.metadataKey();if(key!==this.fingerprint){this.fingerprint=key;this.invalidate();}}
   /** Allocate cache invalidation before an atomic source publication. */
   prepareInvalidation():()=>void{const regions:Bounds[]=[];return ()=>{this.full=true;this.regions=regions;this.version++;this.lastEdit=performance.now();};}
@@ -126,7 +139,8 @@ export class BooleanComposite {
     }
     if(full)this.mesher!.invalidate();else regions.forEach(r=>this.mesher!.invalidate(r));
     let meshingMs=0,chunks=0,totalChunks=0,triangles=0;
-    for(;;){const update=this.mesher!.rebuildChunks(8,3);if(!update)break;this.surface!.update(update.updates);meshingMs+=update.stats.milliseconds;chunks+=update.stats.chunks;totalChunks=update.stats.totalChunks;triangles=update.triangles;
+    for(;;){const update=this.mesher!.rebuildChunks(8,3);if(!update)break;for(const u of update.updates){const colours=this.paintAttributes(u.geometry);if(colours)u.geometry.setAttribute('color',new BufferAttribute(colours,3));}if(this.material instanceof MeshStandardMaterial){const enabled=this.project.layerStack.layers.some(l=>l.visible&&!sculptPaint(l.volume).empty);if(enabled!==this.material.vertexColors){this.material.vertexColors=enabled;this.material.needsUpdate=true;}if(enabled)this.material.color.set(0xffffff);}
+      this.surface!.update(update.updates);meshingMs+=update.stats.milliseconds;chunks+=update.stats.chunks;totalChunks=update.stats.totalChunks;triangles=update.triangles;
       if(triangles>1_000_000){this.group.visible=false;throw new Error('Boolean preview exceeds 1,000,000 triangles. Reduce composite quality or source complexity.');}
       await yieldUI();if(this.disposed||version!==this.version){this.full=true;return false;}
     }
@@ -136,12 +150,12 @@ export class BooleanComposite {
   exportSources():ExportSource[]{
     if(this.pending||!this.mesher||!this.volume||this.running)throw new Error('Wait for the Boolean result to finish rebuilding.');
     const mesher=this.mesher,version=this.version,volume=this.volume,metadata=this.metadataKey();
-    return [{name:'Boolean Result',step:volume.step,transform:{position:this.group.position.toArray(),rotation:[0,0,0],scale:[1,1,1]},chunks:mesher.snapshotUpdates().filter(u=>u.geometry.getAttribute('position').count).map(u=>({positions:u.geometry.getAttribute('position').array as Float32Array,normals:u.geometry.getAttribute('normal').array as Float32Array})),current:()=>this.metadataKey()===metadata&&!this.disposed&&!this.pending&&!this.running&&this.version===version&&this.volume===volume}];
+    return [{name:'Boolean Result',step:volume.step,transform:{position:this.group.position.toArray(),rotation:[0,0,0],scale:[1,1,1]},chunks:mesher.snapshotUpdates().filter(u=>u.geometry.getAttribute('position').count).map(u=>({positions:u.geometry.getAttribute('position').array as Float32Array,normals:u.geometry.getAttribute('normal').array as Float32Array,colours:this.paintAttributes(u.geometry)})),current:()=>this.metadataKey()===metadata&&!this.disposed&&!this.pending&&!this.running&&this.version===version&&this.volume===volume}];
   }
   exportGroup():Group {
     if(this.pending||!this.surface)throw new Error('Wait for the Boolean preview to finish rebuilding.');
-    const mesh=buildExportMesh(this.surface.group,this.exportMaterial,'local');mesh.geometry.applyMatrix4(this.group.matrix);if(!mesh.geometry.getAttribute('position').count){mesh.geometry.dispose();throw new Error('Boolean result is empty; no surface to export.');}
+    const mesh=buildExportMesh(this.surface.group,this.exportMaterial,'local');const colours=this.paintAttributes(mesh.geometry);if(colours){mesh.geometry.setAttribute('color',new BufferAttribute(colours,3));mesh.material=this.paintedExport;}mesh.geometry.applyMatrix4(this.group.matrix);if(!mesh.geometry.getAttribute('position').count){mesh.geometry.dispose();throw new Error('Boolean result is empty; no surface to export.');}
     const group=new Group();group.name=this.project.name;mesh.name='Boolean Result';group.add(mesh);return group;
   }
-  dispose():void {this.disposed=true;this.version++;this.mesher?.dispose();this.surface?.clear();this.group.clear();this.mesher=null;this.surface=null;this.volume=null;this.layout=null;this.regions=[];}
+  dispose():void {this.paintedExport.dispose();this.disposed=true;this.version++;this.mesher?.dispose();this.surface?.clear();this.group.clear();this.mesher=null;this.surface=null;this.volume=null;this.layout=null;this.regions=[];}
 }

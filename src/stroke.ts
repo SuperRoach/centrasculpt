@@ -1,3 +1,4 @@
+import {sculptPaint} from './sculpt-paint';
 import { mergeBounds } from './sdf';
 import type { VolumeStore } from './volume-store';
 import type { Bounds, BrushMode, Point3, VoxelChangeListener, MirrorPlane } from './sdf';
@@ -26,11 +27,12 @@ export class ClayStroke {
     // Crease's normal component was only one third of the shared clay rate.
     // Restore that application rate; each backward map retains its existing
     // voxel/displacement/derivative caps in brushSteps (no extra passes).
-    const amount = (mode === 'smooth'||mode==='mask'||mode==='mask-erase') ? Math.min(strength,1) * dt * 20 / steps : radius * Math.min(strength,1) * dt * 1.2 * (mode==='crease'?3:1) / steps;
+    const amount = (mode === 'smooth'||mode==='paint'||mode==='paint-erase'||mode==='mask'||mode==='mask-erase') ? Math.min(strength,1) * dt * 20 / steps : radius * Math.min(strength,1) * dt * 1.2 * (mode==='crease'?3:1) / steps;
     let dirty: Bounds | null = null;
     for (let i=1; i<=steps; i++) {
       const t=i/steps;
-      const changed=yield* volume.brushSteps({x:from.x+(center.x-from.x)*t,y:from.y+(center.y-from.y)*t,z:from.z+(center.z-from.z)*t},radius,mode,amount,record,hardness,freeSpace,strength,undefined,mirror);
+      const dab={x:from.x+(center.x-from.x)*t,y:from.y+(center.y-from.y)*t,z:from.z+(center.z-from.z)*t};
+      const changed=mode==='paint'||mode==='paint-erase'?yield* sculptPaint(volume).brush(dab,radius,amount,hardness,mode==='paint-erase',mirror):yield* volume.brushSteps({x:from.x+(center.x-from.x)*t,y:from.y+(center.y-from.y)*t,z:from.z+(center.z-from.z)*t},radius,mode,amount,record,hardness,freeSpace,strength,undefined,mirror);
       dirty=mergeBounds(dirty,changed);if(changed)onDirty?.(changed);
     }
     this.previous = {...center};

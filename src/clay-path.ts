@@ -1,5 +1,5 @@
 import type {Point3} from './sdf';
-export type PathPoint=Point3&{t:number;radius?:number};
+export type PathPoint=Point3&{t:number;radius?:number;breakBefore?:boolean};
 export const CLAY_TIP_REACH_METRES=.12;
 export class ClayPathControls {steady=0;straightLine=false;axis:'free'|'x'|'y'|'z'='free';placement:'free'|'surface'='free';snap=0 as 0|15;}
 const lerp=(a:PathPoint,b:PathPoint,u:number):PathPoint=>({x:a.x+(b.x-a.x)*u,y:a.y+(b.y-a.y)*u,z:a.z+(b.z-a.z)*u,t:a.t+(b.t-a.t)*u,...(a.radius!==undefined&&b.radius!==undefined?{radius:a.radius+(b.radius-a.radius)*u}:{})});
@@ -10,8 +10,9 @@ const distance=(a:Point3,b:Point3)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 export function filterClayPath(raw:readonly PathPoint[],steady:number,radius:number,straightLine=false):readonly PathPoint[]{
  if(!Number.isFinite(steady)||steady<0||steady>100||!Number.isFinite(radius)||radius<=0)throw new Error('Invalid Steady parameters.');
  if(raw.length>8192||raw.some((p,i)=>![p.x,p.y,p.z,p.t].every(Number.isFinite)||p.t<0||i>0&&p.t<raw[i-1].t))throw new Error('Invalid or oversized Clay trajectory.');
+ if(raw.some((p,i)=>i>0&&p.breakBefore)){const result:PathPoint[]=[];let start=0;for(let i=1;i<=raw.length;i++)if(i===raw.length||raw[i].breakBefore){result.push(...filterClayPath(raw.slice(start,i),steady,radius,straightLine));start=i;}return result;}
  if(raw.length<2)return raw;
- if(straightLine){const start=raw[0],end=raw.at(-1)!,duration=end.t-start.t;return raw.map((p,i)=>({...lerp(start,end,duration>0?(p.t-start.t)/duration:i/(raw.length-1)),t:p.t,...(p.radius!==undefined?{radius:p.radius}:{})}));}
+ if(straightLine){const start=raw[0],end=raw.at(-1)!,duration=end.t-start.t;return raw.map((p,i)=>({...lerp(start,end,duration>0?(p.t-start.t)/duration:i/(raw.length-1)),t:p.t,...(p.breakBefore?{breakBefore:true}:{}),...(p.radius!==undefined?{radius:p.radius}:{})}));}
  if(steady===0)return raw;
  const arc=[0];for(let i=1;i<raw.length;i++)arc.push(arc[i-1]+distance(raw[i],raw[i-1]));
  const total=arc.at(-1)!;if(total<1e-12)return raw;
@@ -29,14 +30,14 @@ export function filterClayPath(raw:readonly PathPoint[],steady:number,radius:num
   let x=0,y=0,z=0,weight=0;
   for(let j=left;j<=right;j++){const d=(positions[j]-positions[i])/window,w=Math.exp(-4*d*d);x+=samples[j].x*w;y+=samples[j].y*w;z+=samples[j].z*w;weight+=w;}
   const blend=amount*Math.min(1,positions[i]/window,(total-positions[i])/window),p=samples[i];
-  output.push({x:p.x+(x/weight-p.x)*blend,y:p.y+(y/weight-p.y)*blend,z:p.z+(z/weight-p.z)*blend,t:p.t,...(p.radius!==undefined?{radius:p.radius}:{})});
+  output.push({x:p.x+(x/weight-p.x)*blend,y:p.y+(y/weight-p.y)*blend,z:p.z+(z/weight-p.z)*blend,t:p.t,...(p.breakBefore?{breakBefore:true}:{}),...(p.radius!==undefined?{radius:p.radius}:{})});
  }
  output[0]={...raw[0]};output[output.length-1]={...raw.at(-1)!};return output;
 }
 /** Time subdivision preserves dwell/strength while retaining exactly the preview polyline. */
 export function clayReplay(path:readonly PathPoint[]):PathPoint[]{
  const result:PathPoint[]=[];let previous=path[0];if(!previous)return result;
- let time=0;for(const point of path){const dt=point.t-time,steps=Math.max(1,Math.ceil(dt*120));if(result.length+steps>200000)throw new Error('Clay replay exceeds the dab budget.');for(let i=1;i<=steps;i++)result.push(lerp({...previous,t:time},point,i/steps));previous=point;time=point.t;}return result;
+ let time=0;for(const point of path){if(point.breakBefore)previous=point;const dt=point.t-time,steps=Math.max(1,Math.ceil(dt*120));if(result.length+steps>200000)throw new Error('Clay replay exceeds the dab budget.');for(let i=1;i<=steps;i++)result.push({...lerp({...previous,t:time},point,i/steps),...(point.breakBefore&&i===1?{breakBefore:true}:{})});previous=point;time=point.t;}return result;
 }
 
 /** Quantize azimuth/elevation about the captured line origin, preserving length. */

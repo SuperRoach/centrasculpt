@@ -4,7 +4,7 @@ import { identityTransform, toLocal, transformMatrix } from './transform';
 import type { Vec3, VolumeTransform } from './transform';
 import { Vector3 } from 'three';
 export type VoxelChangeListener = (index: number, before: number, after: number) => void;
-export type BrushMode = 'add' | 'subtract' | 'smooth' | 'flatten' | 'inflate' | 'scrape' | 'pinch' | 'crease' | 'mask' | 'mask-erase';
+export type BrushMode = 'paint' | 'paint-erase' | 'add' | 'subtract' | 'smooth' | 'flatten' | 'inflate' | 'scrape' | 'pinch' | 'crease' | 'mask' | 'mask-erase';
 export type MirrorPlane = {enabled:boolean;axis: 'x'|'y'|'z';offset:number};
 export function validateMirrorPlane(plane:MirrorPlane):void{if(typeof plane.enabled!=='boolean'||!['x','y','z'].includes(plane.axis)||!Number.isFinite(plane.offset))throw new Error('Invalid mirror plane.');}
 export function reflectPoint(p:Point3,plane:MirrorPlane):Point3{return {...p,[plane.axis]:2*plane.offset-p[plane.axis]};}
@@ -140,6 +140,7 @@ export class SDFVolume implements VolumeStore {
    * Existing synchronous callers drain the identical generator. */
   *brushSteps(center: Point3, radius: number, mode: BrushMode, amount: number, record?: VoxelChangeListener, hardness = 0, freeSpace = false, strength = 1, start:Point3=center, mirror?:MirrorPlane):Generator<void,Bounds|null> {
     if (![center.x, center.y, center.z, radius, amount, hardness, strength].every(Number.isFinite) || radius <= 0 || amount <= 0 || (freeSpace && strength <= 0)) return null;
+    if(mode==='paint'||mode==='paint-erase')throw new Error('Paint must use the colour stroke path.');
     if(mode==='mask'||mode==='mask-erase'){
       const mask=sculptMask(this),points=[center,...(mirror?.enabled?[reflectPoint(center,mirror)]:[])],bounds:Bounds={min:[...this.shape],max:[0,0,0]};let changed=false,processed=0;
       // Union of symmetric applicators: overlap never doubles protection strength.

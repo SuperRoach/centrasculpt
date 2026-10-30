@@ -1,3 +1,4 @@
+import {PAINT_SWATCHES} from './sculpt-paint';
 import {LayerPaletteModel} from './layer-palette';
 import {MOVE_VARIANTS,type MoveVariant} from './tool-preferences';
 import {XRWorldMenu,type XRWorldMenuPort} from './xr-world-menu';
@@ -21,6 +22,7 @@ export class XRMenuModel {
  readonly world:XRWorldMenu;readonly palette:LayerPaletteModel;
  constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);this.palette=new LayerPaletteModel(tools);}
  setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
+ get layerSelectionActive():boolean{return this.request!==null&&this.page==='layers'&&!this.merge&&!this.resetTarget;}
  content():MenuContent{const content=this.buildContent();content.buttons.push({id:'ui-scale',label:`UI · ${this.tools.port.layers().display.vrUiScale==='large'?'Large':'Default'}`,rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
  private buildContent():MenuContent{
   if(this.page==='world')return this.world.content();
@@ -41,6 +43,7 @@ export class XRMenuModel {
   const buttons:MenuButton[]=[],labels:MenuContent['labels']=[],title=this.page==='tool-wheel'?'TOOL WHEEL':this.page==='layers'?'LAYERS':this.tools.moveFamily?this.tools.contextLabel.toUpperCase():`${this.tools.contextLabel.toUpperCase()} OPTIONS`;
   const add=(id:string,label:string,x:number,y:number,width:number,height:number,selected=false,disabled=false,detail?:string)=>buttons.push({id,label,rect:{x,y,width,height},selected,disabled,detail});
   if(this.page==='tool-wheel'){
+   add('tool:paint','Paint',392,1030,320,78,this.tools.active==='paint',this.tools.busy);
    add('tool:mask','Mask',40,1030,320,78,this.tools.active==='mask',this.tools.busy);
    add('world','World Settings',760,140,352,74,false,this.tools.busy);
    add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',40,140,300,74,!!this.tools.path.snap,this.tools.busy);
@@ -63,6 +66,7 @@ export class XRMenuModel {
 
    add('prev','‹',788,140,144,74,false,this.optionPage===0);add('next','›',948,140,164,74,false,this.optionPage===pages-1);
    all.slice(this.optionPage*OPTIONS_PER_PAGE,this.optionPage*OPTIONS_PER_PAGE+OPTIONS_PER_PAGE).forEach((option,i)=>{const y=244+i*150;
+    if(option.id==='paint-colour'){labels.push({text:`Paint colour · ${option.value}`,x:56,y:y-16,small:true,width:1000,height:52});PAINT_SWATCHES.forEach((colour,j)=>buttons.push({id:`paint-swatch:${colour}`,label:'',colour,selected:this.tools.port.layers().paintColour===colour,rect:{x:40+j*108,y:y+42,width:96,height:88}}));return;}
     if(option.action){add(option.action,option.label,40,y,1072,136,false,option.disabled,option.value);return;}
     labels.push({text:option.label,x:56,y:y+2,small:true,width:724,height:68},{text:option.value,x:56,y:y+72,width:option.slider?280:724,height:76,value:true});
     if(option.slider)buttons.push({id:`slider:${option.id}`,label:'',rect:{x:380,y:y+78,width:380,height:54},disabled:option.disabled,slider:option.slider});
@@ -90,6 +94,8 @@ export class XRMenuModel {
    else if(id==='world'){this.page='world';this.world.section='home';}
    else if(this.page==='world'&&this.world.activate(id)){}
    else if(id==='ui-scale'||id==='world-ui-scale'){const l=this.tools.port.layers();l.display.vrUiScale=l.display.vrUiScale==='large'?'normal':'large';this.tools.port.changed();}
+   else if(action==='paint-swatch'){this.tools.setPaintColour(value);}
+   else if(id==='paint-clear')this.tools.paintAction();
    else if(id.startsWith('mask-'))this.tools.maskAction(id);
    else if(id.startsWith('tube-')){void this.tools.splineAction(id).catch(error=>{this.feedback=error instanceof Error?error.message:'Spline action failed';});}
    else if(id==='snap-toggle')this.tools.adjust('global-snap',1);

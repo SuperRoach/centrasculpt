@@ -1,0 +1,58 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs sculpt-paint --worker
+
+Tests: 1/72 files · compiled 0, cached 102 · preparation 7 ms
+✔ 64 paint locality, sparse storage, continuous remesh colours and native v8 (178.8445ms)
+✔ 128 paint locality, sparse storage, continuous remesh colours and native v8 (565.238041ms)
+✔ 192 paint locality, sparse storage, continuous remesh colours and native v8 (1425.462542ms)
+✔ linear RGB opacity and colour blending; harder falloff; symmetric overlap applied once (17.749208ms)
+✔ full mask protects colour, partial mask blends and brush cannot alter distances (6.623833ms)
+✔ COW snapshots, duplicate independence, erase, cancellation and interleaved history (43.26975ms)
+✔ add retains volume-local paint through geometry edits (18.996875ms)
+✔ subtract retains volume-local paint through geometry edits (19.216625ms)
+✔ smooth retains volume-local paint through geometry edits (19.508416ms)
+✔ flatten retains volume-local paint through geometry edits (19.017334ms)
+✔ inflate retains volume-local paint through geometry edits (19.134458ms)
+✔ pinch retains volume-local paint through geometry edits (19.418375ms)
+✔ crease retains volume-local paint through geometry edits (19.363166ms)
+✔ scrape retains volume-local paint through geometry edits (18.470917ms)
+✔ expanded negative lattice copies paint exactly; sparse VolumeStore adapter supported (2.603916ms)
+✔ trilinear colour is identical at shared chunk vertices after local refresh (81.5655ms)
+✔ non-elastic transports painted samples, undo/redo and native persistence (112.443959ms)
+✔ elastic transports painted samples, undo/redo and native persistence (118.131375ms)
+✔ rotate transports painted samples, undo/redo and native persistence (87.688417ms)
+✔ twist transports painted samples, undo/redo and native persistence (86.019166ms)
+✔ new paint revision rejects stale Move work before publication (10.219833ms)
+✔ legacy layer colour preferences and display styles never discard paint (106.788791ms)
+✔ malformed native paint channels reject NaN, out-of-range, duplicate, truncation (12.087417ms)
+✔ actual recovery worker retains paint and does not detach source pages (42.204375ms)
+✔ separate fast GLB includes real linear COLOR_0 attributes and white material (26.546875ms)
+✔ separate standard GLB includes real linear COLOR_0 attributes and white material (49.990667ms)
+✔ separate high GLB includes real linear COLOR_0 attributes and white material (46.812292ms)
+✔ composite fast GLB includes real linear COLOR_0 attributes and white material (69.000625ms)
+✔ composite standard GLB includes real linear COLOR_0 attributes and white material (78.583459ms)
+✔ composite high GLB includes real linear COLOR_0 attributes and white material (76.669625ms)
+✔ Boolean export and explicit Bake sample winning source colours and keep original data (199.729958ms)
+✔ Paint menu has real swatches, one-action reset, nine radial tools and no accidental geometry (14.762042ms)
+✔ Tool trigger Paint, radius, release and tracking cancellation with Steady 0 (19.355292ms)
+✔ Tool trigger Paint, radius, release and tracking cancellation with Steady 75 (14.905125ms)
+✔ paint history stress bounded and protected/procedural targets cannot be painted (386.125166ms)
+✔ paint transformed/grouped world mapping, reparent and asynchronous copy independence (43.204958ms)
+✔ Shape Stamp add leaves authoritative paint intact (26.805666ms)
+✔ Shape Stamp subtract leaves authoritative paint intact (29.275708ms)
+✔ actual Tool stick changes live paint radius but menu ownership blocks sizing (7.055792ms)
+✔ Support alternate toggles paint/erase and restores captured settings without a stroke (6.617667ms)
+✔ Move preview material cache picks up paint added after an earlier unpainted preview (17.289375ms)
+✔ source export revision guards reject newer paint even without remeshing (21.877041ms)
+✔ export admission omits paint buffers, and hidden selected sources are excluded (18.94875ms)
+✔ budgeted paint refresh reaches chunk tails during continuous input and settles latest colours (4.635833ms)
+ℹ tests 44
+ℹ suites 0
+ℹ pass 44
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4271.417375
+Test command wall time: 4.30 s

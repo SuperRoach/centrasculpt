@@ -2,9 +2,9 @@ import type {VolumeTransform} from './transform';
 export type ExportQuality='fast'|'standard'|'high';
 export const EXPORT_PRESETS=Object.freeze({fast:{label:'Fast · existing triangles',maxTriangles:1_000_000,bytesPerCorner:112},standard:{label:'Standard · welded and cleaned',maxTriangles:600_000,bytesPerCorner:288},high:{label:'High · welded + planar optimisation',maxTriangles:300_000,bytesPerCorner:480}});
 export const EXPORT_MEMORY_LIMIT=256*1024*1024;
-export type ExportChunk={positions:Float32Array;normals:Float32Array};
+export type ExportChunk={positions:Float32Array;normals:Float32Array;colours?:Float32Array};
 export type ExportSource={name:string;layerId?:string;transform:VolumeTransform;step:number;chunks:ExportChunk[];current?:()=>boolean};
-export type ExportMesh={name:string;layerId?:string;transform:VolumeTransform;positions:Float32Array;normals:Float32Array;indices?:Uint16Array|Uint32Array;stats:ExportMeshStats};
+export type ExportMesh={name:string;layerId?:string;transform:VolumeTransform;positions:Float32Array;normals:Float32Array;colours?:Float32Array;indices?:Uint16Array|Uint32Array;stats:ExportMeshStats};
 export type ExportMeshStats={inputTriangles:number;triangles:number;vertices:number;removedDegenerate:number;removedDuplicate:number;flipped:number;planarRemoved:number;maxPlanarDeviation:number;boundaryEdges:number;nonManifoldEdges:number;inconsistentEdges:number};
 export type ExportProgress={stage:string;completed:number;total:number};
 export class ExportWork {
@@ -15,7 +15,7 @@ export class ExportWork {
 }
 export function exportAdmission(sources:readonly ExportSource[],quality:ExportQuality,maxBytes=EXPORT_MEMORY_LIMIT):{corners:number;estimatedBytes:number}{
  if(!Object.hasOwn(EXPORT_PRESETS,quality)||!Number.isFinite(maxBytes)||maxBytes<=0)throw new Error('Invalid export quality or memory limit.');
- let corners=0;for(const source of sources){if(!(source.step>0&&Number.isFinite(source.step)))throw new Error('Invalid export voxel spacing.');for(const c of source.chunks){if(c.positions.length%9||c.normals.length!==c.positions.length)throw new Error('Invalid source triangle buffers.');corners+=c.positions.length/3;}}
+ let corners=0;for(const source of sources){if(!(source.step>0&&Number.isFinite(source.step)))throw new Error('Invalid export voxel spacing.');for(const c of source.chunks){if(c.positions.length%9||c.normals.length!==c.positions.length||c.colours&&(c.colours.length!==c.positions.length||!c.colours.every(v=>Number.isFinite(v)&&v>=0&&v<=1)))throw new Error('Invalid source triangle buffers.');corners+=c.positions.length/3;}}
  if(!corners)throw new Error('No surface to export.');const estimatedBytes=corners*EXPORT_PRESETS[quality].bytesPerCorner+sources.length*4096;
  if(corners/3>EXPORT_PRESETS[quality].maxTriangles||estimatedBytes>maxBytes)throw new Error(`Export exceeds ${quality} memory/triangle safety limits. Choose Fast or export fewer layers; source sculpture kept.`);
  return {corners,estimatedBytes};
@@ -26,10 +26,11 @@ const edgeKey=(a:number,b:number)=>a<b?`${a},${b}`:`${b},${a}`;
 export async function optimiseExportMesh(source:ExportSource,quality:ExportQuality,work=new ExportWork()):Promise<ExportMesh>{
  const corners=source.chunks.reduce((n,c)=>n+c.positions.length/3,0),stats:ExportMeshStats={inputTriangles:corners/3,triangles:0,vertices:0,removedDegenerate:0,removedDuplicate:0,flipped:0,planarRemoved:0,maxPlanarDeviation:0,boundaryEdges:0,nonManifoldEdges:0,inconsistentEdges:0};
  if(quality==='fast'){
-  const positions=new Float32Array(corners*3),normals=new Float32Array(corners*3);let offset=0;
-  for(const c of source.chunks)for(let i=0;i<c.positions.length;i+=16384){await work.pause('Copying existing triangles',offset,corners*3);const end=Math.min(c.positions.length,i+16384);for(let k=i;k<end;k++)if(!Number.isFinite(c.positions[k])||!Number.isFinite(c.normals[k]))throw new Error('Non-finite export attributes.');positions.set(c.positions.subarray(i,end),offset);normals.set(c.normals.subarray(i,end),offset);offset+=end-i;}
-  stats.triangles=corners/3;stats.vertices=corners;return {name:source.name,layerId:source.layerId,transform:source.transform,positions,normals,stats};
+  const positions=new Float32Array(corners*3),normals=new Float32Array(corners*3),colours=source.chunks.some(c=>c.colours)?new Float32Array(corners*3).fill(1):undefined;let offset=0;
+  for(const c of source.chunks)for(let i=0;i<c.positions.length;i+=16384){await work.pause('Copying existing triangles',offset,corners*3);const end=Math.min(c.positions.length,i+16384);for(let k=i;k<end;k++)if(!Number.isFinite(c.positions[k])||!Number.isFinite(c.normals[k]))throw new Error('Non-finite export attributes.');positions.set(c.positions.subarray(i,end),offset);normals.set(c.normals.subarray(i,end),offset);if(c.colours)colours!.set(c.colours.subarray(i,end),offset);offset+=end-i;}
+  stats.triangles=corners/3;stats.vertices=corners;return {name:source.name,layerId:source.layerId,transform:source.transform,positions,normals,colours,stats};
  }
+ const painted=source.chunks.some(c=>c.colours),colours:number[]=[];
  const positions:number[]=[],normals:number[]=[],indices:number[]=[],weld=new Map<string,number>(),faces=new Set<string>();
  let cursor=0;
  for(const chunk of source.chunks)for(let i=0;i<chunk.positions.length;i+=9){
@@ -37,8 +38,8 @@ export async function optimiseExportMesh(source:ExportSource,quality:ExportQuali
   const ids:number[]=[];
   for(let k=0;k<3;k++){const offset=i+k*3,x=chunk.positions[offset],y=chunk.positions[offset+1],z=chunk.positions[offset+2],nx=chunk.normals[offset],ny=chunk.normals[offset+1],nz=chunk.normals[offset+2];
    if(![x,y,z,nx,ny,nz].every(Number.isFinite))throw new Error('Export source contains non-finite positions or normals.');
-   const key=`${x},${y},${z}`;let id=weld.get(key);
-   if(id===undefined){id=positions.length/3;positions.push(x,y,z);normals.push(nx,ny,nz);weld.set(key,id);}else{normals[id*3]+=nx;normals[id*3+1]+=ny;normals[id*3+2]+=nz;}ids.push(id);
+   const rgb=chunk.colours?Array.from(chunk.colours.subarray(offset,offset+3)):[1,1,1];if(!rgb.every(v=>Number.isFinite(v)&&v>=0&&v<=1))throw new Error("Invalid export colour.");const key=`${x},${y},${z},${rgb.join(",")}`;let id=weld.get(key);
+   if(id===undefined){id=positions.length/3;positions.push(x,y,z);normals.push(nx,ny,nz);colours.push(...rgb);weld.set(key,id);}else{normals[id*3]+=nx;normals[id*3+1]+=ny;normals[id*3+2]+=nz;}ids.push(id);
   }
   const [a,b,c]=ids,n=cross(positions,a,b,c),area=Math.hypot(...n);
   if(new Set(ids).size!==3||area<=source.step*source.step*1e-12){stats.removedDegenerate++;continue;}
@@ -47,15 +48,15 @@ export async function optimiseExportMesh(source:ExportSource,quality:ExportQuali
  }
  weld.clear();faces.clear();
  let triangles=await orientMesh(indices,positions,normals,stats,work);
- if(quality==='high')for(let pass=0;pass<3;pass++)triangles=await simplifyPlanar(positions,normals,triangles,source.step,stats,work);
+ if(quality==='high'&&!painted)for(let pass=0;pass<3;pass++)triangles=await simplifyPlanar(positions,normals,triangles,source.step,stats,work);
  // Compact unused vertices and normalise a single consistent normal per welded position.
- const remap=new Int32Array(positions.length/3);remap.fill(-1);const outP:number[]=[],outN:number[]=[],outI=new Uint32Array(triangles.length);
- for(let i=0;i<triangles.length;i++){if(i%6144===0)await work.pause('Compacting mesh',i,triangles.length);const old=triangles[i];let id=remap[old];if(id<0){id=outP.length/3;remap[old]=id;outP.push(positions[old*3],positions[old*3+1],positions[old*3+2]);const length=Math.hypot(normals[old*3],normals[old*3+1],normals[old*3+2]);if(length<1e-12)throw new Error('Export source has an undefined surface normal.');outN.push(normals[old*3]/length,normals[old*3+1]/length,normals[old*3+2]/length);}outI[i]=id;}
+ const remap=new Int32Array(positions.length/3);remap.fill(-1);const outP:number[]=[],outN:number[]=[],outC:number[]=[],outI=new Uint32Array(triangles.length);
+ for(let i=0;i<triangles.length;i++){if(i%6144===0)await work.pause('Compacting mesh',i,triangles.length);const old=triangles[i];let id=remap[old];if(id<0){id=outP.length/3;remap[old]=id;outC.push(colours[old*3],colours[old*3+1],colours[old*3+2]);outP.push(positions[old*3],positions[old*3+1],positions[old*3+2]);const length=Math.hypot(normals[old*3],normals[old*3+1],normals[old*3+2]);if(length<1e-12)throw new Error('Export source has an undefined surface normal.');outN.push(normals[old*3]/length,normals[old*3+1]/length,normals[old*3+2]/length);}outI[i]=id;}
  const edges=new Map<string,{count:number;direction:number}>();
  for(let i=0;i<outI.length;i+=3){if(i%6144===0)await work.pause('Checking continuity',i,outI.length);for(let k=0;k<3;k++){const a=outI[i+k],b=outI[i+(k+1)%3],key=edgeKey(a,b),old=edges.get(key)??{count:0,direction:0};old.count++;old.direction+=a<b?1:-1;edges.set(key,old);}}
  for(const e of edges.values()){if(e.count===1)stats.boundaryEdges++;else if(e.count!==2)stats.nonManifoldEdges++;else if(e.direction!==0)stats.inconsistentEdges++;}edges.clear();
  stats.triangles=outI.length/3;stats.vertices=outP.length/3;work.check();
- return {name:source.name,layerId:source.layerId,transform:source.transform,positions:new Float32Array(outP),normals:new Float32Array(outN),indices:quality==='high'&&outP.length/3<=65536?new Uint16Array(outI):outI,stats};
+ return {name:source.name,layerId:source.layerId,transform:source.transform,positions:new Float32Array(outP),normals:new Float32Array(outN),colours:painted?new Float32Array(outC):undefined,indices:quality==='high'&&outP.length/3<=65536?new Uint16Array(outI):outI,stats};
 }
 /** Orient whole connected components with shared-edge parity, then choose their
  * outward sign from the SDF normals. A noisy gradient at one tiny apex triangle

@@ -6,7 +6,7 @@ export class XRShortcutView {
  readonly mesh:Mesh<PlaneGeometry,MeshBasicMaterial>;paintCount=0;
  private readonly canvas:HTMLCanvasElement;private readonly ctx:CanvasRenderingContext2D;private readonly texture:CanvasTexture;
  private placed=false;private content='';
- private readonly eye=new Vector3();private readonly forward=new Vector3();private readonly rotation=new Quaternion();
+ private readonly side=new Vector3();private readonly eye=new Vector3();private readonly forward=new Vector3();private readonly rotation=new Quaternion();
  constructor(){
   this.canvas=document.createElement('canvas');this.canvas.width=1024;this.canvas.height=256;this.ctx=this.canvas.getContext('2d')!;
   this.texture=new CanvasTexture(this.canvas);this.texture.colorSpace=SRGBColorSpace;
@@ -17,7 +17,8 @@ export class XRShortcutView {
  place(position:{x:number;y:number;z:number},orientation:{x:number;y:number;z:number;w:number}):void{
   if(this.placed)return;this.placed=true;this.eye.set(position.x,position.y,position.z);this.rotation.set(orientation.x,orientation.y,orientation.z,orientation.w);
   this.forward.set(0,0,-1).applyQuaternion(this.rotation);this.forward.y=0;if(this.forward.lengthSq()<.001)this.forward.set(0,0,-1);this.forward.normalize();
-  this.mesh.position.copy(this.eye).addScaledVector(this.forward,.9);this.mesh.position.y-=.38;this.mesh.lookAt(this.eye);
+  this.side.crossVectors(this.forward,new Vector3(0,1,0));
+  this.mesh.position.copy(this.eye).addScaledVector(this.forward,.9).addScaledVector(this.side,-.48);this.mesh.position.y-=.60;this.mesh.lookAt(this.eye);
  }
  paint(shortcuts:XRSupportShortcuts,time:number,active=true,showMenuPreview=true,notice='',noticeHelp='Tool stick · Up grows / Down shrinks'):void{
   const menu=showMenuPreview?shortcuts.menu:null;

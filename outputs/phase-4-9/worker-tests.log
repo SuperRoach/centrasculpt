@@ -1,0 +1,57 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs sculpt-paint --worker
+
+Tests: 1/72 files · compiled 0, cached 102 · preparation 9 ms
+✔ 64 paint locality, sparse storage, continuous remesh colours and native v8 (194.250708ms)
+✔ 128 paint locality, sparse storage, continuous remesh colours and native v8 (600.537917ms)
+✔ 192 paint locality, sparse storage, continuous remesh colours and native v8 (1524.20475ms)
+✔ linear RGB opacity and colour blending; harder falloff; symmetric overlap applied once (19.237834ms)
+✔ full mask protects colour, partial mask blends and brush cannot alter distances (7.4145ms)
+✔ COW snapshots, duplicate independence, erase, cancellation and interleaved history (46.998125ms)
+✔ add retains volume-local paint through geometry edits (20.802666ms)
+✔ subtract retains volume-local paint through geometry edits (21.740166ms)
+✔ smooth retains volume-local paint through geometry edits (21.046041ms)
+✔ flatten retains volume-local paint through geometry edits (20.714625ms)
+✔ inflate retains volume-local paint through geometry edits (19.689167ms)
+✔ pinch retains volume-local paint through geometry edits (20.279209ms)
+✔ crease retains volume-local paint through geometry edits (20.406458ms)
+✔ scrape retains volume-local paint through geometry edits (20.108ms)
+✔ expanded negative lattice copies paint exactly; sparse VolumeStore adapter supported (3.222084ms)
+✔ trilinear colour is identical at shared chunk vertices after local refresh (90.405417ms)
+✔ non-elastic transports painted samples, undo/redo and native persistence (133.821833ms)
+✔ elastic transports painted samples, undo/redo and native persistence (137.721458ms)
+✔ rotate transports painted samples, undo/redo and native persistence (99.780334ms)
+✔ twist transports painted samples, undo/redo and native persistence (100.93ms)
+✔ new paint revision rejects stale Move work before publication (12.016709ms)
+✔ legacy layer colour preferences and display styles never discard paint (114.9425ms)
+✔ malformed native paint channels reject NaN, out-of-range, duplicate, truncation (14.72075ms)
+✔ actual recovery worker retains paint and does not detach source pages (50.253708ms)
+✔ separate fast GLB includes real linear COLOR_0 attributes and white material (32.157375ms)
+✔ separate standard GLB includes real linear COLOR_0 attributes and white material (58.100208ms)
+✔ separate high GLB includes real linear COLOR_0 attributes and white material (53.58075ms)
+✔ composite fast GLB includes real linear COLOR_0 attributes and white material (76.96275ms)
+✔ composite standard GLB includes real linear COLOR_0 attributes and white material (95.941583ms)
+✔ composite high GLB includes real linear COLOR_0 attributes and white material (83.881666ms)
+✔ Boolean export and explicit Bake sample winning source colours and keep original data (225.210125ms)
+✔ Paint menu has real swatches, one-action reset, nine radial tools and no accidental geometry (15.087542ms)
+✔ Tool trigger Paint, radius, release and tracking cancellation with Steady 0 (19.919ms)
+✔ Tool trigger Paint, radius, release and tracking cancellation with Steady 75 (15.934792ms)
+✔ paint history stress bounded and protected/procedural targets cannot be painted (429.620208ms)
+✔ paint transformed/grouped world mapping, reparent and asynchronous copy independence (46.45675ms)
+✔ Shape Stamp add leaves authoritative paint intact (26.388458ms)
+✔ Shape Stamp subtract leaves authoritative paint intact (32.931292ms)
+✔ actual Tool stick changes live paint radius but menu ownership blocks sizing (8.008916ms)
+✔ Support alternate toggles paint/erase and restores captured settings without a stroke (7.5515ms)
+✔ Move preview material cache picks up paint added after an earlier unpainted preview (19.176541ms)
+✔ source export revision guards reject newer paint even without remeshing (24.339625ms)
+✔ export admission omits paint buffers, and hidden selected sources are excluded (21.332666ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4682.138125
+Test command wall time: 4.72 s

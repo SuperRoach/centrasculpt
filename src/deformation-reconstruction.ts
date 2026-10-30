@@ -1,3 +1,4 @@
+import {copySculptPaint} from './sculpt-paint';
 import {sculptMask,copySculptMask} from './sculpt-mask';
 import {Mesh,Vector3} from 'three';
 import type {Group} from 'three';
@@ -22,7 +23,7 @@ export class MoveWork {
 export async function copyMoveVolume(source:SDFVolume,layout:{dimensions:[number,number,number];latticeMin:[number,number,number]},work:MoveWork,progress:(p:MoveProgress)=>void):Promise<SDFVolume>{
  const next=new SDFVolume(source.resolution,source.extent,false,layout),offset=source.latticeMin.map((v,a)=>v-layout.latticeMin[a]),[nx,ny,nz]=source.dimensions;
  // Same exterior policy as dense growth: positive saturated capacity.
- for(let i=0;i<next.values.length;i+=65536){next.values.fill(Math.fround(source.extent*4),i,Math.min(next.values.length,i+65536));await work.pause();}for(let z=0;z<nz;z++){for(let y=0;y<ny;y++){const from=source.index(0,y,z),to=next.index(offset[0],y+offset[1],z+offset[2]);next.values.set(source.values.subarray(from,from+nx),to);}progress({stage:'copying',completed:z+1,total:nz});await work.pause();}copySculptMask(source,next);return next;
+ for(let i=0;i<next.values.length;i+=65536){next.values.fill(Math.fround(source.extent*4),i,Math.min(next.values.length,i+65536));await work.pause();}for(let z=0;z<nz;z++){for(let y=0;y<ny;y++){const from=source.index(0,y,z),to=next.index(offset[0],y+offset[1],z+offset[2]);next.values.set(source.values.subarray(from,from+nx),to);}progress({stage:'copying',completed:z+1,total:nz});await work.pause();}copySculptMask(source,next);copySculptPaint(source,next);return next;
 }
 export async function reconstructMove(surface:Group,next:SDFVolume,field:RadialMoveField,work:MoveWork,maxBytes:number,progress:(p:MoveProgress)=>void):Promise<{patch:MovePatch;indexBytes:number;sampled:number}>{
  let vertices=0;for(const object of surface.children)if(object instanceof Mesh)vertices+=object.geometry.getAttribute('position').count;

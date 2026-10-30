@@ -76,6 +76,7 @@ export class MoveMeshPreview {
      preview.onBeforeCompile=(shader,renderer)=>{material.onBeforeCompile(shader,renderer);if(!shader.vertexShader.includes('attribute float sculptMaskWeight;'))shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute float sculptMaskWeight;');Object.assign(shader.uniforms,this.uniforms);shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\n'+MOVE_PREVIEW_GLSL).replace('#include <beginnormal_vertex>',`#include <beginnormal_vertex>\nvec3 moveN=moveNormal(position,objectNormal);\nobjectNormal=dot(moveN,moveN)>1e-12?normalize(moveN):objectNormal;`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed += (1.0-sculptMaskWeight)*(moveInteraction>0.5?rotationalMove(position)-position:(moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position)));');};
      preview.customProgramCacheKey=()=> 'centra-move-preview-v4-rotation';this.materials.set(material,preview);
     }
+    if(preview.vertexColors!==material.vertexColors){preview.vertexColors=material.vertexColors;preview.needsUpdate=true;}preview.color.copy(material.color);preview.roughness=material.roughness;preview.metalness=material.metalness;preview.envMapIntensity=material.envMapIntensity;
     return {mesh,material:mesh.material,preview,culled:mesh.frustumCulled,geometry:mesh.geometry};
    });
    // Publish only after all validation/scans/material allocation succeeded.

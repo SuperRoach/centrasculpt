@@ -24,8 +24,8 @@ export class XRClayStroke implements XRStrokeInteraction {
  private rollingPath=false;private readonly rotatingSampler=new RotatingStrokeSampler();private readonly stableAnchor=new Matrix4();
  private processingMs=0;private processingMeasured=false;
  private capturedTool='clay';private owner=0;private armed=false;private lastFrame:number|null=null;private lastPreview:unknown=null;private previewLength=0;
- constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{},private readonly issue:(event:'cancel'|'error')=>void=()=>{}){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed,true);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
- get liveSizing(){return this.session.phase==='drawing'&&(this.capturedTool==='clay'||this.capturedTool==='mask')?'clay-radius' as const:null;}
+ constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,changed:()=>void=()=>{},private readonly issue:(event:'cancel'|'error')=>void=()=>{},private readonly paintSizing:()=>boolean=()=>false){this.cursor=new XRBrushPreview(root);this.mirrorCursor=new XRBrushPreview(root);this.session=new ClayStrokeSession(layers,changed,true);this.geometry.setAttribute('position',this.positions);this.line=new Line(this.geometry,this.material);this.mirrorLine=new Line(this.geometry,this.material);this.mirrorLine.frustumCulled=false;this.preview.add(this.mirrorLine);this.line.frustumCulled=false;this.preview.add(this.line);this.preview.name='Clay trajectory preview · not project data';this.preview.matrixAutoUpdate=false;this.preview.visible=false;this.line.renderOrder=25;root.add(this.preview);}
+ get liveSizing(){return this.session.phase==='drawing'&&(this.capturedTool==='clay'||this.capturedTool==='mask'||this.capturedTool==='paint')?'clay-radius' as const:null;}
  get active():boolean{return this.session.active;}
  get feedback():string{if(this.placementNote)return this.placementNote;const label=this.tools.active==='smooth'?'Smooth':this.tools.active==='clay'?'Clay':this.tools.active[0].toUpperCase()+this.tools.active.slice(1);return this.session.phase==='committing'?`${label}: applying the preview · one undo action`:this.session.phase==='drawing'?this.session.buffered?`${label} preview · release trigger to apply`:`${label}: freehand`:this.message;}
  cancel():void{if(this.active)this.issue('cancel');this.rotatingSampler.reset();this.message='';this.placementNote='';this.cursor.hide();this.mirrorCursor.hide();if(this.active)this.session.cancel();this.controllerRaw.length=0;this.preview.visible=false;this.lastPreview=null;this.owner=0;this.armed=false;}
@@ -37,9 +37,9 @@ export class XRClayStroke implements XRStrokeInteraction {
  }
  private step(tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const dt=this.lastFrame!==null?Math.min(.05,Math.max(0,(time-this.lastFrame)/1000)):1/90;this.lastFrame=time;
-  const mode=this.tools.active,layers=this.layers(),placement=this.tools.path.placement,canGrow=this.tools.port.settings().mode==='add';
+  const mode=this.tools.active,layers=this.layers(),placement=mode==='paint'?'surface':this.tools.path.placement,canGrow=this.tools.port.settings().mode==='add';
   if(placement==='free'&&gripPose)pose=gripPose;
-  const valid=enabled&&(mode==='mask'||mode==='clay'||mode==='smooth'||mode==='flatten'||mode==='inflate'||mode==='scrape'||mode==='pinch'||mode==='crease')&&tool?.role==='tool'&&tool.connected&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&layers.viewMode==='separate'&&layers.project.layerStack.layers.some(l=>l.id===layers.project.activeLayerId)&&layers.active.layer.editable;
+  const valid=enabled&&(mode==='paint'||mode==='mask'||mode==='clay'||mode==='smooth'||mode==='flatten'||mode==='inflate'||mode==='scrape'||mode==='pinch'||mode==='crease')&&tool?.role==='tool'&&tool.connected&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&layers.viewMode==='separate'&&layers.project.layerStack.layers.some(l=>l.id===layers.project.activeLayerId)&&layers.active.layer.editable;
   if(!valid||this.active&&(tool!.connectionId!==this.owner||mode!==this.capturedTool||placement!==this.capturedPlacement)){this.cancel();return;}
   const runtime=layers.active;runtime.surface.group.updateWorldMatrix(true,true);
   if(this.active&&stableSculptMatrix(runtime.surface.group).elements.some((v,i)=>Math.abs(v-this.stableAnchor.elements[i])>1e-9)){this.cancel();this.message='Stroke cancelled: target/workspace moved';return;}
@@ -47,7 +47,7 @@ export class XRClayStroke implements XRStrokeInteraction {
   try{
    if(this.liveSizing)this.session.setRadius(this.tools.port.settings().radius);
    const radius=this.active?this.session.localRadius:this.tools.port.settings().radius/uniformScale(runtime.layer.transform);
-   if(this.session.phase==='committing'){this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',true,this.tools.port.settings().mode==='subtract');this.session.pump();this.paint();return;}
+   if(this.session.phase==='committing'){this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',true,this.tools.port.settings().mode==='subtract');this.session.pump();if(mode==='paint'){this.cursor.hide();this.mirrorCursor.hide();}this.paint();return;}
    this.raycaster.ray.origin.setFromMatrixPosition(pose!);this.direction.set(0,0,-1).transformDirection(pose!);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=3;
    this.inverse.copy(runtime.surface.group.matrixWorld).invert();let hasTarget=false;this.placementNote='';
    if(placement==='free'){
@@ -65,10 +65,14 @@ export class XRClayStroke implements XRStrokeInteraction {
    if(nearBounds)this.placementNote='Near layer bounds · brush will be clipped';
    if(hasTarget)this.cursor.show(runtime.surface.group,this.local,radius,mode==='smooth',!nearBounds,this.tools.port.settings().mode==='subtract');else this.cursor.hide();
    if(hasTarget&&layers.symmetry.enabled)this.mirrorCursor.show(runtime.surface.group,reflectPoint(this.local,layers.symmetry),radius,mode==='smooth',!nearBounds,this.tools.port.settings().mode==='subtract');else this.mirrorCursor.hide();
+   if(mode==='paint'){this.cursor.mesh.material.color.set(layers.paintColour);this.mirrorCursor.mesh.material.color.set(layers.paintColour);}
    this.cursor.showField(runtime.volume,this.local,mode);this.mirrorCursor.showField(runtime.volume,reflectPoint(this.local,layers.symmetry),mode);
+   if(mode==='paint'&&!this.paintSizing()){this.cursor.hide();this.mirrorCursor.hide();}
    if(!this.active&&!tool!.buttons.trigger.pressed){this.armed=true;return;}
    if(!this.active&&(!this.armed||!tool!.buttons.trigger.justPressed||!tool!.buttons.trigger.pressed))return;
    if(this.active&&!tool!.buttons.trigger.pressed){if(this.session.buffered&&hasTarget){this.recordController(time);this.session.sample(this.local,time);}this.session.end();this.armed=true;this.paint();return;}
+   if(!hasTarget&&mode==='paint'){if(this.active){this.session.pauseSurface(time);this.rotatingSampler.reset();this.preview.visible=false;}this.message='Move pointer onto the surface to paint';return;}
+   if(mode==='paint')this.message='';
    if(!hasTarget){this.cancel();this.message='Stroke cancelled: surface no longer under pointer';return;}
    if(!this.active){this.controllerRaw.length=0;this.capturedTool=mode;this.capturedPlacement=placement;this.anchor.copy(runtime.surface.group.matrixWorld);this.stableAnchor.copy(stableSculptMatrix(runtime.surface.group));this.rotatingSampler.reset();this.rollingPath=hasTurntable(runtime.surface.group);this.session.begin(this.tools.port.settings(),this.tools.path,time-dt*1000,placement==='free',this.rollingPath);this.owner=tool!.connectionId;this.armed=false;this.message='';}
    this.recordController(time);
@@ -82,7 +86,7 @@ export class XRClayStroke implements XRStrokeInteraction {
  }
  private recordController(time:number):void{if(this.rollingPath&&this.controllerRaw.length>=8192){let write=1;for(let i=2;i<this.controllerRaw.length;i+=2)this.controllerRaw[write++]=this.controllerRaw[i];this.controllerRaw.length=write;}this.controllerRaw.push({position:this.raycaster.ray.origin.toArray(),direction:this.raycaster.ray.direction.toArray(),time});}
  private paint():void{
-  this.material.color.set(this.tools.port.settings().mode==='subtract'?'#a04b36':this.tools.active==='smooth'?'#a8c9ee':'#9de6cf');
+  this.material.color.set(this.tools.active==='paint'?this.layers().paintColour:this.tools.port.settings().mode==='subtract'?'#a04b36':this.tools.active==='smooth'?'#a8c9ee':'#9de6cf');
   this.preview.visible=this.active&&this.session.preview.length>0;if(!this.preview.visible)return;
   if(this.lastPreview!==this.session.preview||this.previewLength!==this.session.preview.length){this.lastPreview=this.session.preview;this.previewLength=this.session.preview.length;this.session.preview.forEach((p,i)=>this.positions.setXYZ(i,p.x,p.y,p.z));this.positions.needsUpdate=true;this.geometry.setDrawRange(0,this.session.preview.length);}
   const mirror=this.layers().symmetry;this.mirrorLine.visible=mirror.enabled;this.mirrorLine.scale.set(1,1,1);this.mirrorLine.position.set(0,0,0);if(mirror.enabled){this.mirrorLine.scale[mirror.axis]=-1;this.mirrorLine.position[mirror.axis]=2*mirror.offset;}

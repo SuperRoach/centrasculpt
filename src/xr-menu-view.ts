@@ -7,7 +7,7 @@ import type {XRMenuRequest} from './xr-support-shortcuts';
 import {XRMenuModel,MENU_SIZE,WHEEL} from './xr-menu-model';
 import type {MenuContent,MenuButton} from './xr-menu-model';
 /** The polling bridge supplies poses/actions; the menu owns ray hits, trigger capture and drawing. */
-export interface XRMenuInteraction {readonly active:boolean;update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null;close():void;}
+export interface XRMenuInteraction {readonly active:boolean;readonly layerSelectionActive?:boolean;update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null;close():void;}
 export class XRMenuView implements XRMenuInteraction {
  readonly cursor=new Mesh(new SphereGeometry(.004,12,8),new MeshBasicMaterial({color:'#ffffff',transparent:true,depthTest:false,depthWrite:false,toneMapped:false}));
  readonly mesh:Mesh<PlaneGeometry,MeshBasicMaterial>;readonly canvas:HTMLCanvasElement;paintCount=0;
@@ -16,6 +16,7 @@ export class XRMenuView implements XRMenuInteraction {
  private readonly eye=new Vector3();private readonly head=new Quaternion();private readonly forward=new Vector3();
  private slider:string|null=null;
  private ready=false;private owner=0;private hasPose=false;private lastContent='';private lastRefresh=-Infinity;private content:MenuContent|null=null;
+ get layerSelectionActive():boolean{return this.model.layerSelectionActive;}
  constructor(readonly model:XRMenuModel){
   this.canvas=document.createElement('canvas');this.canvas.width=this.canvas.height=MENU_SIZE;this.ctx=this.canvas.getContext('2d')!;
   this.texture=new CanvasTexture(this.canvas);this.texture.colorSpace=SRGBColorSpace;
@@ -61,7 +62,7 @@ export class XRMenuView implements XRMenuInteraction {
   drawVRText(ctx,content.subtitle,{x:40,y:92,width:776,height:38},VR_UI.detail,VR_UI.muted);
   for(const b of content.buttons)this.button(b);
   for(const label of content.labels)drawVRText(ctx,label.text,{x:label.x,y:label.y,width:label.width??MENU_SIZE-label.x-44,height:label.height??46},label.small?VR_UI.label:label.value?VR_UI.value:VR_UI.label,label.small?VR_UI.muted:VR_UI.text);
-  drawVRText(ctx,content.footer,{x:wheel?388:40,y:1048,width:wheel?724:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
+  drawVRText(ctx,content.footer,{x:wheel?744:40,y:1048,width:wheel?368:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
  }
  private button(b:MenuButton):void{
   const ctx=this.ctx,hover=b.id===this.model.hover&&!b.disabled,style=vrControlStyle(b.disabled,hover,b.selected,this.slider===b.id);
@@ -74,7 +75,8 @@ export class XRMenuView implements XRMenuInteraction {
    drawVRText(ctx,label,{x:x-74,y:y-10,width:148,height:70},VR_UI.radial,style.text,true,'center');return;
   }
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();
-  if(b.id==='tool:mask'){this.icon('mask',r.x+48,r.y+r.height/2,style.text);drawVRText(ctx,b.label,{x:r.x+88,y:r.y+(r.height-VR_UI.value*1.15)/2,width:r.width-108,height:VR_UI.value*1.15},VR_UI.value,style.text,true,'center');return;}
+  if(b.id.startsWith('paint-swatch:')){roundedVRRect(ctx,r.x+6,r.y+6,r.width-12,r.height-12,16);ctx.fillStyle=b.colour!;ctx.fill();if(b.selected){ctx.strokeStyle='#ffffff';ctx.lineWidth=5;ctx.stroke();}return;}
+  if(b.id==='tool:mask'||b.id==='tool:paint'){this.icon(b.id.slice(5),r.x+48,r.y+r.height/2,style.text);drawVRText(ctx,b.label,{x:r.x+88,y:r.y+(r.height-VR_UI.value*1.15)/2,width:r.width-108,height:VR_UI.value*1.15},VR_UI.value,style.text,true,'center');return;}
   if(b.swatch&&b.colour){
    const cy=r.y+r.height/2,labelHeight=VR_UI.label*1.05,checkHeight=VR_UI.control*1.05;
    roundedVRRect(ctx,r.x+20,cy-44,88,88,18);ctx.fillStyle=b.colour;ctx.fill();ctx.strokeStyle=VR_UI.muted;ctx.lineWidth=2;ctx.stroke();
@@ -98,6 +100,10 @@ export class XRMenuView implements XRMenuInteraction {
  private icon(id:string,x:number,y:number,colour:string):void{
   const c=this.ctx;c.save();c.translate(x,y);c.scale(.85,.85);c.strokeStyle=colour;c.fillStyle=colour;c.lineWidth=4;c.lineCap='round';c.lineJoin='round';c.beginPath();
   if(id==='clay'||id==='inflate'){c.arc(0,0,14,0,Math.PI*2);c.moveTo(-7,0);c.lineTo(7,0);if(id==='clay'){c.moveTo(0,-7);c.lineTo(0,7);}else{c.moveTo(-20,0);c.lineTo(-26,0);c.moveTo(20,0);c.lineTo(26,0);}}
+  else if(id==='paint'){
+   c.moveTo(-6,6);c.lineTo(12,-22);c.quadraticCurveTo(18,-28,23,-22);c.quadraticCurveTo(27,-18,21,-12);c.lineTo(0,12);c.closePath();
+   c.moveTo(-7,8);c.bezierCurveTo(-23,7,-12,23,-27,25);c.bezierCurveTo(-10,31,5,23,0,13);c.closePath();
+  }
   else if(id==='mask'){
    // A half-shaded shield communicates painted protection at headset scale.
    c.moveTo(0,-23);c.lineTo(-21,-17);c.lineTo(-21,1);c.bezierCurveTo(-21,15,-9,24,0,29);c.closePath();c.save();c.globalAlpha=.32;c.fill();c.restore();c.beginPath();

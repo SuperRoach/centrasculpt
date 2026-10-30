@@ -20,13 +20,13 @@ export class XRLayerSelection {
   this.group.name='VR layer selection outlines · presentation only';this.group.userData.previewOnly=true;this.group.visible=false;root.add(this.group);
  }
  cancel():void{this.armed=false;this.owner=0;this.project=undefined;this.hoveredId=null;this.feedback='';this.group.visible=this.selected.visible=this.hover.visible=false;}
- update(tool:XRControllerState|undefined,pose:Matrix4|undefined,_time:number,pointerEnabled:boolean,active=true):number|null {
+ update(tool:XRControllerState|undefined,pose:Matrix4|undefined,_time:number,pointerEnabled:boolean,active=true,layersMenu=false,showBounds=layersMenu):number|null {
   const layers=this.layers();this.raycastMs=this.visualMs=0;
   if(!active){this.cancel();return null;}
-  const transform=this.tools.active==='transform';
+  const transform=this.tools.active==='transform',canSelect=transform||layersMenu;
   this.group.visible=true;this.hoveredId=null;let distance:number|null=null;
   if(this.project!==layers.project||this.owner!==tool?.connectionId){this.armed=false;this.project=layers.project;this.owner=tool?.connectionId??0;}
-  const valid=transform&&pointerEnabled&&!this.tools.busy&&layers.viewMode==='separate'&&tool?.role==='tool'&&tool.connected&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&!tool.buttons.grip.pressed&&tool.buttons.grip.rawValue<.45;
+  const valid=canSelect&&pointerEnabled&&!this.tools.busy&&layers.viewMode==='separate'&&tool?.role==='tool'&&tool.connected&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&!tool.buttons.grip.pressed&&tool.buttons.grip.rawValue<.45;
   if(valid){
    const start=performance.now();this.raycaster.ray.origin.setFromMatrixPosition(pose!);this.direction.set(0,0,-1).transformDirection(pose!);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=5;
    // Stack order is the stable tie-break for coincident surfaces; closest hit wins.
@@ -36,9 +36,9 @@ export class XRLayerSelection {
    else if(tool!.buttons.trigger.pressed){const select=this.armed&&tool!.buttons.trigger.justPressed;this.armed=false;if(select&&this.hoveredId&&(this.hoveredId!==layers.project.activeLayerId||!!layers.selectedGroupId))this.tools.selectLayer(this.hoveredId);}
   }else this.armed=false;
   const start=performance.now(),current=layers.active.layer;
-  if(layers.selectedGroupId&&layers.viewMode==='separate')this.drawGroup(layers.selectedGroupId);else this.draw(this.selected,layers.active,layers.viewMode==='separate'&&current.visible);
-  this.draw(this.hover,this.hoveredId?layers.runtime(this.hoveredId):layers.active,!!this.hoveredId&&this.hoveredId!==current.id);
-  this.feedback=!transform?'':layers.viewMode!=='separate'?'Selection · use Separate Layers':`Selected: ${layers.transformNode.name}${current.locked?' · Locked':!current.visible?' · Hidden':''}`;
+  if(showBounds&&layers.selectedGroupId&&layers.viewMode==='separate')this.drawGroup(layers.selectedGroupId);else this.draw(this.selected,layers.active,showBounds&&layers.viewMode==='separate'&&current.visible);
+  this.draw(this.hover,this.hoveredId?layers.runtime(this.hoveredId):layers.active,showBounds&&!!this.hoveredId&&this.hoveredId!==current.id);
+  this.feedback=!canSelect?'':layers.viewMode!=='separate'?'Selection · use Separate Layers':`Selected: ${layers.transformNode.name}${current.locked?' · Locked':!current.visible?' · Hidden':''}`;
   if(transform&&layers.transforming)this.feedback+=' · Moving / rotating';
   if(this.hoveredId&&this.hoveredId!==current.id)this.feedback+=` · Pointing: ${layers.project.layerStack.get(this.hoveredId).name}`;
   this.visualMs=performance.now()-start;return distance;
