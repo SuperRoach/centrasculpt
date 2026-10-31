@@ -1,0 +1,45 @@
+{
+  "scope": "Host CPU only; no Quest/GPU/thermal measurements",
+  "node": "v26.8.1",
+  "results": [
+    {
+      "resolution": 64,
+      "dabs": 20,
+      "cpuMs": 6.499113999999651,
+      "maxBatchMs": 0.18600000000000705,
+      "batches": 850,
+      "attributesMs": 29.860584000000017,
+      "paintBytes": 87040,
+      "nativeExtraBytes": 16912,
+      "saveMs": 8.045040999999998,
+      "remeshRevisions": 0,
+      "trackedBytes": 5677120
+    },
+    {
+      "resolution": 128,
+      "dabs": 20,
+      "cpuMs": 21.089513999999497,
+      "maxBatchMs": 0.12187500000004547,
+      "batches": 5475,
+      "attributesMs": 120.52545899999996,
+      "paintBytes": 339456,
+      "nativeExtraBytes": 68118,
+      "saveMs": 41.634750000000054,
+      "remeshRevisions": 0,
+      "trackedBytes": 31312960
+    },
+    {
+      "resolution": 192,
+      "dabs": 20,
+      "cpuMs": 33.01278099999627,
+      "maxBatchMs": 0.12341700000001765,
+      "batches": 17085,
+      "attributesMs": 272.6592089999999,
+      "paintBytes": 887808,
+      "nativeExtraBytes": 154839,
+      "saveMs": 175.27304200000003,
+      "remeshRevisions": 0,
+      "trackedBytes": 89756736
+    }
+  ]
+}

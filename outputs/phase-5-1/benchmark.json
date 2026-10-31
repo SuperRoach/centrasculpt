@@ -1,0 +1,45 @@
+{
+  "scope": "Host Node / fake-indexeddb, one sample per resolution. List uses metadata only. Duplicate is native metadata rewrite plus one payload copy. Mesh batches include CPU geometry creation, exclude renderer upload/GPU. No physical Quest results.",
+  "node": "v26.8.1",
+  "rows": [
+    {
+      "resolution": 64,
+      "bytes": 1049257,
+      "commitMs": 1.5512079999999742,
+      "list100Ms": 4.492041999999998,
+      "copyMs": 0.1819590000000062,
+      "readMs": 0.3575000000000159,
+      "meshWallMs": 99.803709,
+      "meshMaxBatchMs": 8.441249999999997,
+      "meshBatches": 36,
+      "triangles": 31536,
+      "nativeBytesExact": true
+    },
+    {
+      "resolution": 128,
+      "bytes": 8389291,
+      "commitMs": 2.0344579999999723,
+      "list100Ms": 4.233499999999992,
+      "copyMs": 0.4804589999999962,
+      "readMs": 0.5040420000000267,
+      "meshWallMs": 431.24095800000003,
+      "meshMaxBatchMs": 5.155790999999965,
+      "meshBatches": 258,
+      "triangles": 128304,
+      "nativeBytesExact": true
+    },
+    {
+      "resolution": 192,
+      "bytes": 28312238,
+      "commitMs": 4.639000000000124,
+      "list100Ms": 4.317207999999937,
+      "copyMs": 0.7233749999998054,
+      "readMs": 4.168042000000014,
+      "meshWallMs": 1478.11175,
+      "meshMaxBatchMs": 7.342792000000145,
+      "meshBatches": 887,
+      "triangles": 290352,
+      "nativeBytesExact": true
+    }
+  ]
+}

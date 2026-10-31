@@ -1,0 +1,38 @@
+{
+  "description": "Host CPU only. Six cached panels (three in each attachment space), turntable plus sync. Mock bitmap decoder; excludes decoding, rendering, GPU, DOM/menu, Quest and texture upload. Source mesh identity/remesh/history assertions at 64/128/192.",
+  "rows": [
+    {
+      "resolution": 64,
+      "count": 6,
+      "updates": 900,
+      "totalCPU": 1.6243180000002155,
+      "p95": 0.004084000000005972,
+      "max": 0.07466599999997925,
+      "sameTextures": true,
+      "unchangedSource": true,
+      "undo": 0
+    },
+    {
+      "resolution": 128,
+      "count": 6,
+      "updates": 900,
+      "totalCPU": 1.5929579999999532,
+      "p95": 0.0019999999999527063,
+      "max": 0.014250000000004093,
+      "sameTextures": true,
+      "unchangedSource": true,
+      "undo": 0
+    },
+    {
+      "resolution": 192,
+      "count": 6,
+      "updates": 900,
+      "totalCPU": 0.4925610000011602,
+      "p95": 0.0006250000000136424,
+      "max": 0.007709000000090782,
+      "sameTextures": true,
+      "unchangedSource": true,
+      "undo": 0
+    }
+  ]
+}

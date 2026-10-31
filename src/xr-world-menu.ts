@@ -6,9 +6,10 @@ import {STUDIO_BACKGROUNDS,mirrorGuideSettings,turntableSettings} from './world-
 import type {EditorToolState} from './editor-tool-state';
 import type {MenuContent,MenuButton} from './xr-menu-model';
 import type {XRSessionController} from './xr-session';
-export type ProjectAction='new'|'open'|'save'|'export'|'recover';
+export type ProjectAction='new'|'open'|'save'|'export'|'print'|'recover';
 export type WorldSection='project'|'lighting'|'light'|'light-colour'|'light-position'|'inspection'|'home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot'|'references'|'reference'|'reference-pose'|'reference-delete'|'reference-more';
 export interface XRWorldMenuPort {
+ projectBrowser?:import('./project-browser').ProjectBrowser;
  projectAction?:(action:ProjectAction)=>Promise<void>;
  projectStatus?:()=>string;
  lighting?:LightRig;
@@ -35,13 +36,15 @@ export class XRWorldMenu {
   const add=(id:string,label:string,y:number,detail?:string,selected=false,disabled=busy)=>buttons.push({id,label,detail,selected,disabled,rect:{x:40,y,width:1072,height:136}});
   if(this.section!=='home')buttons.push({id:this.section.startsWith('reference')&&this.section!=='references'?'world:references':'world:home',label:this.section.startsWith('reference')&&this.section!=='references'?'‹ Reference images':'‹ World Settings',rect:{x:300,y:140,width:440,height:74}});
   let subtitle='Environment · background · guides · turntable · preferences';
+  if(this.section==='project'&&this.port?.projectBrowser){const content=this.port.projectBrowser.content();content.buttons=content.buttons.filter(b=>b.id!=='library:refresh');content.buttons.push(buttons[0]);if(!this.port.projectBrowser.form&&!this.port.projectBrowser.confirmation)for(const [i,action] of (['export','print','recover'] as const).entries())content.buttons.push({id:`project:${action}`,label:action==='export'?'Export GLB…':action==='print'?'3D Print / Export STL…':'Recovery…',disabled:busy||this.port.projectBrowser.busy||!this.port.projectAction,rect:{x:40+i*365,y:1008,width:345,height:78}});return content;}
   if(this.section==='project'){
    subtitle=this.projectError||this.port?.projectStatus?.()||'Project commands unavailable in this preview';
-   for(const [i,action] of (['new','open','save','export','recover'] as const).entries()){
-    const labels={new:'New Project…',open:'Open Project…',save:'Save Project…',export:'Export GLB…',recover:'Recover Project…'};
-    add(`project:${action}`,labels[action],244+i*150,action==='new'?'Exit XR · choose resolution and starter layer':action==='export'?'Exit XR · choose scope and quality':'Exit XR · continue in browser',false,busy||!this.port?.projectAction);
+   for(const [i,action] of (['new','open','save','export','print','recover'] as const).entries()){
+    const labels={new:'New Project…',open:'Open Project…',save:'Save Project…',export:'Export GLB…',print:'3D Print / Export STL…',recover:'Recover Project…'};
+    buttons.push({id:`project:${action}`,label:labels[action],detail:'Exit XR · continue in browser',disabled:busy||!this.port?.projectAction,rect:{x:40,y:244+i*135,width:1072,height:120}});
    }
   }else if(this.section==='home'){
+   buttons.push({id:'world:project',label:'Project Library',rect:{x:300,y:140,width:440,height:74}});
    add('world:environment','Environment',244,'Studio or Passthrough');
    add('world:background','Studio Background',394,'Colour swatches · ground grid');
    add('world:guides','Guides and Constraints',544,'Mirror symmetry · angle snap');
@@ -82,7 +85,7 @@ export class XRWorldMenu {
    }
   }else if(this.section==='references'){
    subtitle='References · self-contained PNG/JPEG · import on desktop';
-   add('reference-import','Import images…',244,'Exit XR to use the browser file picker');
+   add('reference-import','Import images / STL…',244,'Exit XR to use the browser file picker');
    layers.display.references.forEach((r,i)=>buttons.push({id:`reference-select:${r.id}`,label:r.name,detail:`${r.visible?'Visible':'Hidden'} · ${r.locked?'Locked':'Unlocked'} · ${r.space}`,selected:this.port?.references?.selected===r.id,disabled:busy,rect:{x:40+(i%2)*548,y:404+Math.floor(i/2)*160,width:524,height:144}}));
    add('reference-edit',`Edit references · ${this.port?.references?.editing?'On':'Off'}`,904,'Selected unlocked panel: point + hold trigger, move/rotate wrist',!!this.port?.references?.editing);
   }else if(this.section==='reference'||this.section==='reference-pose'||this.section==='reference-delete'||this.section==='reference-more'){
@@ -103,7 +106,7 @@ export class XRWorldMenu {
     add('reference-edit',this.port?.references?.editing?'Finish placing':'Place image',384,r.locked?'Unlock this image to move it':'Point at image · hold trigger · move or rotate hand',!!this.port?.references?.editing,busy||r.locked);
     labels.push({text:`Size · ${r.size.toFixed(2)}`,x:340,y:576,width:460,height:90});
     buttons.push({id:'reference-smaller',label:'−',disabled:busy||r.locked||r.size<=.05,rect:{x:40,y:554,width:250,height:112}},{id:'reference-larger',label:'+',disabled:busy||r.locked||r.size>=10,rect:{x:862,y:554,width:250,height:112}});
-    cell('reference-flip-x','Flip X',40,704,'Mirror image horizontally',!!r.flipX);
+    cell('reference-flip-x',r.mime==='model/stl'?(r.wireframe?'Wireframe':'Solid'):'Flip X',40,704,'Mirror image horizontally',!!r.flipX);
     cell('reference-opacity',`Opacity · ${Math.round(r.opacity*100)}%`,588,704,'Tap to adjust',false,busy||r.locked);
     cell('reference-space',r.space==='workspace'?'Workspace anchor':'Sculpture anchor',40,864,r.space==='workspace'?'Stays outside turntable rotation':'Follows turntable rotation');
     cell('world:reference-more','More settings…',588,864,'Placement · two-sided · delete');
@@ -160,6 +163,7 @@ export class XRWorldMenu {
   return {title:this.section==='project'?'PROJECT':this.section==='reference'?'REFERENCE IMAGE':this.section==='reference-more'?'IMAGE SETTINGS':'WORLD SETTINGS',subtitle,buttons,labels,footer:'Hold Support stick · Tool trigger selects · release to close'};
  }
  activate(id:string):boolean{
+  if(id.startsWith('library:')&&this.port?.projectBrowser){void this.port.projectBrowser.activate(id);return true;}
   if(id.startsWith('project:')){
    this.projectError='';
    if(!this.tools.busy&&this.port?.projectAction)void this.port.projectAction(id.slice(8) as ProjectAction).catch(error=>{this.projectError=error instanceof Error?error.message:'Project action failed';});
@@ -193,7 +197,7 @@ export class XRWorldMenu {
    else if(id==='reference-lock')r.locked=!r.locked;
    else if(id==='reference-space')refs?.switchSpace(r);
    else if(id==='reference-delete-confirm'){this.tools.port.layers().display.references=records.filter(v=>v!==r);this.section='references';}
-   else if(id==='reference-flip-x')r.flipX=!r.flipX;
+   else if(id==='reference-flip-x'){if(r.mime==='model/stl')r.wireframe=!r.wireframe;else r.flipX=!r.flipX;}
    else if(id==='reference-side')r.twoSided=!r.twoSided;
    else if(!r.locked){
     if(id==='reference-smaller')r.size=Math.max(.05,r.size/1.1);else if(id==='reference-larger')r.size=Math.min(10,r.size*1.1);

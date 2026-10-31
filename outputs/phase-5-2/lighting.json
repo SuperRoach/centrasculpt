@@ -1,0 +1,9 @@
+{
+  "scope": "Node CPU, three enabled lights, 200 warmup + 1000 sync calls; resolution independent; no shader/GPU timing",
+  "p50": 0.0016670000000260643,
+  "p95": 0.004416999999989457,
+  "p99": 0.010042000000012763,
+  "max": 0.021540999999984933,
+  "uniqueResources": 45,
+  "disposeEvents": 45
+}

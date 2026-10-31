@@ -14,7 +14,7 @@ import type { BrushMode } from './sdf';
 export type SculptSettings = { mode: BrushMode; radius: number; strength: number; hardness: number };
 export type ProjectSettings = SculptSettings & { camera: { position: [number,number,number]; target: [number,number,number] } };
 const MAGIC = [70,79,82,77,83,68,70,0]; // FORMSDF\0
-export const PROJECT_VERSION = 8;
+export const PROJECT_VERSION = 9;
 export const MAX_PROJECT_RESOLUTION = MAX_RESOLUTION;
 export const MAX_PROJECT_TRIANGLES = 1_000_000;
 export const MAX_PROJECT_LAYERS=8;
@@ -140,7 +140,7 @@ export function saveSculptProject(project: SculptProject,display:ProjectDisplayP
   if(metadata.length>65536)throw new Error('Project metadata exceeds the supported limit.');
   if(16+metadata.length+offset*4+maskBytes+paintBytes+assetOffset>MAX_PROJECT_BYTES)throw new Error('Project including paint exceeds the native file size limit.');
   const buffer=new ArrayBuffer(16+metadata.length+offset*4+maskBytes+paintBytes+assetOffset),bytes=new Uint8Array(buffer),view=new DataView(buffer);
-  bytes.set(MAGIC);view.setUint32(8,hasPaint?8:project.layerStack.hierarchy.enabled?7:hasMasks?6:assets.length?5:layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
+  bytes.set(MAGIC);view.setUint32(8,assets.some(a=>a.mime==='model/stl')?9:hasPaint?8:project.layerStack.hierarchy.enabled?7:hasMasks?6:assets.length?5:layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
   let index=0;
   for(const layer of layers)for(let i=0;i<volumeSampleCount(layer.volume);i++)view.setFloat32(16+metadata.length+index++*4,layer.volume.readVoxel(i),true);
   let maskStart=16+metadata.length+offset*4;if(hasMasks)for(const mask of maskPayloads)for(const [id,value]of mask.mask.entries()){view.setUint32(maskStart,id,true);view.setFloat32(maskStart+4,value,true);maskStart+=8;}
@@ -154,7 +154,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
   if(!MAGIC.every((v,i)=>bytes[i]===v))throw new Error('This is not a Centra Sculpt project (.form).');
   const version=view.getUint32(8,true);
   if(version===1||version===2) {const legacy=openLegacyProject(buffer);return createBaseProject(legacy.volume,legacy.settings,true);}
-  if(version!==3&&version!==4&&version!==5&&version!==6&&version!==7&&version!==8)throw new Error('Unsupported project version. This app supports versions 1–8.');
+  if(version!==3&&version!==4&&version!==5&&version!==6&&version!==7&&version!==8&&version!==9)throw new Error('Unsupported project version. This app supports versions 1–9.');
   const length=view.getUint32(12,true);
   if(length<2||length>65536||16+length>buffer.byteLength)throw new Error('Invalid project metadata length.');
   let metadata: Record<string,unknown>;
@@ -198,7 +198,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
   if(savedDisplay?.references!==undefined){
    if(version<5||!Array.isArray(savedDisplay.references)||savedDisplay.references.length>REFERENCE_LIMITS.count)throw new Error('Invalid reference records.');
    let offset=0;
-   savedDisplay.references=savedDisplay.references.map(r=>{const n=r.byteLength;if(r.byteOffset!==offset||typeof n!=='number'||!Number.isSafeInteger(n)||n<24||n>REFERENCE_LIMITS.fileBytes||offset+n>REFERENCE_LIMITS.totalBytes||assetStart+offset+n>buffer.byteLength)throw new Error('Invalid reference payload.');const bytes=new Uint8Array(buffer.slice(assetStart+offset,assetStart+offset+n));offset+=n;const {byteOffset,byteLength,...record}=r;return {...record,bytes};});assetStart+=offset;
+   savedDisplay.references=savedDisplay.references.map(r=>{if(r.mime==='model/stl'&&version<9)throw new Error('STL references require project version 9.');const n=r.byteLength;if(r.byteOffset!==offset||typeof n!=='number'||!Number.isSafeInteger(n)||n<24||n>REFERENCE_LIMITS.fileBytes||offset+n>REFERENCE_LIMITS.totalBytes||assetStart+offset+n>buffer.byteLength)throw new Error('Invalid reference payload.');const bytes=new Uint8Array(buffer.slice(assetStart+offset,assetStart+offset+n));offset+=n;const {byteOffset,byteLength,...record}=r;return {...record,bytes};});assetStart+=offset;
   }
   if(buffer.byteLength!==assetStart)throw new Error('Unexpected trailing voxel data.');
   const stack=new LayerStack(layers,active);if(metadata.hierarchy!==undefined){if(version<7)throw new Error('Hierarchy requires project version 7.');stack.hierarchy.restore(metadata.hierarchy);}

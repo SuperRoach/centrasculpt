@@ -1,0 +1,30 @@
+Tests: 1/76 files · compiled 0, cached 112 · preparation 8 ms
+✔ ASCII STL parses scientific notation and exact triangle coordinates (0.951667ms)
+✔ malformed ASCII empty rejected (0.081209ms)
+✔ malformed ASCII missingEnd rejected (0.096459ms)
+✔ malformed ASCII extra rejected (0.04575ms)
+✔ malformed ASCII nan rejected (0.046458ms)
+✔ malformed ASCII overflow rejected (0.041625ms)
+✔ malformed ASCII missingVertex rejected (0.041458ms)
+✔ malformed ASCII missingFacet rejected (0.036208ms)
+✔ STL byte and binary count bounds reject before large allocation (0.072958ms)
+✔ binary triangle bytes, exact millimetres and transformed bounds roundtrip (1.28125ms)
+✔ binary solid-prefixed header is binary; truncation and nonfinite normals rejected (0.261292ms)
+✔ open, inverted, degenerate, nonmanifold and disjoint fixtures (0.3635ms)
+✔ cancellation, quotas, invalid dimensions and no source mutation (0.617167ms)
+✔ mesh references native v9, legacy and recovery keep bytes/transforms without SDF mutation (44.178333ms)
+✔ reference rendering, selection, appearance, anchors and disposal (1.374708ms)
+✔ actual STL worker publishes reports, keeps source buffers and rejects stale sources (23.34125ms)
+✔ SDF sphere is watertight; transformed grouped sources preserve physical shape and references are excluded (33.620958ms)
+✔ SDF Boolean output is freshly evaluated and independent of source history (38.628542ms)
+✔ VR print routing exposes separate GLB/STL actions and nonoverlapping targets (3.708709ms)
+✔ binary triangle quota and reference aggregate quotas are explicit (0.540416ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 205.065708
+Test command wall time: 0.24 s

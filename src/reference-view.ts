@@ -1,7 +1,8 @@
-import {Group,Mesh,PlaneGeometry,MeshBasicMaterial,Texture,SRGBColorSpace,DoubleSide,FrontSide,EdgesGeometry,LineSegments,LineBasicMaterial,Matrix4,Vector3,Euler,Quaternion,Raycaster} from 'three';
+import {parseSTL} from './stl';
+import {BufferGeometry,BufferAttribute,Group,Mesh,PlaneGeometry,MeshBasicMaterial,Texture,SRGBColorSpace,DoubleSide,FrontSide,EdgesGeometry,LineSegments,LineBasicMaterial,Matrix4,Vector3,Euler,Quaternion,Raycaster} from 'three';
 import type {ReferenceImage} from './reference-images';
 import type {XRControllerState} from './xr-input';
-type Panel={record:ReferenceImage;mesh:Mesh<PlaneGeometry,MeshBasicMaterial>;border:LineSegments;bitmap?:ImageBitmap;texture?:Texture;dead:boolean};
+type Panel={record:ReferenceImage;mesh:Mesh<BufferGeometry,MeshBasicMaterial>;border:LineSegments;bitmap?:ImageBitmap;texture?:Texture;dead:boolean};
 /** Separate presentation roots ensure bounds, GLB and Boolean traversal exclude references. */
 export class ReferenceView{
  readonly workspace=new Group();readonly sculpture=new Group();readonly panels=new Map<string,Panel>();
@@ -11,14 +12,16 @@ export class ReferenceView{
  sync():void{
   const records=this.records();for(const [id,p]of this.panels)if(!records.includes(p.record)){if(this.drag?.id===id)this.cancel();this.release(p);this.panels.delete(id);}
   for(const record of records){let p=this.panels.get(record.id);if(!p){
-   const mesh=new Mesh(new PlaneGeometry(1,1),new MeshBasicMaterial({transparent:true,depthWrite:false,toneMapped:false}));
+   const geometry:BufferGeometry=record.mime==='model/stl'?new BufferGeometry():new PlaneGeometry(1,1);
+   if(record.mime==='model/stl'){geometry.setAttribute('position',new BufferAttribute(parseSTL(record.bytes),3));geometry.computeBoundingBox();const bounds=geometry.boundingBox!,size=bounds.getSize(new Vector3()),longest=Math.max(size.x,size.y,size.z);if(longest>0){geometry.translate(...bounds.getCenter(new Vector3()).negate().toArray());geometry.scale(1/longest,1/longest,1/longest);}geometry.computeVertexNormals();}
+   const mesh=new Mesh(geometry,new MeshBasicMaterial({transparent:true,depthWrite:false,toneMapped:false}));
    const border=new LineSegments(new EdgesGeometry(mesh.geometry),new LineBasicMaterial({color:'#b1e6cd',depthWrite:false}));mesh.add(border);mesh.raycast=()=>{};
-   p={record,mesh,border,dead:false};this.panels.set(record.id,p);void this.load(p);
+   p={record,mesh,border,dead:false};this.panels.set(record.id,p);if(record.mime!=='model/stl')void this.load(p);
   }
   const parent=record.space==='workspace'?this.workspace:this.sculpture;if(p.mesh.parent!==parent)parent.add(p.mesh);
-  p.mesh.position.fromArray(record.position);p.mesh.rotation.set(...record.rotation);p.mesh.scale.set(record.size*record.width/Math.max(record.width,record.height),record.size*record.height/Math.max(record.width,record.height),1);p.mesh.visible=record.visible&&!!p.texture;
+  p.mesh.position.fromArray(record.position);p.mesh.rotation.set(...record.rotation);p.mesh.scale.set(record.size*record.width/Math.max(record.width,record.height),record.size*record.height/Math.max(record.width,record.height),record.mime==='model/stl'?record.size:1);p.mesh.visible=record.visible&&(record.mime==='model/stl'||!!p.texture);
   if(p.texture){const flipped=!!record.flipX;p.texture.repeat.x=flipped?-1:1;p.texture.offset.x=flipped?1:0;}
-  p.mesh.material.opacity=record.opacity;p.mesh.material.side=record.twoSided?DoubleSide:FrontSide;p.border.position.z=.002;p.border.visible=this.editing&&this.selected===record.id&&!record.locked;
+  p.mesh.material.color.set(record.mime==='model/stl'?'#46acc9':'#ffffff');p.mesh.material.wireframe=!!record.wireframe;p.mesh.material.depthWrite=record.mime==='model/stl'&&record.opacity===1;p.mesh.material.opacity=record.opacity;p.mesh.material.side=record.twoSided?DoubleSide:FrontSide;p.border.position.z=.002;p.border.visible=this.editing&&this.selected===record.id&&!record.locked;
   }
   if(this.selected&&!records.some(r=>r.id===this.selected)){this.selected=null;this.cancel();}
  }

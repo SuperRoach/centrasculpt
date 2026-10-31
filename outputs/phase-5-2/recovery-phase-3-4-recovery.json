@@ -1,0 +1,106 @@
+{
+  "scope": "Isolated Mac Node processes, real encoding worker and fake-indexeddb transactional clone/commit. One observation per fixture. Idle versus autosave 2ms timer probes are main event-loop observations, not XR/GPU frames. Source creation/meshing and independent native validation run outside the timed save. RSS samples are whole process (including worker); OS maxRSS also includes setup and post-save validation. Temporary bytes are admission estimates, not measured peaks. No physical Quest testing.",
+  "node": "v26.8.1",
+  "rows": [
+    {
+      "fixture": "64",
+      "fileBytes": 1049265,
+      "copyWallMs": 0.5794580000000451,
+      "workerEncodeCrcMs": 17.352666999999997,
+      "saveCommitMs": 76.58862499999998,
+      "wallMs": 79.63033300000001,
+      "temporaryEstimateBytes": 4259840,
+      "trackedSourceBytes": 4367744,
+      "startRss": 107544576,
+      "peakSampleRss": 135495680,
+      "processMaxRss": 137396224,
+      "baselineTimer": {
+        "count": 79,
+        "maxMs": 2.802207999999993,
+        "p95Ms": 2.5772910000000024
+      },
+      "autosaveTimer": {
+        "count": 32,
+        "maxMs": 4.4858749999999645,
+        "p95Ms": 3.23758399999997
+      },
+      "activeWorkers": 0,
+      "nativeByteExact": true
+    },
+    {
+      "fixture": "128",
+      "fileBytes": 8389299,
+      "copyWallMs": 2.130207999999982,
+      "workerEncodeCrcMs": 62.753957999999955,
+      "saveCommitMs": 123.76383300000003,
+      "wallMs": 126.46583300000003,
+      "temporaryEstimateBytes": 33619968,
+      "trackedSourceBytes": 26015104,
+      "startRss": 140099584,
+      "peakSampleRss": 196722688,
+      "processMaxRss": 213696512,
+      "baselineTimer": {
+        "count": 79,
+        "maxMs": 2.710583000000014,
+        "p95Ms": 2.5787920000000213
+      },
+      "autosaveTimer": {
+        "count": 49,
+        "maxMs": 6.216250000000002,
+        "p95Ms": 2.597500000000025
+      },
+      "activeWorkers": 0,
+      "nativeByteExact": true
+    },
+    {
+      "fixture": "192",
+      "fileBytes": 28312246,
+      "copyWallMs": 7.244290999999976,
+      "workerEncodeCrcMs": 185.0475,
+      "saveCommitMs": 251.97629199999994,
+      "wallMs": 253.792958,
+      "temporaryEstimateBytes": 113311744,
+      "trackedSourceBytes": 77528448,
+      "startRss": 174653440,
+      "peakSampleRss": 313229312,
+      "processMaxRss": 369967104,
+      "baselineTimer": {
+        "count": 80,
+        "maxMs": 2.7056249999999977,
+        "p95Ms": 2.5918340000000626
+      },
+      "autosaveTimer": {
+        "count": 99,
+        "maxMs": 6.327457999999979,
+        "p95Ms": 2.5771670000000313
+      },
+      "activeWorkers": 0,
+      "nativeByteExact": true
+    },
+    {
+      "fixture": "mixed",
+      "fileBytes": 9438274,
+      "copyWallMs": 3.5351249999999936,
+      "workerEncodeCrcMs": 69.73458299999999,
+      "saveCommitMs": 131.137042,
+      "wallMs": 133.82429100000002,
+      "temporaryEstimateBytes": 37814272,
+      "trackedSourceBytes": 30382848,
+      "startRss": 142426112,
+      "peakSampleRss": 205389824,
+      "processMaxRss": 223313920,
+      "baselineTimer": {
+        "count": 79,
+        "maxMs": 2.7600830000000087,
+        "p95Ms": 2.577083000000016
+      },
+      "autosaveTimer": {
+        "count": 51,
+        "maxMs": 5.708041999999978,
+        "p95Ms": 2.9375840000000153
+      },
+      "activeWorkers": 0,
+      "nativeByteExact": true
+    }
+  ]
+}

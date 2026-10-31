@@ -1,0 +1,138 @@
+{
+  "scope": "Node/macOS component observations, no Quest/GPU claims",
+  "rows": [
+    {
+      "resolution": 17,
+      "milliseconds": 19.558750000000003,
+      "wallMs": 20.651875000000018,
+      "parseMs": 0.7258339999999919,
+      "parsed": 2136,
+      "error": null,
+      "bytes": 106884,
+      "estimatedBytes": 2050560,
+      "report": {
+        "units": "mm",
+        "dimensions": [
+          100,
+          100,
+          100
+        ],
+        "triangles": 2136,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "inconsistentEdges": 0,
+        "degenerateTriangles": 0,
+        "components": 1,
+        "invertedComponents": 0,
+        "blocking": [],
+        "warnings": [],
+        "unsupported": [
+          "Self-intersections, vertex-only non-manifold contacts and minimum wall thickness are not checked.",
+          "No automatic repair or guarantee of slicer success."
+        ]
+      },
+      "rss": 160137216
+    },
+    {
+      "resolution": 32,
+      "milliseconds": 44.012958999999995,
+      "wallMs": 44.567165999999986,
+      "parseMs": 0.4660829999999976,
+      "parsed": 7560,
+      "error": null,
+      "bytes": 378084,
+      "estimatedBytes": 7257600,
+      "report": {
+        "units": "mm",
+        "dimensions": [
+          100,
+          100,
+          100
+        ],
+        "triangles": 7560,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "inconsistentEdges": 0,
+        "degenerateTriangles": 0,
+        "components": 1,
+        "invertedComponents": 0,
+        "blocking": [],
+        "warnings": [],
+        "unsupported": [
+          "Self-intersections, vertex-only non-manifold contacts and minimum wall thickness are not checked.",
+          "No automatic repair or guarantee of slicer success."
+        ]
+      },
+      "rss": 166576128
+    },
+    {
+      "resolution": 64,
+      "milliseconds": 137.65800000000002,
+      "wallMs": 140.518667,
+      "parseMs": 2.7655829999999924,
+      "parsed": 31536,
+      "error": null,
+      "bytes": 1576884,
+      "estimatedBytes": 30274560,
+      "report": {
+        "units": "mm",
+        "dimensions": [
+          100,
+          100,
+          100
+        ],
+        "triangles": 31536,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "inconsistentEdges": 0,
+        "degenerateTriangles": 0,
+        "components": 1,
+        "invertedComponents": 0,
+        "blocking": [],
+        "warnings": [],
+        "unsupported": [
+          "Self-intersections, vertex-only non-manifold contacts and minimum wall thickness are not checked.",
+          "No automatic repair or guarantee of slicer success."
+        ]
+      },
+      "rss": 237125632
+    },
+    {
+      "resolution": 128,
+      "milliseconds": 576.9390410000001,
+      "wallMs": 577.109667,
+      "parseMs": 0.05720800000017334,
+      "parsed": null,
+      "error": "STL must be nonempty and at most 6 MiB.",
+      "bytes": 6415284,
+      "estimatedBytes": 123171840,
+      "report": {
+        "units": "mm",
+        "dimensions": [
+          100,
+          100,
+          100
+        ],
+        "triangles": 128304,
+        "boundaryEdges": 0,
+        "nonManifoldEdges": 0,
+        "inconsistentEdges": 0,
+        "degenerateTriangles": 0,
+        "components": 1,
+        "invertedComponents": 0,
+        "blocking": [],
+        "warnings": [],
+        "unsupported": [
+          "Self-intersections, vertex-only non-manifold contacts and minimum wall thickness are not checked.",
+          "No automatic repair or guarantee of slicer success."
+        ]
+      },
+      "rss": 346472448
+    },
+    {
+      "resolution": 192,
+      "error": "STL topology validation exceeds memory/triangle safety limits. Export selected parts.",
+      "sourceTriangles": 290352
+    }
+  ]
+}

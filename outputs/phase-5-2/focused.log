@@ -1,0 +1,66 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs sculpt-paint performance-capture
+
+Tests: 2/75 files · compiled 1, cached 109 · preparation 33 ms
+✔ capture is opt in, bounded, resets and distinguishes queue age from CPU (6.290666ms)
+✔ 64 paint locality, sparse storage, continuous remesh colours and native v8 (176.1795ms)
+✔ 128 paint locality, sparse storage, continuous remesh colours and native v8 (582.523ms)
+✔ 192 paint locality, sparse storage, continuous remesh colours and native v8 (1411.635083ms)
+✔ linear RGB opacity and colour blending; harder falloff; symmetric overlap applied once (17.369292ms)
+✔ full mask protects colour, partial mask blends and brush cannot alter distances (6.696625ms)
+✔ COW snapshots, duplicate independence, erase, cancellation and interleaved history (43.475708ms)
+✔ add retains volume-local paint through geometry edits (18.517375ms)
+✔ subtract retains volume-local paint through geometry edits (18.68075ms)
+✔ smooth retains volume-local paint through geometry edits (19.434167ms)
+✔ flatten retains volume-local paint through geometry edits (19.130833ms)
+✔ inflate retains volume-local paint through geometry edits (18.684166ms)
+✔ pinch retains volume-local paint through geometry edits (18.766959ms)
+✔ crease retains volume-local paint through geometry edits (18.474333ms)
+✔ scrape retains volume-local paint through geometry edits (18.212583ms)
+✔ expanded negative lattice copies paint exactly; sparse VolumeStore adapter supported (2.726875ms)
+✔ trilinear colour is identical at shared chunk vertices after local refresh (78.943459ms)
+✔ non-elastic transports painted samples, undo/redo and native persistence (77.476ms)
+✔ elastic transports painted samples, undo/redo and native persistence (119.641292ms)
+✔ rotate transports painted samples, undo/redo and native persistence (52.758458ms)
+✔ twist transports painted samples, undo/redo and native persistence (48.678667ms)
+✔ new paint revision rejects stale Move work before publication (12.455708ms)
+✔ legacy layer colour preferences and display styles never discard paint (104.180625ms)
+✔ malformed native paint channels reject NaN, out-of-range, duplicate, truncation (11.574833ms)
+✔ actual recovery worker retains paint and does not detach source pages (46.367542ms)
+✔ separate fast GLB includes real linear COLOR_0 attributes and white material (36.876417ms)
+✔ separate standard GLB includes real linear COLOR_0 attributes and white material (54.634416ms)
+✔ separate high GLB includes real linear COLOR_0 attributes and white material (48.169458ms)
+✔ composite fast GLB includes real linear COLOR_0 attributes and white material (72.80025ms)
+✔ composite standard GLB includes real linear COLOR_0 attributes and white material (80.292125ms)
+✔ composite high GLB includes real linear COLOR_0 attributes and white material (77.325875ms)
+✔ Boolean export and explicit Bake sample winning source colours and keep original data (210.102125ms)
+✔ Paint menu has real swatches, one-action reset, nine radial tools and no accidental geometry (15.177ms)
+✔ Tool trigger Paint, radius, release and tracking cancellation with Steady 0 (19.188375ms)
+✔ Tool trigger Paint, radius, release and tracking cancellation with Steady 75 (15.297917ms)
+✔ paint history stress bounded and protected/procedural targets cannot be painted (384.648375ms)
+✔ paint transformed/grouped world mapping, reparent and asynchronous copy independence (44.147916ms)
+✔ Shape Stamp add leaves authoritative paint intact (23.735083ms)
+✔ Shape Stamp subtract leaves authoritative paint intact (28.728166ms)
+✔ actual Tool stick changes live paint radius but menu ownership blocks sizing (6.962166ms)
+✔ Support alternate toggles paint/erase and restores captured settings without a stroke (6.751584ms)
+✔ Move preview material cache picks up paint added after an earlier unpainted preview (17.118583ms)
+✔ source export revision guards reject newer paint even without remeshing (21.714666ms)
+✔ export admission omits paint buffers, and hidden selected sources are excluded (18.695667ms)
+✔ budgeted paint refresh reaches chunk tails during continuous input and settles latest colours (4.431959ms)
+✔ paint pointer miss pauses and resumes one undo transaction with Steady 0 (12.005708ms)
+✔ paint pointer miss pauses and resumes one undo transaction with Steady 75 (11.167042ms)
+✔ paint path gaps never interpolate across disconnected surface segments (0.269459ms)
+✔ paint cursor uses a coloured surface ring and restores volume preview for clay (0.515917ms)
+✔ Paint cursor is absent while aiming and painting, visible only during sizing (7.520375ms)
+✔ settled paint cache invalidates on paint, base colour, mesh and volume; partial uploads cover only refreshed components (2.868ms)
+✔ first paint allocates only admitted chunks and preserves mask shader defaults and exact completed colours (2.669125ms)
+ℹ tests 52
+ℹ suites 0
+ℹ pass 52
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4228.931583
+Test command wall time: 4.29 s

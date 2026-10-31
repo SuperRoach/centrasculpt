@@ -1,0 +1,168 @@
+{
+  "scope": "Host synchronous SDF dabs only; no meshing/renderer/Quest timing",
+  "node": "v26.8.1",
+  "cases": [
+    {
+      "resolution": 64,
+      "mode": "smooth",
+      "dabs": 40,
+      "writes": 21394,
+      "totalMs": 8.076168000000006,
+      "p95Ms": 0.3698750000000004,
+      "maxMs": 0.9839580000000012
+    },
+    {
+      "resolution": 64,
+      "mode": "flatten",
+      "dabs": 40,
+      "writes": 19616,
+      "totalMs": 5.397207000000023,
+      "p95Ms": 0.3359999999999985,
+      "maxMs": 0.7929170000000028
+    },
+    {
+      "resolution": 64,
+      "mode": "inflate",
+      "dabs": 40,
+      "writes": 22618,
+      "totalMs": 4.673876000000014,
+      "p95Ms": 0.33924999999999983,
+      "maxMs": 0.4147080000000045
+    },
+    {
+      "resolution": 64,
+      "mode": "scrape",
+      "dabs": 40,
+      "writes": 16188,
+      "totalMs": 4.765043000000027,
+      "p95Ms": 0.3223330000000004,
+      "maxMs": 0.43891699999999645
+    },
+    {
+      "resolution": 64,
+      "mode": "pinch",
+      "dabs": 40,
+      "writes": 22574,
+      "totalMs": 14.342752999999973,
+      "p95Ms": 0.6126670000000018,
+      "maxMs": 1.9718750000000114
+    },
+    {
+      "resolution": 64,
+      "mode": "crease",
+      "dabs": 40,
+      "writes": 22600,
+      "totalMs": 6.816253000000017,
+      "p95Ms": 0.4851670000000041,
+      "maxMs": 0.4910419999999931
+    },
+    {
+      "resolution": 128,
+      "mode": "smooth",
+      "dabs": 40,
+      "writes": 166462,
+      "totalMs": 23.130839000000037,
+      "p95Ms": 1.0282079999999922,
+      "maxMs": 2.1575420000000065
+    },
+    {
+      "resolution": 128,
+      "mode": "flatten",
+      "dabs": 40,
+      "writes": 145748,
+      "totalMs": 21.122083000000117,
+      "p95Ms": 1.0334169999999858,
+      "maxMs": 1.2220000000000084
+    },
+    {
+      "resolution": 128,
+      "mode": "inflate",
+      "dabs": 40,
+      "writes": 183630,
+      "totalMs": 12.284120000000001,
+      "p95Ms": 0.3294170000000065,
+      "maxMs": 0.3727500000000248
+    },
+    {
+      "resolution": 128,
+      "mode": "scrape",
+      "dabs": 40,
+      "writes": 131824,
+      "totalMs": 12.226504000000034,
+      "p95Ms": 0.3322499999999877,
+      "maxMs": 0.349583999999993
+    },
+    {
+      "resolution": 128,
+      "mode": "pinch",
+      "dabs": 40,
+      "writes": 183210,
+      "totalMs": 21.139666999999918,
+      "p95Ms": 0.5659160000000156,
+      "maxMs": 0.6017920000000458
+    },
+    {
+      "resolution": 128,
+      "mode": "crease",
+      "dabs": 40,
+      "writes": 183508,
+      "totalMs": 21.10908400000011,
+      "p95Ms": 0.5624579999999924,
+      "maxMs": 0.5660419999999817
+    },
+    {
+      "resolution": 192,
+      "mode": "smooth",
+      "dabs": 40,
+      "writes": 535784,
+      "totalMs": 37.96491600000007,
+      "p95Ms": 0.9950410000000147,
+      "maxMs": 1.0594580000000065
+    },
+    {
+      "resolution": 192,
+      "mode": "flatten",
+      "dabs": 40,
+      "writes": 493784,
+      "totalMs": 38.527541999999926,
+      "p95Ms": 0.9919999999999618,
+      "maxMs": 1.1427919999999858
+    },
+    {
+      "resolution": 192,
+      "mode": "inflate",
+      "dabs": 40,
+      "writes": 623796,
+      "totalMs": 39.20300299999974,
+      "p95Ms": 1.0396670000000086,
+      "maxMs": 1.1588749999999663
+    },
+    {
+      "resolution": 192,
+      "mode": "scrape",
+      "dabs": 40,
+      "writes": 447866,
+      "totalMs": 39.01237700000047,
+      "p95Ms": 1.0283339999999725,
+      "maxMs": 1.0588330000000497
+    },
+    {
+      "resolution": 192,
+      "mode": "pinch",
+      "dabs": 40,
+      "writes": 622420,
+      "totalMs": 70.59721000000002,
+      "p95Ms": 1.847458999999958,
+      "maxMs": 1.976041999999893
+    },
+    {
+      "resolution": 192,
+      "mode": "crease",
+      "dabs": 40,
+      "writes": 623460,
+      "totalMs": 69.09449899999913,
+      "p95Ms": 1.7902090000000044,
+      "maxMs": 1.8164999999999054
+    }
+  ]
+}

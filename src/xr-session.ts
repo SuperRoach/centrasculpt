@@ -3,8 +3,8 @@ export const environmentMode=(environment:XREnvironment):XRSessionMode=>environm
 export type XRAvailability={supported:boolean;reason:string};
 export async function detectXR(secure:boolean,xr?:Pick<XRSystem,'isSessionSupported'>,environment:XREnvironment='studio'):Promise<XRAvailability>{
  if(!secure)return {supported:false,reason:'WebXR needs a secure origin: trusted HTTPS, or localhost on the PC running this browser (Quest: use ADB reverse). HTTP .local/LAN addresses are desktop-only.'};
- if(!xr)return {supported:false,reason:'This browser does not expose WebXR. Use a compatible WebXR browser and headset runtime, or the development emulator; desktop editing remains available.'};
- try{const supported=await xr.isSessionSupported(environmentMode(environment));if(environment==='passthrough')return {supported,reason:supported?'Passthrough available. Enter Passthrough from a user click.':'Passthrough unavailable: this browser/runtime does not support immersive-ar. Studio and desktop remain available.'};return {supported,reason:supported?'Immersive VR available. Enter from a user click.':'No immersive-vr device/runtime available. Check the connected headset, active OpenXR runtime and browser support, or configure an emulator.'};}
+ if(!xr)return {supported:false,reason:"I can't find any connected XR headset. Visit this in one to see and edit in it!"};
+ try{const supported=await xr.isSessionSupported(environmentMode(environment));if(environment==='passthrough')return {supported,reason:supported?'Passthrough available. Enter Passthrough from a user click.':'Passthrough unavailable: this browser/runtime does not support immersive-ar. Studio and desktop remain available.'};return {supported,reason:supported?'Immersive VR available. Enter from a user click.':"I can't find any connected XR headset. Visit this in one to see and edit in it!"};}
  catch(error){return {supported:false,reason:`VR capability check failed: ${error instanceof Error?error.message:String(error)}. Check browser permissions and runtime support.`};}
 }
 export type XRSessionState='checking'|'unavailable'|'ready'|'requesting'|'presenting'|'ending';

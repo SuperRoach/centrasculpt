@@ -105,3 +105,24 @@ test('Paint cursor is absent while aiming and painting, visible only during sizi
  const {l,tools}=fixture(),root=new Group();let sizing=false;const interaction=new XRClayStroke(()=>l,tools,root,()=>{},()=>{},()=>sizing),pose=new Matrix4().makeTranslation(0,0,1.2),tool={role:'tool',connectionId:1,connected:true,tracked:true,gripTracked:true,buttons:{trigger:{pressed:false,justPressed:false,rawValue:0}}};
  try{tools.select('paint');interaction.update(tool,pose,0,true);assert(!interaction.cursor.group.visible);sizing=true;interaction.update(tool,pose,16,true);assert(interaction.cursor.group.visible);assert(interaction.cursor.plane.visible);sizing=false;Object.assign(tool.buttons.trigger,{pressed:true,justPressed:true,rawValue:1});interaction.update(tool,pose,32,true);assert(interaction.active);assert(!interaction.cursor.group.visible);}finally{interaction.dispose();l.dispose();}
 });
+test('settled paint cache invalidates on paint, base colour, mesh and volume; partial uploads cover only refreshed components',()=>{
+ const v=new SDFVolume(33),g=new BufferGeometry(),material=new MeshStandardMaterial(),group=new Group(),surface=new PaintSurface();
+ g.setAttribute('position',new BufferAttribute(new Float32Array(Array.from({length:512},()=>[0,0,.8]).flat()),3));group.add(new Mesh(g,material));dab(v);
+ const update=(deadline=Infinity,revision=1,volume=v)=>surface.update(group,volume,material,deadline,revision);
+ try{
+  update();const attr=g.getAttribute('color'),version=attr.version;attr.clearUpdateRanges();update();assert.equal(attr.version,version);assert.deepEqual(attr.updateRanges,[]);
+  dab(v,point,'#0000ff');update(-Infinity);assert.deepEqual(attr.updateRanges,[{start:0,count:384}]);assert.equal(attr.array.length,1536);
+  for(let i=0;i<8;i++)update();assert.deepEqual(attr.array,paintColours(g,v,surface.base));
+  surface.base.set('#ffffff');update();assert.deepEqual(attr.array,paintColours(g,v,surface.base));
+  const replacement=g.clone();replacement.deleteAttribute('color');group.children[0].geometry=replacement;update(Infinity,2);assert.deepEqual(replacement.getAttribute('color').array,paintColours(replacement,v,surface.base));
+  const next=new SDFVolume(33);update(Infinity,2,next);assert.deepEqual(replacement.getAttribute('color').array,paintColours(replacement,next,surface.base));replacement.dispose();
+ }finally{g.dispose();material.dispose();}
+});
+test('first paint allocates only admitted chunks and preserves mask shader defaults and exact completed colours',()=>{
+ const v=new SDFVolume(33),surface=new PaintSurface(),group=new Group(),material=new MeshStandardMaterial();material.defaultAttributeValues={sculptMaskWeight:[0]};dab(v);
+ for(let i=0;i<6;i++){const g=new BufferGeometry();g.setAttribute('position',new BufferAttribute(new Float32Array(Array.from({length:512},()=>[0,0,.8]).flat()),3));group.add(new Mesh(g,material));}
+ try{surface.update(group,v,material,-Infinity,1);assert.equal(group.children.filter(m=>m.geometry.getAttribute('color')).length,1);assert.deepEqual(material.defaultAttributeValues.sculptMaskWeight,[0]);assert.deepEqual(material.defaultAttributeValues.color,surface.base.toArray());
+ for(let i=0;i<30;i++)surface.update(group,v,material,-Infinity,1);
+ for(const mesh of group.children)assert.deepEqual(mesh.geometry.getAttribute('color').array,paintColours(mesh.geometry,v,surface.base));
+ }finally{for(const m of group.children)m.geometry.dispose();material.dispose();}
+});

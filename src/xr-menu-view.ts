@@ -71,7 +71,7 @@ export class XRMenuView implements XRMenuInteraction {
    const angle=-Math.PI/2+b.sector*Math.PI*2/VR_WHEEL_TOOLS.length,x=WHEEL.x+Math.cos(angle)*WHEEL.labelRadius,y=WHEEL.y+Math.sin(angle)*WHEEL.labelRadius;
    roundedVRRect(ctx,x-78,y-59,156,118,20);ctx.fillStyle=b.disabled?'rgba(25,34,40,.76)':hover?style.fill:b.selected?style.fill:'rgba(17,28,35,.86)';ctx.fill();
    if(hover||b.selected){ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();}
-   this.icon(b.id.slice(5),x,y-34,style.text);const label=b.id==='tool:stamp'?'Shape Stamp':b.id==='tool:transform'?'Transform':b.id==='tool:edit-spline'?'Edit Spline':b.id==='tool:move'?'Move':b.label;
+   this.icon(b.id.slice(5),x,y-34,style.text);const label=b.id==='tool:stamp'?'Stamp':b.id==='tool:transform'?'Transform':b.id==='tool:edit-spline'?'Edit Spline':b.id==='tool:move'?'Move':b.label;
    drawVRText(ctx,label,{x:x-74,y:y-10,width:148,height:70},VR_UI.radial,style.text,true,'center');return;
   }
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();

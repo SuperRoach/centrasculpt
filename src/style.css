@@ -149,3 +149,48 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 #new-project-dialog label{display:block;margin-top:16px;font-size:12px;letter-spacing:.04em}
 #new-project-dialog select{display:block;box-sizing:border-box;width:100%;padding:12px;margin:6px 0 16px;border:1px solid #cbd4be;border-radius:6px;background:#fff;color:#344b2b;font:inherit}
 #new-project-dialog .dialog-actions{margin-top:20px}
+
+.project-library-dialog { box-sizing:border-box; width:min(760px,90vw); max-width:760px; max-height:85vh; overflow:auto; border-radius:22px; border:1px solid #6f9d98; padding:24px; background:#14272b; color:#effaf8; }
+.project-library-dialog::backdrop { background:#061014bb; }
+.project-library-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.project-library-actions button { min-height:54px; border-radius:12px; white-space:normal; text-align:left; }
+.project-library-dialog input { box-sizing:border-box; width:100%; padding:12px; font-size:18px; }
+.project-library-dialog :focus-visible { outline:3px solid #b0f2d7; outline-offset:3px; }
+
+.project-library-actions button[data-library-action^="library:select:"] { grid-column:1 / -1; background:#203b3f; border-color:#6f9d98; font-size:15px; }
+
+/* Keep enabled layer colour controls visibly interactive, including native swatches. */
+.layers-panel input[type=color] {
+  appearance:none; -webkit-appearance:none; box-sizing:border-box;
+  width:44px; height:36px; padding:4px; margin:6px 0;
+  border:1px solid #738f55; border-radius:8px; background:#fff;
+  opacity:1; cursor:pointer; color-scheme:light;
+}
+.layers-panel input[type=color]::-webkit-color-swatch-wrapper { padding:0; }
+.layers-panel input[type=color]::-webkit-color-swatch { border:0; border-radius:4px; }
+.layers-panel input[type=color]::-moz-color-swatch { border:0; border-radius:4px; }
+.layers-panel input[type=color]:enabled:hover { border-color:#294640; box-shadow:0 0 0 2px #29464020; }
+.layers-panel input[type=color]:focus-visible { outline:2px solid #294640; outline-offset:3px; }
+.layers-panel input[type=color]:disabled { opacity:.4; cursor:default; }
+
+.desktop-colour-picker { width:min(400px,calc(100vw - 40px)); box-sizing:border-box; }
+.desktop-colour-picker .colour-preview { height:72px; border:1px solid #738f55; border-radius:8px; margin:16px 0; }
+.desktop-colour-picker label { display:block; margin:14px 0; font-size:13px; }
+.desktop-colour-picker input[type=text] { display:block; width:100%; box-sizing:border-box; padding:10px; margin-top:6px; border:1px solid #738f55; border-radius:6px; background:#fff; color:#243b30; font:inherit; }
+.desktop-colour-picker input[type=range] { width:75%; margin:10px 10px 0 0; accent-color:#294640; }
+.desktop-colour-picker .set-colour { background:#294640; color:#fff; border:1px solid #294640; font-weight:600; opacity:1; }
+.desktop-colour-picker .set-colour:hover { background:#1c352f; color:#fff; }
+.desktop-colour-picker button:focus-visible { outline:2px solid #294640; outline-offset:3px; }
+.desktop-colour-picker .colour-field { display:block; width:100%; height:190px; border-radius:7px; cursor:crosshair; touch-action:none; }
+.desktop-colour-picker input.colour-hue { width:100%; margin:8px 0; appearance:none; -webkit-appearance:none; height:14px; border-radius:7px; background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00); }
+.desktop-colour-picker .colour-hue::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:17px; height:22px; border:2px solid #fff; border-radius:5px; background:transparent; box-shadow:0 0 2px #000; }
+.desktop-colour-picker .colour-hue::-moz-range-thumb { width:13px; height:18px; border:2px solid #fff; border-radius:5px; background:transparent; box-shadow:0 0 2px #000; }
+.desktop-colour-picker .quick-colours { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+.desktop-colour-picker .quick-colour { min-height:32px; padding:0; border:1px solid #718376; border-radius:6px; }
+.desktop-colour-picker .quick-colour:hover { outline:2px solid #294640; outline-offset:2px; }
+.desktop-colour-picker .colour-field:focus-visible { outline:2px solid #294640; outline-offset:3px; }
+.desktop-colour-picker .colour-preview { height:28px; margin:12px 0; }
+
+/* Desktop camera view selector. */
+button.viewport-label{pointer-events:auto;z-index:8;width:auto;min-height:36px;margin:0;padding:8px 12px;border:1px solid #b8c9b8;border-radius:18px;background:#f8fbf0e8;color:#314e46;cursor:pointer;text-transform:uppercase;backdrop-filter:blur(14px)}
+button.viewport-label:hover{background:#fff}

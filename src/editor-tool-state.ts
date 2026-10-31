@@ -24,7 +24,7 @@ export const EDITOR_TOOLS=Object.freeze([
  {id:'crease',label:'Crease',detail:'Pinch with inward displacement',enabled:true,layerGrab:false,sizing:'brush-radius'},
  {id:'tube',label:'Tube',detail:'Draw an editable spline in free space',enabled:true,layerGrab:false,sizing:'brush-radius'},
  {id:'edit-spline',label:'Edit Spline',detail:'Grab points · stick changes thickness',enabled:true,layerGrab:false,sizing:null},
- {id:'stamp',label:'Shape Stamp',detail:'Shape settings',enabled:true,layerGrab:false,sizing:'shape-scale'},
+ {id:'stamp',label:'Stamp',detail:'Shape settings',enabled:true,layerGrab:false,sizing:'shape-scale'},
  {id:'transform',label:'Transform Layer',detail:'Move / wrist rotate',enabled:true,layerGrab:true,sizing:null},
  {id:'move',label:'Move Tool',detail:'Surface deformation · release commits',enabled:true,layerGrab:false,sizing:'brush-radius'},
 ] as const);

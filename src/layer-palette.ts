@@ -5,7 +5,7 @@ import {MAX_LAYER_GROUPS,LayerGroup} from './layer-hierarchy';
 const PAGE=4;
 /** Explicit ray targets instead of drag/drop. Page size stays fixed at both UI scales. */
 export class LayerPaletteModel {
- page=0;context:string|null=null;view:'list'|'node'|'parents'|'rename'|'delete'|'boolean'='list';name='';keyPage=0;private copy?:AbortController;feedback='';
+ page=0;context:string|null=null;view:'list'|'node'|'parents'|'rename'|'delete'|'boolean'='list';name='';keyPage=0;shift=false;symbols=false;private copy?:AbortController;feedback='';
  constructor(readonly tools:EditorToolState){}
  close(){this.copy?.abort();this.copy=undefined;this.context=null;this.view='list';this.page=0;}
  content():MenuContent{
@@ -14,7 +14,18 @@ export class LayerPaletteModel {
   const nav=()=>add('hier:list','‹ Layers',40,140,340,74,false);
   if(this.copy){add('hier:cancel-copy','Cancel duplication',40,440,1072,136,false);return {title:'DUPLICATING LAYER',subtitle:this.feedback,buttons,labels,footer:'Original source and redo remain intact until completion'};}
   if(this.context){try{h.get(this.context);}catch{this.context=null;this.view='list';}}
-  if(this.view==='rename'&&this.context){nav();labels.push({text:this.name||'Enter a name',x:40,y:244,width:1072,height:90});const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_',keys=chars.slice(this.keyPage*18,this.keyPage*18+18);add('hier:keys-prev','‹',788,140,144,74,this.keyPage===0);add('hier:keys-next','›',948,140,164,74,(this.keyPage+1)*18>=chars.length);[...keys].forEach((char,i)=>add(`hier:key:${char}`,char,40+(i%6)*180,354+Math.floor(i/6)*142,164,120,false));add('hier:key-space','Space',40,798,344,100,false);add('hier:key-back','Backspace',404,798,344,100,false);add('hier:key-clear','Clear',768,798,344,100,false);add('hier:node-back','Cancel',40,948,524,88,false);add('hier:rename-done','Save name',588,948,524,88,busy||!this.name.trim());return {title:'RENAME',subtitle:'Tool trigger types · 128 characters maximum',buttons,labels,footer:this.feedback||'Cancel keeps the original name'};}
+  if(this.view==='rename'&&this.context){
+   nav();labels.push({text:`${this.name.slice(-46)}│`,x:40,y:244,width:1072,height:90});
+   const rows=this.symbols?['1234567890','-_/().,:!?',`@#&+*="'`]:['qwertyuiop','asdfghjkl','zxcvbnm'];
+   rows.forEach((row,r)=>{const width=100,gap=8,start=(1152-(row.length*(width+gap)-gap))/2;[...row].forEach((char,i)=>{const key=this.shift&&!this.symbols?char.toUpperCase():char;add(`hier:key:${key}`,key,start+i*(width+gap),370+r*122,width,108,false);});});
+   add('hier:key-shift',this.shift?'SHIFT ↑':'Shift ↑',40,754,200,100,false,undefined,this.shift);
+   add('hier:key-space','Space',256,754,384,100,false);
+   add('hier:key-back','⌫ Delete',656,754,256,100,false);
+   add('hier:key-symbols',this.symbols?'ABC':'123 / #',928,754,184,100,false,undefined,this.symbols);
+   add('hier:key-clear','Clear name',40,872,300,64,false);
+   add('hier:node-back','Cancel',40,960,524,88,false);add('hier:rename-done','Save name',588,960,524,88,busy||!this.name.trim());
+   return {title:'RENAME',subtitle:'QWERTY · Tool ray + trigger · 128 characters maximum',buttons,labels,footer:this.feedback||'Shift for capitals · 123 for numbers and symbols · Cancel keeps original'};
+  }
   if(this.view==='parents'&&this.context){nav();const excluded=new Set([this.context,...h.descendants(this.context)]),choices=[{id:'root',name:'No group · sculpture root'},...h.groups.filter(g=>!excluded.has(g.id)&&g.editable).map(g=>({id:g.id,name:g.name}))];this.page=Math.max(0,Math.min(this.page,Math.ceil(choices.length/PAGE)-1));add('hier:prev','‹',788,140,144,74,this.page===0);add('hier:next','›',948,140,164,74,(this.page+1)*PAGE>=choices.length);choices.slice(this.page*PAGE,this.page*PAGE+PAGE).forEach((g,i)=>add(`hier:parent:${g.id}`,g.name,40,244+i*174,1072,150,busy,'Preserve visible pose'));return {title:'MOVE TO GROUP',subtitle:h.get(this.context).name,buttons,labels,footer:this.feedback||'No voxel resampling · parent transform stays separate'};}
   if(this.view==='delete'&&this.context){nav();add('hier:ungroup','Ungroup · keep all children',40,284,1072,150,busy,'Preserve their visible positions');add('hier:delete-children','Delete group AND its children',40,484,1072,150,busy,'One Undo action · at least one sculpt layer must remain');add('hier:node-back','Cancel',40,784,1072,120,false);return {title:'DELETE GROUP?',subtitle:h.get(this.context).name,buttons,labels,footer:this.feedback||'Children are kept unless explicitly deleted above'};}
   if(this.view==='boolean'&&this.context){const n=h.get(this.context),index=h.compositionOrder.indexOf(n.id);nav();add('hier:boolean-up','Evaluate earlier',40,354,1072,150,busy||index<=0||n.locked);add('hier:boolean-down','Evaluate later',40,554,1072,150,busy||index===h.compositionOrder.length-1||n.locked);add('hier:node-back','Back to layer actions',40,844,1072,136,false);return {title:'BOOLEAN SEQUENCE',subtitle:`Step ${index+1} / ${h.compositionOrder.length} · ${n.name}`,buttons,labels,footer:'Explicitly changes the Boolean result · one Undo action'};}
@@ -38,10 +49,11 @@ export class LayerPaletteModel {
   else if(action==='node-back')this.view='node';
   else if(action==='create'){l.createGroup();this.tools.select('transform');}
   else if(action==='keys-prev')this.keyPage--;else if(action==='keys-next')this.keyPage++;
+  else if(action==='key-shift')this.shift=!this.shift;else if(action==='key-symbols')this.symbols=!this.symbols;
   else if(action==='key')this.name=(this.name+value).slice(0,128);else if(action==='key-space')this.name=(this.name+' ').slice(0,128);else if(action==='key-back')this.name=this.name.slice(0,-1);else if(action==='key-clear')this.name='';
   else if(this.context){const n=h.get(this.context);
    if(action==='boolean')this.view='boolean';else if(action==='boolean-up'||action==='boolean-down')l.moveBoolean(n.id,action==='boolean-up'?-1:1);else if(action==='transform'){n instanceof LayerGroup?l.selectGroup(n.id):l.select(n.id);this.tools.select('transform');}
-   else if(action==='rename'){this.name=n.name;this.view='rename';this.keyPage=0;}
+   else if(action==='rename'){this.name=n.name;this.view='rename';this.keyPage=0;this.shift=false;this.symbols=false;}
    else if(action==='rename-done'){l.renameNode(n.id,this.name);this.view='node';}
    else if(action==='parents'){this.view='parents';this.page=0;}
    else if(action==='parent'){l.reparent(n.id,value==='root'?null:value);this.view='node';}

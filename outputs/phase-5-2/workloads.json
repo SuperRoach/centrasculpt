@@ -1,0 +1,70 @@
+{
+  "scope": "Existing host fixtures; resolutions and sampling differ; no headset results",
+  "results": [
+    {
+      "name": "advanced-brush",
+      "status": 0,
+      "wallMs": 1113.0533340000002
+    },
+    {
+      "name": "continuous-stamps",
+      "status": 0,
+      "wallMs": 30473.957708
+    },
+    {
+      "name": "async-move",
+      "status": 0,
+      "wallMs": 11561.184041
+    },
+    {
+      "name": "expanded-editing",
+      "status": 0,
+      "wallMs": 3713.4337920000035
+    },
+    {
+      "name": "layer-workflows",
+      "status": 0,
+      "wallMs": 3499.108416999996
+    },
+    {
+      "name": "masks",
+      "status": 0,
+      "wallMs": 1116.1780829999989
+    },
+    {
+      "name": "paint",
+      "status": 0,
+      "wallMs": 1541.8677499999976
+    },
+    {
+      "name": "tubes",
+      "status": 0,
+      "wallMs": 4271.916583999999
+    },
+    {
+      "name": "references",
+      "status": 0,
+      "wallMs": 638.4448330000014
+    },
+    {
+      "name": "turntable",
+      "status": 0,
+      "wallMs": 1476.2686250000042
+    },
+    {
+      "name": "project-library",
+      "status": 0,
+      "wallMs": 2886.336958
+    },
+    {
+      "name": "export",
+      "status": 0,
+      "wallMs": 11838.143667000004
+    },
+    {
+      "name": "recovery",
+      "status": 0,
+      "wallMs": 2878.453416999997
+    }
+  ]
+}

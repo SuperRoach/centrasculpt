@@ -1,0 +1,149 @@
+{
+  "scope": "Node CPU; same geometry, 200 warmup + 1000 idle calls; no GPU/headset timing",
+  "rows": [
+    {
+      "resolution": 64,
+      "baseline": {
+        "firstMs": 1.765874999999994,
+        "initialAttributeBytes": 1135296,
+        "completionMs": 32.529334000000006,
+        "idleMs": {
+          "p50": 0.0007920000000183336,
+          "p95": 0.0024999999999977263,
+          "p99": 0.003917000000001281,
+          "max": 0.018583000000006678
+        }
+      },
+      "optimized": {
+        "firstMs": 0.27812499999998863,
+        "initialAttributeBytes": 14328,
+        "completionMs": 28.25120799999999,
+        "idleMs": {
+          "p50": 0.00020800000001486296,
+          "p95": 0.0002499999999940883,
+          "p99": 0.0003329999999834854,
+          "max": 0.003208000000000766
+        }
+      },
+      "exactColours": true,
+      "resources": {
+        "paintAttributeBytes": 1135296,
+        "maskAttributeBytes": 0,
+        "paintBytes": 78336,
+        "maskBytes": 0,
+        "maskHistoryBytes": 0,
+        "voxelBytes": 2097152,
+        "geometryBytes": 2270592,
+        "historyBytes": 0,
+        "pendingHistoryBytes": 0,
+        "chunks": 64,
+        "meshChunks": 32,
+        "vertices": 94608,
+        "triangles": 31536,
+        "retainedRuntimes": 1,
+        "pendingTubeJobs": 0,
+        "tubeStagingBytes": 0,
+        "pendingMoveJobs": 0,
+        "pendingBakeJobs": 0,
+        "backgroundBytes": 0,
+        "compositeBytes": 0
+      }
+    },
+    {
+      "resolution": 128,
+      "baseline": {
+        "firstMs": 5.686290999999983,
+        "initialAttributeBytes": 4618944,
+        "completionMs": 130.69766600000003,
+        "idleMs": {
+          "p50": 0.0019580000000019027,
+          "p95": 0.0020830000000273685,
+          "p99": 0.004750000000001364,
+          "max": 0.09562499999998408
+        }
+      },
+      "optimized": {
+        "firstMs": 0.10066699999998718,
+        "initialAttributeBytes": 48312,
+        "completionMs": 128.51404199999996,
+        "idleMs": {
+          "p50": 0.00020800000004328467,
+          "p95": 0.00024999999993724487,
+          "p99": 0.0002500000000509317,
+          "max": 0.0010419999999840002
+        }
+      },
+      "exactColours": true,
+      "resources": {
+        "paintAttributeBytes": 4618944,
+        "maskAttributeBytes": 0,
+        "paintBytes": 269824,
+        "maskBytes": 0,
+        "maskHistoryBytes": 0,
+        "voxelBytes": 16777216,
+        "geometryBytes": 9237888,
+        "historyBytes": 0,
+        "pendingHistoryBytes": 0,
+        "chunks": 512,
+        "meshChunks": 80,
+        "vertices": 384912,
+        "triangles": 128304,
+        "retainedRuntimes": 1,
+        "pendingTubeJobs": 0,
+        "tubeStagingBytes": 0,
+        "pendingMoveJobs": 0,
+        "pendingBakeJobs": 0,
+        "backgroundBytes": 0,
+        "compositeBytes": 0
+      }
+    },
+    {
+      "resolution": 192,
+      "baseline": {
+        "firstMs": 6.091625000000022,
+        "initialAttributeBytes": 10452672,
+        "completionMs": 275.862708,
+        "idleMs": {
+          "p50": 0.003375000000005457,
+          "p95": 0.003582999999935055,
+          "p99": 0.003958000000011452,
+          "max": 0.028624999999919964
+        }
+      },
+      "optimized": {
+        "firstMs": 0.10625000000004547,
+        "initialAttributeBytes": 6264,
+        "completionMs": 273.72462500000006,
+        "idleMs": {
+          "p50": 0.00020799999992959783,
+          "p95": 0.00020900000004075991,
+          "p99": 0.0003329999999550637,
+          "max": 0.00037500000007639755
+        }
+      },
+      "exactColours": true,
+      "resources": {
+        "paintAttributeBytes": 10452672,
+        "maskAttributeBytes": 0,
+        "paintBytes": 774656,
+        "maskBytes": 0,
+        "maskHistoryBytes": 0,
+        "voxelBytes": 56623104,
+        "geometryBytes": 20905344,
+        "historyBytes": 0,
+        "pendingHistoryBytes": 0,
+        "chunks": 1728,
+        "meshChunks": 200,
+        "vertices": 871056,
+        "triangles": 290352,
+        "retainedRuntimes": 1,
+        "pendingTubeJobs": 0,
+        "tubeStagingBytes": 0,
+        "pendingMoveJobs": 0,
+        "pendingBakeJobs": 0,
+        "backgroundBytes": 0,
+        "compositeBytes": 0
+      }
+    }
+  ]
+}

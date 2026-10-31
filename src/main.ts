@@ -1,4 +1,12 @@
-import {newProjectData,leaveForProject} from './project-workflow';
+import {questCapture} from './performance-capture';
+Object.assign(window,{centraPerformance:questCapture});
+import {installDesktopColourPicker} from './desktop-colour-picker';
+import {hydrateProject} from './project-transfer';
+import {ProjectLibrary} from './project-library';
+import {ProjectBrowser} from './project-browser';
+import {renameNative} from './library-codec';
+import {prepareLibrary} from './library-worker-client';
+import {leaveForProject} from './project-workflow';
 import {LightRig} from './light-rig';
 import {lightingUI} from './lighting-ui';
 import {ReferenceTransformTool} from './reference-transform';
@@ -39,7 +47,7 @@ import {XRMirrorPlane} from './xr-mirror-plane';
 import type { BakePlan } from './bake';
 import { DEFAULT_RESOLUTION } from './resolution';
 import {DesktopLayerPalette} from './layer-palette';
-import { saveSculptProject, openSculptProject, MAX_PROJECT_BYTES } from './project';
+import { MAX_PROJECT_BYTES } from './project';
 import { IndependentLayers } from './independent-layers';
 import { InputOwnership } from './interaction';
 import type { EditorMode } from './interaction';
@@ -55,7 +63,8 @@ if(import.meta.env.DEV&&window.isSecureContext&&new URLSearchParams(location.sea
 }
 const ui=createUI();let display=new LayerDisplayPreferences();
 let layers=new IndependentLayers(createBaseProject(new SDFVolume(DEFAULT_RESOLUTION),{mode:'add',radius:0.22,strength:0.35,hardness:0,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}}),display);
-let manualSaveKey='',restoredSaveKey='',manualSaveError='',manualSaving=false;
+let restoredSaveKey='',manualSaveError='',manualSaving=false;
+let libraryAbort=new AbortController();
 let loadingProject=false;let recovery:RecoveryController|undefined;const stabilityMetrics=new StabilityMetrics();let stabilityText='';
 let xrExperience:XRExperience|undefined;
 const xrBlocked=()=>xrExperience?.blocking??false;
@@ -67,7 +76,7 @@ let referenceEditor:ReferenceTransformTool|undefined;
 let viewportTools:ReturnType<typeof createViewportTools>|undefined;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#e9e9e3');scene.add(layers.group,layers.composite.group);
 const shapeGhost=new ShapeGhost(()=>layers.project.layerStack);scene.add(shapeGhost.group);
-const shapeLibraryUI=createShapeLibraryUI(document.getElementById('shape-library-slot')!,shapeGhost,()=>layers.project.layerStack,()=>loadingProject||ui.modalOpen||xrBlocked(),stop,()=>{transformTools?.sync();cursor.visible=false;ui.status(shapeGhost.model.moveMode?'Move preview · drag arrows or planes · Apply stamp when ready':shapeGhost.model.rotationMode?'Rotate stamp · drag a ring · T to finish':shapeGhost.model.enabled?(shapeGhost.model.followPointer?'Shape Stamp — place on a visible surface':'Preview held · G to move · T to rotate · Apply to stamp'):'Ghost hidden — sculpting available');},()=>applyShapeStamp(),()=>toggleGhostRotation(),()=>toggleGhostRotation('translate'));
+const shapeLibraryUI=createShapeLibraryUI(document.getElementById('shape-library-slot')!,shapeGhost,()=>layers.project.layerStack,()=>loadingProject||ui.modalOpen||xrBlocked(),stop,()=>{transformTools?.sync();cursor.visible=false;ui.status(shapeGhost.model.moveMode?'Move preview · drag arrows or planes · Apply stamp when ready':shapeGhost.model.rotationMode?'Rotate stamp · drag a ring · T to finish':shapeGhost.model.enabled?(shapeGhost.model.followPointer?'Stamp — place on a visible surface':'Preview held · G to move · T to rotate · Apply to stamp'):'Ghost hidden — sculpting available');},()=>applyShapeStamp(),()=>toggleGhostRotation(),()=>toggleGhostRotation('translate'));
 let booleanPreview=false,lastCompositePoll=0;
 function syncView(){booleanPreview=layers.viewMode==='boolean';ui.surfaceView(layers.viewMode);if(!booleanPreview)ui.compositeInfo('Separate Layers · source volumes unchanged.');layers.group.visible=!booleanPreview;layers.composite.group.visible=booleanPreview&&!layers.composite.failed;}
 syncView();
@@ -75,9 +84,23 @@ const camera=new THREE.PerspectiveCamera(38,1,0.01,100);camera.position.set(2.4,
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;ui.viewport.append(renderer.domElement);renderer.domElement.tabIndex=0;
 function createCameraControls() {
   const orbit=new OrbitControls(camera,renderer.domElement);orbit.enableDamping=true;orbit.minDistance=1.2;orbit.maxDistance=9;
-  orbit.mouseButtons={LEFT:null as unknown as THREE.MOUSE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.ROTATE};return orbit;
+  orbit.mouseButtons={LEFT:null as unknown as THREE.MOUSE,MIDDLE:THREE.MOUSE.PAN,RIGHT:THREE.MOUSE.ROTATE};
+  orbit.addEventListener('start',()=>{if(cameraView!==0){cameraView=0;updateCameraViewLabel();}});
+  return orbit;
 }
 let controls=createCameraControls();
+const cameraViews=['Perspective','Top','Side','Bottom'] as const;
+let cameraView=0;
+const cameraViewButton=document.querySelector<HTMLButtonElement>('#cycle-camera-view')!;
+function updateCameraViewLabel(){document.getElementById('camera-view-label')!.textContent=cameraViews[cameraView];cameraViewButton.setAttribute('aria-label',`Camera view: ${cameraViews[cameraView]}. Switch to ${cameraViews[(cameraView+1)%cameraViews.length]}`);}
+cameraViewButton.addEventListener('click',()=>{
+  if(xrBlocked()||loadingProject||desktopStroke.active)return;
+  const target=controls.target.clone(),distance=camera.position.distanceTo(target),enabled=controls.enabled;
+  controls.dispose();cameraView=(cameraView+1)%cameraViews.length;
+  const direction=cameraView===1?new THREE.Vector3(0,1,0):cameraView===2?new THREE.Vector3(1,0,0):cameraView===3?new THREE.Vector3(0,-1,0):new THREE.Vector3(2.4,1.7,3.3).normalize();
+  camera.up.set(0,cameraView===1||cameraView===3?0:1,cameraView===1?-1:cameraView===3?1:0);
+  camera.position.copy(target).addScaledVector(direction,distance);controls=createCameraControls();controls.target.copy(target);controls.enabled=enabled;controls.update();updateCameraViewLabel();
+});
 const ambient=new THREE.HemisphereLight(0xffffff,0x687267,2.7);scene.add(ambient);
 const light=new THREE.DirectionalLight(0xfff4df,3.4);light.position.set(-3,5,4);scene.add(light);
 const fill=new THREE.DirectionalLight(0xd6eaff,1.4);fill.position.set(4,1,-2);scene.add(fill);
@@ -311,42 +334,31 @@ document.getElementById('apply-resolution')!.addEventListener('click',()=>{
   void heavy('Resampling only the active layer…',()=>{const name=layers.active.layer.name,start=performance.now();layers.resampleActive(requested);ui.projectMessage(`${name}: ${requested}³ in ${(performance.now()-start).toFixed(0)} ms. Only this layer’s voxel history cleared; transforms retained. Other volumes unchanged.`);});
 });
 function download(data:Blob,name:string){const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-document.getElementById('save-project')!.addEventListener('click',()=>void(async()=>{
-  if(loadingProject||xrBlocked()||ui.modalOpen)return;stop();loadingProject=true;manualSaving=true;manualSaveError='';ui.projectBusy(true);updateSaveIndicator();recovery?.cancelJob();
-  try{await recovery?.settle();await paint();layers.project.toolPreferences=editorTools?.snapshotPreferences();layers.project.settings={...ui.settings,camera:{position:camera.position.toArray(),target:controls.target.toArray()}};download(new Blob([saveSculptProject(layers.project,display.snapshot(layers.project.id,layers.project.layerStack.layers))],{type:'application/octet-stream'}),'sculpture.form');manualSaveKey=recoveryKey();ui.projectMessage('All independent layers, display and tool preferences saved. Recovery data stays separate.');}
-  catch(error){manualSaveError=message(error);ui.projectMessage(`Save failed: ${manualSaveError}`,true);}
-  finally{manualSaving=false;loadingProject=false;ui.projectBusy(false);refresh();updateSaveIndicator();}
-})());
+document.getElementById('save-project')!.addEventListener('click',()=>void projectBrowser.activate('library:save'));
 document.getElementById('header-save')!.addEventListener('click',()=>document.getElementById('save-project')!.click());
-const newProjectDialog=document.querySelector<HTMLDialogElement>('#new-project-dialog')!;
 document.getElementById('new-project')!.addEventListener('click',()=>{
  if(loadingProject||xrBlocked()||ui.modalOpen||!layers.recoveryReady)return;
- stop();newProjectDialog.returnValue='cancel';newProjectDialog.showModal();
+ stop();showProjectBrowser();void projectBrowser.activate('library:new');
 });
-newProjectDialog.addEventListener('close',()=>void(async()=>{
- if(newProjectDialog.returnValue!=='create'||loadingProject||xrBlocked()||!layers.recoveryReady)return;
- try{
-  const data=newProjectData(Number(document.querySelector<HTMLSelectElement>('#new-project-resolution')!.value),document.querySelector<HTMLSelectElement>('#new-project-contents')!.value,{...ui.settings,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}});
-  if(await openProjectFile(new File([],'New project.form'),data)){layers.viewMode='separate';syncView();manualSaveKey='';restoredSaveKey='';ui.projectMessage('New project ready. Save Project to keep a manual file.');refresh();updateSaveIndicator();}
- }catch(error){ui.projectMessage(message(error),true);}
-})());
 const projectFile=document.querySelector<HTMLInputElement>('#project-file')!;
 document.getElementById('open-project')!.addEventListener('click',()=>{if(loadingProject||xrBlocked())return;stop();projectFile.value='';projectFile.click();});
-async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:string):Promise<boolean>{
-  if(loadingProject||xrBlocked())return false;
+async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:string,libraryOpen=false):Promise<boolean>{
+  if(loadingProject||(!libraryOpen&&xrBlocked())||!layers.recoveryReady)return false;
+  if(!libraryOpen&&projectBrowser.dirty&&!window.confirm("Replace unsaved work? Cancel and Save first to keep your edits."))return false;
   recovery?.cancelJob();xrExperience?.controllers.suspend();editorTools?.clearMoveSelection();
   stop();loadingProject=true;ui.projectBusy(true);syncTransformUI();transformTools?.sync();ui.projectMessage('Validating all layer data…');
+  let candidate:IndependentLayers|undefined;const signal=libraryAbort.signal;
   try {
     await recovery?.settle();
     if(file.size>MAX_PROJECT_BYTES)throw new Error('Project file exceeds the supported size limit.');
-    const project=openSculptProject(buffer??await file.arrayBuffer());if(expectedProjectId&&project.id!==expectedProjectId)throw new Error('Recovery project identity does not match its record.');await paint();const candidate=new IndependentLayers(project,new LayerDisplayPreferences());
-    candidate.viewMode=layers.viewMode;xrExperience!.rig.sculptureRoot.remove(layers.group,layers.composite.group);layers.dispose();layers=candidate;display=candidate.display;layers.interruptBackground=()=>recovery?.cancelJob();shapeGhost.reset();layers.composite.setQuality(Number(document.querySelector<HTMLSelectElement>('#composite-quality')!.value));xrExperience!.rig.sculptureRoot.add(layers.group,layers.composite.group);syncView();ui.setSettings(project.settings);editorTools?.restorePreferences(project.toolPreferences);
-    controls.dispose();camera.position.fromArray(project.settings.camera.position);controls=createCameraControls();controls.target.fromArray(project.settings.camera.target);controls.update();
-    cursor.visible=false;pointerInside=false;lastRebuild=performance.now();ui.projectMessage(`Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`);ui.status('Project opened');recovery?.replaceProject();manualSaveError='';manualSaveKey=expectedProjectId?'':recoveryKey();restoredSaveKey=expectedProjectId?recoveryKey():'';return true;
-  }catch(error){ui.projectMessage(`Open failed: ${message(error)} Current project kept.`,true);return false;}
-  finally{loadingProject=false;refresh();ui.projectBusy(false);projectFile.value='';}
+    const prepared=await prepareLibrary({kind:'decode',data:buffer??await file.arrayBuffer()},signal);const project=hydrateProject(prepared.snapshot!);if(expectedProjectId&&project.id!==expectedProjectId)throw new Error('Recovery project identity does not match its record.');candidate=new IndependentLayers(project,new LayerDisplayPreferences(),true);for(const layer of project.layerStack.layers){const runtime=candidate.runtime(layer.id);while(runtime.rebuild(2,2)){await new Promise<void>(resolve=>setTimeout(resolve,0));if(signal.aborted)throw new Error('Project open cancelled.');}}if(signal.aborted)throw new Error('Project open cancelled.');
+    candidate.viewMode=layers.viewMode;references.clear();referenceEditor?.finish();xrExperience!.rig.sculptureRoot.remove(layers.group,layers.composite.group);layers.dispose();layers=candidate;candidate=undefined;display=layers.display;layers.interruptBackground=()=>recovery?.cancelJob();shapeGhost.reset();layers.composite.setQuality(Number(document.querySelector<HTMLSelectElement>('#composite-quality')!.value));xrExperience!.rig.sculptureRoot.add(layers.group,layers.composite.group);syncView();ui.setSettings(project.settings);editorTools?.restorePreferences(project.toolPreferences);
+    controls.dispose();camera.up.set(0,1,0);cameraView=0;updateCameraViewLabel();camera.position.fromArray(project.settings.camera.position);controls=createCameraControls();controls.target.fromArray(project.settings.camera.target);controls.update();
+    cursor.visible=false;pointerInside=false;lastRebuild=performance.now();ui.projectMessage(`Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`);ui.status('Project opened');recovery?.replaceProject();manualSaveError='';restoredSaveKey=expectedProjectId?recoveryKey():'';if(!libraryOpen)projectBrowser.adopted(null,project.name);return true;
+  }catch(error){ui.projectMessage(`Open failed: ${message(error)} Current project kept.`,true);if(libraryOpen)throw error;return false;}
+  finally{candidate?.dispose();loadingProject=false;refresh();ui.projectBusy(false);projectFile.value='';}
 }
-projectFile.addEventListener('change',()=>{const file=projectFile.files?.[0];if(file)void openProjectFile(file);});
+projectFile.addEventListener('change',()=>{const file=projectFile.files?.[0];if(file)void projectBrowser.run(async()=>{if(file.size>MAX_PROJECT_BYTES)throw new Error('Project file exceeds the supported size limit.');const prepared=await prepareLibrary({kind:'import',data:await file.arrayBuffer(),name:file.name.replace(/\.form$/i,'').slice(0,80)||'Imported project'},libraryAbort.signal);await projectBrowser.store.put(prepared.record!,prepared.data,null);projectBrowser.selected=prepared.record!.id;await projectBrowser.refresh();projectBrowser.status='Imported into this browser. Select Open when ready; current edits are kept.';showProjectBrowser();});});
 let exportAbort:AbortController|null=null;
 const cancelExport=document.querySelector<HTMLButtonElement>('#cancel-export')!;
 cancelExport.addEventListener('click',()=>exportAbort?.abort());
@@ -354,7 +366,7 @@ window.addEventListener('keydown',event=>{if(event.key==='Escape'&&exportAbort){
 function exportEstimate():void {const count=layers.project.layerStack.layers.reduce((n,l)=>n+(l.visible?layers.runtime(l.id).triangles:0),0);let note='Final count reported after export.';try{const q=document.querySelector<HTMLSelectElement>('#export-quality')!.value as ExportQuality;exportAdmission(layers.exportSources('visible',false),q,Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes));}catch(error){note=message(error);}document.getElementById('export-estimate')!.textContent=`Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;}
 document.getElementById('export-quality')!.addEventListener('change',exportEstimate);
 
-async function exportGlb(scope:'visible'|'selected'|'composite') {
+async function exportGlb(scope:'visible'|'selected'|'composite',stlMM?:number) {
   if(loadingProject||xrBlocked())return;stop();
   if(layers.deforming||layers.previewing){ui.projectMessage('Finish or cancel Move before exporting.',true);return;}
   recovery?.cancelJob();
@@ -365,11 +377,14 @@ async function exportGlb(scope:'visible'|'selected'|'composite') {
       ui.projectMessage('Evaluating Boolean result at the existing quality cap…');
       // Abort the export wait; the shared preview scheduler may finish its own cache.
       let release=()=>{};try{await Promise.race([layers.composite.flush(),new Promise<never>((_,reject)=>{const abort=()=>reject(new Error('Export cancelled.'));signal.addEventListener('abort',abort,{once:true});release=()=>signal.removeEventListener('abort',abort);if(signal.aborted)abort();})]);}finally{release();}
+      if(stlMM!==undefined&&layers.composite.stats?.capped)throw new Error('Unified STL unavailable at the current Boolean quality cap: detail would be lost. Export individual parts or reduce the model bounds.');
       sources=layers.composite.exportSources();
-    }else sources=layers.exportSources(scope);
+    }else sources=layers.exportSources(scope,stlMM===undefined);
+    if(stlMM!==undefined)sources=sources.map(source=>({...source,chunks:source.chunks.map(({positions,normals})=>({positions,normals}))}));
     const quality=document.querySelector<HTMLSelectElement>('#export-quality')!.value as ExportQuality;
-    const result=await exportGlbAsync(sources,quality,{signal,maxBytes:Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes),progress:p=>{ui.projectMessage(`${p.stage} · ${Math.round(100*p.completed/Math.max(1,p.total))}% · Cancel available`);}});
+    const result=await exportGlbAsync(sources,quality,{signal,stlMM,maxBytes:Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes),progress:p=>{ui.projectMessage(`${p.stage} · ${Math.round(100*p.completed/Math.max(1,p.total))}% · Cancel available`);}});
     if(signal.aborted)throw new Error('Export cancelled.');
+    if(stlMM!==undefined){const report=result.report!;printReport.textContent=[`Physical size: ${report.dimensions.map(n=>n.toFixed(3)).join(' × ')} mm`,`${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`, `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,`Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,...report.blocking.map(s=>'BLOCKED: '+s),...report.warnings.map(s=>'WARNING: '+s),...report.unsupported.map(s=>'NOT CHECKED / LIMIT: '+s)].join('\n');printPanel.open=true;if(report.blocking.length)throw new Error('STL blocked: '+report.blocking.join(' '));if(!window.confirm(`${report.dimensions.map(n=>n.toFixed(3)).join(' × ')} mm · ${report.triangles} triangles.\n${report.warnings.join('\n')}\n${report.unsupported.join('\n')}\nDownload STL in millimetres?`))return;download(new Blob([result.data],{type:'model/stl'}),'centra-sculpt-mm.stl');download(new Blob([JSON.stringify({...report,scope,targetLongestMM:stlMM,quality,repairs:result.stats},null,2)],{type:'application/json'}),'centra-print-report.json');ui.projectMessage('STL exported in millimetres. Report saved; inspect in your slicer.');return;}
     download(new Blob([result.data],{type:'model/gltf-binary'}),scope==='composite'?'centra-boolean-result.glb':scope==='selected'?'centra-selected-layer.glb':'centra-sculpt.glb');
     const triangles=result.stats.reduce((n,s)=>n+s.triangles,0),issues=result.stats.reduce((n,s)=>n+s.boundaryEdges+s.nonManifoldEdges+s.inconsistentEdges,0);
     ui.projectMessage(`${quality[0].toUpperCase()+quality.slice(1)} GLB: ${triangles.toLocaleString()} triangles · ${(result.data.byteLength/1048576).toFixed(2)} MiB · ${result.stats.length} ${result.stats.length===1?'mesh':'meshes'}${issues?` · ${issues} open/non-manifold/winding edges; inspect before printing`:''}. Source sculpture kept.`);
@@ -379,6 +394,11 @@ async function exportGlb(scope:'visible'|'selected'|'composite') {
 document.getElementById('export')!.addEventListener('click',()=>void exportGlb('visible'));
 document.getElementById('export-selected')!.addEventListener('click',()=>void exportGlb('selected'));
 document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb('composite'));
+const printPanel=document.createElement('details');printPanel.id='print-panel';printPanel.innerHTML='<summary>3D Print / Export STL</summary><p>Binary STL coordinates are millimetres. Model coordinates have no intrinsic physical units; navigation and turntable display scale are excluded. Aspect ratio is locked. Selected exports use their own longest dimension. Visible parts are separate shells, not a union. Unified uses the current SDF Boolean composition and sampling quality; capped results are rejected. Fast preserves triangles; Standard cleans/orients; High also optimises planar faces. All changes apply only to export copies.</p>';
+const printSize=document.createElement('input');printSize.id='print-size';printSize.type='number';printSize.min='0.1';printSize.max='10000';printSize.value='100';printSize.step='0.1';const printLabel=document.createElement('label');printLabel.textContent='Target longest dimension (mm)';printLabel.append(printSize);printPanel.append(printLabel);
+for(const [scope,label] of [['selected','Export selected part STL'],['visible','Export visible parts STL (not union)'],['composite','Export unified Boolean STL']] as const){const button=document.createElement('button');button.textContent=label;button.onclick=()=>void exportGlb(scope,Number(printSize.value));printPanel.append(button);}
+const printReport=document.createElement('pre');printReport.style.whiteSpace='pre-wrap';printReport.setAttribute('role','status');printPanel.append(printReport);document.getElementById('export-boolean')!.parentElement!.append(printPanel);
+
 editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
  selectTool:tool=>{if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease'){chooseWorkspace('brush',true);return;}if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
@@ -398,20 +418,52 @@ const references=new ReferenceView(()=>display.references,xrRig.workspaceRoot,xr
 window.addEventListener('pagehide',()=>references.clear());
 referenceEditor=new ReferenceTransformTool(camera,renderer.domElement,scene,references,input,{beforeDrag:()=>{stampClick.cancel();ghostRotation?.finish();transformTools?.finish();stopSculpt();},camera:enabled=>controls.enabled=enabled,changed:()=>{cursor.visible=false;transformTools?.sync();ghostRotation?.sync();},busy:()=>loadingProject||ui.modalOpen||xrBlocked(),error:text=>ui.projectMessage(text,true)});
 const referencesUI=referenceUI(()=>display,references,precisionPanel.parentElement!,()=>loadingProject||ui.modalOpen||xrBlocked(),referenceEditor);
+const libraryDialog=document.createElement('dialog');libraryDialog.className='project-library-dialog';libraryDialog.setAttribute('aria-label','Project library');document.body.append(libraryDialog);
+let libraryRenderKey='';
+function renderProjectBrowser(){
+ if(!libraryDialog.open)return;
+ const content=projectBrowser.content(),key=JSON.stringify(content);if(key===libraryRenderKey)return;libraryRenderKey=key;
+ const focus=(document.activeElement as HTMLElement)?.dataset.libraryAction;
+ const title=document.createElement('h2');title.textContent=content.title;const subtitle=document.createElement('p');subtitle.textContent=content.subtitle;
+ const status=document.createElement('p');status.setAttribute('role','status');status.textContent=content.footer;
+ const close=document.createElement('button');close.textContent='Close library';close.dataset.libraryAction='close';close.onclick=()=>libraryDialog.close();
+ libraryDialog.replaceChildren(title,subtitle,close);
+ if(projectBrowser.form){const input=document.createElement('input');input.value=projectBrowser.draft;input.maxLength=80;input.disabled=projectBrowser.busy;input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();void projectBrowser.activate('library:submit');}};input.setAttribute('aria-label','Project name');input.oninput=()=>{projectBrowser.draft=input.value;};libraryDialog.append(input);}
+ for(const label of content.labels){const p=document.createElement('p');p.textContent=label.text;libraryDialog.append(p);}
+ const actions=document.createElement('div');actions.className='project-library-actions';
+ for(const b of content.buttons){if(b.id.startsWith('library:key:')||['library:backspace','library:clear-name'].includes(b.id))continue;const button=document.createElement('button');button.textContent=b.detail?`${b.label} · ${b.detail}`:b.label;button.disabled=!!b.disabled;button.dataset.libraryAction=b.id;button.onclick=()=>void projectBrowser.activate(b.id);actions.append(button);}
+ libraryDialog.append(actions,status);if(focus)Array.from(libraryDialog.querySelectorAll<HTMLButtonElement>('button')).find(b=>b.dataset.libraryAction===focus)?.focus();
+}
+function showProjectBrowser(){stop();if(!libraryDialog.open)libraryDialog.showModal();libraryRenderKey='';renderProjectBrowser();}
+const projectBrowser=new ProjectBrowser(new ProjectLibrary(undefined,import.meta.env.DEV&&new URLSearchParams(location.search).get('recoveryFixture')==='lab'?'centra-sculpt-library-test':'centra-sculpt-library'),{
+ key:()=>recoveryKey(),ready:()=>!loadingProject&&layers.recoveryReady,
+ changed:()=>{renderProjectBrowser();if(!projectBrowser.busy){layers.project.name=projectBrowser.name;ui.projectMessage(projectBrowser.status);}},
+ encode:async()=>{const source=layers,key=recoveryKey();loadingProject=true;manualSaving=true;recovery?.cancelJob();stop();try{await recovery?.settle();const result=await encodeRecovery(source,{...ui.settings,camera:{position:xrBlocked()?source.project.settings.camera.position:camera.position.toArray(),target:xrBlocked()?source.project.settings.camera.target:controls.target.toArray()}},display.snapshot(source.project.id,source.project.layerStack.layers),editorTools?.snapshotPreferences(),libraryAbort.signal,()=>layers===source&&recoveryKey()===key);return result.data;}finally{loadingProject=false;manualSaving=false;}},
+ open:(data,name)=>openProjectFile(new File([],`${name}.form`),data,undefined,true),
+ create:async(resolution,contents)=>(await prepareLibrary({kind:'new',resolution,contents,settings:{...ui.settings,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}}},libraryAbort.signal)).data,
+ handoff:async(action,data,name)=>{const wasXR=xrBlocked();if(wasXR)await xrExperience!.session.exit();if(action==='import'){libraryDialog.close();document.getElementById('open-project')!.focus();if(!wasXR){projectFile.value='';projectFile.click();}ui.projectMessage('Click Import Project to choose a portable .form file.');}else if(data){download(new Blob([data],{type:'application/octet-stream'}),`${name}.form`);projectBrowser.status='Download requested. Check browser downloads; local save remains intact.';}},
+});
+const libraryButton=document.createElement('button');libraryButton.textContent='Project Library';libraryButton.onclick=()=>{showProjectBrowser();void projectBrowser.run(()=>projectBrowser.refresh());};document.getElementById('new-project')!.before(libraryButton);
+document.getElementById('open-project')!.textContent='Import Project';document.getElementById('save-project')!.textContent='Save in Browser';
+window.addEventListener('beforeunload',event=>{if(projectBrowser.dirty||projectBrowser.busy){event.preventDefault();event.returnValue='';}});
+// Initialize only after recoveryKey and the recovery controller have been defined below.
+queueMicrotask(()=>void projectBrowser.run(()=>projectBrowser.refresh()));
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
+ projectBrowser,
  projectStatus:()=>`${layers.project.layerStack.layers.length} layers · ${manualSaving?'Saving…':document.getElementById('header-save')!.dataset.state==='saved'?'Manual save current':'Save changes before replacing'}`,
  projectAction:async action=>{
   try{await leaveForProject(xrExperience!.session,()=>!loadingProject&&!ui.modalOpen&&layers.recoveryReady,()=>{
-   const target=document.getElementById(({new:'new-project',open:'open-project',save:'save-project',export:'export-quality',recover:'restore-recovery'} as const)[action])!;
+   const target=document.getElementById(({new:'new-project',open:'open-project',save:'save-project',export:'export-quality',print:'print-size',recover:'restore-recovery'} as const)[action])!;
+   if(action==='print')printPanel.open=true;
    if(action==='recover'){updateRecoveryUI();(recoveryAvailable as HTMLDetailsElement).open=true;}
    target.scrollIntoView({block:'center'});target.focus();
    ui.projectMessage(`Continue ${action==='recover'?'recovery':action} in the browser panel. Use Enter Studio / Passthrough when ready.`);
    if(action==='new')target.click();
   });}catch(error){ui.projectMessage(message(error),true);throw error;}
  },
- lighting,references,importReferences:referencesUI.import,tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
+ lighting,references,importReferences:()=>{void leaveForProject(xrExperience!.session,()=>!loadingProject&&!ui.modalOpen&&layers.recoveryReady,()=>{ui.projectMessage('Use Import references in the browser panel, then re-enter VR.');const panel=document.getElementById('reference-panel') as HTMLDetailsElement|null;if(panel){panel.open=true;panel.scrollIntoView({block:'center'});}}).catch(error=>ui.projectMessage(message(error),true));},tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
  sculptureInfo:()=>({activeResolution:volumeLabel(layers.active.layer.volume),resolutions:layers.project.layerStack.layers.map(layer=>`${volumeLabel(layer.volume)}`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
  blockedReason:()=>!recovery?.initialized?'Checking local recovery storage…':recovery.blocked&&recovery.enabled?'Review saved recovery before entering.':ui.modalOpen?'Close the open dialog before entering.':loadingProject?'Wait for the current project operation to finish.':'Wait for Boolean Preview to finish, or select Separate Layers.',
  entryResolvable:()=>!!recovery?.initialized&&recovery.enabled&&recovery.blocked&&!loadingProject&&!ui.modalOpen&&layers.recoveryReady,
@@ -437,9 +489,9 @@ const recoveryKey=()=>JSON.stringify([layers.recoveryKey(),ui.settings,display.s
 function updateSaveIndicator():void{
  const button=document.querySelector<HTMLButtonElement>('#header-save')!;
  const key=recoveryKey(),record=recovery?.records.find(r=>r.projectId===layers.project.id&&r.revision===key);
- const state=saveState({key,manualKey:manualSaveKey,autosaveKey:record?.revision??restoredSaveKey,saving:manualSaving||!!recovery?.active,editing:!layers.recoveryReady,error:!!manualSaveError||!!recovery?.warning,recoveryPending:!!recovery?.blocked});
+ const state=saveState({key,manualKey:projectBrowser.savedKey,autosaveKey:record?.revision??restoredSaveKey,saving:manualSaving||!!recovery?.active,editing:!layers.recoveryReady,error:projectBrowser.error||!!manualSaveError||!!recovery?.warning,recoveryPending:!!recovery?.blocked});
  button.disabled=loadingProject||xrBlocked()||ui.modalOpen||!layers.recoveryReady;
- const label=SAVE_LABELS[state],title=`${label}${manualSaveError?' · '+manualSaveError:recovery?.warning?' · '+recovery.warning:''} · Click to save project`;
+ const label=SAVE_LABELS[state],title=`${label}${projectBrowser.error?' · '+projectBrowser.status:manualSaveError?' · '+manualSaveError:recovery?.warning?' · '+recovery.warning:''} · Click to save project`;
  if(button.dataset.state!==state){button.dataset.state=state;document.getElementById('header-save-status')!.textContent=label;}
  if(button.title!==title){button.title=title;button.setAttribute('aria-label',`Save project — ${label}`);}
 }
@@ -467,10 +519,10 @@ entryRecoveryDialog.addEventListener('close',()=>{
  recoveryAction=action;recoveryChoice=entryRecoveryDialog.querySelector<HTMLSelectElement>('select')!.value;
  document.getElementById('confirm-recovery')!.click();
 });
-function interruptSession(_reason:string):void{recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
+function interruptSession(_reason:string):void{libraryAbort.abort();libraryAbort=new AbortController();recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
 const lifecycle=new AppLifecycle(document,window,interruptSession,()=>{previous=performance.now();pointerInside=false;void recovery?.tick(Date.now(),true);});
 const recoveryTimer=setInterval(()=>{if(document.visibilityState==='visible'){const stats=stabilityMetrics.sample(layers,Date.now()),heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;stabilityText=`History ${(stats.historyBytes/1048576).toFixed(1)} MiB · recovery ${!recovery?.enabled?'off':recovery?.blocked?'choice needed':recovery?.warning?'warning':recovery?.active?'working':recovery?.lastSuccess?'saved':'waiting'} ${(recovery?.lastMs??0).toFixed(0)} ms`;document.getElementById('stability-status')!.textContent=`${stats.chunks} allocated / ${stats.meshChunks} mesh chunks · ${stats.vertices.toLocaleString()} vertices / ${stats.triangles.toLocaleString()} triangles. Grid ${(stats.voxelBytes/1048576).toFixed(1)} MiB · paint ${(stats.paintBytes/1048576).toFixed(1)} MiB · history ${(stats.historyBytes/1048576).toFixed(1)} MiB · derived Boolean ${(stats.compositeBytes/1048576).toFixed(1)} MiB. Pending Move ${stats.pendingMoveJobs} / Bake ${stats.pendingBakeJobs} / export ${Number(!!exportAbort)} / recovery ${Number(!!recovery?.active)}. Checkpoint ${((recovery?.lastBytes??0)/1048576).toFixed(1)} MiB / ${(recovery?.lastMs??0).toFixed(0)} ms, snapshot copy ${(recovery?.lastCopyMs??0).toFixed(1)} ms. Tracked ${(stats.trackedBytes/1048576).toFixed(1)} MiB (excludes JS/GPU overhead) · JS heap ${heap===undefined?'unavailable':(heap/1048576).toFixed(1)+' MiB'} · renderer ${renderer.info.memory.geometries} geometries / ${renderer.info.memory.textures} textures.${stats.pressure?' Resource pressure: save manually before further large edits.':''}`;void recovery?.tick();updateRecoveryUI();}},500);
-import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);lighting.dispose();referenceEditor?.dispose();references.dispose();lifecycle.dispose();recovery?.dispose();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
+import.meta.hot?.dispose(()=>{clearInterval(recoveryTimer);lighting.dispose();referenceEditor?.dispose();references.dispose();lifecycle.dispose();recovery?.dispose();projectBrowser.store.close();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();});
 function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w=ui.viewport.clientWidth,h=ui.viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();
@@ -485,12 +537,13 @@ function pollComposite(now:number):void{
   }
 }
 renderer.setAnimationLoop((now,frame)=>{
+  const cpuStart=performance.now();
   lighting.sync(now,document.visibilityState!=='hidden');lightUI.sync();
   referenceEditor?.sync();referencesUI.sync();
   renderEmulatorFrame?.(now);
   if(xrBlocked()){
     desktopMirrorPlane.group.visible=false;desktopFieldCursor.hide();desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
-    const cpuStart=performance.now();if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
+    if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
     if(!xrExperience!.controllers.grab?.active&&!xrExperience!.controllers.layerGrab?.active)pollComposite(now);
     layers.updateMaskOverlays();renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
   }
@@ -520,6 +573,7 @@ renderer.setAnimationLoop((now,frame)=>{
   shapeGhost.mirror=layers.symmetry;
   shapeGhost.sync(loadingProject||ui.modalOpen||xrBlocked());shapeLibraryUI.refresh();syncViewportTools();
   layers.updateMaskOverlays();renderer.render(scene,camera);
+  if(questCapture.active){const time=performance.now();questCapture.tick(time,time-cpuStart,NaN,layers.pendingChunks);questCapture.sample(time,()=>({mode:'desktop',resources:layers.resourceStats(),trackedBytes:layers.trackedBytes,heapBytes:(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize??null,renderer:{...renderer.info.memory,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles},loadingProject,exporting:!!exportAbort,recovery:{active:recovery?.active,copyMs:recovery?.lastCopyMs,lastMs:recovery?.lastMs}}));}
 });
 
 // Explicit development-only native fixtures bypass platform file-picker issues
@@ -534,3 +588,5 @@ if(import.meta.env.DEV){
   }catch(error){ui.projectMessage(`Test fixture failed: ${message(error)}`,true);}
  })();
 }
+
+installDesktopColourPicker();

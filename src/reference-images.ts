@@ -1,11 +1,12 @@
+import {parseSTL} from './stl';
 /** Bounded compressed source assets. Never geometry, history or controller ray children. */
 export const REFERENCE_LIMITS={count:6,fileBytes:6*1024**2,totalBytes:12*1024**2,dimension:4096,pixels:8_800_000};
-export type ReferenceImage={id:string;name:string;bytes:Uint8Array;mime:'image/png'|'image/jpeg';width:number;height:number;space:'workspace'|'sculpture';position:[number,number,number];rotation:[number,number,number];size:number;opacity:number;visible:boolean;locked:boolean;twoSided:boolean;flipX?:boolean};
+export type ReferenceImage={id:string;name:string;bytes:Uint8Array;mime:'image/png'|'image/jpeg'|'model/stl';wireframe?:boolean;width:number;height:number;space:'workspace'|'sculpture';position:[number,number,number];rotation:[number,number,number];size:number;opacity:number;visible:boolean;locked:boolean;twoSided:boolean;flipX?:boolean};
 /** Desktop filenames are checked separately from native reference display names. */
 export function validateReferenceFileName(name:string,mime?:ReferenceImage['mime']):void{
  const extension=name.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
- if(!extension||!['png','jpg','jpeg'].includes(extension))throw new Error(`“${name}” ${extension?`has an unsupported .${extension} extension`:'has no image file extension'}. Choose a .png, .jpg or .jpeg file.`);
- if(mime&&(extension==='png'?'image/png':'image/jpeg')!==mime)throw new Error(`“${name}” has a .${extension} extension, but its contents are ${mime==='image/png'?'PNG':'JPEG'}. Use ${mime==='image/png'?'.png':'.jpg or .jpeg'} for this image.`);
+ if(!extension||!['png','jpg','jpeg','stl'].includes(extension))throw new Error(`“${name}” ${extension?`has an unsupported .${extension} extension`:'has no image file extension'}. Choose a .png, .jpg or .jpeg image, or a .stl mesh.`);
+ if(mime&&(extension==='stl'?'model/stl':extension==='png'?'image/png':'image/jpeg')!==mime)throw new Error(`“${name}” has a .${extension} extension, but its contents are ${mime==='image/png'?'PNG':'JPEG'}. Use ${mime==='image/png'?'.png':'.jpg or .jpeg'} for this image.`);
 }
 export function imageHeader(bytes:Uint8Array):{mime:ReferenceImage['mime'];width:number;height:number}{
  if(bytes.length<24||bytes.length>REFERENCE_LIMITS.fileBytes)throw new Error('Reference must be a PNG/JPEG up to 6 MiB.');
@@ -28,15 +29,19 @@ export function imageHeader(bytes:Uint8Array):{mime:ReferenceImage['mime'];width
 }
 export function validateReferences(value:unknown):ReferenceImage[]{
  if(!Array.isArray(value)||value.length>REFERENCE_LIMITS.count)throw new Error('At most six references are supported.');
- let total=0;const ids=new Set<string>();
+ let total=0,meshTriangles=0;const ids=new Set<string>();
  return value.map(r=>{
   if(!r||typeof r!=='object'||!(r.bytes instanceof Uint8Array))throw new Error('Invalid reference asset.');
-  const header=imageHeader(r.bytes);total+=r.bytes.length;if(total>REFERENCE_LIMITS.totalBytes)throw new Error('Reference source budget exceeds 12 MiB.');
+  const header=r.mime==='model/stl'?stlHeader(r.bytes):imageHeader(r.bytes);if(r.mime==='model/stl'){meshTriangles+=parseSTL(r.bytes).length/9;if(meshTriangles>200_000)throw new Error('Reference mesh aggregate limit: 200,000 triangles.');}total+=r.bytes.length;if(total>REFERENCE_LIMITS.totalBytes)throw new Error('Reference source budget exceeds 12 MiB.');
   if(typeof r.id!=='string'||!r.id||r.id.length>80||ids.has(r.id)||typeof r.name!=='string'||r.name.length>120||r.width!==header.width||r.height!==header.height||r.mime!==header.mime||!['workspace','sculpture'].includes(r.space))throw new Error('Invalid reference identity, dimensions or space.');ids.add(r.id);
   for(const key of ['position','rotation'])if(!Array.isArray(r[key])||r[key].length!==3||!r[key].every((n:unknown)=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=1000))throw new Error('Invalid reference transform.');
   if(!Number.isFinite(r.size)||r.size<.05||r.size>10||!Number.isFinite(r.opacity)||r.opacity<.05||r.opacity>1||['visible','locked','twoSided'].some(k=>typeof r[k]!=='boolean'))throw new Error('Invalid reference display.');
+  if(r.wireframe!==undefined&&typeof r.wireframe!=='boolean')throw new Error('Invalid mesh appearance.');
   if(r.flipX!==undefined&&typeof r.flipX!=='boolean')throw new Error('Invalid reference Flip X setting.');
   return {...r,...header,position:[...r.position],rotation:[...r.rotation]} as ReferenceImage;
  });
 }
 export function createReference(bytes:Uint8Array,name:string,id:string):ReferenceImage{return {id,name:name.slice(0,120),bytes,...imageHeader(bytes),space:'workspace',position:[1,0,0],rotation:[0,0,0],size:1,opacity:1,visible:true,locked:true,twoSided:true};}
+
+export function stlHeader(bytes:Uint8Array):{mime:'model/stl';width:number;height:number}{parseSTL(bytes);return {mime:'model/stl',width:1,height:1};}
+export function createMeshReference(bytes:Uint8Array,name:string,id:string):ReferenceImage{return {id,name:name.slice(0,120),bytes,...stlHeader(bytes),space:'workspace',position:[1,0,0],rotation:[0,0,0],size:1,opacity:1,visible:true,locked:true,twoSided:true,wireframe:false};}

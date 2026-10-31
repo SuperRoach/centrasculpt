@@ -1,0 +1,45 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs project-library
+
+Tests: 1/74 files · compiled 1, cached 108 · preparation 25 ms
+✔ CRUD metadata queries, recent order, last opened and delete preserve other payloads (12.009458ms)
+✔ list never reads payloads; rename never writes payloads (1.311334ms)
+✔ concurrent tab revision conflict prevents overwriting explicit save (1.694375ms)
+✔ bounded library rejects new entries instead of evicting explicit saves (1.948458ms)
+✔ quota interrupted transaction rolls back metadata and payload together (1.33675ms)
+✔ abort interrupted transaction rolls back metadata and payload together (1.591083ms)
+✔ pre-cancelled save is rejected with structured cancellation (0.64725ms)
+✔ thumbnail size/type validation and metadata persistence (0.777875ms)
+✔ native duplicate remaps rich hierarchy/assets and retains paint, masks, lighting, procedural sources (162.02475ms)
+✔ legacy/current v1 import migrates independently and records source version (2.595208ms)
+✔ legacy/current v2 import migrates independently and records source version (1.009166ms)
+✔ legacy/current v3 import migrates independently and records source version (0.950667ms)
+✔ malformed short import rejects without creating library entry (0.310333ms)
+✔ malformed magic import rejects without creating library entry (0.246916ms)
+✔ malformed version import rejects without creating library entry (0.228125ms)
+✔ malformed truncated import rejects without creating library entry (0.32325ms)
+✔ malformed nan import rejects without creating library entry (0.325125ms)
+✔ autosave checkpoints never update or replace an explicit library save (2.945209ms)
+✔ dirty Open supports cancel and Save & continue with current identity (6.603958ms)
+✔ save failure preserves pending replacement and current edits (1.649583ms)
+✔ Save As, rename and duplicate leave source session/history identity unchanged (1.292625ms)
+✔ delete confirmation keeps active edits; deleting active saved entry makes session unsaved (0.854875ms)
+✔ busy sessions refuse save and replacement; stale async encoding cannot publish (0.900708ms)
+✔ download current preserves dirty state and export payload integrity (0.601542ms)
+✔ paged metadata browser has bounded ray targets and placeholder previews without decoding projects (7.220542ms)
+✔ names reject empty, oversized and control characters (0.124709ms)
+✔ deferred project candidate creates no meshes until explicitly rebuilt and can be disposed (3.831042ms)
+✔ actual library worker migrates, decodes by transfer and terminates on completion/cancellation (82.83925ms)
+✔ stale asynchronous library read cannot replace newly edited current work (2.750084ms)
+✔ new scene preparation cannot discard edits made while its worker is pending (1.037459ms)
+✔ 100-project bound refuses entry 101 without evicting saved work (14.861834ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 412.6265
+Test command wall time: 0.46 s

@@ -1,3 +1,4 @@
+import {ProjectBrowser} from '../work/test-build/project-browser.mjs';
 import {XRClayStroke} from '../work/test-build/xr-clay-stroke.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,12 +17,12 @@ import {createBaseProject} from '../work/test-build/layers.mjs';
 import {SDFVolume} from '../work/test-build/sdf.mjs';
 import {saveSculptProject,openSculptProject} from '../work/test-build/project.mjs';
 const initial={mode:'add',radius:.22,strength:.35,hardness:0,camera:{position:[2,2,3],target:[0,0,0]}};
-function fixture(){
+function fixture(worldPort){
  const layers=new IndependentLayers(createBaseProject(new SDFVolume(17),initial)),input=new InputOwnership(),shape=new ShapePreviewModel(layers.project.activeLayerId);let settings={...initial},busy=false,changed=0,clay='add';
  const tools=new EditorToolState({layers:()=>layers,shape,settings:()=>settings,setSettings:v=>{settings=v;if(v.mode!=='smooth')clay=v.mode;},mode:()=>input.mode,
   selectTool:id=>{shape.setEnabled(id==='stamp',layers.project.layerStack);input.mode=id==='transform'?'translate':'sculpt';if(id==='clay'||id==='smooth')settings={...settings,mode:id==='smooth'?'smooth':clay};},
   selectTransform:mode=>{shape.setEnabled(false,layers.project.layerStack);input.mode=mode;},busy:()=>busy,changed:()=>changed++});
- return {layers,input,shape,tools,model:new XRMenuModel(tools),get settings(){return settings;},set busy(v){busy=v;},get changed(){return changed;},dispose:()=>layers.dispose()};
+ return {layers,input,shape,tools,model:new XRMenuModel(tools,worldPort),get settings(){return settings;},set busy(v){busy=v;},get changed(){return changed;},dispose:()=>layers.dispose()};
 }
 function fakeDocument(){const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({}, {get:()=>()=>{}})})};return ()=>globalThis.document=original;}
 const toolState=()=>({connectionId:7,role:'tool',connected:true,tracked:true,gripTracked:true,buttons:{trigger:{pressed:false,rawValue:0,justPressed:false},grip:{pressed:false,rawValue:0}}});
@@ -95,7 +96,7 @@ test('view caches canvas content, stays fixed during a hold, reanchors per openi
 });
 function source(hand){return {handedness:hand,profiles:['meta-quest-touch-plus'],targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping:'xr-standard',axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false,touched:false}))}};}
 class Session extends EventTarget{visibilityState='visible';}
-function bridgeFixture(hand,sculpt=false){const f=fixture(),restore=fakeDocument(),view=new XRMenuView(f.model),rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),workspace=new Group(),roles=new XRControllerRoles();roles.setDominant(hand);workspace.add(f.layers.group);root.add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});
+function bridgeFixture(hand,sculpt=false,worldPort){const f=fixture(worldPort),restore=fakeDocument(),view=new XRMenuView(f.model),rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),workspace=new Group(),roles=new XRControllerRoles();roles.setDominant(hand);workspace.add(f.layers.group);root.add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});
  const clay=sculpt?new XRClayStroke(()=>f.layers,f.tools,root):undefined;
  const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{stroke:clay,workspace,layers:()=>f.layers,toolMode:()=>f.tools.active,menus:view,shortcuts:{interactiveMenus:true,commands:projectHistoryShortcuts(()=>f.layers)}}),support=source(hand==='left'?'right':'left'),tool=source(hand),session=new Session();bridge.start(session);rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});let time=0;
  const update=()=>bridge.update(time+=16),press=(s,index,down)=>{Object.assign(s.gamepad.buttons[index],{value:down?1:0,pressed:down});update();},stick=(x=0,y=0)=>{support.gamepad.axes=[0,0,x,y];update();},point=id=>{const p=rayPose(view,...buttonPoint(f.model,id));p.decompose(rays[0].position,rays[0].quaternion,rays[0].scale);update();};update();
@@ -259,4 +260,13 @@ test('Phase 5 static Project polling retains one canvas and no repaints',t=>{
  const count=view.paintCount,texture=view.mesh.material.map,start=performance.now();for(let i=1;i<=360;i++)view.update('tool-wheel',undefined,undefined,100+i*16,true);
  t.diagnostic(`Host mock-canvas 360 polls: ${(performance.now()-start).toFixed(2)} ms; additional repaints ${view.paintCount-count}`);assert.equal(view.paintCount,count);assert.equal(view.mesh.material.map,texture);
  }finally{view.dispose();f.dispose();restore();}
+});
+
+for(const hand of ['left','right'])test(`Project library ${hand}: menu ray owns trigger, form selection never sculpts, held close is disarmed`,async()=>{
+ const browser=new ProjectBrowser({list:async()=>[]},{key:()=> 'unchanged',ready:()=>true,changed(){}});
+ const h=bridgeFixture(hand,true,{projectBrowser:browser});try{
+ const bytes=saveSculptProject(h.layers.project);h.stick(0,-1);h.point('project');h.press(h.tool,0,true);assert.equal(h.model.content().title,'PROJECT LIBRARY');h.press(h.tool,0,false);
+ const rects=h.model.content().buttons.filter(b=>b.rect);for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){const a=rects[i].rect,b=rects[j].rect;assert(!(a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y),`${rects[i].id} overlaps ${rects[j].id}`);}
+ h.point('library:new');h.press(h.tool,0,true);await new Promise(r=>setImmediate(r));assert.equal(browser.form,'new');assert(!h.clay.active);h.stick();h.update();assert(!h.clay.active);assert.equal(h.layers.undoCount,0);assert.deepEqual(saveSculptProject(h.layers.project),bytes);
+ }finally{h.dispose();}
 });
