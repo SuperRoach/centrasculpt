@@ -72,6 +72,14 @@ export class EditorToolState {
  get moveFamily():boolean{return ['move','pinch','crease','scrape'].includes(this.active);}
  get lastMoveVariant():MoveVariant{return this.active==='move'||!['pinch','crease','scrape'].includes(this.rememberedMoveVariant)&&!['pinch','crease','scrape'].includes(this.active)?(this.move.interaction!=='translate'?'rotate-twist':this.move.mode==='elastic'?'elastic':'non-elastic'):['pinch','crease','scrape'].includes(this.active)?this.active as MoveVariant:this.rememberedMoveVariant;}
  get contextLabel():string{if(this.active==='transform'&&this.port.layers().selectedGroupId)return 'Transform Group';return this.moveFamily?`Move · ${this.active==='move'&&this.move.interaction==='translate'&&this.move.mode==='preview'?'Preview only':MOVE_VARIANT_LABELS[this.lastMoveVariant]}`:EDITOR_TOOLS.find(t=>t.id===this.active)!.label;}
+ /** Compact menu status; derived from authoritative settings, never a second tool state. */
+ get workflowStatus():string{
+  const l=this.port.layers(),mode=this.port.settings().mode;
+  const operation=this.active==='stamp'?this.port.shape.definition.operation:this.active==='move'?this.move.interaction:mode;
+  const names:Record<string,string>={add:'Add',subtract:'Subtract',paint:'Paint colour','paint-erase':'Erase colour',mask:'Paint protection','mask-erase':'Erase protection',rotate:'Rotate',twist:'Twist'};
+  const detail=names[operation];
+  return `${this.contextLabel}${detail?' · '+detail:''}${this.busy?' · Working…':l.selectedGroupId&&this.active!=='transform'?' · Select a source layer':!l.active.layer.editable?' · Layer hidden or locked':l.active.layer.procedural&&['paint','mask'].includes(this.active)?' · Bake tube first':''}`;
+ }
  /** Wheel recall preserves the exact deformation settings, including legacy Preview only. */
  selectMoveGroup():void{const variant=this.lastMoveVariant;this.select(['pinch','crease','scrape'].includes(variant)?variant as EditorTool:'move');}
  selectMoveVariant(variant:MoveVariant):void{

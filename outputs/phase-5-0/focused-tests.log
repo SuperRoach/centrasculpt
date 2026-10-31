@@ -1,0 +1,58 @@
+
+> sdf-sculpt-studio@0.1.0 test
+> node scripts/test.mjs xr-menus project-workflow
+
+Tests: 2/73 files · compiled 0, cached 103 · preparation 8 ms
+✔ New Project 64 empty is a valid independent native project (21.508125ms)
+✔ New Project 64 sphere is a valid independent native project (21.071958ms)
+✔ New Project 128 empty is a valid independent native project (100.418875ms)
+✔ New Project 128 sphere is a valid independent native project (82.86175ms)
+✔ New Project 192 empty is a valid independent native project (222.29375ms)
+✔ New Project 192 sphere is a valid independent native project (311.29975ms)
+✔ New Project rejects malformed choices before allocating (0.212542ms)
+✔ studio project handoff waits for exit and rechecks busy state (0.227542ms)
+✔ passthrough project handoff waits for exit and rechecks busy state (0.074416ms)
+✔ Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly (13.013959ms)
+✔ radial and rectangular hit tests align with every visible target, including experimental Move (6.239625ms)
+✔ Clay/Smooth options update the same desktop settings without voxel/history changes (9.969042ms)
+✔ data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp (5.857459ms)
+✔ Transform options edit metadata with existing undo and native persistence, never SDF resampling (5.289125ms)
+✔ Layers panel selects visible, hidden or locked rows and toggles flags using existing commands (67.240375ms)
+✔ busy/current edit guards reject menu business commands instead of committing an edit (2.469667ms)
+✔ tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect (5.459958ms)
+✔ view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity (3.049208ms)
+✔ view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions (3.078834ms)
+✔ interactive menus select shared tools/layers with left dominance; old shortcuts and grips remain exclusive (6.450583ms)
+✔ interactive menus select shared tools/layers with right dominance; old shortcuts and grips remain exclusive (4.8265ms)
+✔ Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm (2.913917ms)
+✔ menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak (3.395792ms)
+✔ interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held (0.107375ms)
+✔ numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only (2.697584ms)
+✔ eight layer rows, paginated options and radial targets stay within the usable menu surface (219.551833ms)
+✔ VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history (21.320916ms)
+✔ VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors (9.618292ms)
+✔ Tool Hand trigger adds a VR layer only once per press (4.717458ms)
+✔ interactive menu renders after transparent scene panels and previews (2.416083ms)
+✔ menu pointer overlays the panel and clears on dismissal (left) (2.78475ms)
+✔ menu pointer overlays the panel and clears on dismissal (right) (2.503709ms)
+✔ controller overlay includes realistic model meshes, restores materials and handles session cleanup (2.551166ms)
+✔ menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled (2.315708ms)
+✔ Move submenu left: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush (5.018708ms)
+✔ Move submenu right: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush (2.871375ms)
+✔ Phase 5 Project route is reachable, bounded, disabled without an adapter and preserves source/history (3.013875ms)
+✔ Phase 5 menu status follows paint/mask operations, Move variants, locks and busy state (2.012417ms)
+✔ Phase 5 project adapter dispatch is guarded by busy state and returns via Tools (1.950459ms)
+✔ Phase 5 World and Layers show rejected actions rather than hiding feedback (1.690334ms)
+✔ Phase 5 held trigger cannot route to Project until released, in either hand (2.333958ms)
+✔ Phase 5 disabled paint swatches and sliders never mutate or capture input (2.569167ms)
+✔ Phase 5 static Project polling retains one canvas and no repaints (3.375083ms)
+ℹ Host mock-canvas 360 polls: 1.48 ms; additional repaints 0
+ℹ tests 43
+ℹ suites 0
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 815.129041
+Test command wall time: 0.85 s

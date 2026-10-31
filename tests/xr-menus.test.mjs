@@ -36,7 +36,7 @@ test('Tool Wheel opens, selects all enabled tools, shows active state, and dismi
 });
 test('radial and rectangular hit tests align with every visible target, including experimental Move',()=>{
  const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');for(const definition of VR_WHEEL_TOOLS){const id=`tool:${definition.id}`;assert.equal(m.hit(...buttonPoint(m,id)),id);}
- assert.equal(m.hit(576,590),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1100,1050]])assert.equal(m.hit(...point),null);
+ assert.equal(m.hit(1100,1050),'project');assert.equal(m.hit(576,590),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1130,1050]])assert.equal(m.hit(...point),null);
  m.activate('options');for(const b of m.content().buttons)assert.equal(m.hit(...buttonPoint(m,b.id)),b.id);
  }finally{f.dispose();}
 });
@@ -202,4 +202,61 @@ test('menu starts a fresh foreground depth layer for each eye while controller s
 });
 for(const hand of ['left','right'])test(`Move submenu ${hand}: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush`,()=>{
  const h=bridgeFixture(hand,true);try{const values=h.layers.active.volume.values.slice();h.stick(0,-1);h.point('tool:move');h.press(h.tool,0,true);assert.equal(h.model.content().title,'MOVE VARIANTS');h.press(h.tool,0,false);h.point('move-variant:pinch');h.press(h.tool,0,true);assert.equal(h.tools.active,'pinch');assert(!h.clay.active);assert.equal(h.layers.undoCount,0);h.stick();h.update();assert(!h.clay.active);assert.deepEqual(h.layers.active.volume.values,values);h.grips[0].position.set(.7,0,.12);h.press(h.tool,0,false);h.press(h.tool,0,true);assert(h.clay.active);h.bridge.suspend();assert(!h.clay.active);assert.equal(h.layers.undoCount,0);assert.equal(h.tools.lastMoveVariant,'pinch');}finally{h.dispose();}
+});
+
+test('Phase 5 Project route is reachable, bounded, disabled without an adapter and preserves source/history',()=>{
+ const f=fixture();try{
+  const before=saveSculptProject(f.layers.project);f.model.setRequest('tool-wheel');
+  f.model.activate('project');assert.equal(f.model.world.section,'project');
+  for(const action of ['new','open','save','export','recover']){const b=f.model.content().buttons.find(b=>b.id===`project:${action}`);assert(b.disabled);assert.equal(f.model.hit(...buttonPoint(f.model,b.id)),b.id);f.model.activate(b.id);assert.equal(f.model.content().footer,'Unavailable');}
+  f.model.activate('tools');assert.equal(f.model.page,'tool-wheel');assert.deepEqual(saveSculptProject(f.layers.project),before);assert.equal(f.layers.undoCount,0);
+ }finally{f.dispose();}
+});
+test('Phase 5 menu status follows paint/mask operations, Move variants, locks and busy state',()=>{
+ const f=fixture();try{f.model.setRequest('tool-wheel');
+  for(const [tool,mode,label] of [['paint','paint-erase','Erase colour'],['mask','mask-erase','Erase protection'],['clay','subtract','Subtract']]){
+   f.tools.select(tool);f.tools.port.setSettings({...f.settings,mode});assert(f.tools.workflowStatus.includes(label));assert.equal(f.model.content().subtitle,f.tools.workflowStatus);
+  }
+  for(const variant of ['non-elastic','elastic','rotate-twist','pinch','crease','scrape']){f.tools.selectMoveVariant(variant);assert(f.tools.workflowStatus.startsWith(f.tools.contextLabel));}
+  f.busy=true;assert(f.tools.workflowStatus.includes('Working'));assert(f.model.content().footer.includes('Working'));f.busy=false;
+  f.layers.active.layer.locked=true;assert(f.tools.workflowStatus.includes('locked'));assert.equal(f.layers.undoCount,0);
+ }finally{f.dispose();}
+});
+test('Phase 5 project adapter dispatch is guarded by busy state and returns via Tools',async()=>{
+ const f=fixture();let calls=[];try{
+  const model=new XRMenuModel(f.tools,{projectAction:async a=>calls.push(a),projectStatus:()=> 'Unsaved changes'});model.setRequest('tool-wheel');model.activate('project');
+  for(const a of ['new','open','save','export','recover'])model.activate(`project:${a}`);assert.deepEqual(calls,['new','open','save','export','recover']);
+  f.busy=true;model.activate('project:new');assert.equal(calls.length,5);assert.equal(model.content().footer,'Unavailable');f.busy=false;
+  model.activate('tools');assert.equal(model.page,'tool-wheel');assert.equal(f.layers.undoCount,0);
+ }finally{f.dispose();}
+});
+test('Phase 5 World and Layers show rejected actions rather than hiding feedback',()=>{
+ const f=fixture();try{for(const request of ['tool-wheel','layers']){f.model.setRequest(request);if(request==='tool-wheel')f.model.activate('world');f.model.activate('nonexistent');assert.equal(f.model.content().footer,'Unavailable');f.model.setRequest(null);assert.equal(f.model.feedback,'');}}finally{f.dispose();}
+});
+
+test('Phase 5 held trigger cannot route to Project until released, in either hand',()=>{
+ const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
+ for(const hand of ['left','right']){view.close();view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const state=toolState();state.handedness=hand;trigger(state,true);view.update('tool-wheel',state,undefined,0,true);
+ const pose=rayPose(view,...buttonPoint(f.model,'project'));view.update('tool-wheel',state,pose,120,true);assert.equal(f.model.page,'tool-wheel');
+ trigger(state,false);view.update('tool-wheel',state,pose,140,true);trigger(state,true);view.update('tool-wheel',state,pose,160,true);assert.equal(f.model.world.section,'project');
+ view.update(null,state,pose,180,true);assert(!view.active);assert.equal(f.layers.undoCount,0);}
+ }finally{view.dispose();f.dispose();restore();}
+});
+test('Phase 5 disabled paint swatches and sliders never mutate or capture input',()=>{
+ const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
+ f.tools.select('paint');view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const state=toolState();view.update('tool-wheel',state,undefined,0,true);f.model.activate('options');f.busy=true;
+ const swatch=f.model.content().buttons.find(b=>b.id.startsWith('paint-swatch:'));assert(swatch.disabled);const before=f.layers.paintColour;f.model.activate(swatch.id);assert.equal(f.layers.paintColour,before);
+ // A busy slider must not keep capture when the job finishes while trigger is held.
+ f.model.optionPage=Math.floor(f.tools.options().findIndex(o=>o.slider)/5);
+ const slider=f.model.content().buttons.find(b=>b.slider);assert(slider?.disabled);const pose=rayPose(view,...buttonPoint(f.model,slider.id));
+ trigger(state,false);view.update('tool-wheel',state,pose,120,true);trigger(state,true);view.update('tool-wheel',state,pose,140,true);f.busy=false;state.buttons.trigger.justPressed=false;
+ const value=f.model.content().buttons.find(b=>b.id===slider.id).slider.value;view.update('tool-wheel',state,pose,260,true);assert.equal(f.model.content().buttons.find(b=>b.id===slider.id).slider.value,value);assert.equal(f.layers.undoCount,0);
+ }finally{view.dispose();f.dispose();restore();}
+});
+test('Phase 5 static Project polling retains one canvas and no repaints',t=>{
+ const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
+ view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});view.update('tool-wheel',undefined,undefined,0,true);f.model.activate('project');view.update('tool-wheel',undefined,undefined,100,true);
+ const count=view.paintCount,texture=view.mesh.material.map,start=performance.now();for(let i=1;i<=360;i++)view.update('tool-wheel',undefined,undefined,100+i*16,true);
+ t.diagnostic(`Host mock-canvas 360 polls: ${(performance.now()-start).toFixed(2)} ms; additional repaints ${view.paintCount-count}`);assert.equal(view.paintCount,count);assert.equal(view.mesh.material.map,texture);
+ }finally{view.dispose();f.dispose();restore();}
 });

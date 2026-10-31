@@ -144,3 +144,8 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 #confirm-recovery:hover:not(:disabled) { background: #48623b; }
 
 .hierarchy-row{border:1px solid #d5dece;border-radius:10px;margin:8px 0;padding:9px;display:flex;flex-wrap:wrap;gap:6px}.hierarchy-row.active{border-color:#738f55;background:#f0f5e8}.hierarchy-row input:not([type=color]),.hierarchy-row select,.hierarchy-row details{width:100%;min-width:0;margin:0}.hierarchy-row p{font-size:11px;margin:4px 0}.hierarchy-row button{flex:1 1 42%;min-width:0;padding:10px 6px}.hierarchy-row button:first-child{flex-basis:100%}.hierarchy-palette>button{width:100%;margin:8px 0}
+
+#new-project-dialog{width:min(440px,calc(100vw - 48px));box-sizing:border-box;max-height:90vh;overflow:auto}
+#new-project-dialog label{display:block;margin-top:16px;font-size:12px;letter-spacing:.04em}
+#new-project-dialog select{display:block;box-sizing:border-box;width:100%;padding:12px;margin:6px 0 16px;border:1px solid #cbd4be;border-radius:6px;background:#fff;color:#344b2b;font:inherit}
+#new-project-dialog .dialog-actions{margin-top:20px}

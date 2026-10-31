@@ -1,3 +1,4 @@
+import {newProjectData,leaveForProject} from './project-workflow';
 import {LightRig} from './light-rig';
 import {lightingUI} from './lighting-ui';
 import {ReferenceTransformTool} from './reference-transform';
@@ -188,6 +189,7 @@ function changeHistory(redo:boolean) {
 document.getElementById('undo')!.addEventListener('click',()=>changeHistory(false));document.getElementById('redo')!.addEventListener('click',()=>changeHistory(true));
 window.addEventListener('keydown',event=>{
   if(ui.modalOpen||xrBlocked())return;
+  if((event.ctrlKey||event.metaKey)&&!event.altKey&&!event.repeat&&event.key.toLowerCase()==='s'){event.preventDefault();document.getElementById('save-project')!.click();return;}
   if(event.key==='Escape'&&shapeGhost.model.enabled&&!loadingProject){stop();shapeGhost.clear();shapeLibraryUI.refresh();transformTools?.sync();ui.status('Ghost hidden — sculpting available');return;}
   if(event.target instanceof Element&&event.target.closest('input:not([type="range"]),textarea,select,[contenteditable="true"]'))return;
   if(input.referenceEditing&&!event.metaKey&&!event.ctrlKey&&!event.altKey){const mode=({w:'translate',e:'rotate',r:'scale'} as const)[event.key.toLowerCase() as 'w'|'e'|'r'];if(event.key==='Escape'||mode){event.preventDefault();referenceEditor?.setMode(event.key==='Escape'?null:mode);return;}}
@@ -316,6 +318,18 @@ document.getElementById('save-project')!.addEventListener('click',()=>void(async
   finally{manualSaving=false;loadingProject=false;ui.projectBusy(false);refresh();updateSaveIndicator();}
 })());
 document.getElementById('header-save')!.addEventListener('click',()=>document.getElementById('save-project')!.click());
+const newProjectDialog=document.querySelector<HTMLDialogElement>('#new-project-dialog')!;
+document.getElementById('new-project')!.addEventListener('click',()=>{
+ if(loadingProject||xrBlocked()||ui.modalOpen||!layers.recoveryReady)return;
+ stop();newProjectDialog.returnValue='cancel';newProjectDialog.showModal();
+});
+newProjectDialog.addEventListener('close',()=>void(async()=>{
+ if(newProjectDialog.returnValue!=='create'||loadingProject||xrBlocked()||!layers.recoveryReady)return;
+ try{
+  const data=newProjectData(Number(document.querySelector<HTMLSelectElement>('#new-project-resolution')!.value),document.querySelector<HTMLSelectElement>('#new-project-contents')!.value,{...ui.settings,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}});
+  if(await openProjectFile(new File([],'New project.form'),data)){layers.viewMode='separate';syncView();manualSaveKey='';restoredSaveKey='';ui.projectMessage('New project ready. Save Project to keep a manual file.');refresh();updateSaveIndicator();}
+ }catch(error){ui.projectMessage(message(error),true);}
+})());
 const projectFile=document.querySelector<HTMLInputElement>('#project-file')!;
 document.getElementById('open-project')!.addEventListener('click',()=>{if(loadingProject||xrBlocked())return;stop();projectFile.value='';projectFile.click();});
 async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:string):Promise<boolean>{
@@ -387,6 +401,16 @@ const referencesUI=referenceUI(()=>display,references,precisionPanel.parentEleme
 let desktopLocked=false,savedTarget=controls.target.clone();
 const disabledBeforeXR=new Map<HTMLInputElement|HTMLButtonElement|HTMLSelectElement,boolean>();
 xrExperience=new XRExperience(renderer,xrRig,{
+ projectStatus:()=>`${layers.project.layerStack.layers.length} layers · ${manualSaving?'Saving…':document.getElementById('header-save')!.dataset.state==='saved'?'Manual save current':'Save changes before replacing'}`,
+ projectAction:async action=>{
+  try{await leaveForProject(xrExperience!.session,()=>!loadingProject&&!ui.modalOpen&&layers.recoveryReady,()=>{
+   const target=document.getElementById(({new:'new-project',open:'open-project',save:'save-project',export:'export-quality',recover:'restore-recovery'} as const)[action])!;
+   if(action==='recover'){updateRecoveryUI();(recoveryAvailable as HTMLDetailsElement).open=true;}
+   target.scrollIntoView({block:'center'});target.focus();
+   ui.projectMessage(`Continue ${action==='recover'?'recovery':action} in the browser panel. Use Enter Studio / Passthrough when ready.`);
+   if(action==='new')target.click();
+  });}catch(error){ui.projectMessage(message(error),true);throw error;}
+ },
  lighting,references,importReferences:referencesUI.import,tools:editorTools,layers:()=>layers,stability:()=>stabilityText,historyChanged:()=>{cursor.visible=false;refresh();},
  sculptureInfo:()=>({activeResolution:volumeLabel(layers.active.layer.volume),resolutions:layers.project.layerStack.layers.map(layer=>`${volumeLabel(layer.volume)}`).join(' / '),layerMeshes:countVisibleMeshes(layers.group),compositeMeshes:countVisibleMeshes(layers.composite.group)}),
  blockedReason:()=>!recovery?.initialized?'Checking local recovery storage…':recovery.blocked&&recovery.enabled?'Review saved recovery before entering.':ui.modalOpen?'Close the open dialog before entering.':loadingProject?'Wait for the current project operation to finish.':'Wait for Boolean Preview to finish, or select Separate Layers.',

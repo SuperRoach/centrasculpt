@@ -23,7 +23,7 @@ export class XRMenuModel {
  constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);this.palette=new LayerPaletteModel(tools);}
  setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
  get layerSelectionActive():boolean{return this.request!==null&&this.page==='layers'&&!this.merge&&!this.resetTarget;}
- content():MenuContent{const content=this.buildContent();content.buttons.push({id:'ui-scale',label:`UI · ${this.tools.port.layers().display.vrUiScale==='large'?'Large':'Default'}`,rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
+ content():MenuContent{const content=this.buildContent();if(this.feedback){content.footer=this.feedback;if(this.page==='tool-wheel')content.subtitle=this.feedback;}else if(this.tools.busy)content.footer="Working… · Finish or cancel the current edit";content.buttons.push({id:'ui-scale',label:`UI · ${this.tools.port.layers().display.vrUiScale==='large'?'Large':'Default'}`,rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
  private buildContent():MenuContent{
   if(this.page==='world')return this.world.content();
   if(this.page==='layers'&&!this.merge)return this.palette.content();
@@ -45,6 +45,7 @@ export class XRMenuModel {
   if(this.page==='tool-wheel'){
    add('tool:paint','Paint',392,1030,320,78,this.tools.active==='paint',this.tools.busy);
    add('tool:mask','Mask',40,1030,320,78,this.tools.active==='mask',this.tools.busy);
+   add('project','Project',744,1030,368,78,false,this.tools.busy);
    add('world','World Settings',760,140,352,74,false,this.tools.busy);
    add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',40,140,300,74,!!this.tools.path.snap,this.tools.busy);
    VR_WHEEL_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.id==='move'?MOVE_VARIANT_LABELS[this.tools.lastMoveVariant]:tool.detail,sector:i,selected:tool.id==='move'?this.tools.moveFamily:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
@@ -66,14 +67,14 @@ export class XRMenuModel {
 
    add('prev','‹',788,140,144,74,false,this.optionPage===0);add('next','›',948,140,164,74,false,this.optionPage===pages-1);
    all.slice(this.optionPage*OPTIONS_PER_PAGE,this.optionPage*OPTIONS_PER_PAGE+OPTIONS_PER_PAGE).forEach((option,i)=>{const y=244+i*150;
-    if(option.id==='paint-colour'){labels.push({text:`Paint colour · ${option.value}`,x:56,y:y-16,small:true,width:1000,height:52});PAINT_SWATCHES.forEach((colour,j)=>buttons.push({id:`paint-swatch:${colour}`,label:'',colour,selected:this.tools.port.layers().paintColour===colour,rect:{x:40+j*108,y:y+42,width:96,height:88}}));return;}
+    if(option.id==='paint-colour'){labels.push({text:`Paint colour · ${option.value}`,x:56,y:y-16,small:true,width:1000,height:52});PAINT_SWATCHES.forEach((colour,j)=>buttons.push({id:`paint-swatch:${colour}`,label:'',colour,disabled:option.disabled,selected:this.tools.port.layers().paintColour===colour,rect:{x:40+j*108,y:y+42,width:96,height:88}}));return;}
     if(option.action){add(option.action,option.label,40,y,1072,136,false,option.disabled,option.value);return;}
     labels.push({text:option.label,x:56,y:y+2,small:true,width:724,height:68},{text:option.value,x:56,y:y+72,width:option.slider?280:724,height:76,value:true});
     if(option.slider)buttons.push({id:`slider:${option.id}`,label:'',rect:{x:380,y:y+78,width:380,height:54},disabled:option.disabled,slider:option.slider});
     add(`dec:${option.id}`,'-',812,y+22,140,92,false,!option.decrease);add(`inc:${option.id}`,'+',972,y+22,140,92,false,!option.increase);
    });
   }
-  return {title,subtitle:this.page==='tool-options'?`Page ${this.optionPage+1} / ${Math.max(1,Math.ceil(this.tools.options().length/OPTIONS_PER_PAGE))} · Tool trigger selects`:this.page==='layers'?'Point with Tool Hand · trigger to select / toggle':'Point with Tool Hand · trigger to select',buttons,labels,footer:this.feedback||'Hold Support stick · release to close'};
+  return {title,subtitle:this.page==='tool-options'?`Page ${this.optionPage+1} / ${Math.max(1,Math.ceil(this.tools.options().length/OPTIONS_PER_PAGE))} · Tool trigger selects`:this.page==='layers'?'Point with Tool Hand · trigger to select / toggle':this.tools.workflowStatus,buttons,labels,footer:this.feedback||'Hold Support stick · release to close'};
  }
  hit(x:number,y:number,content=this.content()):string|null{
   if(!this.request||!Number.isFinite(x)||!Number.isFinite(y)||x<0||y<0||x>MENU_SIZE||y>MENU_SIZE)return null;
@@ -91,6 +92,7 @@ export class XRMenuModel {
   try{
    const separator=id.indexOf(':'),action=separator<0?id:id.slice(0,separator),value=id.slice(separator+1);
    if(this.palette.activate(id)){}
+   else if(id==='project'){this.page='world';this.world.section='project';}
    else if(id==='world'){this.page='world';this.world.section='home';}
    else if(this.page==='world'&&this.world.activate(id)){}
    else if(id==='ui-scale'||id==='world-ui-scale'){const l=this.tools.port.layers();l.display.vrUiScale=l.display.vrUiScale==='large'?'normal':'large';this.tools.port.changed();}

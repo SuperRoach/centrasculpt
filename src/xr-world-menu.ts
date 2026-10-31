@@ -6,8 +6,11 @@ import {STUDIO_BACKGROUNDS,mirrorGuideSettings,turntableSettings} from './world-
 import type {EditorToolState} from './editor-tool-state';
 import type {MenuContent,MenuButton} from './xr-menu-model';
 import type {XRSessionController} from './xr-session';
-export type WorldSection='lighting'|'light'|'light-colour'|'light-position'|'inspection'|'home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot'|'references'|'reference'|'reference-pose'|'reference-delete'|'reference-more';
+export type ProjectAction='new'|'open'|'save'|'export'|'recover';
+export type WorldSection='project'|'lighting'|'light'|'light-colour'|'light-position'|'inspection'|'home'|'environment'|'background'|'guides'|'preferences'|'mirror-guide'|'turntable'|'pivot'|'references'|'reference'|'reference-pose'|'reference-delete'|'reference-more';
 export interface XRWorldMenuPort {
+ projectAction?:(action:ProjectAction)=>Promise<void>;
+ projectStatus?:()=>string;
  lighting?:LightRig;
  references?:ReferenceView;
  importReferences?:()=>void;
@@ -23,6 +26,7 @@ export interface XRWorldMenuPort {
 export class XRWorldMenu {
  section:WorldSection='home';
  private light:LightId='key';
+ private projectError='';
  constructor(private readonly tools:EditorToolState,private readonly port?:XRWorldMenuPort){}
  content():MenuContent{
   const layers=this.tools.port.layers(),world=layers.display.world,busy=this.tools.busy;
@@ -31,7 +35,13 @@ export class XRWorldMenu {
   const add=(id:string,label:string,y:number,detail?:string,selected=false,disabled=busy)=>buttons.push({id,label,detail,selected,disabled,rect:{x:40,y,width:1072,height:136}});
   if(this.section!=='home')buttons.push({id:this.section.startsWith('reference')&&this.section!=='references'?'world:references':'world:home',label:this.section.startsWith('reference')&&this.section!=='references'?'‹ Reference images':'‹ World Settings',rect:{x:300,y:140,width:440,height:74}});
   let subtitle='Environment · background · guides · turntable · preferences';
-  if(this.section==='home'){
+  if(this.section==='project'){
+   subtitle=this.projectError||this.port?.projectStatus?.()||'Project commands unavailable in this preview';
+   for(const [i,action] of (['new','open','save','export','recover'] as const).entries()){
+    const labels={new:'New Project…',open:'Open Project…',save:'Save Project…',export:'Export GLB…',recover:'Recover Project…'};
+    add(`project:${action}`,labels[action],244+i*150,action==='new'?'Exit XR · choose resolution and starter layer':action==='export'?'Exit XR · choose scope and quality':'Exit XR · continue in browser',false,busy||!this.port?.projectAction);
+   }
+  }else if(this.section==='home'){
    add('world:environment','Environment',244,'Studio or Passthrough');
    add('world:background','Studio Background',394,'Colour swatches · ground grid');
    add('world:guides','Guides and Constraints',544,'Mirror symmetry · angle snap');
@@ -147,9 +157,15 @@ export class XRWorldMenu {
    add('world-performance',`VR performance · ${this.port?.performance()?'On':'Off'}`,544,this.port?'Existing performance panel and sampling':'Unavailable in this preview',!!this.port?.performance(),busy||!this.port);
   }
   if(this.port?.references?.error&&this.section.startsWith('reference'))subtitle=this.port.references.error;
-  return {title:this.section==='reference'?'REFERENCE IMAGE':this.section==='reference-more'?'IMAGE SETTINGS':'WORLD SETTINGS',subtitle,buttons,labels,footer:'Hold Support stick · Tool trigger selects · release to close'};
+  return {title:this.section==='project'?'PROJECT':this.section==='reference'?'REFERENCE IMAGE':this.section==='reference-more'?'IMAGE SETTINGS':'WORLD SETTINGS',subtitle,buttons,labels,footer:'Hold Support stick · Tool trigger selects · release to close'};
  }
  activate(id:string):boolean{
+  if(id.startsWith('project:')){
+   this.projectError='';
+   if(!this.tools.busy&&this.port?.projectAction)void this.port.projectAction(id.slice(8) as ProjectAction).catch(error=>{this.projectError=error instanceof Error?error.message:'Project action failed';});
+   return true;
+  }
+
   if(id.startsWith('lighting-')||id.startsWith('inspection-')){
    if(this.tools.busy)return true;
    const display=this.tools.port.layers().display,rig=this.port?.lighting;

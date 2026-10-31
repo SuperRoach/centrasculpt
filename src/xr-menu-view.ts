@@ -47,7 +47,7 @@ export class XRMenuView implements XRMenuInteraction {
    const hit=this.raycaster.intersectObject(this.mesh,false)[0];
    if(hit?.uv){distance=hit.distance;this.model.hover=this.model.hit(hit.uv.x*MENU_SIZE,(1-hit.uv.y)*MENU_SIZE,this.content);const target=this.content.buttons.find(b=>b.id===this.model.hover);this.cursor.visible=!!target;this.cursor.material.color.set(target?.disabled?VR_UI.disabled:this.slider===target?.id?VR_UI.text:VR_UI.accent);this.cursor.position.set((hit.uv.x-.5)*.72,(hit.uv.y-.5)*.72,.002);}
    if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){this.ready=true;this.slider=null;}
-   if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:'))this.slider=this.model.hover;else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
+   if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:')&&!this.content.buttons.find(b=>b.id===this.model.hover)?.disabled)this.slider=this.model.hover;else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
    if(this.slider&&tool.buttons.trigger.pressed&&hit?.uv){const b=this.content.buttons.find(b=>b.id===this.slider);if(b?.rect){this.model.setSlider(this.slider,(hit.uv.x*MENU_SIZE-b.rect.x-20)/(b.rect.width-40));this.content=this.model.content();}}
   }else{this.slider=null;this.ready=false;this.owner=0;}
   this.paint(this.content);return distance;
@@ -62,7 +62,7 @@ export class XRMenuView implements XRMenuInteraction {
   drawVRText(ctx,content.subtitle,{x:40,y:92,width:776,height:38},VR_UI.detail,VR_UI.muted);
   for(const b of content.buttons)this.button(b);
   for(const label of content.labels)drawVRText(ctx,label.text,{x:label.x,y:label.y,width:label.width??MENU_SIZE-label.x-44,height:label.height??46},label.small?VR_UI.label:label.value?VR_UI.value:VR_UI.label,label.small?VR_UI.muted:VR_UI.text);
-  drawVRText(ctx,content.footer,{x:wheel?744:40,y:1048,width:wheel?368:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
+  if(!wheel)drawVRText(ctx,content.footer,{x:wheel?744:40,y:1048,width:wheel?368:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
  }
  private button(b:MenuButton):void{
   const ctx=this.ctx,hover=b.id===this.model.hover&&!b.disabled,style=vrControlStyle(b.disabled,hover,b.selected,this.slider===b.id);
