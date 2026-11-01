@@ -1,3 +1,4 @@
+import {exportFilename} from './export-filename';
 import {questCapture} from './performance-capture';
 Object.assign(window,{centraPerformance:questCapture});
 import {installDesktopColourPicker} from './desktop-colour-picker';
@@ -333,7 +334,7 @@ document.getElementById('apply-resolution')!.addEventListener('click',()=>{
   if(requested===layers.active.layer.volume.resolution)return;
   void heavy('Resampling only the active layer…',()=>{const name=layers.active.layer.name,start=performance.now();layers.resampleActive(requested);ui.projectMessage(`${name}: ${requested}³ in ${(performance.now()-start).toFixed(0)} ms. Only this layer’s voxel history cleared; transforms retained. Other volumes unchanged.`);});
 });
-function download(data:Blob,name:string){const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function download(data:Blob,name:string){const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 document.getElementById('save-project')!.addEventListener('click',()=>void projectBrowser.activate('library:save'));
 document.getElementById('header-save')!.addEventListener('click',()=>document.getElementById('save-project')!.click());
 document.getElementById('new-project')!.addEventListener('click',()=>{
@@ -352,7 +353,7 @@ async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:
     await recovery?.settle();
     if(file.size>MAX_PROJECT_BYTES)throw new Error('Project file exceeds the supported size limit.');
     const prepared=await prepareLibrary({kind:'decode',data:buffer??await file.arrayBuffer()},signal);const project=hydrateProject(prepared.snapshot!);if(expectedProjectId&&project.id!==expectedProjectId)throw new Error('Recovery project identity does not match its record.');candidate=new IndependentLayers(project,new LayerDisplayPreferences(),true);for(const layer of project.layerStack.layers){const runtime=candidate.runtime(layer.id);while(runtime.rebuild(2,2)){await new Promise<void>(resolve=>setTimeout(resolve,0));if(signal.aborted)throw new Error('Project open cancelled.');}}if(signal.aborted)throw new Error('Project open cancelled.');
-    candidate.viewMode=layers.viewMode;references.clear();referenceEditor?.finish();xrExperience!.rig.sculptureRoot.remove(layers.group,layers.composite.group);layers.dispose();layers=candidate;candidate=undefined;display=layers.display;layers.interruptBackground=()=>recovery?.cancelJob();shapeGhost.reset();layers.composite.setQuality(Number(document.querySelector<HTMLSelectElement>('#composite-quality')!.value));xrExperience!.rig.sculptureRoot.add(layers.group,layers.composite.group);syncView();ui.setSettings(project.settings);editorTools?.restorePreferences(project.toolPreferences);
+    candidate.viewMode=layers.viewMode;references.clear();referenceEditor?.finish();xrExperience!.rig.sculptureRoot.remove(layers.group,layers.composite.group);layers.dispose();layers=candidate;candidate=undefined;clearPreparedExport();display=layers.display;layers.interruptBackground=()=>recovery?.cancelJob();shapeGhost.reset();layers.composite.setQuality(Number(document.querySelector<HTMLSelectElement>('#composite-quality')!.value));xrExperience!.rig.sculptureRoot.add(layers.group,layers.composite.group);syncView();ui.setSettings(project.settings);editorTools?.restorePreferences(project.toolPreferences);
     controls.dispose();camera.up.set(0,1,0);cameraView=0;updateCameraViewLabel();camera.position.fromArray(project.settings.camera.position);controls=createCameraControls();controls.target.fromArray(project.settings.camera.target);controls.update();
     cursor.visible=false;pointerInside=false;lastRebuild=performance.now();ui.projectMessage(`Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`);ui.status('Project opened');recovery?.replaceProject();manualSaveError='';restoredSaveKey=expectedProjectId?recoveryKey():'';if(!libraryOpen)projectBrowser.adopted(null,project.name);return true;
   }catch(error){ui.projectMessage(`Open failed: ${message(error)} Current project kept.`,true);if(libraryOpen)throw error;return false;}
@@ -366,15 +367,20 @@ window.addEventListener('keydown',event=>{if(event.key==='Escape'&&exportAbort){
 function exportEstimate():void {const count=layers.project.layerStack.layers.reduce((n,l)=>n+(l.visible?layers.runtime(l.id).triangles:0),0);let note='Final count reported after export.';try{const q=document.querySelector<HTMLSelectElement>('#export-quality')!.value as ExportQuality;exportAdmission(layers.exportSources('visible',false),q,Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes));}catch(error){note=message(error);}document.getElementById('export-estimate')!.textContent=`Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;}
 document.getElementById('export-quality')!.addEventListener('change',exportEstimate);
 
-async function exportGlb(scope:'visible'|'selected'|'composite',stlMM?:number) {
+async function exportSculpt(scope:'visible'|'selected'|'composite') {
+  const format=exportFormat.value;
+  if(format!=='stl'&&format!=='glb'){exportMessage('Choose STL or GLB.',true);return;}
+  const stlMM=format==='stl'?Number(printSize.value):undefined;
   if(loadingProject||xrBlocked())return;stop();
-  if(layers.deforming||layers.previewing){ui.projectMessage('Finish or cancel Move before exporting.',true);return;}
+  clearPreparedExport();
+  const filename=exportFilename(scope==='selected'?layers.active.layer.name:scope==='composite'?`${layers.project.name}-boolean`:layers.project.name,format);
+  if(layers.deforming||layers.previewing){exportMessage('Finish or cancel Move before exporting.',true);return;}
   recovery?.cancelJob();
-  loadingProject=true;exportAbort=new AbortController();const signal=exportAbort.signal;ui.projectBusy(true);syncTransformUI();transformTools?.sync();cancelExport.hidden=false;
+  loadingProject=true;exportAbort=new AbortController();const signal=exportAbort.signal;ui.projectBusy(true,true);syncTransformUI();transformTools?.sync();cancelExport.style.visibility='visible';
   try {
     await recovery?.settle();if(signal.aborted)throw new Error('Export cancelled.');await paint();let sources:ExportSource[];
     if(scope==='composite'){
-      ui.projectMessage('Evaluating Boolean result at the existing quality cap…');
+      exportMessage('Evaluating Boolean result at the existing quality cap…');
       // Abort the export wait; the shared preview scheduler may finish its own cache.
       let release=()=>{};try{await Promise.race([layers.composite.flush(),new Promise<never>((_,reject)=>{const abort=()=>reject(new Error('Export cancelled.'));signal.addEventListener('abort',abort,{once:true});release=()=>signal.removeEventListener('abort',abort);if(signal.aborted)abort();})]);}finally{release();}
       if(stlMM!==undefined&&layers.composite.stats?.capped)throw new Error('Unified STL unavailable at the current Boolean quality cap: detail would be lost. Export individual parts or reduce the model bounds.');
@@ -382,22 +388,38 @@ async function exportGlb(scope:'visible'|'selected'|'composite',stlMM?:number) {
     }else sources=layers.exportSources(scope,stlMM===undefined);
     if(stlMM!==undefined)sources=sources.map(source=>({...source,chunks:source.chunks.map(({positions,normals})=>({positions,normals}))}));
     const quality=document.querySelector<HTMLSelectElement>('#export-quality')!.value as ExportQuality;
-    const result=await exportGlbAsync(sources,quality,{signal,stlMM,maxBytes:Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes),progress:p=>{ui.projectMessage(`${p.stage} · ${Math.round(100*p.completed/Math.max(1,p.total))}% · Cancel available`);}});
+    const result=await exportGlbAsync(sources,quality,{signal,stlMM,maxBytes:Math.max(1,EXPORT_MEMORY_LIMIT-layers.trackedBytes),progress:p=>{exportMessage(`${p.stage} · ${Math.round(100*p.completed/Math.max(1,p.total))}% · Cancel available`);}});
     if(signal.aborted)throw new Error('Export cancelled.');
-    if(stlMM!==undefined){const report=result.report!;printReport.textContent=[`Physical size: ${report.dimensions.map(n=>n.toFixed(3)).join(' × ')} mm`,`${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`, `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,`Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,...report.blocking.map(s=>'BLOCKED: '+s),...report.warnings.map(s=>'WARNING: '+s),...report.unsupported.map(s=>'NOT CHECKED / LIMIT: '+s)].join('\n');printPanel.open=true;if(report.blocking.length)throw new Error('STL blocked: '+report.blocking.join(' '));if(!window.confirm(`${report.dimensions.map(n=>n.toFixed(3)).join(' × ')} mm · ${report.triangles} triangles.\n${report.warnings.join('\n')}\n${report.unsupported.join('\n')}\nDownload STL in millimetres?`))return;download(new Blob([result.data],{type:'model/stl'}),'centra-sculpt-mm.stl');download(new Blob([JSON.stringify({...report,scope,targetLongestMM:stlMM,quality,repairs:result.stats},null,2)],{type:'application/json'}),'centra-print-report.json');ui.projectMessage('STL exported in millimetres. Report saved; inspect in your slicer.');return;}
-    download(new Blob([result.data],{type:'model/gltf-binary'}),scope==='composite'?'centra-boolean-result.glb':scope==='selected'?'centra-selected-layer.glb':'centra-sculpt.glb');
-    const triangles=result.stats.reduce((n,s)=>n+s.triangles,0),issues=result.stats.reduce((n,s)=>n+s.boundaryEdges+s.nonManifoldEdges+s.inconsistentEdges,0);
-    ui.projectMessage(`${quality[0].toUpperCase()+quality.slice(1)} GLB: ${triangles.toLocaleString()} triangles · ${(result.data.byteLength/1048576).toFixed(2)} MiB · ${result.stats.length} ${result.stats.length===1?'mesh':'meshes'}${issues?` · ${issues} open/non-manifold/winding edges; inspect before printing`:''}. Source sculpture kept.`);
-  }catch(error){ui.projectMessage(`${message(error)} Source sculpture kept.`,!signal.aborted);}
-  finally{exportAbort=null;cancelExport.hidden=true;loadingProject=false;syncView();refresh();ui.projectBusy(false);exportEstimate();}
+    const encodedView=new DataView(result.data);
+    if(format==='stl'?(result.data.byteLength<84||!result.report||84+encodedView.getUint32(80,true)*50!==result.data.byteLength):(result.data.byteLength<12||encodedView.getUint32(0,true)!==0x46546c67))throw new Error('Export format mismatch. No file downloaded.');
+    if(stlMM!==undefined){const report=result.report!;printReport.textContent=[`Physical size: ${report.dimensions.map(n=>n.toFixed(3)).join(' × ')} mm`,`${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`, `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,`Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,...report.blocking.map(s=>'BLOCKED: '+s),...report.warnings.map(s=>'WARNING: '+s),...report.unsupported.map(s=>'NOT CHECKED / LIMIT: '+s)].join('\n');if(report.blocking.length)throw new Error('STL blocked: '+report.blocking.join(' '));
+      prepareExportDownload(result.data,filename,'model/stl',report.warnings.length>0);
+      printReportDownload.hidden=false;printReportDownload.onclick=()=>download(new Blob([JSON.stringify({...report,scope,targetLongestMM:stlMM,quality,repairs:result.stats},null,2)],{type:'application/json'}),filename.replace(/\.stl$/i,'-print-report.json'));
+      if(report.warnings.length){exportMessage(`Review print warnings, then download ${filename}.`);}else{printDownload.click();}
+      return;}
+    prepareExportDownload(result.data,filename,'model/gltf-binary',false);printDownload.click();
+  }catch(error){exportMessage(`${message(error)} Source sculpture kept.`,!signal.aborted);}
+  finally{exportAbort=null;cancelExport.style.visibility='hidden';loadingProject=false;syncView();ui.projectBusy(false);syncTransformUI();}
 }
-document.getElementById('export')!.addEventListener('click',()=>void exportGlb('visible'));
-document.getElementById('export-selected')!.addEventListener('click',()=>void exportGlb('selected'));
-document.getElementById('export-boolean')!.addEventListener('click',()=>void exportGlb('composite'));
-const printPanel=document.createElement('details');printPanel.id='print-panel';printPanel.innerHTML='<summary>3D Print / Export STL</summary><p>Binary STL coordinates are millimetres. Model coordinates have no intrinsic physical units; navigation and turntable display scale are excluded. Aspect ratio is locked. Selected exports use their own longest dimension. Visible parts are separate shells, not a union. Unified uses the current SDF Boolean composition and sampling quality; capped results are rejected. Fast preserves triangles; Standard cleans/orients; High also optimises planar faces. All changes apply only to export copies.</p>';
-const printSize=document.createElement('input');printSize.id='print-size';printSize.type='number';printSize.min='0.1';printSize.max='10000';printSize.value='100';printSize.step='0.1';const printLabel=document.createElement('label');printLabel.textContent='Target longest dimension (mm)';printLabel.append(printSize);printPanel.append(printLabel);
-for(const [scope,label] of [['selected','Export selected part STL'],['visible','Export visible parts STL (not union)'],['composite','Export unified Boolean STL']] as const){const button=document.createElement('button');button.textContent=label;button.onclick=()=>void exportGlb(scope,Number(printSize.value));printPanel.append(button);}
+document.getElementById('export')!.addEventListener('click',()=>void exportSculpt('visible'));
+document.getElementById('export-selected')!.addEventListener('click',()=>void exportSculpt('selected'));
+document.getElementById('export-boolean')!.addEventListener('click',()=>void exportSculpt('composite'));
+const exportFormat=document.querySelector<HTMLSelectElement>('#export-format')!;
+const printPanel=document.createElement('details');printPanel.id='print-panel';printPanel.innerHTML='<summary>Print report</summary><p>Review this report before downloading STL. Unsupported checks still require inspection in your slicer.</p>';
+const printSize=document.createElement('input');printSize.id='print-size';printSize.type='number';printSize.min='0.1';printSize.max='10000';printSize.value='100';printSize.step='0.1';const printLabel=document.createElement('label');printLabel.textContent='Target longest dimension (mm)';printLabel.append(printSize);printLabel.append(document.createTextNode(' · aspect ratio locked'));document.getElementById('export-selected')!.before(printLabel);
+const exportResult=document.createElement('div');exportResult.id='export-result';
+const exportStatus=document.createElement('p');exportStatus.setAttribute('role','status');
+const printDownload=document.createElement('a');printDownload.id='export-download';printDownload.style.visibility='hidden';
+exportResult.append(exportStatus,printDownload,cancelExport);document.getElementById('export-boolean')!.after(exportResult);cancelExport.hidden=false;cancelExport.style.visibility='hidden';
+let preparedExportURL:string|null=null;
+function exportMessage(text:string,error=false){exportStatus.textContent=text;exportStatus.classList.toggle('error',error);}
+function clearPreparedExport(){if(preparedExportURL)URL.revokeObjectURL(preparedExportURL);preparedExportURL=null;printDownload.removeAttribute('href');printDownload.removeAttribute('download');printDownload.onclick=null;printDownload.style.visibility='hidden';printReportDownload.hidden=true;printReportDownload.onclick=null;printReport.textContent='';}
+function prepareExportDownload(data:ArrayBuffer,filename:string,mime:string,warnings:boolean){preparedExportURL=URL.createObjectURL(new Blob([data],{type:mime}));printDownload.href=preparedExportURL;printDownload.download=filename;printDownload.textContent=`Download ${filename}${warnings?' · accept report warnings':''}`;printDownload.style.visibility='visible';printDownload.onclick=()=>{exportMessage(`Download requested: ${filename}. If it did not appear, use the download link here.`);};}
+window.addEventListener('pagehide',clearPreparedExport);
+const printReportDownload=document.createElement('button');printReportDownload.textContent='Download optional print report (.json)';printReportDownload.hidden=true;printPanel.append(printReportDownload);
 const printReport=document.createElement('pre');printReport.style.whiteSpace='pre-wrap';printReport.setAttribute('role','status');printPanel.append(printReport);document.getElementById('export-boolean')!.parentElement!.append(printPanel);
+function syncExportFormat(){printLabel.hidden=exportFormat.value!=='stl';printPanel.hidden=exportFormat.value!=='stl';clearPreparedExport();}
+exportFormat.addEventListener('change',()=>{syncExportFormat();exportMessage(`${exportFormat.value.toUpperCase()} selected. Choose current layer, all layers, or unified boolean.`);});syncExportFormat();
 
 editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
  selectTool:tool=>{if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease'){chooseWorkspace('brush',true);return;}if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
@@ -455,8 +477,8 @@ xrExperience=new XRExperience(renderer,xrRig,{
  projectStatus:()=>`${layers.project.layerStack.layers.length} layers · ${manualSaving?'Saving…':document.getElementById('header-save')!.dataset.state==='saved'?'Manual save current':'Save changes before replacing'}`,
  projectAction:async action=>{
   try{await leaveForProject(xrExperience!.session,()=>!loadingProject&&!ui.modalOpen&&layers.recoveryReady,()=>{
-   const target=document.getElementById(({new:'new-project',open:'open-project',save:'save-project',export:'export-quality',print:'print-size',recover:'restore-recovery'} as const)[action])!;
-   if(action==='print')printPanel.open=true;
+   const target=document.getElementById(({new:'new-project',open:'open-project',save:'save-project',export:'export-format',print:'export-format',recover:'restore-recovery'} as const)[action])!;
+   if(action==='print'||action==='export'){exportFormat.value=action==='print'?'stl':'glb';syncExportFormat();}
    if(action==='recover'){updateRecoveryUI();(recoveryAvailable as HTMLDetailsElement).open=true;}
    target.scrollIntoView({block:'center'});target.focus();
    ui.projectMessage(`Continue ${action==='recover'?'recovery':action} in the browser panel. Use Enter Studio / Passthrough when ready.`);

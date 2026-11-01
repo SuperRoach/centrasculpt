@@ -106,7 +106,7 @@ export class XRWorldMenu {
     add('reference-edit',this.port?.references?.editing?'Finish placing':'Place image',384,r.locked?'Unlock this image to move it':'Point at image · hold trigger · move or rotate hand',!!this.port?.references?.editing,busy||r.locked);
     labels.push({text:`Size · ${r.size.toFixed(2)}`,x:340,y:576,width:460,height:90});
     buttons.push({id:'reference-smaller',label:'−',disabled:busy||r.locked||r.size<=.05,rect:{x:40,y:554,width:250,height:112}},{id:'reference-larger',label:'+',disabled:busy||r.locked||r.size>=10,rect:{x:862,y:554,width:250,height:112}});
-    cell('reference-flip-x',r.mime==='model/stl'?(r.wireframe?'Wireframe':'Solid'):'Flip X',40,704,'Mirror image horizontally',!!r.flipX);
+    cell('reference-flip-x',r.mime==='model/stl'?(r.wireframe?'Wireframe':'Solid'):'Flip X',40,704,r.mime==='model/stl'?'Toggle thin wireframe / solid':'Mirror image horizontally',r.mime==='model/stl'?!!r.wireframe:!!r.flipX);
     cell('reference-opacity',`Opacity · ${Math.round(r.opacity*100)}%`,588,704,'Tap to adjust',false,busy||r.locked);
     cell('reference-space',r.space==='workspace'?'Workspace anchor':'Sculpture anchor',40,864,r.space==='workspace'?'Stays outside turntable rotation':'Follows turntable rotation');
     cell('world:reference-more','More settings…',588,864,'Placement · two-sided · delete');

@@ -194,3 +194,10 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 /* Desktop camera view selector. */
 button.viewport-label{pointer-events:auto;z-index:8;width:auto;min-height:36px;margin:0;padding:8px 12px;border:1px solid #b8c9b8;border-radius:18px;background:#f8fbf0e8;color:#314e46;cursor:pointer;text-transform:uppercase;backdrop-filter:blur(14px)}
 button.viewport-label:hover{background:#fff}
+
+/* Reserve export feedback space so preparing/downloading never moves scope buttons. */
+#export-result { height: 150px; display: grid; grid-template-rows: 64px 44px 34px; gap: 4px; overflow: auto; }
+#export-result p { margin: 0; font-size: 12px; line-height: 1.4; overflow: auto; overflow-wrap: anywhere; text-align: left; }
+#export-download { display: flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 7px; background: #304a43; color: white; font-size: 12px; overflow-wrap: anywhere; }
+#export-result #cancel-export { margin: 0; padding: 5px; }
+.actions button[aria-disabled="true"] { opacity: .55; cursor: wait; }

@@ -21,7 +21,7 @@ export class ReferenceView{
   const parent=record.space==='workspace'?this.workspace:this.sculpture;if(p.mesh.parent!==parent)parent.add(p.mesh);
   p.mesh.position.fromArray(record.position);p.mesh.rotation.set(...record.rotation);p.mesh.scale.set(record.size*record.width/Math.max(record.width,record.height),record.size*record.height/Math.max(record.width,record.height),record.mime==='model/stl'?record.size:1);p.mesh.visible=record.visible&&(record.mime==='model/stl'||!!p.texture);
   if(p.texture){const flipped=!!record.flipX;p.texture.repeat.x=flipped?-1:1;p.texture.offset.x=flipped?1:0;}
-  p.mesh.material.color.set(record.mime==='model/stl'?'#46acc9':'#ffffff');p.mesh.material.wireframe=!!record.wireframe;p.mesh.material.depthWrite=record.mime==='model/stl'&&record.opacity===1;p.mesh.material.opacity=record.opacity;p.mesh.material.side=record.twoSided?DoubleSide:FrontSide;p.border.position.z=.002;p.border.visible=this.editing&&this.selected===record.id&&!record.locked;
+  p.mesh.material.color.set(record.mime==='model/stl'?'#46acc9':'#ffffff');p.mesh.material.wireframe=!!record.wireframe;p.mesh.material.wireframeLinewidth=1;p.mesh.material.depthWrite=record.mime==='model/stl'&&record.opacity===1;p.mesh.material.opacity=record.opacity;p.mesh.material.side=record.twoSided?DoubleSide:FrontSide;p.border.position.z=.002;p.border.visible=this.editing&&this.selected===record.id&&!record.locked;
   }
   if(this.selected&&!records.some(r=>r.id===this.selected)){this.selected=null;this.cancel();}
  }

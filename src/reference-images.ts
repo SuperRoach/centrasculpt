@@ -44,4 +44,4 @@ export function validateReferences(value:unknown):ReferenceImage[]{
 export function createReference(bytes:Uint8Array,name:string,id:string):ReferenceImage{return {id,name:name.slice(0,120),bytes,...imageHeader(bytes),space:'workspace',position:[1,0,0],rotation:[0,0,0],size:1,opacity:1,visible:true,locked:true,twoSided:true};}
 
 export function stlHeader(bytes:Uint8Array):{mime:'model/stl';width:number;height:number}{parseSTL(bytes);return {mime:'model/stl',width:1,height:1};}
-export function createMeshReference(bytes:Uint8Array,name:string,id:string):ReferenceImage{return {id,name:name.slice(0,120),bytes,...stlHeader(bytes),space:'workspace',position:[1,0,0],rotation:[0,0,0],size:1,opacity:1,visible:true,locked:true,twoSided:true,wireframe:false};}
+export function createMeshReference(bytes:Uint8Array,name:string,id:string):ReferenceImage{return {id,name:name.slice(0,120),bytes,...stlHeader(bytes),space:'workspace',position:[1,0,0],rotation:[0,0,0],size:1,opacity:.45,visible:true,locked:true,twoSided:true,wireframe:true};}
