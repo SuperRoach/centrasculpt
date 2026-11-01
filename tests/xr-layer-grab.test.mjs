@@ -26,8 +26,8 @@ test('simultaneous workspace movement is removed from layer-local poses',()=>{
 test('loss, identity replacement, invalid pose, mode/session cancellation roll back without history',()=>{
  for(const reason of ['tracking','identity','invalid','disabled']){const {layers,grab,tool}=setup();grab.step(tool,pose(0),0);grab.step(tool,pose(1),16);if(reason==='tracking')tool.gripTracked=false;if(reason==='identity')tool.connectionId++;const p=pose(2);if(reason==='invalid')p.elements[0]=NaN;assert(grab.step(tool,p,32,reason!=='disabled'));assert.equal(grab.active,false);assert.deepEqual(layers.active.layer.transform.position,[0,0,0]);assert.equal(layers.undoCount,0);layers.dispose();}
 });
-test('locked, hidden, Boolean and support input cannot start layer transactions',()=>{
- for(const reason of ['locked','hidden','boolean','support']){const {layers,grab,tool}=setup();if(reason==='locked')layers.active.layer.locked=true;if(reason==='hidden')layers.active.layer.visible=false;if(reason==='boolean')layers.viewMode='boolean';if(reason==='support')tool.role='support';grab.step(tool,pose(0),0);assert.equal(grab.active,false);assert.equal(layers.transforming,false);layers.dispose();}
+test('locked, hidden and support input cannot start layer transactions',()=>{
+ for(const reason of ['locked','hidden','support']){const {layers,grab,tool}=setup();if(reason==='locked')layers.active.layer.locked=true;if(reason==='hidden')layers.active.layer.visible=false;if(reason==='boolean')layers.viewMode='boolean';if(reason==='support')tool.role='support';grab.step(tool,pose(0),0);assert.equal(grab.active,false);assert.equal(layers.transforming,false);layers.dispose();}
 });
 test('layer scale stays unchanged regardless of stick input',()=>{
  const {layers,grab,tool}=setup();layers.setActiveTransform({position:[0,0,0],rotation:[0,0,0],scale:[999,999,999]});grab.step(tool,pose(0),0);tool.stick.y=-1;grab.step(tool,pose(0),50);assert.deepEqual(layers.active.layer.transform.scale,[999,999,999]);tool.stick.available=false;tool.stick.y=1;grab.step(tool,pose(0),100);assert.deepEqual(layers.active.layer.transform.scale,[999,999,999]);grab.cancel();layers.dispose();
@@ -44,3 +44,5 @@ test('stationary layer grab is a history no-op and does not consume redo',()=>{
 });
 
 test('missing active selection rejects Tool grab without throwing',()=>{const {layers,grab,tool}=setup();layers.project.layerStack.selected='missing';assert.doesNotThrow(()=>grab.step(tool,pose(0),0));assert.equal(grab.active,false);assert.equal(layers.undoCount,0);layers.dispose();});
+
+test('Boolean mode allows a VR grip transform without changing the view preference',()=>{const {layers,grab,tool}=setup();try{layers.viewMode='boolean';grab.step(tool,pose(0),0);assert(grab.active);tool.buttons.grip.justPressed=false;grab.step(tool,pose(.5),16);assert.equal(layers.active.layer.transform.position[0],.5);tool.buttons.grip.pressed=false;grab.step(tool,pose(.5),32);assert.equal(grab.active,false);assert.equal(layers.viewMode,'boolean');assert.equal(layers.undoCount,1);}finally{layers.dispose();}});

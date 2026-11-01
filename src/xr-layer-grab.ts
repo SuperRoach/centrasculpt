@@ -14,7 +14,7 @@ export class XRLayerGrab {
  owns(id:number):boolean{return this.active&&this.owner===id;}
  cancel():void{if(this.active)this.issue('cancel');if(this.active)this.layers().cancelTransform();this.owner=0;this.id='';}
  step(tool:XRControllerState|undefined,pose:Matrix4|undefined,_time:number,enabled=true):boolean{
-  const layers=this.layers(),valid=enabled&&tool?.role==='tool'&&tool.connected&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&layers.viewMode==='separate'&&layers.project.layerStack.layers.some(l=>l.id===layers.project.activeLayerId)&&layers.transformNode.editable;
+  const layers=this.layers(),valid=enabled&&tool?.role==='tool'&&tool.connected&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10&&layers.project.layerStack.layers.some(l=>l.id===layers.project.activeLayerId)&&layers.transformNode.editable;
   if(!valid||this.active&&(tool!.connectionId!==this.owner||layers.transformNode.id!==this.id||!layers.transforming)){const interrupted=this.active;this.cancel();return interrupted;}
   if(this.active&&!tool!.buttons.grip.pressed){layers.finishTransform();this.owner=0;this.id='';return false;}
   if(!this.active&&(!tool!.buttons.grip.justPressed||!tool!.buttons.grip.pressed))return false;

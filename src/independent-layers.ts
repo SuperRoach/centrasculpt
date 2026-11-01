@@ -283,11 +283,11 @@ export class IndependentLayers {
   beginTransform():void {
     this.finishStroke();if(this.transformSession)throw new Error('A transform is already active.');
     this.assertAvailable();const node=this.transformNode;node.assertEditable();
-    this.transformSession={layerId:node.id,before:copyTransform(node.transform),hierarchyBefore:this.selectedGroupId?this.project.layerStack.hierarchy.snapshot():undefined};
+    this.transformSession={layerId:node.id,before:copyTransform(node.transform),hierarchyBefore:(this.selectedGroupId||this.project.layerStack.hierarchy.children(node.id).length)?this.project.layerStack.hierarchy.snapshot():undefined};
   }
   updateTransform(value:unknown):void {
     if(!this.transformSession)throw new Error('No transform transaction is active.');
-    if(this.transformNode.id!==this.transformSession.layerId)throw new Error('Transform selection changed.');const node=this.transformNode;node.assertEditable();node.transform=validateTransformEdit(value,this.transformSession.before);if(node instanceof LayerGroup)this.syncPresentation();else this.syncLayerPose(node.id);
+    if(this.transformNode.id!==this.transformSession.layerId)throw new Error('Transform selection changed.');const node=this.transformNode;node.assertEditable();node.transform=validateTransformEdit(value,this.transformSession.before);if(node instanceof LayerGroup||this.project.layerStack.hierarchy.children(node.id).length)this.syncPresentation();else this.syncLayerPose(node.id);
   }
   finishTransform():boolean {
     const session=this.transformSession;if(!session)return false;this.transformSession=null;
@@ -395,8 +395,9 @@ export class IndependentLayers {
     const layer=new SdfLayer(volume,{...metadata,name:this.uniqueName(`${source.name.slice(0,123)} copy`)}),runtime=new LayerRuntime(layer,this.neutral);
     const index=this.project.layerStack.layers.findIndex(l=>l.id===id);this.project.layerStack.insert(layer,index+1);const state=this.project.layerStack.hierarchy.snapshot();state.layers.find(l=>l.id===layer.id)!.parentId=this.project.layerStack.hierarchy.parent(source.id);this.project.layerStack.hierarchy.restore(state);this.install(runtime);this.selectedGroupId=null;this.display.setColour(this.project.id,layer.id,this.display.colour(this.project.id,source.id,source.order));this.discardFuture();this.past.push({kind:'bake',layerId:layer.id,runtime,before,after:this.bakeState(),index:index+1});this.committedRevision++;this.syncPresentation();return layer;
   }
+  isEmpty(id:string):boolean{const runtime=this.runtime(id);if(runtime.layer.procedural)return false;const values=runtime.volume.getDenseView(),count=volumeSampleCount(runtime.volume);for(let i=0;i<count;i++)if(!((values?values[i]:runtime.volume.readVoxel(i))>0))return false;return true;}
   remove(id: string): void {this.assertAvailable();
-    this.finishStroke();this.finishTransform();const runtime=this.runtime(id);this.project.layerStack.remove(id);this.group.remove(runtime.surface.group);this.retainedHierarchy.delete(runtime);runtime.dispose();this.runtimes.delete(id);
+    this.finishStroke();this.finishTransform();const runtime=this.runtime(id),hierarchy=this.project.layerStack.hierarchy;for(const child of hierarchy.children(id))hierarchy.reparent(child,hierarchy.parent(id));this.project.layerStack.remove(id);this.group.remove(runtime.surface.group);this.retainedHierarchy.delete(runtime);runtime.dispose();this.runtimes.delete(id);
     this.past=this.past.filter(entry=>entry.layerId!==id&&entry.kind!=='hierarchy');this.future=this.future.filter(entry=>entry.layerId!==id&&entry.kind!=='hierarchy');this.releaseHierarchyOrphans();this.display.remove(this.project.id,id);this.syncPresentation();
   }
   rename(id: string,name: string): void {this.renameNode(id,name);}

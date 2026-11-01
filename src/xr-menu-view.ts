@@ -14,7 +14,7 @@ export class XRMenuView implements XRMenuInteraction {
  private readonly texture:CanvasTexture;private readonly ctx:CanvasRenderingContext2D;
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();
  private readonly eye=new Vector3();private readonly head=new Quaternion();private readonly forward=new Vector3();
- private slider:string|null=null;
+ private slider:string|null=null;private dragPageHover:string|null=null;private dragPageSince=0;
  private ready=false;private owner=0;private hasPose=false;private lastContent='';private lastRefresh=-Infinity;private content:MenuContent|null=null;
  get layerSelectionActive():boolean{return this.model.layerSelectionActive;}
  constructor(readonly model:XRMenuModel){
@@ -42,14 +42,21 @@ export class XRMenuView implements XRMenuInteraction {
   if(time-this.lastRefresh>=100||!this.content){this.content=this.model.content();this.lastRefresh=time;}
   let distance:number|null=null;this.model.hover=null;this.cursor.visible=false;
   if(tool?.connected&&tool.role==='tool'&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10){
-   if(tool.connectionId!==this.owner){this.slider=null;this.owner=tool.connectionId;this.ready=false;}
+   if(tool.connectionId!==this.owner){this.model.palette.dragged=null;this.slider=null;this.owner=tool.connectionId;this.ready=false;}
    this.mesh.updateWorldMatrix(true,false);this.raycaster.ray.origin.setFromMatrixPosition(pose);this.direction.set(0,0,-1).transformDirection(pose);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=3;
    const hit=this.raycaster.intersectObject(this.mesh,false)[0];
    if(hit?.uv){distance=hit.distance;this.model.hover=this.model.hit(hit.uv.x*MENU_SIZE,(1-hit.uv.y)*MENU_SIZE,this.content);const target=this.content.buttons.find(b=>b.id===this.model.hover);this.cursor.visible=!!target;this.cursor.material.color.set(target?.disabled?VR_UI.disabled:this.slider===target?.id?VR_UI.text:VR_UI.accent);this.cursor.position.set((hit.uv.x-.5)*.72,(hit.uv.y-.5)*.72,.002);}
-   if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){this.ready=true;this.slider=null;}
-   if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:')&&!this.content.buttons.find(b=>b.id===this.model.hover)?.disabled)this.slider=this.model.hover;else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
+   if(this.model.palette.dragged&&tool.buttons.trigger.pressed){
+    const hover=this.model.hover;
+    if(hover==='hier:prev'||hover==='hier:next'){
+     if(this.dragPageHover!==hover){this.dragPageHover=hover;this.dragPageSince=time;}
+     else if(time-this.dragPageSince>700){this.model.activate(hover);this.content=this.model.content();this.dragPageSince=time;}
+    }else{this.dragPageHover=null;const target=this.content.buttons.find(b=>b.id===hover);this.content={...this.content,footer:hover==='hier:root'?'Release to move outside':hover?.startsWith('select:')||hover?.startsWith('hier:group:')?`Release to attach to ${target?.label??'layer'}`:'Point at a layer or Outside · hover arrows to change page'};}
+   }else this.dragPageHover=null;
+   if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){if(this.model.palette.dragged){this.model.palette.endDrag(this.model.hover);this.content=this.model.content();}this.ready=true;this.slider=null;}
+   if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:')&&!this.content.buttons.find(b=>b.id===this.model.hover)?.disabled)this.slider=this.model.hover;else if(this.model.hover.startsWith('hier:drag:'))this.model.palette.beginDrag(this.model.hover.slice(10));else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
    if(this.slider&&tool.buttons.trigger.pressed&&hit?.uv){const b=this.content.buttons.find(b=>b.id===this.slider);if(b?.rect){this.model.setSlider(this.slider,(hit.uv.x*MENU_SIZE-b.rect.x-20)/(b.rect.width-40));this.content=this.model.content();}}
-  }else{this.slider=null;this.ready=false;this.owner=0;}
+  }else{this.model.palette.dragged=null;this.slider=null;this.ready=false;this.owner=0;}
   this.paint(this.content);return distance;
  }
  private paint(content:MenuContent):void{

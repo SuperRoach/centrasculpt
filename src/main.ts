@@ -1,3 +1,6 @@
+import {TransformPreview} from './transform-preview';
+import whatsNew from '../WHATS_NEW.md?raw';
+import {mountWhatsNew} from './whats-new';
 import {exportFilename} from './export-filename';
 import {questCapture} from './performance-capture';
 Object.assign(window,{centraPerformance:questCapture});
@@ -78,8 +81,9 @@ let viewportTools:ReturnType<typeof createViewportTools>|undefined;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#e9e9e3');scene.add(layers.group,layers.composite.group);
 const shapeGhost=new ShapeGhost(()=>layers.project.layerStack);scene.add(shapeGhost.group);
 const shapeLibraryUI=createShapeLibraryUI(document.getElementById('shape-library-slot')!,shapeGhost,()=>layers.project.layerStack,()=>loadingProject||ui.modalOpen||xrBlocked(),stop,()=>{transformTools?.sync();cursor.visible=false;ui.status(shapeGhost.model.moveMode?'Move preview · drag arrows or planes · Apply stamp when ready':shapeGhost.model.rotationMode?'Rotate stamp · drag a ring · T to finish':shapeGhost.model.enabled?(shapeGhost.model.followPointer?'Stamp — place on a visible surface':'Preview held · G to move · T to rotate · Apply to stamp'):'Ghost hidden — sculpting available');},()=>applyShapeStamp(),()=>toggleGhostRotation(),()=>toggleGhostRotation('translate'));
+const transformPreview=new TransformPreview();
 let booleanPreview=false,lastCompositePoll=0;
-function syncView(){booleanPreview=layers.viewMode==='boolean';ui.surfaceView(layers.viewMode);if(!booleanPreview)ui.compositeInfo('Separate Layers · source volumes unchanged.');layers.group.visible=!booleanPreview;layers.composite.group.visible=booleanPreview&&!layers.composite.failed;}
+function syncView(){booleanPreview=layers.viewMode==='boolean';ui.surfaceView(layers.viewMode,layers.composite.pending?undefined:layers.composite.stats?.triangles);if(!booleanPreview)ui.compositeInfo('');transformPreview.sync(layers);}
 syncView();
 const camera=new THREE.PerspectiveCamera(38,1,0.01,100);camera.position.set(2.4,1.7,3.3);
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=THREE.SRGBColorSpace;ui.viewport.append(renderer.domElement);renderer.domElement.tabIndex=0;
@@ -280,7 +284,7 @@ ui.onLayerAction(async(action,id,value)=>{
     if(action==='duplicate'){await layers.duplicateAsync(id,undefined,text=>ui.projectMessage(text));refresh();return;}
     if(action==='delete') {
       const layer=layers.project.layerStack.get(id);
-      if(await ui.confirmDelete(layer.name)){layers.remove(id);ui.projectMessage(`Deleted ${layer.name}. Only its history was removed.`);}
+      if(layers.isEmpty(id)||await ui.confirmDelete(layer.name)){layers.remove(id);ui.projectMessage(`Deleted ${layer.name}. Only its history was removed.`);}
     } else if(action==='select')layers.select(id);
     else if(action==='rename'){layers.rename(id,value!);ui.layerName(layers.project.layerStack.get(id));return;}
     else if(action==='visible')layers.setFlag(id,'visible',!layers.project.layerStack.get(id).visible);
@@ -293,12 +297,13 @@ ui.onLayerAction(async(action,id,value)=>{
     cursor.visible=false;refresh();
   }catch(error){ui.projectMessage(message(error),true);refresh();}
 });
-document.getElementById('composition-mode')!.addEventListener('change',event=>{
-  if(xrBlocked())return;
-  stop();layers.viewMode=(event.target as HTMLSelectElement).value==='boolean'?'boolean':'separate';syncView();syncStats();cursor.visible=false;
+document.getElementById('composition-mode')!.addEventListener('click',event=>{
+  const button=(event.target as Element).closest<HTMLButtonElement>('[data-surface-view]');
+  if(xrBlocked()||!button)return;
+  stop();layers.viewMode=button.dataset.surfaceView==='boolean'?'boolean':'separate';syncView();syncStats();cursor.visible=false;
   layers.composite.syncMetadata();
   const s=layers.composite.stats;
-  ui.compositeInfo(booleanPreview?(s&&!layers.composite.pending?`${s.resolution}³ cached Boolean preview · ${s.triangles.toLocaleString()} triangles${s.capped?' · Quality capped; fine detail may be lost.':''}`:'Preparing Boolean preview…'):'Separate Layers · source volumes unchanged.');
+  ui.compositeInfo(booleanPreview?(s&&!layers.composite.pending?`${s.resolution}³ cached Boolean preview · ${s.triangles.toLocaleString()} triangles${s.capped?' · Quality capped; fine detail may be lost.':''}`:'Preparing Boolean preview…'):'');
 });
 document.getElementById('composite-quality')!.addEventListener('change',event=>{
   if(xrBlocked())return;
@@ -418,6 +423,7 @@ function prepareExportDownload(data:ArrayBuffer,filename:string,mime:string,warn
 window.addEventListener('pagehide',clearPreparedExport);
 const printReportDownload=document.createElement('button');printReportDownload.textContent='Download optional print report (.json)';printReportDownload.hidden=true;printPanel.append(printReportDownload);
 const printReport=document.createElement('pre');printReport.style.whiteSpace='pre-wrap';printReport.setAttribute('role','status');printPanel.append(printReport);document.getElementById('export-boolean')!.parentElement!.append(printPanel);
+mountWhatsNew(printPanel,whatsNew);
 function syncExportFormat(){printLabel.hidden=exportFormat.value!=='stl';printPanel.hidden=exportFormat.value!=='stl';clearPreparedExport();}
 exportFormat.addEventListener('change',()=>{syncExportFormat();exportMessage(`${exportFormat.value.toUpperCase()} selected. Choose current layer, all layers, or unified boolean.`);});syncExportFormat();
 
@@ -503,7 +509,8 @@ xrExperience=new XRExperience(renderer,xrRig,{
 },!!renderEmulatorFrame);
 void xrExperience.check();
 const recoveryPanel=document.getElementById('recovery-slot')!;
-recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS</summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
+recoveryPanel.innerHTML='<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details id="session-resources"><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
+document.querySelector('main > aside')!.append(document.getElementById('session-resources')!);
 const recoveryStatus=document.getElementById('recovery-status')!,recoveryAvailable=document.getElementById('recovery-available')!,recoverySelect=document.querySelector<HTMLSelectElement>('#recovery-selection')!,autosaveEnabled=document.querySelector<HTMLInputElement>('#autosave-enabled')!,recoveryConfirm=document.getElementById('recovery-confirm')!;
 let recoveryAction:'restore'|'discard'|null=null,recoveryListKey='',recoveryChoice='',recoveryWasBlocked=false,restoringRecovery=false;
 const recoveryReady=()=>!input.transforming&&!recoveryAction&&!restoringRecovery&&layers.recoveryReady&&!loadingProject&&!ui.modalOpen&&document.visibilityState==='visible'&&!layers.composite.busy&&!xrExperience?.controllers.grab?.active&&!xrExperience?.controllers.layerGrab?.active&&!xrExperience?.alternate?.active&&!xrExperience?.menus?.active&&!xrExperience?.interaction?.active;
@@ -517,7 +524,7 @@ function updateSaveIndicator():void{
  if(button.dataset.state!==state){button.dataset.state=state;document.getElementById('header-save-status')!.textContent=label;}
  if(button.title!==title){button.title=title;button.setAttribute('aria-label',`Save project — ${label}`);}
 }
-function updateRecoveryUI():void{if(!recovery)return;updateSaveIndicator();recoveryStatus.textContent=recovery.status();autosaveEnabled.checked=recovery.enabled;autosaveEnabled.disabled=!recovery.initialized||xrBlocked();const key=JSON.stringify(recovery.records.map(r=>[r.id,r.createdAt]));if(key!==recoveryListKey){const selected=recoverySelect.value;recoveryListKey=key;recoverySelect.replaceChildren(...recovery.records.map(r=>new Option(`${r.projectName} · ${new Date(r.createdAt).toLocaleString()} · ${(r.bytes/1048576).toFixed(1)} MiB`,r.id)));if(recovery.records.some(r=>r.id===selected))recoverySelect.value=selected;}recoveryAvailable.hidden=!recovery.records.length;if(recoveryWasBlocked!==recovery.blocked){(recoveryAvailable as HTMLDetailsElement).open=recovery.blocked;recoveryWasBlocked=recovery.blocked;}for(const id of ['restore-recovery','discard-recovery','confirm-recovery'])document.querySelector<HTMLButtonElement>(`#${id}`)!.disabled=loadingProject||xrBlocked()||!layers.recoveryReady;}
+function updateRecoveryUI():void{if(!recovery)return;updateSaveIndicator();recoveryStatus.textContent=recovery.status();recoveryStatus.hidden=recovery.blocked&&!recovery.warning;const info=document.getElementById('recovery-info')!;info.title=recovery.status();info.setAttribute('aria-label',recovery.status());autosaveEnabled.checked=recovery.enabled;autosaveEnabled.disabled=!recovery.initialized||xrBlocked();const key=JSON.stringify(recovery.records.map(r=>[r.id,r.createdAt]));if(key!==recoveryListKey){const selected=recoverySelect.value;recoveryListKey=key;recoverySelect.replaceChildren(...recovery.records.map(r=>new Option(`${r.projectName} · ${new Date(r.createdAt).toLocaleString()} · ${(r.bytes/1048576).toFixed(1)} MiB`,r.id)));if(recovery.records.some(r=>r.id===selected))recoverySelect.value=selected;}recoveryAvailable.hidden=!recovery.records.length;if(recoveryWasBlocked!==recovery.blocked){(recoveryAvailable as HTMLDetailsElement).open=recovery.blocked;recoveryWasBlocked=recovery.blocked;}for(const id of ['restore-recovery','discard-recovery','confirm-recovery'])document.querySelector<HTMLButtonElement>(`#${id}`)!.disabled=loadingProject||xrBlocked()||!layers.recoveryReady;}
 recovery=new RecoveryController(new IndexedRecoveryStore(undefined,import.meta.env.DEV&&new URLSearchParams(location.search).get('recoveryFixture')==='lab'?'centra-sculpt-recovery-test':'centra-sculpt-recovery'),{key:recoveryKey,ready:recoveryReady,project:()=>layers.project,changed:updateRecoveryUI,reserve:bytes=>{layers.backgroundBytes=bytes;},encode:signal=>{const source=layers,key=recoveryKey();return encodeRecovery(source,{...ui.settings,camera:{position:(xrBlocked()?layers.project.settings.camera.position:camera.position.toArray()),target:(xrBlocked()?layers.project.settings.camera.target:controls.target.toArray())}},display.snapshot(source.project.id,source.project.layerStack.layers),editorTools?.snapshotPreferences(),signal,()=>layers===source&&recoveryKey()===key&&recoveryReady());}});
 layers.interruptBackground=()=>recovery?.cancelJob();void recovery.init();
 autosaveEnabled.addEventListener('change',()=>void recovery!.setEnabled(autosaveEnabled.checked));
@@ -549,7 +556,7 @@ function resizeDesktop(){if(renderer.xr.isPresenting||xrBlocked())return;const w
 new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();let previous=performance.now();
 function pollComposite(now:number):void{
-  if(booleanPreview&&!loadingProject&&!ui.modalOpen&&now-lastCompositePoll>100){
+  if(booleanPreview&&!layers.transforming&&!loadingProject&&!ui.modalOpen&&now-lastCompositePoll>100){
     lastCompositePoll=now;
     const job=layers.composite.tick();
     if(job)ui.compositeInfo('Preview pending · updates after a short pause. Brushes still target the selected source layer.');
@@ -567,7 +574,7 @@ renderer.setAnimationLoop((now,frame)=>{
     desktopMirrorPlane.group.visible=false;desktopFieldCursor.hide();desktopMirrorCursor.hide();desktopPaths.visible=false;if(desktopStroke.active)desktopStroke.cancel();
     if(frame&&renderer.xr.isPresenting)xrExperience!.frame(now,frame);
     if(!xrExperience!.controllers.grab?.active&&!xrExperience!.controllers.layerGrab?.active)pollComposite(now);
-    layers.updateMaskOverlays();renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
+    transformPreview.sync(layers);layers.updateMaskOverlays();renderer.render(scene,camera);xrExperience!.finishFrame(performance.now()-cpuStart);return;
   }
   xrExperience?.refreshButton();
   const dt=Math.min((now-previous)/1000,0.05);previous=now;if(input.cameraEnabled)controls.update();
@@ -594,7 +601,7 @@ renderer.setAnimationLoop((now,frame)=>{
   if(ghostRotation){ghostRotation.space=document.querySelector<HTMLSelectElement>('#shape-space')!.value==='world'?'world':'local';ghostRotation.sync();}
   shapeGhost.mirror=layers.symmetry;
   shapeGhost.sync(loadingProject||ui.modalOpen||xrBlocked());shapeLibraryUI.refresh();syncViewportTools();
-  layers.updateMaskOverlays();renderer.render(scene,camera);
+  transformPreview.sync(layers);layers.updateMaskOverlays();renderer.render(scene,camera);
   if(questCapture.active){const time=performance.now();questCapture.tick(time,time-cpuStart,NaN,layers.pendingChunks);questCapture.sample(time,()=>({mode:'desktop',resources:layers.resourceStats(),trackedBytes:layers.trackedBytes,heapBytes:(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize??null,renderer:{...renderer.info.memory,calls:renderer.info.render.calls,triangles:renderer.info.render.triangles},loadingProject,exporting:!!exportAbort,recovery:{active:recovery?.active,copyMs:recovery?.lastCopyMs,lastMs:recovery?.lastMs}}));}
 });
 

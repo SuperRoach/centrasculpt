@@ -140,7 +140,7 @@ export function saveSculptProject(project: SculptProject,display:ProjectDisplayP
   if(metadata.length>65536)throw new Error('Project metadata exceeds the supported limit.');
   if(16+metadata.length+offset*4+maskBytes+paintBytes+assetOffset>MAX_PROJECT_BYTES)throw new Error('Project including paint exceeds the native file size limit.');
   const buffer=new ArrayBuffer(16+metadata.length+offset*4+maskBytes+paintBytes+assetOffset),bytes=new Uint8Array(buffer),view=new DataView(buffer);
-  bytes.set(MAGIC);view.setUint32(8,assets.some(a=>a.mime==='model/stl')?9:hasPaint?8:project.layerStack.hierarchy.enabled?7:hasMasks?6:assets.length?5:layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
+  bytes.set(MAGIC);view.setUint32(8,[...project.layerStack.layers,...project.layerStack.hierarchy.groups].some(l=>project.layerStack.layers.some(parent=>parent.id===project.layerStack.hierarchy.parent(l.id)))?10:assets.some(a=>a.mime==='model/stl')?9:hasPaint?8:project.layerStack.hierarchy.enabled?7:hasMasks?6:assets.length?5:layers.every(l=>isLegacyCubicGrid(l.volume))?3:4,true);view.setUint32(12,metadata.length,true);bytes.set(metadata,16);
   let index=0;
   for(const layer of layers)for(let i=0;i<volumeSampleCount(layer.volume);i++)view.setFloat32(16+metadata.length+index++*4,layer.volume.readVoxel(i),true);
   let maskStart=16+metadata.length+offset*4;if(hasMasks)for(const mask of maskPayloads)for(const [id,value]of mask.mask.entries()){view.setUint32(maskStart,id,true);view.setFloat32(maskStart+4,value,true);maskStart+=8;}
@@ -154,7 +154,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
   if(!MAGIC.every((v,i)=>bytes[i]===v))throw new Error('This is not a Centra Sculpt project (.form).');
   const version=view.getUint32(8,true);
   if(version===1||version===2) {const legacy=openLegacyProject(buffer);return createBaseProject(legacy.volume,legacy.settings,true);}
-  if(version!==3&&version!==4&&version!==5&&version!==6&&version!==7&&version!==8&&version!==9)throw new Error('Unsupported project version. This app supports versions 1–9.');
+  if(version!==3&&version!==4&&version!==5&&version!==6&&version!==7&&version!==8&&version!==9&&version!==10)throw new Error('Unsupported project version. This app supports versions 1–10.');
   const length=view.getUint32(12,true);
   if(length<2||length>65536||16+length>buffer.byteLength)throw new Error('Invalid project metadata length.');
   let metadata: Record<string,unknown>;
