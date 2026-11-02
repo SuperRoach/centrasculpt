@@ -1,7 +1,7 @@
 import type {IndependentLayers} from './independent-layers';
 import type {EditorToolState} from './editor-tool-state';
 import type {MenuContent,MenuButton} from './xr-menu-model';
-import {MAX_LAYER_GROUPS,LayerGroup} from './layer-hierarchy';
+import {MAX_LAYER_GROUPS,LayerGroup,validateHierarchy} from './layer-hierarchy';
 const PAGE=4;
 /** Explicit ray targets instead of drag/drop. Page size stays fixed at both UI scales. */
 export class LayerPaletteModel {
@@ -10,7 +10,20 @@ export class LayerPaletteModel {
  constructor(readonly tools:EditorToolState){}
  close(){this.dragged=null;this.copy?.abort();this.copy=undefined;this.context=null;this.view='list';this.page=0;}
  beginDrag(id:string):void{const l=this.tools.port.layers();if(this.tools.busy||!l.project.layerStack.hierarchy.get(id).editable)return;this.dragged=id;this.feedback='Release over a layer to attach, or Outside to detach';}
- endDrag(target:string|null):void{const id=this.dragged;this.dragged=null;if(!id||!target)return;try{const parent=target==='hier:root'?null:target.startsWith('select:')?target.slice(7):target.startsWith('hier:group:')?target.slice(11):undefined;if(parent===undefined||parent===id)return;this.tools.port.layers().reparent(id,parent);this.feedback=parent?'Attached to layer':'Moved outside';this.tools.port.changed();}catch(e){this.feedback=e instanceof Error?e.message:String(e);}}
+ dropPreview(target:string|null):{valid:boolean;parent:string|null|undefined;message:string;colour:string}{
+  const l=this.tools.port.layers(),h=l.project.layerStack.hierarchy,id=this.dragged,layer=l.project.layerStack.layers.find(n=>n.id===id),colour=layer?l.display.colour(l.project.id,layer.id,layer.order):'#b2e5ce';
+  let parent:string|null|undefined;
+  if(target==='hier:root')parent=null;
+  else if(target){for(const prefix of ['select:','hier:group:','hier:node:','hier:drag:','visible:','locked:'])if(target.startsWith(prefix)){parent=target.slice(prefix.length);break;}}
+  const fail=(message:string)=>({valid:false,parent,message,colour});
+  if(!id||parent===undefined)return fail('Release to cancel · point at a layer or Outside');
+  if(this.tools.busy)return fail('Cannot drop while busy');
+  if(parent===id)return fail('Cannot attach a layer to itself');
+  if(parent&&h.descendants(id).includes(parent))return fail('Cannot attach to a child layer');
+  try{if(!h.get(id).editable||parent&&!h.get(parent).editable)return fail('Cannot drop · layer is hidden or locked');const state=h.snapshot(),node=[...state.layers,...state.groups].find(n=>n.id===id)!;node.parentId=parent;validateHierarchy(state,state.layers.map(n=>n.id));}catch{return fail('Cannot drop here · hierarchy limit');}
+  return {valid:true,parent,message:parent?`Release to attach to ${h.get(parent).name}`:'Release to detach · Outside all layers',colour};
+ }
+ endDrag(target:string|null):void{const id=this.dragged,drop=this.dropPreview(target);this.dragged=null;if(!id)return;if(!drop.valid){this.feedback=drop.message;return;}try{this.tools.port.layers().reparent(id,drop.parent!);this.feedback=drop.parent?'Attached to layer':'Moved outside';this.tools.port.changed();}catch(e){this.feedback=e instanceof Error?e.message:String(e);}}
  content():MenuContent{
   const l=this.tools.port.layers(),h=l.project.layerStack.hierarchy,busy=this.tools.busy,buttons:MenuButton[]=[],labels:MenuContent['labels']=[];
   const add=(id:string,label:string,x:number,y:number,width:number,height=110,disabled=busy,detail?:string,selected=false)=>buttons.push({id,label,detail,rect:{x,y,width,height},disabled,selected});

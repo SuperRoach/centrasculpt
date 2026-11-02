@@ -1,15 +1,17 @@
 import {VR_UI,VR_UI_SCALES,drawVRText,paintVRPanel,roundedVRRect,vrControlStyle} from './xr-ui-style';
 import {VR_WHEEL_TOOLS} from './editor-tool-state';
-import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,SphereGeometry,Quaternion,Raycaster,SRGBColorSpace,Vector3} from 'three';
+import {CanvasTexture,Mesh,MeshBasicMaterial,PlaneGeometry,SphereGeometry,Quaternion,Raycaster,SRGBColorSpace,Vector3,RingGeometry,LinearFilter,LinearMipmapLinearFilter} from 'three';
 import type {Matrix4} from 'three';
 import type {XRControllerState} from './xr-input';
 import type {XRMenuRequest} from './xr-support-shortcuts';
 import {XRMenuModel,MENU_SIZE,WHEEL} from './xr-menu-model';
 import type {MenuContent,MenuButton} from './xr-menu-model';
+export const MENU_TEXTURE_SIZE=2048;
 /** The polling bridge supplies poses/actions; the menu owns ray hits, trigger capture and drawing. */
 export interface XRMenuInteraction {readonly active:boolean;readonly layerSelectionActive?:boolean;update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null;close():void;}
 export class XRMenuView implements XRMenuInteraction {
  readonly cursor=new Mesh(new SphereGeometry(.004,12,8),new MeshBasicMaterial({color:'#ffffff',transparent:true,depthTest:false,depthWrite:false,toneMapped:false}));
+ readonly dragRing=new Mesh(new RingGeometry(.005,.0065,24),new MeshBasicMaterial({color:'#ffffff',depthTest:false,depthWrite:false,toneMapped:false}));
  readonly mesh:Mesh<PlaneGeometry,MeshBasicMaterial>;readonly canvas:HTMLCanvasElement;paintCount=0;
  private readonly texture:CanvasTexture;private readonly ctx:CanvasRenderingContext2D;
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();
@@ -18,13 +20,13 @@ export class XRMenuView implements XRMenuInteraction {
  private ready=false;private owner=0;private hasPose=false;private lastContent='';private lastRefresh=-Infinity;private content:MenuContent|null=null;
  get layerSelectionActive():boolean{return this.model.layerSelectionActive;}
  constructor(readonly model:XRMenuModel){
-  this.canvas=document.createElement('canvas');this.canvas.width=this.canvas.height=MENU_SIZE;this.ctx=this.canvas.getContext('2d')!;
-  this.texture=new CanvasTexture(this.canvas);this.texture.colorSpace=SRGBColorSpace;
+  this.canvas=document.createElement('canvas');this.canvas.width=this.canvas.height=MENU_TEXTURE_SIZE;this.ctx=this.canvas.getContext('2d')!;const rasterScale=MENU_TEXTURE_SIZE/MENU_SIZE;this.ctx.setTransform(rasterScale,0,0,rasterScale,0,0);
+  this.texture=new CanvasTexture(this.canvas);this.texture.colorSpace=SRGBColorSpace;this.texture.magFilter=LinearFilter;this.texture.minFilter=LinearMipmapLinearFilter;this.texture.generateMipmaps=true;this.texture.anisotropy=4;
   this.mesh=new Mesh(new PlaneGeometry(.72,.72),new MeshBasicMaterial({map:this.texture,transparent:true,toneMapped:false,depthTest:false,depthWrite:false}));this.mesh.name='VR tools / layers / contextual options';this.mesh.renderOrder=1000;this.mesh.visible=false;
   // Start the foreground depth layer after the menu, once per rendered XR eye.
   // Controllers retain depth testing so their buttons/body correctly occlude each other.
   this.mesh.onAfterRender=renderer=>{renderer.state.buffers.depth.setMask(true);renderer.clearDepth();};
-  this.cursor.name='Menu ray hit cursor';this.cursor.renderOrder=1002;this.cursor.visible=false;this.cursor.raycast=()=>{};this.mesh.add(this.cursor);
+  this.cursor.name='Menu ray hit cursor';this.cursor.renderOrder=1002;this.cursor.visible=false;this.cursor.raycast=()=>{};this.mesh.add(this.cursor);this.dragRing.position.z=.005;this.dragRing.renderOrder=1003;this.dragRing.raycast=()=>{};this.dragRing.visible=false;this.cursor.add(this.dragRing);
  }
  get active():boolean{return !!this.model.request;}
  place(position:{x:number;y:number;z:number},orientation:{x:number;y:number;z:number;w:number}):void{this.eye.set(position.x,position.y,position.z);this.head.set(orientation.x,orientation.y,orientation.z,orientation.w);this.hasPose=true;}
@@ -34,7 +36,7 @@ export class XRMenuView implements XRMenuInteraction {
  stop():void{this.start();this.mesh.removeFromParent();}
  update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null{
   if(!active||!request){this.close();return null;}
-  const factor=VR_UI_SCALES[this.model.tools.port.layers().display.vrUiScale];this.mesh.scale.setScalar(factor);this.cursor.scale.setScalar(1);
+  const factor=VR_UI_SCALES[this.model.tools.port.layers().display.vrUiScale];this.mesh.scale.setScalar(factor);this.cursor.scale.setScalar(1);this.dragRing.visible=false;
   const opened=request!==this.model.request;
   if(opened){this.slider=null;this.model.setRequest(request);this.ready=false;this.owner=0;this.anchor();this.lastRefresh=-Infinity;}
   if(!this.mesh.visible&&this.hasPose)this.anchor();
@@ -46,28 +48,34 @@ export class XRMenuView implements XRMenuInteraction {
    this.mesh.updateWorldMatrix(true,false);this.raycaster.ray.origin.setFromMatrixPosition(pose);this.direction.set(0,0,-1).transformDirection(pose);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=3;
    const hit=this.raycaster.intersectObject(this.mesh,false)[0];
    if(hit?.uv){distance=hit.distance;this.model.hover=this.model.hit(hit.uv.x*MENU_SIZE,(1-hit.uv.y)*MENU_SIZE,this.content);const target=this.content.buttons.find(b=>b.id===this.model.hover);this.cursor.visible=!!target;this.cursor.material.color.set(target?.disabled?VR_UI.disabled:this.slider===target?.id?VR_UI.text:VR_UI.accent);this.cursor.position.set((hit.uv.x-.5)*.72,(hit.uv.y-.5)*.72,.002);}
+   if(!this.model.palette.dragged&&this.model.hover==='hier:root'){this.model.hover=null;this.cursor.visible=false;}
+   if(this.model.palette.dragged&&hit?.uv&&!this.model.hover&&(1-hit.uv.y)*MENU_SIZE>=140&&(1-hit.uv.y)*MENU_SIZE<948)this.model.hover='hier:root';
    if(this.model.palette.dragged&&tool.buttons.trigger.pressed){
     const hover=this.model.hover;
     if(hover==='hier:prev'||hover==='hier:next'){
      if(this.dragPageHover!==hover){this.dragPageHover=hover;this.dragPageSince=time;}
      else if(time-this.dragPageSince>700){this.model.activate(hover);this.content=this.model.content();this.dragPageSince=time;}
-    }else{this.dragPageHover=null;const target=this.content.buttons.find(b=>b.id===hover);this.content={...this.content,footer:hover==='hier:root'?'Release to move outside':hover?.startsWith('select:')||hover?.startsWith('hier:group:')?`Release to attach to ${target?.label??'layer'}`:'Point at a layer or Outside · hover arrows to change page'};}
+    }else{this.dragPageHover=null;const target=this.content.buttons.find(b=>b.id===hover);this.content={...this.content,footer:this.model.palette.dropPreview(hover).message};}
    }else this.dragPageHover=null;
    if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){if(this.model.palette.dragged){this.model.palette.endDrag(this.model.hover);this.content=this.model.content();}this.ready=true;this.slider=null;}
    if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:')&&!this.content.buttons.find(b=>b.id===this.model.hover)?.disabled)this.slider=this.model.hover;else if(this.model.hover.startsWith('hier:drag:'))this.model.palette.beginDrag(this.model.hover.slice(10));else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
    if(this.slider&&tool.buttons.trigger.pressed&&hit?.uv){const b=this.content.buttons.find(b=>b.id===this.slider);if(b?.rect){this.model.setSlider(this.slider,(hit.uv.x*MENU_SIZE-b.rect.x-20)/(b.rect.width-40));this.content=this.model.content();}}
   }else{this.model.palette.dragged=null;this.slider=null;this.ready=false;this.owner=0;}
+  if(this.model.palette.dragged&&distance!==null){const drop=this.model.palette.dropPreview(this.model.hover);this.cursor.visible=true;this.cursor.scale.setScalar(1.7);this.cursor.material.color.set(drop.colour);this.dragRing.material.color.set(drop.valid?'#ffffff':'#ef9c8c');this.dragRing.visible=true;}
   this.paint(this.content);return distance;
  }
  private paint(content:MenuContent):void{
-  const key=JSON.stringify([content,this.model.hover,this.slider]);if(key===this.lastContent)return;this.lastContent=key;this.paintCount++;
+  const key=JSON.stringify([content,this.model.hover,this.slider,this.model.palette.dragged]);if(key===this.lastContent)return;this.lastContent=key;this.paintCount++;
   const ctx=this.ctx,wheel=this.model.page==='tool-wheel'&&content.buttons.some(b=>b.sector!==undefined);
   if(wheel)ctx.clearRect(0,0,MENU_SIZE,MENU_SIZE);else paintVRPanel(ctx,MENU_SIZE,MENU_SIZE);
   // Independent small title/footer plaques keep the floating wheel readable in AR.
-  if(wheel){for(const r of [{x:24,y:24,width:798,height:106},{x:24,y:1032,width:1104,height:96}]){roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle='rgba(16,26,32,0.88)';ctx.fill();}}
+  if(wheel){for(const r of [{x:24,y:24,width:798,height:106},{x:24,y:1050,width:1104,height:64}]){roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle='rgba(16,26,32,0.88)';ctx.fill();}}
   drawVRText(ctx,content.title,{x:40,y:32,width:776,height:56},VR_UI.heading,VR_UI.text,true);
   drawVRText(ctx,content.subtitle,{x:40,y:92,width:776,height:38},VR_UI.detail,VR_UI.muted);
   for(const b of content.buttons)this.button(b);
+  if(this.model.palette.dragged){const drop=this.model.palette.dropPreview(this.model.hover),target=content.buttons.find(b=>b.id===this.model.hover);if(drop.parent!==undefined&&(target?.rect||drop.parent===null)){const root=drop.parent===null,r=root?{x:32,y:140,width:1088,height:804}:target!.rect!;roundedVRRect(ctx,root?r.x-6:32,r.y-6,root?r.width+12:1088,r.height+12,18);ctx.strokeStyle=drop.valid?'#b2e5ce':'#ef9c8c';ctx.lineWidth=6;ctx.stroke();}}
+
+  if(this.model.palette.dragged){drawVRText(ctx,'Drop in empty space to detach',{x:40,y:912,width:1072,height:38},VR_UI.detail,VR_UI.muted,false,'center');}
   for(const label of content.labels)drawVRText(ctx,label.text,{x:label.x,y:label.y,width:label.width??MENU_SIZE-label.x-44,height:label.height??46},label.small?VR_UI.label:label.value?VR_UI.value:VR_UI.label,label.small?VR_UI.muted:VR_UI.text);
   if(!wheel)drawVRText(ctx,content.footer,{x:wheel?744:40,y:1048,width:wheel?368:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
  }
@@ -81,7 +89,16 @@ export class XRMenuView implements XRMenuInteraction {
    this.icon(b.id.slice(5),x,y-34,style.text);const label=b.id==='tool:stamp'?'Stamp':b.id==='tool:transform'?'Transform':b.id==='tool:edit-spline'?'Edit Spline':b.id==='tool:move'?'Move':b.label;
    drawVRText(ctx,label,{x:x-74,y:y-10,width:148,height:70},VR_UI.radial,style.text,true,'center');return;
   }
+  if(b.id==='hier:root')return;
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();
+  if(b.id.startsWith('visible:')||b.id.startsWith('locked:')){
+   const x=r.x+r.width/2,y=r.y+r.height/2;{
+    ctx.save();ctx.strokeStyle=style.text;ctx.lineWidth=4;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
+    if(b.id.startsWith('visible:')){ctx.moveTo(x-27,y);ctx.quadraticCurveTo(x,y-31,x+27,y);ctx.quadraticCurveTo(x,y+31,x-27,y);ctx.stroke();ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);if(b.label==='Hidden'){ctx.moveTo(x-26,y-24);ctx.lineTo(x+26,y+24);}}
+    else{roundedVRRect(ctx,x-21,y-4,42,34,6);ctx.stroke();ctx.beginPath();ctx.moveTo(x-13,y-4);ctx.lineTo(x-13,y-18);ctx.quadraticCurveTo(x-13,y-38,x+13,y-30);if(b.label==='Unlock'||b.label==='Locked')ctx.lineTo(x+13,y-4);ctx.moveTo(x,y+9);ctx.lineTo(x,y+18);}
+    ctx.stroke();ctx.restore();
+   }return;
+  }
   if(b.id.startsWith('paint-swatch:')){roundedVRRect(ctx,r.x+6,r.y+6,r.width-12,r.height-12,16);ctx.fillStyle=b.colour!;ctx.fill();if(b.selected){ctx.strokeStyle='#ffffff';ctx.lineWidth=5;ctx.stroke();}return;}
   if(b.id==='tool:mask'||b.id==='tool:paint'){this.icon(b.id.slice(5),r.x+48,r.y+r.height/2,style.text);drawVRText(ctx,b.label,{x:r.x+88,y:r.y+(r.height-VR_UI.value*1.15)/2,width:r.width-108,height:VR_UI.value*1.15},VR_UI.value,style.text,true,'center');return;}
   if(b.swatch&&b.colour){
@@ -130,5 +147,5 @@ export class XRMenuView implements XRMenuInteraction {
   else{c.moveTo(-24,14);c.lineTo(24,14);c.moveTo(-16,-12);c.lineTo(16,id==='scrape'?-2:-12);c.moveTo(0,-8);c.lineTo(0,7);}
   c.stroke();c.restore();
  }
- dispose():void{this.stop();this.cursor.geometry.dispose();this.cursor.material.dispose();this.texture.dispose();this.mesh.geometry.dispose();this.mesh.material.dispose();}
+ dispose():void{this.stop();this.cursor.geometry.dispose();this.cursor.material.dispose();this.dragRing.geometry.dispose();this.dragRing.material.dispose();this.texture.dispose();this.mesh.geometry.dispose();this.mesh.material.dispose();}
 }

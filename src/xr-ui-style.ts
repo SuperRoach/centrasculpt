@@ -15,7 +15,7 @@ export function layoutVRText(ctx:CanvasRenderingContext2D,text:string,box:TextBo
  return visible.map((text,i)=>({text,x:box.x,y:box.y+i*lineHeight,width:widthOf(ctx,text,size),height:lineHeight}));
 }
 export function drawVRText(ctx:CanvasRenderingContext2D,text:string,box:TextBox,size:number,colour:string=VR_UI.text,bold=false,align:'left'|'center'='left'):TextLine[]{
- ctx.font=`${bold?'600 ':''}${size}px sans-serif`;ctx.fillStyle=colour;ctx.textAlign=align;ctx.textBaseline='top';const lines=layoutVRText(ctx,text,box,size,size*1.05);for(const line of lines)ctx.fillText(line.text,align==='center'?box.x+box.width/2:line.x,line.y);return lines;
+ ctx.font=`${bold?'600 ':size<=VR_UI.detail?'500 ':''}${size}px sans-serif`;ctx.fillStyle=colour;ctx.textAlign=align;ctx.textBaseline='top';const lines=layoutVRText(ctx,text,box,size,size*1.05);for(const line of lines)ctx.fillText(line.text,align==='center'?box.x+box.width/2:line.x,line.y);return lines;
 }
 export function roundedVRRect(ctx:CanvasRenderingContext2D,x:number,y:number,width:number,height:number,radius:number=VR_UI.radius):void{
  const r=Math.min(radius,width/2,height/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+width-r,y);ctx.quadraticCurveTo(x+width,y,x+width,y+r);ctx.lineTo(x+width,y+height-r);ctx.quadraticCurveTo(x+width,y+height,x+width-r,y+height);ctx.lineTo(x+r,y+height);ctx.quadraticCurveTo(x,y+height,x,y+height-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
