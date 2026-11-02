@@ -8,8 +8,8 @@ import {EDITOR_TOOLS,VR_WHEEL_TOOLS,MOVE_VARIANT_LABELS} from './editor-tool-sta
 import type {EditorToolState,EditorTool} from './editor-tool-state';
 import type {XRMenuRequest} from './xr-support-shortcuts';
 export type MenuRect={x:number;y:number;width:number;height:number};
-export type MenuButton={id:string;label:string;detail?:string;colour?:string;swatch?:boolean;selected?:boolean;disabled?:boolean;rect?:MenuRect;sector?:number;slider?:{value:number;min:number;max:number}};
-export type MenuContent={title:string;subtitle:string;buttons:MenuButton[];labels:{text:string;x:number;y:number;small?:boolean;width?:number;height?:number;value?:boolean}[];footer:string};
+export type MenuButton={id:string;label:string;detail?:string;colour?:string;swatch?:boolean;selected?:boolean;disabled?:boolean;rect?:MenuRect;sector?:number;clip?:MenuRect;layerInfo?:{resolution?:number;operation?:string;tube:boolean;children:number;collapsed:boolean};slider?:{value:number;min:number;max:number}};
+export type MenuContent={title:string;subtitle:string;buttons:MenuButton[];labels:{text:string;x:number;y:number;small?:boolean;width?:number;height?:number;value?:boolean}[];footer:string;scroll?:{offset:number;max:number}};
 export const MENU_SIZE=1152;
 export const OPTIONS_PER_PAGE=5;
 export const WHEEL=Object.freeze({x:576,y:590,inner:185,outer:430,labelRadius:328});
@@ -23,7 +23,7 @@ export class XRMenuModel {
  constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);this.palette=new LayerPaletteModel(tools);}
  setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
  get layerSelectionActive():boolean{return this.request!==null&&this.page==='layers'&&!this.merge&&!this.resetTarget;}
- content():MenuContent{const content=this.buildContent();if(this.feedback){content.footer=this.feedback;if(this.page==='tool-wheel')content.subtitle=this.feedback;}else if(this.tools.busy)content.footer="Working… · Finish or cancel the current edit";content.buttons.push({id:'ui-scale',label:`UI · ${this.tools.port.layers().display.vrUiScale==='large'?'Large':'Default'}`,rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
+ content():MenuContent{const content=this.buildContent();if(this.feedback){content.footer=this.feedback;if(this.page==='tool-wheel')content.subtitle=this.feedback;}else if(this.tools.busy)content.footer="Working… · Finish or cancel the current edit";content.buttons.push({id:'ui-scale',label:'Menu size',detail:this.tools.port.layers().display.vrUiScale==='large'?'Large → Standard':'Standard → Large',rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
  private buildContent():MenuContent{
   if(this.page==='world')return this.world.content();
   if(this.page==='layers'&&!this.merge)return this.palette.content();
@@ -78,7 +78,7 @@ export class XRMenuModel {
  }
  hit(x:number,y:number,content=this.content()):string|null{
   if(!this.request||!Number.isFinite(x)||!Number.isFinite(y)||x<0||y<0||x>MENU_SIZE||y>MENU_SIZE)return null;
-  for(const b of content.buttons)if(b.rect&&x>=b.rect.x&&x<=b.rect.x+b.rect.width&&y>=b.rect.y&&y<=b.rect.y+b.rect.height)return b.id;
+  for(const b of content.buttons)if((!b.clip||y>=b.clip.y&&y<=b.clip.y+b.clip.height)&&b.rect&&x>=b.rect.x&&x<=b.rect.x+b.rect.width&&y>=b.rect.y&&y<=b.rect.y+b.rect.height)return b.id;
   if(this.page==='tool-wheel'){
    const dx=x-WHEEL.x,dy=y-WHEEL.y,r=Math.hypot(dx,dy);if(r<WHEEL.inner||r>WHEEL.outer)return null;
    const angle=((Math.atan2(dy,dx)+Math.PI/2+Math.PI/VR_WHEEL_TOOLS.length)%(2*Math.PI)+2*Math.PI)%(2*Math.PI),sector=Math.floor(angle/(2*Math.PI/VR_WHEEL_TOOLS.length));
@@ -86,9 +86,9 @@ export class XRMenuModel {
   }return null;
  }
  setSlider(id:string,ratio:number):void{if(!this.request)return;const option=this.tools.options().find(o=>`slider:${o.id}`===id);if(!option?.slider||option.disabled)return;this.tools.setValue(option.id,option.slider.min+Math.max(0,Math.min(1,ratio))*(option.slider.max-option.slider.min));}
- activate(id:string):void{
+ activate(id:string,rendered?:MenuContent):void{
   if(!this.request)return;
-  const button=this.content().buttons.find(b=>b.id===id);if(!button||button.disabled){this.feedback='Unavailable';return;}
+  const button=(rendered??this.content()).buttons.find(b=>b.id===id);if(!button||button.disabled){this.feedback='Unavailable';return;}
   try{
    const separator=id.indexOf(':'),action=separator<0?id:id.slice(0,separator),value=id.slice(separator+1);
    if(this.palette.activate(id)){}

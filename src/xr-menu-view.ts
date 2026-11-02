@@ -16,7 +16,7 @@ export class XRMenuView implements XRMenuInteraction {
  private readonly texture:CanvasTexture;private readonly ctx:CanvasRenderingContext2D;
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();
  private readonly eye=new Vector3();private readonly head=new Quaternion();private readonly forward=new Vector3();
- private slider:string|null=null;private dragPageHover:string|null=null;private dragPageSince=0;
+ private slider:string|null=null;private dragPageHover:string|null=null;private dragPageSince=0;scrollOffset=0;private scrollTime:number|null=null;
  private ready=false;private owner=0;private hasPose=false;private lastContent='';private lastRefresh=-Infinity;private content:MenuContent|null=null;
  get layerSelectionActive():boolean{return this.model.layerSelectionActive;}
  constructor(readonly model:XRMenuModel){
@@ -28,10 +28,18 @@ export class XRMenuView implements XRMenuInteraction {
   this.mesh.onAfterRender=renderer=>{renderer.state.buffers.depth.setMask(true);renderer.clearDepth();};
   this.cursor.name='Menu ray hit cursor';this.cursor.renderOrder=1002;this.cursor.visible=false;this.cursor.raycast=()=>{};this.mesh.add(this.cursor);this.dragRing.position.z=.005;this.dragRing.renderOrder=1003;this.dragRing.raycast=()=>{};this.dragRing.visible=false;this.cursor.add(this.dragRing);
  }
+ private menuContent():MenuContent{
+  if(this.model.page!=='layers'||this.model.palette.view!=='list')return this.model.content();
+  const palette=this.model.palette,page=palette.page,count=this.model.tools.port.layers().hierarchyRows().length,max=Math.max(0,count*140-28-652);this.scrollOffset=Math.max(0,Math.min(max,this.scrollOffset));
+  let base:MenuContent|undefined;const rows:MenuButton[]=[];
+  for(let i=0;i<Math.max(1,Math.ceil(count/4));i++){palette.page=i;const content=this.model.content();base??=content;for(const b of content.buttons)if(b.rect&&b.rect.y>=244&&b.rect.y<900)rows.push({...b,rect:{...b.rect,y:b.rect.y+i*560-this.scrollOffset},clip:{x:32,y:244,width:1088,height:652}});}
+  palette.page=page;
+  return {...base!,subtitle:'Layers · indented rows are children',buttons:[...base!.buttons.filter(b=>b.rect&&(b.rect.y<244||b.rect.y>=900)&&b.id!=='hier:prev'&&b.id!=='hier:next'),...rows],scroll:{offset:this.scrollOffset,max},footer:palette.feedback||(max?'Tool stick ↑ / ↓ scrolls · hold trigger on a grip to drag':'Hold trigger on a grip to drag')};
+ }
  get active():boolean{return !!this.model.request;}
  place(position:{x:number;y:number;z:number},orientation:{x:number;y:number;z:number;w:number}):void{this.eye.set(position.x,position.y,position.z);this.head.set(orientation.x,orientation.y,orientation.z,orientation.w);this.hasPose=true;}
  private anchor():void{this.forward.set(0,0,-1).applyQuaternion(this.head);this.forward.y=0;if(this.forward.lengthSq()<.001)this.forward.set(0,0,-1);this.forward.normalize();this.mesh.position.copy(this.eye).addScaledVector(this.forward,1.05);this.mesh.position.y-=.12;this.mesh.lookAt(this.eye);this.mesh.updateWorldMatrix(true,false);}
- close():void{this.cursor.visible=false;this.slider=null;this.model.setRequest(null);this.mesh.visible=false;this.ready=false;this.owner=0;this.content=null;this.lastContent='';this.lastRefresh=-Infinity;}
+ close():void{this.scrollOffset=0;this.scrollTime=null;this.cursor.visible=false;this.slider=null;this.model.setRequest(null);this.mesh.visible=false;this.ready=false;this.owner=0;this.content=null;this.lastContent='';this.lastRefresh=-Infinity;}
  start():void{this.close();this.hasPose=false;}
  stop():void{this.start();this.mesh.removeFromParent();}
  update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null{
@@ -41,10 +49,11 @@ export class XRMenuView implements XRMenuInteraction {
   if(opened){this.slider=null;this.model.setRequest(request);this.ready=false;this.owner=0;this.anchor();this.lastRefresh=-Infinity;}
   if(!this.mesh.visible&&this.hasPose)this.anchor();
   this.mesh.visible=this.hasPose;if(!this.mesh.visible)return null;
-  if(time-this.lastRefresh>=100||!this.content){this.content=this.model.content();this.lastRefresh=time;}
+  if(time-this.lastRefresh>=100||!this.content){this.content=this.menuContent();this.lastRefresh=time;}
   let distance:number|null=null;this.model.hover=null;this.cursor.visible=false;
   if(tool?.connected&&tool.role==='tool'&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10){
-   if(tool.connectionId!==this.owner){this.model.palette.dragged=null;this.slider=null;this.owner=tool.connectionId;this.ready=false;}
+   if(tool.connectionId!==this.owner){this.scrollOffset=0;this.scrollTime=null;this.model.palette.dragged=null;this.slider=null;this.owner=tool.connectionId;this.ready=false;}
+   if(this.model.page==='layers'&&this.model.palette.view==='list'&&tool.stick?.available&&!this.model.tools.busy){const dt=this.scrollTime===null?0:Math.max(0,Math.min(50,time-this.scrollTime))/1000;this.scrollTime=time;const x=tool.stick.x,y=tool.stick.y;if(Number.isFinite(x)&&Number.isFinite(y)&&Math.abs(y)>.2&&Math.abs(y)>Math.abs(x)){this.scrollOffset+=Math.sign(y)*(Math.abs(y)-.2)/.8*500*dt;this.content=this.menuContent();}}else this.scrollTime=null;
    this.mesh.updateWorldMatrix(true,false);this.raycaster.ray.origin.setFromMatrixPosition(pose);this.direction.set(0,0,-1).transformDirection(pose);this.raycaster.ray.direction.copy(this.direction);this.raycaster.far=3;
    const hit=this.raycaster.intersectObject(this.mesh,false)[0];
    if(hit?.uv){distance=hit.distance;this.model.hover=this.model.hit(hit.uv.x*MENU_SIZE,(1-hit.uv.y)*MENU_SIZE,this.content);const target=this.content.buttons.find(b=>b.id===this.model.hover);this.cursor.visible=!!target;this.cursor.material.color.set(target?.disabled?VR_UI.disabled:this.slider===target?.id?VR_UI.text:VR_UI.accent);this.cursor.position.set((hit.uv.x-.5)*.72,(hit.uv.y-.5)*.72,.002);}
@@ -54,13 +63,13 @@ export class XRMenuView implements XRMenuInteraction {
     const hover=this.model.hover;
     if(hover==='hier:prev'||hover==='hier:next'){
      if(this.dragPageHover!==hover){this.dragPageHover=hover;this.dragPageSince=time;}
-     else if(time-this.dragPageSince>700){this.model.activate(hover);this.content=this.model.content();this.dragPageSince=time;}
+     else if(time-this.dragPageSince>700){this.model.activate(hover,this.content);this.content=this.menuContent();this.dragPageSince=time;}
     }else{this.dragPageHover=null;const target=this.content.buttons.find(b=>b.id===hover);this.content={...this.content,footer:this.model.palette.dropPreview(hover).message};}
    }else this.dragPageHover=null;
-   if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){if(this.model.palette.dragged){this.model.palette.endDrag(this.model.hover);this.content=this.model.content();}this.ready=true;this.slider=null;}
-   if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:')&&!this.content.buttons.find(b=>b.id===this.model.hover)?.disabled)this.slider=this.model.hover;else if(this.model.hover.startsWith('hier:drag:'))this.model.palette.beginDrag(this.model.hover.slice(10));else this.model.activate(this.model.hover);this.content=this.model.content();this.lastRefresh=time;}}
-   if(this.slider&&tool.buttons.trigger.pressed&&hit?.uv){const b=this.content.buttons.find(b=>b.id===this.slider);if(b?.rect){this.model.setSlider(this.slider,(hit.uv.x*MENU_SIZE-b.rect.x-20)/(b.rect.width-40));this.content=this.model.content();}}
-  }else{this.model.palette.dragged=null;this.slider=null;this.ready=false;this.owner=0;}
+   if(!tool.buttons.trigger.pressed&&tool.buttons.trigger.rawValue<.45){if(this.model.palette.dragged){this.model.palette.endDrag(this.model.hover);this.content=this.menuContent();}this.ready=true;this.slider=null;}
+   if(!opened&&this.ready&&tool.buttons.trigger.justPressed){this.ready=false;if(this.model.hover){if(this.model.hover.startsWith('slider:')&&!this.content.buttons.find(b=>b.id===this.model.hover)?.disabled)this.slider=this.model.hover;else if(this.model.hover.startsWith('hier:drag:'))this.model.palette.beginDrag(this.model.hover.slice(10));else this.model.activate(this.model.hover,this.content);this.content=this.menuContent();this.lastRefresh=time;}}
+   if(this.slider&&tool.buttons.trigger.pressed&&hit?.uv){const b=this.content.buttons.find(b=>b.id===this.slider);if(b?.rect){this.model.setSlider(this.slider,(hit.uv.x*MENU_SIZE-b.rect.x-20)/(b.rect.width-40));this.content=this.menuContent();}}
+  }else{this.scrollOffset=0;this.scrollTime=null;this.model.palette.dragged=null;this.slider=null;this.ready=false;this.owner=0;}
   if(this.model.palette.dragged&&distance!==null){const drop=this.model.palette.dropPreview(this.model.hover);this.cursor.visible=true;this.cursor.scale.setScalar(1.7);this.cursor.material.color.set(drop.colour);this.dragRing.material.color.set(drop.valid?'#ffffff':'#ef9c8c');this.dragRing.visible=true;}
   this.paint(this.content);return distance;
  }
@@ -72,12 +81,15 @@ export class XRMenuView implements XRMenuInteraction {
   if(wheel){for(const r of [{x:24,y:24,width:798,height:106},{x:24,y:1050,width:1104,height:64}]){roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle='rgba(16,26,32,0.88)';ctx.fill();}}
   drawVRText(ctx,content.title,{x:40,y:32,width:776,height:56},VR_UI.heading,VR_UI.text,true);
   drawVRText(ctx,content.subtitle,{x:40,y:92,width:776,height:38},VR_UI.detail,VR_UI.muted);
-  for(const b of content.buttons)this.button(b);
-  if(this.model.palette.dragged){const drop=this.model.palette.dropPreview(this.model.hover),target=content.buttons.find(b=>b.id===this.model.hover);if(drop.parent!==undefined&&(target?.rect||drop.parent===null)){const root=drop.parent===null,r=root?{x:32,y:140,width:1088,height:804}:target!.rect!;roundedVRRect(ctx,root?r.x-6:32,r.y-6,root?r.width+12:1088,r.height+12,18);ctx.strokeStyle=drop.valid?'#b2e5ce':'#ef9c8c';ctx.lineWidth=6;ctx.stroke();}}
+  for(const b of content.buttons){if(b.clip){ctx.save();ctx.beginPath();ctx.rect(b.clip.x,b.clip.y,b.clip.width,b.clip.height);ctx.clip();this.button(b);ctx.restore();}else this.button(b);}
+  if(content.scroll&&content.scroll.offset<content.scroll.max-.5){ctx.save();ctx.globalAlpha=.4;ctx.strokeStyle=VR_UI.text;ctx.lineWidth=4;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(562,918);ctx.lineTo(576,930);ctx.lineTo(590,918);ctx.stroke();ctx.restore();}
+  if(this.model.palette.dragged){const drop=this.model.palette.dropPreview(this.model.hover),target=content.buttons.find(b=>b.id===this.model.hover);if(drop.parent!==undefined&&(target?.rect||drop.parent===null)){const root=drop.parent===null,r=root?{x:32,y:140,width:1088,height:804}:target!.rect!;ctx.save();if(target?.clip){ctx.beginPath();ctx.rect(target.clip.x,target.clip.y,target.clip.width,target.clip.height);ctx.clip();}roundedVRRect(ctx,root?r.x-6:32,r.y-6,root?r.width+12:1088,r.height+12,18);ctx.strokeStyle=drop.valid?'#b2e5ce':'#ef9c8c';ctx.lineWidth=6;ctx.stroke();ctx.restore();}}
 
-  if(this.model.palette.dragged){drawVRText(ctx,'Drop in empty space to detach',{x:40,y:912,width:1072,height:38},VR_UI.detail,VR_UI.muted,false,'center');}
+  if(this.model.palette.dragged&&!content.scroll?.max){drawVRText(ctx,'Drop in empty space to detach',{x:40,y:912,width:1072,height:38},VR_UI.detail,VR_UI.muted,false,'center');}
   for(const label of content.labels)drawVRText(ctx,label.text,{x:label.x,y:label.y,width:label.width??MENU_SIZE-label.x-44,height:label.height??46},label.small?VR_UI.label:label.value?VR_UI.value:VR_UI.label,label.small?VR_UI.muted:VR_UI.text);
-  if(!wheel)drawVRText(ctx,content.footer,{x:wheel?744:40,y:1048,width:wheel?368:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
+  const hovered=content.buttons.find(b=>b.id===this.model.hover),info=hovered?.layerInfo;
+  const hint=this.model.hover==='ui-scale'?'Switch the size of VR menus':this.model.hover?.startsWith('hier:drag:')?'Hold Tool trigger, then drag onto a layer or empty space':info?`${info.resolution?`${info.resolution}³ · `:''}${info.operation==='difference'?'Subtracts from earlier layers':info.operation==='intersect'?'Keeps overlapping volume':info.operation==='union'?'Adds to the combined volume':'Layer group'}${info.tube?' · Procedural Tube':''}${info.children?` · ${info.children} nested items`:''}`:content.footer;
+  if(!wheel)drawVRText(ctx,this.model.palette.dragged?content.footer:hint,{x:wheel?744:40,y:1048,width:wheel?368:1072,height:72},VR_UI.footer,VR_UI.muted);this.texture.needsUpdate=true;
  }
  private button(b:MenuButton):void{
   const ctx=this.ctx,hover=b.id===this.model.hover&&!b.disabled,style=vrControlStyle(b.disabled,hover,b.selected,this.slider===b.id);
@@ -91,14 +103,22 @@ export class XRMenuView implements XRMenuInteraction {
   }
   if(b.id==='hier:root')return;
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();
+  if(b.layerInfo){const info=b.layerInfo,pad=b.colour?36:16;if(b.colour){roundedVRRect(ctx,r.x+12,r.y+12,12,r.height-24,6);ctx.fillStyle=b.colour;ctx.fill();}
+   if(info.children)drawVRText(ctx,info.collapsed?'▸':'▾',{x:r.x+pad,y:r.y+12,width:30,height:34},24,style.text,true);
+   const badges=[info.resolution?`${info.resolution}³`:'Group',info.operation==='difference'?'−':info.operation==='intersect'?'∩':'+',...(info.tube?['Tube']:[]),...(info.children&&info.collapsed?[`${info.children} children`]:[])];
+   const badgeText=badges.join('  ·  '),badgeWidth=Math.min(r.width-pad-44,badgeText.length*11);drawVRText(ctx,badgeText,{x:r.x+r.width-16-badgeWidth,y:r.y+12,width:badgeWidth,height:28},20,VR_UI.muted,false,'center');
+   drawVRText(ctx,b.label,{x:r.x+pad,y:r.y+43,width:r.width-pad-16,height:r.height-48},VR_UI.radial,style.text,true,'center');return;
+  }
+  if(b.id.startsWith('hier:drag:')){const x=r.x+r.width/2,y=r.y+r.height/2;ctx.save();ctx.strokeStyle=style.text;ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();for(const offset of [-14,0,14]){ctx.moveTo(x-20,y+offset);ctx.lineTo(x+20,y+offset);}ctx.stroke();ctx.restore();return;}
   if(b.id.startsWith('visible:')||b.id.startsWith('locked:')){
    const x=r.x+r.width/2,y=r.y+r.height/2;{
     ctx.save();ctx.strokeStyle=style.text;ctx.lineWidth=4;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
     if(b.id.startsWith('visible:')){ctx.moveTo(x-27,y);ctx.quadraticCurveTo(x,y-31,x+27,y);ctx.quadraticCurveTo(x,y+31,x-27,y);ctx.stroke();ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);if(b.label==='Hidden'){ctx.moveTo(x-26,y-24);ctx.lineTo(x+26,y+24);}}
-    else{roundedVRRect(ctx,x-21,y-4,42,34,6);ctx.stroke();ctx.beginPath();ctx.moveTo(x-13,y-4);ctx.lineTo(x-13,y-18);ctx.quadraticCurveTo(x-13,y-38,x+13,y-30);if(b.label==='Unlock'||b.label==='Locked')ctx.lineTo(x+13,y-4);ctx.moveTo(x,y+9);ctx.lineTo(x,y+18);}
+    else{roundedVRRect(ctx,x-21,y-4,42,34,6);ctx.stroke();ctx.beginPath();ctx.moveTo(x-13,y-4);ctx.lineTo(x-13,y-18);if(b.detail==='Locked'||b.label==='Unlock'||b.label==='Locked'){ctx.quadraticCurveTo(x-13,y-34,x,y-34);ctx.quadraticCurveTo(x+13,y-34,x+13,y-18);ctx.lineTo(x+13,y-4);}else{ctx.quadraticCurveTo(x-13,y-34,x+4,y-34);ctx.quadraticCurveTo(x+23,y-34,x+23,y-18);}ctx.moveTo(x,y+9);ctx.lineTo(x,y+18);}
     ctx.stroke();ctx.restore();
    }return;
   }
+  if(b.id==='hier:transform'&&r.height>=200){const x=r.x+r.width/2;this.icon('transform',x,r.y+58,style.text);drawVRText(ctx,b.label,{x:r.x+16,y:r.y+112,width:r.width-32,height:54},VR_UI.value,style.text,true,'center');drawVRText(ctx,b.detail??'',{x:r.x+16,y:r.y+180,width:r.width-32,height:40},VR_UI.detail,VR_UI.muted,false,'center');return;}
   if(b.id.startsWith('paint-swatch:')){roundedVRRect(ctx,r.x+6,r.y+6,r.width-12,r.height-12,16);ctx.fillStyle=b.colour!;ctx.fill();if(b.selected){ctx.strokeStyle='#ffffff';ctx.lineWidth=5;ctx.stroke();}return;}
   if(b.id==='tool:mask'||b.id==='tool:paint'){this.icon(b.id.slice(5),r.x+48,r.y+r.height/2,style.text);drawVRText(ctx,b.label,{x:r.x+88,y:r.y+(r.height-VR_UI.value*1.15)/2,width:r.width-108,height:VR_UI.value*1.15},VR_UI.value,style.text,true,'center');return;}
   if(b.swatch&&b.colour){

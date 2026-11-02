@@ -30,5 +30,16 @@ export class XRHaptics {
   try{const [strength,duration]=impulses[event];Promise.resolve(actuator.pulse(strength,duration)).catch(()=>{}).finally(()=>{gate!.pending=false;});}catch{gate.pending=false;}
   return true;
  }
+ async test(state:XRControllerState|undefined):Promise<string>{
+  if(!this.enabled)return 'Haptics disabled';
+  if(!state?.connected||!state.tracked||!state.source)return 'Controller not tracked';
+  const pad=state.source.gamepad as (Gamepad&{hapticActuators?:{pulse?:(strength:number,duration:number)=>Promise<boolean>|boolean}[]})|undefined,actuator=pad?.hapticActuators?.[0];
+  if(typeof actuator?.pulse!=='function')return 'Vibration unavailable';
+  let gate=this.sources.get(state.source);if(!gate){gate={last:-Infinity,lastIssue:-Infinity,pending:false};this.sources.set(state.source,gate);}
+  if(gate.pending||performance.now()-gate.last<500)return 'Please wait and retry';
+  gate.pending=true;gate.last=performance.now();let timer:ReturnType<typeof setTimeout>|undefined;
+  try{const result=await Promise.race([Promise.resolve(actuator.pulse(.75,250)),new Promise<undefined>(resolve=>{timer=setTimeout(()=>resolve(undefined),1500);})]);return result===true?'Pulse accepted · did you feel it?':result===false?'Controller rejected pulse':'No confirmation from controller';}
+  catch{return 'Vibration request failed';}finally{if(timer!==undefined)clearTimeout(timer);gate.pending=false;}
+ }
  reset():void{this.clearIssues();this.notified=new WeakSet();this.sources=new WeakMap();}
 }
