@@ -38,6 +38,7 @@ export class ClayStrokeSession {
   if(this.phase!=='drawing')return;
   this.started+=Math.max(0,time-this.last);this.last=time;this.breakPending=true;
   this.pump();
+  if(!this.stagedDeformation&&!this.buffered)this.layers().breakStrokePath();
  }
  sample(point:Point3,time:number):void{
   if(this.phase!=='drawing')return;if(!this.valid())throw new Error('Clay target changed.');

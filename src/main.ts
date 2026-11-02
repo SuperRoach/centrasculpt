@@ -174,18 +174,18 @@ renderer.domElement.addEventListener('pointermove',event=>{
   if(event.buttons===0){updatePointer(event);try{placePointerShape();}catch(error){ui.status(message(error));}}
 });
 function syncViewportTools():void {
-  viewportTools?.sync(shapeGhost.model.enabled?'boolean':ui.mode==='smooth'?'smooth':'brush',input.mode,layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked());
+  viewportTools?.sync(shapeGhost.model.enabled?'boolean':ui.mode==='smooth'?'smooth':ui.mode==='paint'||ui.mode==='paint-erase'?'paint':'brush',input.mode,layers.active.layer.editable,loadingProject||ui.modalOpen||xrBlocked(),{colour:layers.paintColour,radius:ui.radius,strength:ui.strength});
 }
 let editorTools:EditorToolState|undefined;
 function chooseWorkspace(tool:WorkspaceTool,fromXR=false):void {
   if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;editorTools?.clearMoveSelection();stop();
-  shapeLibraryUI.setOpen(tool==='boolean',fromXR);if(tool!=='boolean')ui.selectBrushTool(tool);transformTools!.setMode('sculpt');
-  syncTransformUI();cursor.visible=false;ui.status(tool==='boolean'?'Boolean shapes · position and click once to stamp':`${tool==='smooth'?'Smooth':'Brush'} tool · ${layers.active.layer.name}`);
+  shapeLibraryUI.setOpen(tool==='boolean',fromXR);if(tool==='paint')ui.setSettings({...ui.settings,mode:'paint'});else if(tool!=='boolean')ui.selectBrushTool(tool);transformTools!.setMode('sculpt');
+  syncTransformUI();cursor.visible=false;ui.status(tool==='boolean'?'Boolean shapes · position and click once to stamp':`${tool==='smooth'?'Smooth':tool==='paint'?'Paint':'Brush'} tool · ${layers.active.layer.name}`);
 }
 function chooseLayerMode(mode:EditorMode,fromXR=false):void {
   if(loadingProject||ui.modalOpen||xrBlocked()&&!fromXR)return;editorTools?.clearMoveSelection();stop();shapeLibraryUI.setOpen(false,fromXR);transformTools!.setMode(mode);syncTransformUI();cursor.visible=false;ui.status(`${mode} · ${layers.transformNode.name}`);
 }
-viewportTools=createViewportTools(ui.viewport,chooseWorkspace,chooseLayerMode);
+viewportTools=createViewportTools(ui.viewport,chooseWorkspace,chooseLayerMode,{colour:value=>{editorTools?.setPaintColour(value);syncViewportTools();},brush:(field,value)=>{ui.setSettings({...ui.settings,[field]:value});syncViewportTools();}});
 syncViewportTools();
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());renderer.domElement.addEventListener('pointermove',updatePointer);
 renderer.domElement.addEventListener('pointerleave',()=>{pointerInside=false;cursor.visible=false;});
@@ -348,9 +348,9 @@ document.getElementById('new-project')!.addEventListener('click',()=>{
 });
 const projectFile=document.querySelector<HTMLInputElement>('#project-file')!;
 document.getElementById('open-project')!.addEventListener('click',()=>{if(loadingProject||xrBlocked())return;stop();projectFile.value='';projectFile.click();});
-async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:string,libraryOpen=false):Promise<boolean>{
+async function openProjectFile(file:File,buffer?:ArrayBuffer,expectedProjectId?:string,libraryOpen=false,replacementConfirmed=false):Promise<boolean>{
   if(loadingProject||(!libraryOpen&&xrBlocked())||!layers.recoveryReady)return false;
-  if(!libraryOpen&&projectBrowser.dirty&&!window.confirm("Replace unsaved work? Cancel and Save first to keep your edits."))return false;
+  if(!replacementConfirmed&&!libraryOpen&&projectBrowser.dirty&&!window.confirm("Replace unsaved work? Cancel and Save first to keep your edits."))return false;
   recovery?.cancelJob();xrExperience?.controllers.suspend();editorTools?.clearMoveSelection();
   stop();loadingProject=true;ui.projectBusy(true);syncTransformUI();transformTools?.sync();ui.projectMessage('Validating all layer data…');
   let candidate:IndependentLayers|undefined;const signal=libraryAbort.signal;
@@ -428,7 +428,7 @@ function syncExportFormat(){printLabel.hidden=exportFormat.value!=='stl';printPa
 exportFormat.addEventListener('change',()=>{syncExportFormat();exportMessage(`${exportFormat.value.toUpperCase()} selected. Choose current layer, all layers, or unified boolean.`);});syncExportFormat();
 
 editorTools=new EditorToolState({layers:()=>layers,shape:shapeGhost.model,settings:()=>ui.settings,setSettings:value=>ui.setSettings(value),mode:()=>input.mode,
- selectTool:tool=>{if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease'){chooseWorkspace('brush',true);return;}if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':'brush',true);},
+ selectTool:tool=>{if(tool==='flatten'||tool==='inflate'||tool==='scrape'||tool==='pinch'||tool==='crease'){chooseWorkspace('brush',true);return;}if(tool==='transform')chooseLayerMode('translate',true);else chooseWorkspace(tool==='stamp'?'boolean':tool==='smooth'?'smooth':tool==='paint'?'paint':'brush',true);},
  selectTransform:mode=>chooseLayerMode(mode,true),busy:()=>loadingProject||ui.modalOpen,changed:()=>{shapeLibraryUI.refresh();cursor.visible=false;refresh();xrExperience?.refreshSculptureInfo();},
 });
 desktopLayers=new DesktopLayerPalette(()=>layers,document.getElementById('layer-list')!,()=>{stop();chooseLayerMode('translate');refresh();},()=>refresh(),text=>ui.projectMessage(text,true),()=>loadingProject||ui.modalOpen||xrBlocked(),()=>stop());desktopLayers.render();
@@ -530,24 +530,33 @@ layers.interruptBackground=()=>recovery?.cancelJob();void recovery.init();
 autosaveEnabled.addEventListener('change',()=>void recovery!.setEnabled(autosaveEnabled.checked));
 for(const action of ['restore','discard'] as const)document.getElementById(`${action}-recovery`)!.addEventListener('click',()=>{recovery?.cancelJob();recoveryAction=action;recoveryChoice=recoverySelect.value;recoveryConfirm.hidden=false;document.getElementById('recovery-confirm-text')!.textContent=action==='restore'?'Replace the currently open project with this checkpoint?':'Permanently discard all local recovery checkpoints? Manual files are kept.';});
 document.getElementById('cancel-recovery-action')!.addEventListener('click',()=>{recoveryAction=null;recoveryConfirm.hidden=true;});
-document.getElementById('confirm-recovery')!.addEventListener('click',()=>void(async()=>{if(loadingProject||xrBlocked()||!layers.recoveryReady)return;const action=recoveryAction;recoveryAction=null;recoveryConfirm.hidden=true;if(action==='discard'){await recovery!.discard();return;}if(action!=='restore')return;const source=layers,key=layers.recoveryKey();restoringRecovery=true;try{const {record,data}=await recovery!.store.read(recoveryChoice);if(layers!==source||layers.recoveryKey()!==key||loadingProject||xrBlocked()||!layers.recoveryReady)throw new Error('Recovery restore cancelled: current project changed. Current work kept.');if(checksum(data)!==record.checksum)throw new Error('Recovery checksum failed; checkpoint kept for inspection/discard.');if(await openProjectFile(new File([],`Recovery ${record.projectName}.form`),data,record.projectId)){recovery!.restored(record);ui.projectMessage('Recovery restored. Geometry, layers and tool preferences kept; Undo starts fresh. Save a manual project when ready.');}}catch(error){recovery!.warning=message(error);}finally{restoringRecovery=false;updateRecoveryUI();}})());
+async function restoreCheckpoint(choice:string):Promise<boolean>{
+ const source=layers,key=layers.recoveryKey();restoringRecovery=true;
+ try{const {record,data}=await recovery!.store.read(choice);if(layers!==source||layers.recoveryKey()!==key||loadingProject||xrBlocked()||!layers.recoveryReady)throw new Error('Recovery restore cancelled: current project changed. Current work kept.');if(checksum(data)!==record.checksum)throw new Error('Recovery checksum failed; checkpoint kept for inspection/discard.');const opened=await openProjectFile(new File([],`Recovery ${record.projectName}.form`),data,record.projectId,false,true);if(!opened)throw new Error('Could not restore checkpoint. Current project kept; review the project message.');recovery!.restored(record);ui.projectMessage('Recovery restored. Geometry, layers and tool preferences kept; Undo starts fresh. Save a manual project when ready.');return true;}
+ finally{restoringRecovery=false;updateRecoveryUI();}
+}
+document.getElementById('confirm-recovery')!.addEventListener('click',()=>void(async()=>{if(loadingProject||xrBlocked()||!layers.recoveryReady)return;const action=recoveryAction;recoveryAction=null;recoveryConfirm.hidden=true;try{if(action==='discard')await recovery!.discard();else if(action==='restore')await restoreCheckpoint(recoveryChoice);}catch(error){recovery!.warning=message(error);updateRecoveryUI();}})());
 // Recovery choices run before XR entry; a later Enter click supplies a fresh browser gesture.
 const entryRecoveryDialog=document.createElement('dialog');
 entryRecoveryDialog.id='entry-recovery-dialog';entryRecoveryDialog.setAttribute('aria-labelledby','entry-recovery-title');
-entryRecoveryDialog.innerHTML='<form method="dialog"><h2 id="entry-recovery-title">Pick up where you left off?</h2><p class="recovery-intro">A saved sculpture is ready to restore.</p><label for="entry-recovery-choice">Saved sculpture</label><select id="entry-recovery-choice"></select><details class="recovery-entry-details"><summary>What happens to my work?</summary><p>Restore replaces the open project and starts fresh Undo history. Save any current work first.</p><p>Discard permanently deletes all local recovery saves. Your open project and manual files stay safe.</p></details><div class="dialog-actions"><button class="recovery-primary" value="restore" autofocus>Restore</button><button class="recovery-secondary" value="discard">Discard and continue</button><button class="recovery-cancel" value="cancel">Cancel</button></div><p class="recovery-entry-hint">Then tap Enter Studio or Enter Passthrough again.</p></form>';
+entryRecoveryDialog.innerHTML='<form><h2 id="entry-recovery-title">Pick up where you left off?</h2><p class="recovery-intro">A saved sculpture is ready to restore.</p><label for="entry-recovery-choice">Saved sculpture</label><select id="entry-recovery-choice"></select><details class="recovery-entry-details"><summary>What happens to my work?</summary><p>Restore replaces the open project and starts fresh Undo history. Save any current work first.</p><p>Discard permanently deletes all local recovery saves. Your open project and manual files stay safe.</p></details><div class="dialog-actions"><button class="recovery-primary" value="restore" autofocus>Restore</button><button class="recovery-secondary" value="discard">Discard and continue</button><button class="recovery-cancel" value="cancel">Cancel</button></div><p id="entry-recovery-status" role="status"></p><button type="button" id="entry-recovery-enter" hidden>Enter VR</button></form>';
 document.body.append(entryRecoveryDialog);
 function showEntryRecovery():void{
  if(!recovery?.blocked||!recovery.enabled||loadingProject||ui.modalOpen||!layers.recoveryReady)return;
  recovery.cancelJob();const select=entryRecoveryDialog.querySelector<HTMLSelectElement>('select')!;
  select.replaceChildren(...recovery.records.map(r=>new Option(`${r.projectName} · ${new Date(r.createdAt).toLocaleString()}`,r.id)));
- select.value=recoverySelect.value;entryRecoveryDialog.returnValue='cancel';entryRecoveryDialog.showModal();
+ select.value=recoverySelect.value;entryRecoveryDialog.querySelector<HTMLElement>('.dialog-actions')!.hidden=false;entryRecoveryDialog.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('button,select').forEach(control=>control.disabled=false);entryRecoveryDialog.querySelector<HTMLElement>('#entry-recovery-enter')!.hidden=true;entryRecoveryDialog.querySelector<HTMLElement>('#entry-recovery-status')!.textContent='';entryRecoveryDialog.returnValue='cancel';entryRecoveryDialog.showModal();
 }
-entryRecoveryDialog.addEventListener('close',()=>{
- const action=entryRecoveryDialog.returnValue;if(action!=='restore'&&action!=='discard')return;
- if(!recovery?.blocked||loadingProject||xrBlocked()||!layers.recoveryReady)return;
- recoveryAction=action;recoveryChoice=entryRecoveryDialog.querySelector<HTMLSelectElement>('select')!.value;
- document.getElementById('confirm-recovery')!.click();
+let entryRecoveryBusy=false;
+const entryRecoveryStatus=document.getElementById('entry-recovery-status')!,entryRecoveryEnter=document.querySelector<HTMLButtonElement>('#entry-recovery-enter')!;
+entryRecoveryDialog.addEventListener('cancel',event=>{if(entryRecoveryBusy)event.preventDefault();});
+entryRecoveryDialog.querySelector('form')!.addEventListener('submit',event=>{event.preventDefault();if(entryRecoveryBusy)return;const action=(event as SubmitEvent).submitter?.getAttribute('value');if(action==='cancel'){entryRecoveryDialog.close();return;}if(action!=='restore'&&action!=='discard')return;
+ void(async()=>{entryRecoveryBusy=true;const controls=entryRecoveryDialog.querySelectorAll<HTMLButtonElement|HTMLSelectElement>('button,select');controls.forEach(control=>control.disabled=true);entryRecoveryStatus.textContent=action==='restore'?'Restoring saved sculpture…':'Discarding recovery checkpoints…';
+ try{if(!recovery?.blocked||loadingProject||xrBlocked()||!layers.recoveryReady)throw new Error('Finish the current edit, then try again.');if(action==='restore')await restoreCheckpoint(entryRecoveryDialog.querySelector<HTMLSelectElement>('select')!.value);else await recovery.discard();if(booleanPreview){entryRecoveryStatus.textContent='Preparing Boolean preview…';await layers.composite.flush();}entryRecoveryStatus.textContent=action==='restore'?'Saved sculpture restored. Ready to enter VR.':'Recovery cleared. Your current sculpture is ready.';entryRecoveryDialog.querySelector<HTMLElement>('.dialog-actions')!.hidden=true;entryRecoveryEnter.hidden=false;entryRecoveryEnter.disabled=false;entryRecoveryEnter.focus();}
+ catch(error){entryRecoveryStatus.textContent=message(error);controls.forEach(control=>control.disabled=false);}
+ finally{entryRecoveryBusy=false;updateRecoveryUI();}})();
 });
+entryRecoveryEnter.addEventListener('click',()=>{if(entryRecoveryBusy||loadingProject||!layers.recoveryReady||recovery?.blocked&&recovery.enabled)return;entryRecoveryDialog.close();void xrExperience!.session.enter();});
 function interruptSession(_reason:string):void{libraryAbort.abort();libraryAbort=new AbortController();recovery?.cancelJob();exportAbort?.abort();bakeAbort?.abort();xrExperience?.controllers.suspend();desktopStroke.cancel();layers.cancelStroke();layers.cancelTransform();stop();cursor.visible=false;desktopPaths.visible=false;desktopMirrorCursor.hide();pointerInside=false;previous=performance.now();}
 const lifecycle=new AppLifecycle(document,window,interruptSession,()=>{previous=performance.now();pointerInside=false;void recovery?.tick(Date.now(),true);});
 const recoveryTimer=setInterval(()=>{if(document.visibilityState==='visible'){const stats=stabilityMetrics.sample(layers,Date.now()),heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;stabilityText=`History ${(stats.historyBytes/1048576).toFixed(1)} MiB · recovery ${!recovery?.enabled?'off':recovery?.blocked?'choice needed':recovery?.warning?'warning':recovery?.active?'working':recovery?.lastSuccess?'saved':'waiting'} ${(recovery?.lastMs??0).toFixed(0)} ms`;document.getElementById('stability-status')!.textContent=`${stats.chunks} allocated / ${stats.meshChunks} mesh chunks · ${stats.vertices.toLocaleString()} vertices / ${stats.triangles.toLocaleString()} triangles. Grid ${(stats.voxelBytes/1048576).toFixed(1)} MiB · paint ${(stats.paintBytes/1048576).toFixed(1)} MiB · history ${(stats.historyBytes/1048576).toFixed(1)} MiB · derived Boolean ${(stats.compositeBytes/1048576).toFixed(1)} MiB. Pending Move ${stats.pendingMoveJobs} / Bake ${stats.pendingBakeJobs} / export ${Number(!!exportAbort)} / recovery ${Number(!!recovery?.active)}. Checkpoint ${((recovery?.lastBytes??0)/1048576).toFixed(1)} MiB / ${(recovery?.lastMs??0).toFixed(0)} ms, snapshot copy ${(recovery?.lastCopyMs??0).toFixed(1)} ms. Tracked ${(stats.trackedBytes/1048576).toFixed(1)} MiB (excludes JS/GPU overhead) · JS heap ${heap===undefined?'unavailable':(heap/1048576).toFixed(1)+' MiB'} · renderer ${renderer.info.memory.geometries} geometries / ${renderer.info.memory.textures} textures.${stats.pressure?' Resource pressure: save manually before further large edits.':''}`;void recovery?.tick();updateRecoveryUI();}},500);
@@ -590,9 +599,9 @@ renderer.setAnimationLoop((now,frame)=>{
         try{runtime.surface.group.updateWorldMatrix(true,false);const local=hit.point.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopStroke.sample(local,now);ui.status(`${ui.mode} · ${runtime.layer.name} · ${Math.round(ui.strength*100)}%`);}
         catch(error){desktopStroke.cancel();stop();ui.status(message(error));}
       }
-    }else layers.breakStrokePath();
+    }else if(desktopStroke.phase==='drawing')desktopStroke.pauseSurface(now);else layers.breakStrokePath();
     if(layers.drawing&&now-lastRebuild>=1000/30){runtime.rebuild();syncStats();lastRebuild=performance.now();}
-  }else{cursor.visible=false;layers.breakStrokePath();}
+  }else{cursor.visible=false;if(desktopStroke.phase==='drawing'&&!pointerInside)desktopStroke.pauseSurface(now);else layers.breakStrokePath();}
   syncPrecisionOptions();
   desktopFieldCursor.hide();desktopMirrorPlane.sync();desktopMirrorCursor.hide();if(cursor.visible&&layers.symmetry.enabled){runtime.surface.group.updateWorldMatrix(true,false);const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopMirrorCursor.show(runtime.surface.group,reflectPoint(p,layers.symmetry),ui.radius/uniformScale(runtime.layer.transform),ui.mode==='smooth');desktopMirrorCursor.showField(runtime.volume,reflectPoint(p,layers.symmetry),ui.mode);}
   if(cursor.visible&&['flatten','inflate','scrape','pinch','crease'].includes(ui.mode)){const p=cursor.position.clone().applyMatrix4(runtime.surface.group.matrixWorld.clone().invert());desktopFieldCursor.show(runtime.surface.group,p,ui.radius/uniformScale(runtime.layer.transform));desktopFieldCursor.showField(runtime.volume,p,ui.mode);cursor.visible=false;}

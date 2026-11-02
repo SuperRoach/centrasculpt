@@ -1,3 +1,10 @@
+### Phase 5.4 — Easier desktop painting (2026-11-03)
+
+- Keep your paint when the pointer slips off the sculpture. Painting pauses off the surface and resumes when you return, without drawing across the gap. Undo and Redo still treat it as one stroke.
+- Paint now has its own canvas tool icon, with colour selection, radius and strength in its expanded controls.
+- Smooth has quick radius and strength controls beside the canvas, with values kept in sync with the sidebar.
+- Restoring before VR entry uses a single in-app dialog with progress and an Enter VR button.
+
 ### Phase 5.4 — Smoother VR layer editing (2026-11-03)
 
 - Browse longer layer lists with smooth tool-hand stick scrolling. A subtle down arrow shows when more layers are waiting below.
