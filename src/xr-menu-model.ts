@@ -1,3 +1,4 @@
+import {Euler,Vector3} from 'three';
 import {PAINT_SWATCHES} from './sculpt-paint';
 import {LayerPaletteModel} from './layer-palette';
 import {MOVE_VARIANTS,type MoveVariant} from './tool-preferences';
@@ -8,23 +9,27 @@ import {EDITOR_TOOLS,VR_WHEEL_TOOLS,MOVE_VARIANT_LABELS} from './editor-tool-sta
 import type {EditorToolState,EditorTool} from './editor-tool-state';
 import type {XRMenuRequest} from './xr-support-shortcuts';
 export type MenuRect={x:number;y:number;width:number;height:number};
-export type MenuButton={id:string;label:string;detail?:string;colour?:string;swatch?:boolean;selected?:boolean;disabled?:boolean;rect?:MenuRect;sector?:number;clip?:MenuRect;layerInfo?:{resolution?:number;operation?:string;tube:boolean;children:number;collapsed:boolean};slider?:{value:number;min:number;max:number}};
+export type MenuButton={id:string;label:string;detail?:string;colour?:string;thumbnail?:string;muted?:boolean;swatch?:boolean;selected?:boolean;disabled?:boolean;rect?:MenuRect;sector?:number;clip?:MenuRect;layerInfo?:{resolution?:number;operation?:string;tube:boolean;children:number;collapsed:boolean};slider?:{value:number;min:number;max:number}};
 export type MenuContent={title:string;subtitle:string;buttons:MenuButton[];labels:{text:string;x:number;y:number;small?:boolean;width?:number;height?:number;value?:boolean}[];footer:string;scroll?:{offset:number;max:number}};
 export const MENU_SIZE=1152;
 export const OPTIONS_PER_PAGE=5;
 export const WHEEL=Object.freeze({x:576,y:590,inner:185,outer:430,labelRadius:328});
 /** Screen-independent menu state, hit targets and application command dispatch. */
 export class XRMenuModel {
- request:XRMenuRequest|null=null;page:XRMenuRequest='tool-wheel';optionPage=0;hover:string|null=null;feedback='';
+ request:XRMenuRequest|null=null;page:XRMenuRequest|'cut'|'cut-confirm'='tool-wheel';optionPage=0;hover:string|null=null;feedback='';
  private merge:{project:unknown;id:string;other?:string;resolution:number}|null=null;private mergeAbort:AbortController|null=null;
  private resetTarget:{project:unknown;id:string}|null=null;
  private moveVariants=false;
+ private cutAxis:'x'|'y'|'z'='x';private cutOffset=0;private cutTilt:[number,number]=[0,0];private cutAbort:AbortController|null=null;
+ private cutScope:'active'|'all-editable'='active';
  readonly world:XRWorldMenu;readonly palette:LayerPaletteModel;
  constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);this.palette=new LayerPaletteModel(tools);}
- setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
+ setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.cutAbort?.abort();this.cutAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
  get layerSelectionActive():boolean{return this.request!==null&&this.page==='layers'&&!this.merge&&!this.resetTarget;}
- content():MenuContent{const content=this.buildContent();if(this.feedback){content.footer=this.feedback;if(this.page==='tool-wheel')content.subtitle=this.feedback;}else if(this.tools.busy)content.footer="Working… · Finish or cancel the current edit";content.buttons.push({id:'ui-scale',label:'Menu size',detail:this.tools.port.layers().display.vrUiScale==='large'?'Large → Standard':'Standard → Large',rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
+ content():MenuContent{const content=this.buildContent();for(const button of content.buttons)if(button.id==='snap-toggle'){button.muted=!this.tools.snapApplicable;button.detail=this.tools.snapApplicable?'15° direction snapping':'Applies to Straight Line strokes and Move rotation';}if(this.feedback){content.footer=this.feedback;if(this.page==='tool-wheel')content.subtitle=this.feedback;}else if(this.tools.busy)content.footer="Working… · Finish or cancel the current edit";content.buttons.push({id:'ui-scale',label:'Menu size',detail:this.tools.port.layers().display.vrUiScale==='large'?'Large → Standard':'Standard → Large',rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
  private buildContent():MenuContent{
+  if(this.page==='cut-confirm'){const layer=this.tools.port.layers().active.layer,normal=new Vector3(this.cutAxis==='x'?1:0,this.cutAxis==='y'?1:0,this.cutAxis==='z'?1:0).applyEuler(new Euler(this.cutTilt[0]*Math.PI/180,this.cutTilt[1]*Math.PI/180,0,'XYZ')).normalize();return {title:'REVIEW PLANE CUT',subtitle:`${layer.name} · preview before apply`,buttons:[{id:'cut-back',label:'Adjust plane',rect:{x:40,y:820,width:400,height:100}},{id:'cut-cancel',label:'Cancel',rect:{x:40,y:940,width:400,height:90}},{id:'cut-apply',label:this.cutAbort?'Cutting…':'Apply Cut · create new layer',rect:{x:600,y:940,width:512,height:90},disabled:!!this.cutAbort||this.tools.busy}],labels:[{text:`Plane through ${normal.clone().multiplyScalar(this.cutOffset).toArray().map(n=>n.toFixed(2)).join(', ')} · normal ${normal.toArray().map(n=>n.toFixed(3)).join(', ')}`,x:60,y:300,width:1040,height:84,value:true},{text:`${this.cutScope==='active'?'Active layer only':'All visible, unlocked SDF layers'} · Offset ${this.cutOffset.toFixed(2)} · tilt ${this.cutTilt[0]}° / ${this.cutTilt[1]}°`,x:60,y:420,width:1040,height:74},{text:'The field will be intersected with both half-spaces to form closed caps. Both pieces keep their paint and mask; the new cut face inherits paint from nearby surface samples.',x:60,y:530,width:1040,height:180}],footer:this.feedback||'Review the plane, then apply or adjust it'};}
+  if(this.page==='cut'){const layer=this.tools.port.layers().active.layer,buttons:MenuButton[]=[{id:'tools',label:'‹ Tool Wheel',rect:{x:40,y:140,width:300,height:74}},{id:'cut-axis:x',label:'X',selected:this.cutAxis==='x',rect:{x:40,y:270,width:330,height:90}},{id:'cut-axis:y',label:'Y',selected:this.cutAxis==='y',rect:{x:410,y:270,width:330,height:90}},{id:'cut-axis:z',label:'Z',selected:this.cutAxis==='z',rect:{x:780,y:270,width:332,height:90}},{id:'cut-offset-dec',label:'−',rect:{x:40,y:420,width:220,height:100}},{id:'cut-offset-inc',label:'+',rect:{x:892,y:420,width:220,height:100}},{id:'cut-scope',label:this.cutScope==='active'?'Affected · Active layer':'Affected · All visible editable layers',rect:{x:300,y:500,width:552,height:72}},{id:'cut-tilt-x-dec',label:'Tilt X −15°',rect:{x:40,y:590,width:320,height:88}},{id:'cut-tilt-x-inc',label:'Tilt X +15°',rect:{x:410,y:590,width:330,height:88}},{id:'cut-tilt-y-dec',label:'Tilt Y −15°',rect:{x:40,y:700,width:320,height:88}},{id:'cut-tilt-y-inc',label:'Tilt Y +15°',rect:{x:410,y:700,width:330,height:88}},{id:'cut-cancel',label:'‹ Tool Wheel',rect:{x:40,y:900,width:330,height:86}},{id:'cut-preview',label:'Preview Plane',rect:{x:780,y:900,width:332,height:86},disabled:this.tools.busy}];return {title:'PLANE CUT',subtitle:`${layer.name} · Separate into a new layer`,buttons,labels:[{text:`Plane normal ${this.cutAxis.toUpperCase()} · offset ${this.cutOffset.toFixed(2)} · tilt ${this.cutTilt[0]}° / ${this.cutTilt[1]}°`,x:280,y:434,width:600,height:72,value:true},{text:'Closed SDF pieces · new face colour inherits nearby paint',x:60,y:820,width:1040,height:56}],footer:this.feedback||'Set plane orientation and position, then preview before applying'};}
   if(this.page==='world')return this.world.content();
   if(this.page==='layers'&&!this.merge)return this.palette.content();
   if(this.resetTarget&&(this.tools.active!=='transform'||this.tools.busy||this.tools.port.layers().project!==this.resetTarget.project||this.tools.port.layers().transformNode.id!==this.resetTarget.id)){this.resetTarget=null;this.feedback='Reset cancelled: selection or interaction changed';}
@@ -115,8 +120,17 @@ export class XRMenuModel {
    else if(id==='move-variants'){this.moveVariants=true;}
    else if(id==='variant-settings'){this.moveVariants=false;this.optionPage=0;}
    else if(action==='move-variant'){this.tools.selectMoveVariant(value as MoveVariant);this.moveVariants=false;this.optionPage=0;}
-   else if(action==='tool'){if(value==='move')this.tools.selectMoveGroup();else this.tools.select(value as EditorTool);this.moveVariants=value==='move';this.page='tool-options';this.optionPage=0;}
+   else if(action==='tool'){if(value==='cut'){this.page='cut';this.cutOffset=0;this.cutTilt=[0,0];}else{if(value==='move')this.tools.selectMoveGroup();else this.tools.select(value as EditorTool);this.moveVariants=value==='move';this.page='tool-options';this.optionPage=0;}}
    else if(id==='options'){this.page='tool-options';this.optionPage=0;}
+   else if(id==='cut-cancel'){if(this.cutAbort)this.cutAbort.abort();else this.page='tool-wheel';}
+   else if(id==='cut-back')this.page='cut';
+   else if(id==='cut-preview')this.page='cut-confirm';
+   else if(id==='cut-scope')this.cutScope=this.cutScope==='active'?'all-editable':'active';
+   else if(action==='cut-axis'){this.cutAxis=value as 'x'|'y'|'z';}
+   else if(id==='cut-offset-inc'||id==='cut-offset-dec')this.cutOffset=Math.max(-1.4,Math.min(1.4,this.cutOffset+(id.endsWith('inc')?0.1:-0.1)));
+   else if(id==='cut-tilt-x-inc'||id==='cut-tilt-x-dec')this.cutTilt[0]=Math.max(-90,Math.min(90,this.cutTilt[0]+(id.endsWith('inc')?15:-15)));
+   else if(id==='cut-tilt-y-inc'||id==='cut-tilt-y-dec')this.cutTilt[1]=Math.max(-90,Math.min(90,this.cutTilt[1]+(id.endsWith('inc')?15:-15)));
+   else if(id==='cut-apply'){const layers=this.tools.port.layers(),normal=new Vector3(this.cutAxis==='x'?1:0,this.cutAxis==='y'?1:0,this.cutAxis==='z'?1:0).applyEuler(new Euler(this.cutTilt[0]*Math.PI/180,this.cutTilt[1]*Math.PI/180,0,'XYZ')).normalize(),plane={normal:normal.toArray() as [number,number,number],point:normal.clone().multiplyScalar(this.cutOffset).toArray() as [number,number,number]},abort=new AbortController();this.cutAbort=abort;void layers.cutByPlane(plane,abort.signal,stage=>{this.feedback=stage;},this.cutScope).then(()=>{if(this.cutAbort!==abort)return;this.cutAbort=null;this.feedback=this.cutScope==='active'?'Cut complete · second piece is a new layer':'All editable layers cut · changes share one Undo action';this.tools.port.shape.sync(layers.project.layerStack);this.tools.port.changed();}).catch(error=>{if(this.cutAbort!==abort)return;this.cutAbort=null;this.feedback=error instanceof Error?error.message:'Cut cancelled; source kept';this.tools.port.changed();});}
    else if(id==='tools'){this.page='tool-wheel';this.optionPage=0;}
    else if(id==='next')this.optionPage++;else if(id==='prev')this.optionPage--;
    else if(id==='new-layer')this.tools.createLayer();

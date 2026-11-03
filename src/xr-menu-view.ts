@@ -15,6 +15,7 @@ export class XRMenuView implements XRMenuInteraction {
  readonly mesh:Mesh<PlaneGeometry,MeshBasicMaterial>;readonly canvas:HTMLCanvasElement;paintCount=0;
  private readonly texture:CanvasTexture;private readonly ctx:CanvasRenderingContext2D;
  private readonly raycaster=new Raycaster();private readonly direction=new Vector3();
+ private readonly thumbnailImages=new Map<string,HTMLImageElement>();
  private readonly eye=new Vector3();private readonly head=new Quaternion();private readonly forward=new Vector3();
  private slider:string|null=null;private dragPageHover:string|null=null;private dragPageSince=0;scrollOffset=0;private scrollTime:number|null=null;
  private ready=false;private owner=0;private hasPose=false;private lastContent='';private lastRefresh=-Infinity;private content:MenuContent|null=null;
@@ -39,7 +40,7 @@ export class XRMenuView implements XRMenuInteraction {
  get active():boolean{return !!this.model.request;}
  place(position:{x:number;y:number;z:number},orientation:{x:number;y:number;z:number;w:number}):void{this.eye.set(position.x,position.y,position.z);this.head.set(orientation.x,orientation.y,orientation.z,orientation.w);this.hasPose=true;}
  private anchor():void{this.forward.set(0,0,-1).applyQuaternion(this.head);this.forward.y=0;if(this.forward.lengthSq()<.001)this.forward.set(0,0,-1);this.forward.normalize();this.mesh.position.copy(this.eye).addScaledVector(this.forward,1.05);this.mesh.position.y-=.12;this.mesh.lookAt(this.eye);this.mesh.updateWorldMatrix(true,false);}
- close():void{this.scrollOffset=0;this.scrollTime=null;this.cursor.visible=false;this.slider=null;this.model.setRequest(null);this.mesh.visible=false;this.ready=false;this.owner=0;this.content=null;this.lastContent='';this.lastRefresh=-Infinity;}
+ close():void{this.scrollOffset=0;this.scrollTime=null;this.cursor.visible=false;this.slider=null;this.model.setRequest(null);this.mesh.visible=false;this.ready=false;this.owner=0;this.content=null;this.lastContent='';this.lastRefresh=-Infinity;for(const image of this.thumbnailImages.values())image.src='';this.thumbnailImages.clear();}
  start():void{this.close();this.hasPose=false;}
  stop():void{this.start();this.mesh.removeFromParent();}
  update(request:XRMenuRequest|null,tool:XRControllerState|undefined,pose:Matrix4|undefined,time:number,active:boolean):number|null{
@@ -50,6 +51,7 @@ export class XRMenuView implements XRMenuInteraction {
   if(!this.mesh.visible&&this.hasPose)this.anchor();
   this.mesh.visible=this.hasPose;if(!this.mesh.visible)return null;
   if(time-this.lastRefresh>=100||!this.content){this.content=this.menuContent();this.lastRefresh=time;}
+  const wanted=new Set(this.content.buttons.flatMap(button=>button.thumbnail?[button.thumbnail]:[]));for(const [key,image]of this.thumbnailImages)if(!wanted.has(key)){image.src='';this.thumbnailImages.delete(key);}
   let distance:number|null=null;this.model.hover=null;this.cursor.visible=false;
   if(tool?.connected&&tool.role==='tool'&&tool.tracked&&tool.gripTracked&&pose&&pose.elements.every(Number.isFinite)&&Math.abs(pose.determinant())>1e-10){
    if(tool.connectionId!==this.owner){this.scrollOffset=0;this.scrollTime=null;this.model.palette.dragged=null;this.slider=null;this.owner=tool.connectionId;this.ready=false;}
@@ -81,7 +83,7 @@ export class XRMenuView implements XRMenuInteraction {
   if(wheel){for(const r of [{x:24,y:24,width:798,height:106},{x:24,y:1050,width:1104,height:64}]){roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle='rgba(16,26,32,0.88)';ctx.fill();}}
   drawVRText(ctx,content.title,{x:40,y:32,width:776,height:56},VR_UI.heading,VR_UI.text,true);
   drawVRText(ctx,content.subtitle,{x:40,y:92,width:776,height:38},VR_UI.detail,VR_UI.muted);
-  for(const b of content.buttons){if(b.clip){ctx.save();ctx.beginPath();ctx.rect(b.clip.x,b.clip.y,b.clip.width,b.clip.height);ctx.clip();this.button(b);ctx.restore();}else this.button(b);}
+  for(const b of content.buttons){ctx.save();if(b.clip){ctx.beginPath();ctx.rect(b.clip.x,b.clip.y,b.clip.width,b.clip.height);ctx.clip();}if(b.muted)ctx.globalAlpha*=.55;this.button(b);ctx.restore();}
   if(content.scroll&&content.scroll.offset<content.scroll.max-.5){ctx.save();ctx.globalAlpha=.4;ctx.strokeStyle=VR_UI.text;ctx.lineWidth=4;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(562,918);ctx.lineTo(576,930);ctx.lineTo(590,918);ctx.stroke();ctx.restore();}
   if(this.model.palette.dragged){const drop=this.model.palette.dropPreview(this.model.hover),target=content.buttons.find(b=>b.id===this.model.hover);if(drop.parent!==undefined&&(target?.rect||drop.parent===null)){const root=drop.parent===null,r=root?{x:32,y:140,width:1088,height:804}:target!.rect!;ctx.save();if(target?.clip){ctx.beginPath();ctx.rect(target.clip.x,target.clip.y,target.clip.width,target.clip.height);ctx.clip();}roundedVRRect(ctx,root?r.x-6:32,r.y-6,root?r.width+12:1088,r.height+12,18);ctx.strokeStyle=drop.valid?'#b2e5ce':'#ef9c8c';ctx.lineWidth=6;ctx.stroke();ctx.restore();}}
 
@@ -103,6 +105,7 @@ export class XRMenuView implements XRMenuInteraction {
   }
   if(b.id==='hier:root')return;
   const r=b.rect!;roundedVRRect(ctx,r.x,r.y,r.width,r.height);ctx.fillStyle=style.fill;ctx.fill();ctx.strokeStyle=style.stroke;ctx.lineWidth=style.lineWidth;ctx.stroke();
+  if(b.thumbnail){let image=this.thumbnailImages.get(b.thumbnail);if(!image){image=new Image();this.thumbnailImages.set(b.thumbnail,image);image.onload=()=>{this.lastContent='';};image.src=b.thumbnail;}if(image.complete&&image.naturalWidth){const size=Math.min(116,r.height-18);ctx.save();ctx.beginPath();ctx.roundRect(r.x+12,r.y+(r.height-size)/2,size,size,12);ctx.clip();ctx.drawImage(image,r.x+12,r.y+(r.height-size)/2,size,size);ctx.restore();drawVRText(ctx,b.label,{x:r.x+144,y:r.y+12,width:r.width-164,height:r.height-24},VR_UI.value,style.text,true);return;}}
   if(b.layerInfo){const info=b.layerInfo,pad=b.colour?36:16;if(b.colour){roundedVRRect(ctx,r.x+12,r.y+12,12,r.height-24,6);ctx.fillStyle=b.colour;ctx.fill();}
    if(info.children)drawVRText(ctx,info.collapsed?'▸':'▾',{x:r.x+pad,y:r.y+12,width:30,height:34},24,style.text,true);
    const badges=[info.resolution?`${info.resolution}³`:'Group',info.operation==='difference'?'−':info.operation==='intersect'?'∩':'+',...(info.tube?['Tube']:[]),...(info.children&&info.collapsed?[`${info.children} children`]:[])];
@@ -153,6 +156,7 @@ export class XRMenuView implements XRMenuInteraction {
    c.moveTo(0,-23);c.lineTo(-21,-17);c.lineTo(-21,1);c.bezierCurveTo(-21,15,-9,24,0,29);c.closePath();c.save();c.globalAlpha=.32;c.fill();c.restore();c.beginPath();
    c.moveTo(0,-23);c.lineTo(21,-17);c.lineTo(21,1);c.bezierCurveTo(21,15,9,24,0,29);c.bezierCurveTo(-9,24,-21,15,-21,1);c.lineTo(-21,-17);c.closePath();c.moveTo(0,-20);c.lineTo(0,24);
   }
+  else if(id==='cut'){c.moveTo(-24,-16);c.lineTo(-6,-16);c.lineTo(-6,16);c.lineTo(-24,16);c.closePath();c.moveTo(6,-16);c.lineTo(24,-16);c.lineTo(24,16);c.lineTo(6,16);c.closePath();c.moveTo(0,-27);c.lineTo(0,27);}
   else if(id==='smooth'){c.moveTo(-24,5);c.bezierCurveTo(-12,-22,5,22,24,-5);}
   else if(id==='tube'||id==='edit-spline'){c.moveTo(-24,12);c.bezierCurveTo(-15,-24,8,24,24,-12);if(id==='tube'){c.moveTo(-24,3);c.bezierCurveTo(-15,-33,8,15,24,-21);}else{for(const p of [[-24,12],[0,0],[24,-12]]){c.moveTo(p[0]+5,p[1]);c.arc(p[0],p[1],5,0,Math.PI*2);}}}
   else if(id==='stamp'){c.rect(-15,-12,30,26);c.moveTo(-22,21);c.lineTo(22,21);c.moveTo(0,-12);c.lineTo(0,-22);}

@@ -1,3 +1,4 @@
+import {XRSnapGuide} from './xr-snap-guide';
 import {MoveGesture} from './move-gesture';
 import {BufferGeometry,Float32BufferAttribute,LineBasicMaterial,LineSegments,Group,Matrix4,Quaternion,Ray,Mesh,MeshBasicMaterial,Raycaster,SphereGeometry,Vector3} from 'three';
 import type {Intersection,Object3D} from 'three';
@@ -13,6 +14,7 @@ export type MovePreviewCapture=Readonly<{projectId:string;layerId:string;volume:
 /** Surface targeting and noncumulative preview in a frozen layer frame.
  * Release delegates one atomic persistent command to IndependentLayers. */
 export class XRMoveTool implements XRStrokeInteraction {
+ readonly snapGuide:XRSnapGuide;private readonly snapSpoke=new Vector3();
  readonly preview=new MoveMeshPreview();readonly gesture=new MoveGesture();
  readonly boundary:LineSegments<BufferGeometry,LineBasicMaterial>;targetState:'none'|'valid'|'locked'|'unavailable'='none';
  private hoverChunk:Object3D|null=null;readonly influence:XRBrushPreview;
@@ -29,7 +31,7 @@ export class XRMoveTool implements XRStrokeInteraction {
  private readonly inverseStartRotation=new Quaternion();private readonly startRotation=new Quaternion();private readonly wristRotation=new Quaternion();private readonly poseRotation=new Matrix4();
  private readonly inverse=new Matrix4();private readonly anchor=new Matrix4();private readonly markerMatrix=new Matrix4();private readonly parentInverse=new Matrix4();
  constructor(private readonly layers:()=>IndependentLayers,private readonly tools:EditorToolState,root:Group,private readonly pulse:(event:'grab'|'release')=>void=()=>{},private readonly committed:()=>void=()=>{},private readonly issue:(event:'cancel'|'error')=>void=()=>{}){
-  this.influence=new XRBrushPreview(root);this.influence.group.name='Move influence · not project data';this.influence.mesh.visible=false;
+  this.snapGuide=new XRSnapGuide(root);this.influence=new XRBrushPreview(root);this.influence.group.name='Move influence · not project data';this.influence.mesh.visible=false;
   const points:number[]=[];for(let plane=0;plane<3;plane++)for(let i=0;i<64;i++)for(const t of [i/64*2*Math.PI,(i+1)/64*2*Math.PI]){const p=[0,0,0];p[(plane+1)%3]=Math.cos(t);p[(plane+2)%3]=Math.sin(t);points.push(...p);}
   const geometry=new BufferGeometry();geometry.setAttribute('position',new Float32BufferAttribute(points,3));
   this.boundary=new LineSegments(geometry,new LineBasicMaterial({color:'#aec4de',transparent:true,opacity:.65,depthTest:true,depthWrite:false,toneMapped:false}));this.boundary.raycast=()=>{};this.boundary.frustumCulled=false;this.influence.group.add(this.boundary);
@@ -38,7 +40,7 @@ export class XRMoveTool implements XRStrokeInteraction {
  get liveSizing(){return this.grabbing&&!this.commitAbort&&this.capture?.mode==='elastic'&&this.capture.interaction==='translate'?'move-falloff' as const:null;}
  get active():boolean{return this.grabbing;}
  get notifying():boolean{return this.until>this.currentTime;}
- private release():void{this.preview.restore();this.tools.endPreview(this);this.capturedLayers?.endPreview(this);this.grabbing=false;this.capturedLayers=null;this.runtime=null;this.capture=null;this.owner=0;this.influence.hide();this.marker.visible=false;}
+ private release():void{this.snapGuide.hide();this.preview.restore();this.tools.endPreview(this);this.capturedLayers?.endPreview(this);this.grabbing=false;this.capturedLayers=null;this.runtime=null;this.capture=null;this.owner=0;this.influence.hide();this.marker.visible=false;}
  cancel():void{if(this.active||this.commitAbort)this.issue('cancel');const pending=!!this.commitAbort,notice=this.notifying&&this.feedback.startsWith('Move cancelled');this.commitGeneration++;this.commitAbort?.abort();this.commitAbort=null;this.release();this.preview.cancel();this.rayChunks.length=0;this.hits.length=0;this.armed=false;if(pending){this.feedback='Move cancelled · source kept · release trigger to rearm';this.until=this.currentTime+1600;}else if(!notice){this.feedback='';this.until=0;}this.hoverChunk=null;this.targetState='none';}
  update(tool:XRControllerState|undefined,aim:Matrix4|undefined,time:number,enabled:boolean,gripPose?:Matrix4):void{
   const l=this.layers(),start=performance.now();if(Number.isFinite(time))this.currentTime=time;try{this.step(l,tool,aim,time,enabled,gripPose);}catch(error){this.cancel();this.issue('error');this.feedback=error instanceof Error?error.message:'Move preview cancelled';this.until=time+1200;}finally{this.lastMs=performance.now()-start;if(l.metrics.enabled)l.metrics.movePreview.add(this.lastMs);}
@@ -92,13 +94,14 @@ export class XRMoveTool implements XRStrokeInteraction {
  private updatePose(pose:Matrix4):void{
   const capture=this.capture!;
   if(this.liveSizing){this.preview.field.falloff=this.tools.move.falloff;this.preview.uniforms.moveExponent.value=this.tools.move.falloff+1;}
-  if(capture.interaction==='translate'){this.preview.update(this.gesture.translation(this.displacement,this.filteredDisplacement,capture.axis));return;}
+  if(capture.interaction==='translate'){this.snapGuide.hide();this.preview.update(this.gesture.translation(this.displacement,this.filteredDisplacement,capture.axis));return;}
   this.poseRotation.multiplyMatrices(this.inverse,pose).extractRotation(this.poseRotation);
   this.wristRotation.setFromRotationMatrix(this.poseRotation).multiply(this.inverseStartRotation.copy(this.startRotation).invert()).normalize();
   this.gesture.rotation(this.wristRotation,capture.axis,capture.angularStrength,capture.angleClamp,capture.snap);
   this.preview.setRotation(this.gesture.axis,this.gesture.angle,capture.interaction);
+  if(capture.snap){const axis=this.gesture.axis;this.snapSpoke.set(Math.abs(axis.x)<.8?1:0,Math.abs(axis.x)<.8?0:1,0).addScaledVector(axis,-(Math.abs(axis.x)<.8?axis.x:axis.y)).normalize().applyAxisAngle(axis,this.gesture.angle).multiplyScalar(capture.radius).add(this.preview.field.center);this.snapGuide.show(this.anchor,this.preview.field.center,this.snapSpoke,capture.radius*1.5);}else this.snapGuide.hide();
  }
- private startCommit(l:IndependentLayers,time:number):void{
+ private startCommit(l:IndependentLayers,time:number):void{this.snapGuide.hide();
   const capture=this.capture!,generation=++this.commitGeneration,abort=new AbortController();this.commitAbort=abort;this.commitMessage='Move · reconstructing · preview held · Support grip cancels';this.armed=false;
   const owned=()=>this.capture===capture&&generation===this.commitGeneration&&!abort.signal.aborted;
   const guard=()=>{if(!owned()||!this.runtime)return false;const surface=this.runtime.surface.group;surface.updateWorldMatrix(true,false);return surface.matrixWorld.elements.every((v,i)=>Math.abs(v-capture.worldMatrix[i])<=1e-9);};
@@ -112,5 +115,5 @@ export class XRMoveTool implements XRStrokeInteraction {
   this.markerMatrix.makeScale(radius*.018,radius*.018,radius*.018);this.markerMatrix.setPosition(this.markerPoint);this.marker.matrix.copy(surface.matrixWorld).multiply(this.markerMatrix);
   if(this.marker.parent){this.marker.parent.updateWorldMatrix(true,false);this.parentInverse.copy(this.marker.parent.matrixWorld).invert();this.marker.matrix.premultiply(this.parentInverse);}this.marker.visible=true;this.marker.updateWorldMatrix(false,false);
  }
- dispose():void{this.cancel();this.boundary.geometry.dispose();this.boundary.material.dispose();this.influence.dispose();this.marker.removeFromParent();this.marker.geometry.dispose();this.marker.material.dispose();}
+ dispose():void{this.cancel();this.snapGuide.dispose();this.boundary.geometry.dispose();this.boundary.material.dispose();this.influence.dispose();this.marker.removeFromParent();this.marker.geometry.dispose();this.marker.material.dispose();}
 }

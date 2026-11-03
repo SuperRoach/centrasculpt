@@ -20,6 +20,7 @@ export class ClayStrokeSession {
  setRadius(worldRadius:number):void{if(this.phase==='drawing'&&this.settings.mode!=='smooth'&&Number.isFinite(worldRadius)&&worldRadius>0)this.radius=worldRadius/uniformScale(this.layers().active.layer.transform);}
  /** Include XR meshing/preview work outside sample() when judging the next pose gap. */
  accountFrameCPU(ms:number):void{if(this.phase==='drawing'&&Number.isFinite(ms)&&ms>=0)this.previousSampleCPU=Math.max(this.previousSampleCPU,ms);}
+ get snapGuide():{origin:Point3;end:Point3}|null{if(this.phase!=='drawing'||!this.straight||!this.snap||this.axis!=='free'||this.breakPending||this.raw.length<2)return null;let origin=this.raw[0];for(let i=this.raw.length-1;i>=0;i--)if(this.raw[i].breakBefore){origin=this.raw[i];break;}return {origin,end:this.raw[this.raw.length-1]};}
  get localRadius():number{return this.radius;}
  get active():boolean{return this.phase!=='idle';}
  get replayRemaining():number{return (this.phase==='committing'||this.stagedDeformation&&this.phase==='drawing')?Math.max(0,this.queue.length-this.cursor)+(this.pending?1:0):0;}

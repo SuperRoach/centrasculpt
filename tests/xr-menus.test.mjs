@@ -37,9 +37,12 @@ test('Tool Wheel opens, selects all enabled tools, shows active state, and dismi
 });
 test('radial and rectangular hit tests align with every visible target, including experimental Move',()=>{
  const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');for(const definition of VR_WHEEL_TOOLS){const id=`tool:${definition.id}`;assert.equal(m.hit(...buttonPoint(m,id)),id);}
- assert.equal(m.hit(1100,1050),'project');assert.equal(m.hit(576,590),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1130,1050]])assert.equal(m.hit(...point),null);
+ assert.equal(m.hit(1100,1050),'project');assert.equal(m.hit(576,554),'options');assert.equal(m.hit(576,626),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1130,1050]])assert.equal(m.hit(...point),null);
  m.activate('options');for(const b of m.content().buttons)assert.equal(m.hit(...buttonPoint(m,b.id)),b.id);
  }finally{f.dispose();}
+});
+test('Cut is a direct main-wheel control with a separate plane review and preserves all ten sector targets',()=>{
+ const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');assert.equal(VR_WHEEL_TOOLS.length,10);assert.equal(m.hit(...buttonPoint(m,'tool:cut')),'tool:cut');const cut=m.content().buttons.find(b=>b.id==='tool:cut'),options=m.content().buttons.find(b=>b.id==='options');assert.equal(cut.sector,9);assert.equal(cut.rect,undefined);assert.deepEqual([options.rect.width,options.rect.height],[280,144]);m.activate('tool:cut');assert.equal(m.page,'cut');assert.equal(m.content().title,'PLANE CUT');m.activate('cut-axis:z');m.activate('cut-offset-inc');m.activate('cut-tilt-x-inc');m.activate('cut-preview');assert.equal(m.page,'cut-confirm');assert.match(m.content().labels[0].text,/0\.10/);m.activate('cut-back');assert.equal(m.page,'cut');m.activate('cut-cancel');assert.equal(m.page,'tool-wheel');}finally{f.dispose();}
 });
 test('Clay/Smooth options update the same desktop settings without voxel/history changes',()=>{
  const f=fixture();try{const bytes=new Uint8Array(saveSculptProject(f.layers.project)),volume=f.layers.active.volume.getDenseView().slice(),geometry=f.layers.active.surface.group.children.map(o=>o.geometry);

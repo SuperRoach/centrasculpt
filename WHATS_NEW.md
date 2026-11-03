@@ -1,3 +1,10 @@
+### Phase 6.0 — Cut, project previews and clearer snapping (2026-11-03)
+
+- Find Cut directly on the VR tool ring, with its own split-plane icon, or open it from the desktop controls. Adjust the plane, review its position and cut the sculpture into two editable layers. One Undo restores the original.
+- Cut the active layer or all visible, unlocked sculpt layers together.
+- Recognise saved browser projects by their sculpture previews in the desktop and VR project libraries. Projects without a preview show a placeholder.
+- Angle Snap dims when the current tool cannot use it. During a snapped straight stroke, a single guide extends from the starting point along its direction. Move rotation and twist show a guide at the snapped angle.
+
 ### Phase 5.4 — Easier desktop painting (2026-11-03)
 
 - Shape Library uses the same stamp symbol as VR.

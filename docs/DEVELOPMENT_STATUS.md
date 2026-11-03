@@ -1,38 +1,38 @@
 # Development Status — Centra Sculpt / vrappPOC
 
-Updated 2026-11-01. **Phase 5.4 host implementation complete; release acceptance blocked on physical Quest 3 validation.**
+Updated 2026-11-03. **Phase 6.0 host implementation complete; physical Quest 3 acceptance remains pending.**
 
 ## 1. What changed
 
-Added collapsed-by-default What's New immediately below Print Report in the desktop left sidebar. Click, Enter and Space use native disclosure behavior; complete history scrolls within 20rem. WHATS_NEW.md is the single build-time source, newest first. DEVELOPMENT.md requires handover/changelog updates and strict TypeScript/build/full tests for future completed phases and significant changes.
+Phase 6.0 adds direct main-wheel and desktop Plane Cut controls, separate SDF pieces with a single-action undo, active/all-editable layer scope, and automatic browser-library thumbnails on Save/Save As. `WHATS_NEW.md` has the dated end-user entry. Details and limitations are recorded in [Phase 6.0 handover](PHASE_6_0_CUT_THUMBNAILS.md).
 
-Read Phase 5.2/5.3 handovers and verified actual STL code/tests before edits. Baseline working tree was clean at b1fb915; no existing changes overwritten. Previous export fixes are committed in that baseline. No commit, push or merge performed for Phase 5.4.
+Read the current Development Status, Phase 5.1 browser, Phase 5.3 STL, Phase 5.4 release handover and recent changes before editing. Baseline working tree was clean at b1fb915; no user edits were overwritten. Baseline strict TypeScript/build and full suite passed (**1,298/1,298**). No commit, push or merge performed for Phase 6.0.
 
 ## 2. Architectural decisions
 
-Vite raw import feeds a small DOM helper using textContent; Markdown headings and bullets render as safe DOM elements with no arbitrary HTML interpretation or parser dependency. Native details/summary supplies accessible expanded state and keyboard activation. A labelled focusable history region supports scrolling. Panel key events stop before global sculpt shortcuts. No sculpt scheduler, engine, worker, persistence or colour pipeline changes.
+Plane Cut computes negative-inside half-space intersections in each source layer’s local SDF lattice, retaining expanded dimensions and lattice origin. Both pieces are prepared and remeshed before publication. Paint and masks are clipped to the piece and nearby cap samples inherit surface colour. Effective visible/unlocked layers can be cut in one staged, rollback-safe history action; intersect targets reject the whole batch. Cut-history references are invalidated safely when a related layer is deleted.
 
-VR command surfaces have no equivalent scrolling document reader; history remains available in the sidebar after XR exit, with no added Tool Wheel command. Phase 5.2 staged paint refresh and two-chunk / 3 ms scheduler remain intact.
+Thumbnail capture uses an isolated offscreen render target and visible committed surfaces, restores renderer/XR state before async readback, and stores capped compressed data through existing atomic local-library metadata. Project listing remains metadata-only. Portable `.form` payloads are unchanged.
 
 ## 3. Build and test results
 
-Baseline strict TypeScript, production build and **1,276/1,276 tests passed**. Final strict TypeScript/build and **1,280/1,280 tests passed**, no failures/skips/cancellations. Four new history tests cover placement/import/order, disclosure structure and default state, keyboard isolation, arbitrary text, long content, accessibility and existing export controls. Additional real-worker run: **89/89 passed**. Build retains existing bundle-size advisory.
+Final `npx tsc --noEmit --strict`, production build and complete suite passed: **1,316/1,316**, no failures/skips/cancellations. New tests cover SDF caps/signs, rotated/offset/sparse-lattice planes, groups/transforms, paint/mask, individual STL diagnostics, cancellation, batch rollback/Undo/Redo, stale-history cleanup, thumbnail cap/fallback/async XR readback and direct wheel hit-target ownership. Build retains the existing main-bundle size advisory.
 
-Host browser startup passed (64³ / 31,536 triangles), actual disclosure click/Enter collapse and Markdown loading verified. XR/Passthrough unavailable on host. Existing recovery was left untouched. Logs: outputs/phase-5-4/. Full audit scope and physical checklist: [Phase 5.4 acceptance](PHASE_5_4_RELEASE_ACCEPTANCE.md).
+One host integration run measured a 64³ cut at **139.7 ms**, 76,688 triangles and 11,812,992 tracked bytes; a 128³ cut at **937.7 ms**, 312,896 triangles and 72,860,160 tracked bytes. Each created two layers. These are single-run host measurements, not headset frame timings. Evidence: [benchmark](../outputs/phase-6-0/benchmark.json). XR/Passthrough and physical controllers are not available for host acceptance.
 
 ## 4. Benchmarks and regressions
 
-Existing 320-cycle host stress fixture completed successfully, including repeated native reloads and twelve asynchronous Moves; evidence in outputs/phase-5-4/stress.json and stress.log. This is an accelerated component fixture, not long-session headset validation or GPU leak proof. No new performance improvement claimed and no Phase 5.2 timing benchmark rerun. Full-suite coverage includes all major tools, both controller mappings, projects/recovery, references, export geometry/colour and print diagnostics. No reproducible high-priority engine failure found in host audit.
+The cut timings include preparation and incremental remeshing, but are not repeated statistical benchmarks and do not establish Quest performance. Existing Phase 5.2 staging and remesh budget controls remain in place. Thumbnail GPU readback is asynchronous where supported, with a synchronous compatibility fallback.
 
 ## 5. Known limitations and blockers
 
-**Not release-ready.** All physical Quest 3 acceptance, real Studio/Passthrough transitions, optical/controller response, sustained resource trends and actual slicer checks remain pending. Host tests cannot establish absence of GPU leaks. Print validation still excludes self-intersections, wall thickness, vertex-only manifold contacts and shell nesting; no automatic repair or print-success guarantee. STL excludes colour. Reference setup/native hydration retain synchronous bounded work. See [Phase 5.3](PHASE_5_3_PRINTING.md) and [Phase 5.2](PHASE_5_2_PERFORMANCE.md) for quotas and measured host limitations.
+**Not release-ready.** Cut review currently shows plane placement, not the generated pair of preview meshes. Freehand/wand and symmetry-duplicated cuts are deferred; a cut is one explicit plane. The field remains a two-half-space split, not a separate layer for each connected component. Arbitrary exported results must be checked in the target slicer; automated fixture print diagnostics are not universal printability proof. Allocator/GPU failure injection was not tested. Thumbnail failure does not block Save; sync readback fallback may briefly occupy a frame. Human visual acceptance and physical Quest 3 Studio/Passthrough/controller/GPU/resource validation remain pending. See [Phase 6.0](PHASE_6_0_CUT_THUMBNAILS.md), [Phase 5.3](PHASE_5_3_PRINTING.md) and [Phase 5.2](PHASE_5_2_PERFORMANCE.md).
 
 ## 6. Next recommendations
 
-Execute the actionable [Quest acceptance checklist](PHASE_5_4_RELEASE_ACCEPTANCE.md#physical-quest-3-acceptance--all-pending) for both tool hands in both environments. Record evidence and fix reproducible failures before release approval. Retain Phase 5.2 captures for 30–60 minute sessions and verify downloaded STL dimensions in a slicer.
+Execute the [Phase 6.0 physical checklist](PHASE_6_0_CUT_THUMBNAILS.md#6-next-recommendations) and the [Quest release checklist](PHASE_5_4_RELEASE_ACCEPTANCE.md#physical-quest-3-acceptance--all-pending), record evidence and fix reproducible failures before release approval. Verify each exported cut piece in the intended slicer and exercise Save/Save As thumbnail capture in XR.
 
-Every future phase/significant change must update this six-part status, add a dated user-facing WHATS_NEW.md entry newest first and pass strict TypeScript, build and full tests; see [development workflow](../DEVELOPMENT.md). No current permission to commit, push or merge.
+Every future phase/significant change must update this six-part status, add a dated user-facing `WHATS_NEW.md` entry newest first and pass strict TypeScript, build and full tests; see [development workflow](../DEVELOPMENT.md). This Phase 6.0 request explicitly prohibits commit, push or merge.
 
 Sidebar refinement: recovery pause status moved to a focusable info tooltip on Recovery Checkpoints; resource estimates moved to sidebar bottom, diagnostics use monospace, brush buttons have tooltips, Surface View uses an accessible Boolean icon toggle, and redundant export/transform/layer hints were removed. What’s New now formats headings and bullets without interpreting HTML.
 
@@ -137,3 +137,11 @@ Desktop paint surface-miss validation: production build PASS; 52/52 paint tests 
 2026-11-03: Desktop Shape Library heading now uses an SVG matching the VR stamp icon geometry.
 
 2026-11-03: Hid the routine autosave waiting-for-idle message; warnings remain visible.
+
+2026-11-03 Phase 6.0 radial Cut follow-up: moved Cut from the centre to its own tenth radial sector with a split-plane icon. Existing nine tools retain their full card dimensions; centre Options returns to 280×144. Shared drawing and hit tests use ten sectors. Production canvas reviewed at outputs/phase-6-0-radial-cut-wheel.png. Physical Quest acceptance remains pending.
+
+2026-11-03 Snap feedback: the shared 15° button dims to 55% opacity when angle snap does not apply to the current tool/settings, while remaining clickable. Applicability follows actual engine behavior: free-axis Straight Line strokes except Smooth, plus Move rotate/twist. A reusable presentation-only line extends the snapped stroke from its captured origin; Move rotation uses a snapped pivot spoke. Guides hide during commit, cancel, misses, tool changes and tracking/menu interruption and dispose with their tools. New both-hand host tests verify directions, transformed origin, unchanged source fields, cleanup and preference availability. Physical Quest guide visibility/usability remains pending.
+
+Snap feedback validation: strict TypeScript, production build and complete suite **1,316/1,316 PASS** (--test-concurrency=4); diff whitespace check passed. New guide cases cover left/right hands, origin transforms, snapped line/rotation angles, cancellation/release, unchanged source data and dimmed-but-clickable preference state. Existing Vite bundle-size advisory remains. No commit or push performed.
+
+2026-11-03 publication: user explicitly authorized committing and pushing Phase 6.0, radial Cut placement and Snap feedback, including a polished dated What’s New entry. This supersedes the earlier no-commit restriction for these changes. Physical Quest acceptance remains pending.

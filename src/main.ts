@@ -8,6 +8,7 @@ import {installDesktopColourPicker} from './desktop-colour-picker';
 import {hydrateProject} from './project-transfer';
 import {ProjectLibrary} from './project-library';
 import {ProjectBrowser} from './project-browser';
+import {captureProjectThumbnail} from './project-thumbnail';
 import {renameNative} from './library-codec';
 import {prepareLibrary} from './library-worker-client';
 import {leaveForProject} from './project-workflow';
@@ -79,6 +80,7 @@ let ghostRotation:ShapeRotationTool|undefined;
 let referenceEditor:ReferenceTransformTool|undefined;
 let viewportTools:ReturnType<typeof createViewportTools>|undefined;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#e9e9e3');scene.add(layers.group,layers.composite.group);
+const cutPlanePreview=new THREE.Mesh(new THREE.PlaneGeometry(4,4),new THREE.MeshBasicMaterial({color:'#e34b45',transparent:true,opacity:.22,side:THREE.DoubleSide,depthWrite:false}));cutPlanePreview.name='Cut plane preview · presentation only';cutPlanePreview.visible=false;cutPlanePreview.renderOrder=12;scene.add(cutPlanePreview);
 const shapeGhost=new ShapeGhost(()=>layers.project.layerStack);scene.add(shapeGhost.group);
 const shapeLibraryUI=createShapeLibraryUI(document.getElementById('shape-library-slot')!,shapeGhost,()=>layers.project.layerStack,()=>loadingProject||ui.modalOpen||xrBlocked(),stop,()=>{transformTools?.sync();cursor.visible=false;ui.status(shapeGhost.model.moveMode?'Move preview · drag arrows or planes · Apply stamp when ready':shapeGhost.model.rotationMode?'Rotate stamp · drag a ring · T to finish':shapeGhost.model.enabled?(shapeGhost.model.followPointer?'Stamp — place on a visible surface':'Preview held · G to move · T to rotate · Apply to stamp'):'Ghost hidden — sculpting available');},()=>applyShapeStamp(),()=>toggleGhostRotation(),()=>toggleGhostRotation('translate'));
 const transformPreview=new TransformPreview();
@@ -341,6 +343,13 @@ document.getElementById('apply-resolution')!.addEventListener('click',()=>{
 });
 function download(data:Blob,name:string){const url=URL.createObjectURL(data),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 document.getElementById('save-project')!.addEventListener('click',()=>void projectBrowser.activate('library:save'));
+const cutDialog=document.querySelector<HTMLDialogElement>('#cut-dialog')!;let activeCut:AbortController|null=null;
+const cutAxis=document.querySelector<HTMLSelectElement>('#cut-axis')!,cutScope=document.querySelector<HTMLSelectElement>('#cut-scope')!,cutOffset=document.querySelector<HTMLInputElement>('#cut-offset')!,cutTiltX=document.querySelector<HTMLInputElement>('#cut-tilt-x')!,cutTiltY=document.querySelector<HTMLInputElement>('#cut-tilt-y')!;
+function previewCutPlane(){const axis=cutAxis.value,normal=new THREE.Vector3(axis==='x'?1:0,axis==='y'?1:0,axis==='z'?1:0).applyEuler(new THREE.Euler(Number(cutTiltX.value)*Math.PI/180,Number(cutTiltY.value)*Math.PI/180,0,'XYZ')).normalize();cutPlanePreview.position.copy(normal).multiplyScalar(Number(cutOffset.value));cutPlanePreview.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),normal);cutPlanePreview.visible=cutDialog.open;document.querySelector<HTMLOutputElement>('#cut-offset-value')!.value=Number(cutOffset.value).toFixed(2);}
+document.getElementById('cut-plane')!.addEventListener('click',()=>{if(loadingProject||xrBlocked()||ui.modalOpen||!layers.recoveryReady)return;stop();cutAxis.value='x';cutOffset.value='0';cutTiltX.value='0';cutTiltY.value='0';previewCutPlane();cutDialog.showModal();previewCutPlane();});
+for(const control of [cutAxis,cutScope,cutOffset,cutTiltX,cutTiltY])control.addEventListener('input',previewCutPlane);
+cutDialog.addEventListener('close',()=>{cutPlanePreview.visible=false;if(activeCut){activeCut.abort();activeCut=null;}});
+document.getElementById('cut-apply')!.addEventListener('click',event=>{event.preventDefault();if(activeCut||loadingProject||xrBlocked())return;const normal=new THREE.Vector3(cutAxis.value==='x'?1:0,cutAxis.value==='y'?1:0,cutAxis.value==='z'?1:0).applyEuler(new THREE.Euler(Number(cutTiltX.value)*Math.PI/180,Number(cutTiltY.value)*Math.PI/180,0,'XYZ')).normalize(),plane={normal:normal.toArray() as [number,number,number],point:normal.clone().multiplyScalar(Number(cutOffset.value)).toArray() as [number,number,number]},abort=new AbortController(),status=document.getElementById('cut-preview-status')!,button=document.getElementById('cut-apply') as HTMLButtonElement;activeCut=abort;button.disabled=true;document.getElementById('cut-error')!.textContent='';void layers.cutByPlane(plane,abort.signal,stage=>{status.textContent=stage;},cutScope.value as 'active'|'all-editable').then(()=>{status.textContent='Cut complete · new layers created. Undo restores all sources.';ui.projectMessage('Cut complete. The resulting pieces are editable, and one Undo restores the source layers.');syncStats();}).catch(error=>{if(!abort.signal.aborted)document.getElementById('cut-error')!.textContent=message(error);status.textContent=abort.signal.aborted?'Cut cancelled · original layers kept':'Cut preview failed · original layers kept';}).finally(()=>{if(activeCut===abort)activeCut=null;button.disabled=false;});});
 document.getElementById('header-save')!.addEventListener('click',()=>document.getElementById('save-project')!.click());
 document.getElementById('new-project')!.addEventListener('click',()=>{
  if(loadingProject||xrBlocked()||ui.modalOpen||!layers.recoveryReady)return;
@@ -456,10 +465,12 @@ function renderProjectBrowser(){
  const status=document.createElement('p');status.setAttribute('role','status');status.textContent=content.footer;
  const close=document.createElement('button');close.textContent='Close library';close.dataset.libraryAction='close';close.onclick=()=>libraryDialog.close();
  libraryDialog.replaceChildren(title,subtitle,close);
+ const selectedRecord=projectBrowser.records.find(record=>record.id===projectBrowser.selected);
+ if(selectedRecord?.thumbnail&&!projectBrowser.form&&!projectBrowser.confirmation){const preview=document.createElement('img');preview.className='project-library-preview';preview.src=selectedRecord.thumbnail;preview.alt=`Preview of ${selectedRecord.name}`;libraryDialog.append(preview);}
  if(projectBrowser.form){const input=document.createElement('input');input.value=projectBrowser.draft;input.maxLength=80;input.disabled=projectBrowser.busy;input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();void projectBrowser.activate('library:submit');}};input.setAttribute('aria-label','Project name');input.oninput=()=>{projectBrowser.draft=input.value;};libraryDialog.append(input);}
  for(const label of content.labels){const p=document.createElement('p');p.textContent=label.text;libraryDialog.append(p);}
  const actions=document.createElement('div');actions.className='project-library-actions';
- for(const b of content.buttons){if(b.id.startsWith('library:key:')||['library:backspace','library:clear-name'].includes(b.id))continue;const button=document.createElement('button');button.textContent=b.detail?`${b.label} · ${b.detail}`:b.label;button.disabled=!!b.disabled;button.dataset.libraryAction=b.id;button.onclick=()=>void projectBrowser.activate(b.id);actions.append(button);}
+ for(const b of content.buttons){if(b.id.startsWith('library:key:')||['library:backspace','library:clear-name'].includes(b.id))continue;const button=document.createElement('button');button.textContent=b.detail?`${b.label} · ${b.detail}`:b.label;button.disabled=!!b.disabled;button.dataset.libraryAction=b.id;if(b.id.startsWith('library:select:')){const record=projectBrowser.records.find(item=>item.id===b.id.slice('library:select:'.length));if(record?.thumbnail){const image=document.createElement('img');image.className='project-library-row-preview';image.src=record.thumbnail;image.alt=`Preview of ${record.name}`;button.prepend(image);}}button.onclick=()=>void projectBrowser.activate(b.id);actions.append(button);}
  libraryDialog.append(actions,status);if(focus)Array.from(libraryDialog.querySelectorAll<HTMLButtonElement>('button')).find(b=>b.dataset.libraryAction===focus)?.focus();
 }
 function showProjectBrowser(){stop();if(!libraryDialog.open)libraryDialog.showModal();libraryRenderKey='';renderProjectBrowser();}
@@ -467,6 +478,7 @@ const projectBrowser=new ProjectBrowser(new ProjectLibrary(undefined,import.meta
  key:()=>recoveryKey(),ready:()=>!loadingProject&&layers.recoveryReady,
  changed:()=>{renderProjectBrowser();if(!projectBrowser.busy){layers.project.name=projectBrowser.name;ui.projectMessage(projectBrowser.status);}},
  encode:async()=>{const source=layers,key=recoveryKey();loadingProject=true;manualSaving=true;recovery?.cancelJob();stop();try{await recovery?.settle();const result=await encodeRecovery(source,{...ui.settings,camera:{position:xrBlocked()?source.project.settings.camera.position:camera.position.toArray(),target:xrBlocked()?source.project.settings.camera.target:controls.target.toArray()}},display.snapshot(source.project.id,source.project.layerStack.layers),editorTools?.snapshotPreferences(),libraryAbort.signal,()=>layers===source&&recoveryKey()===key);return result.data;}finally{loadingProject=false;manualSaving=false;}},
+ thumbnail:()=>captureProjectThumbnail(renderer,layers.group),
  open:(data,name)=>openProjectFile(new File([],`${name}.form`),data,undefined,true),
  create:async(resolution,contents)=>(await prepareLibrary({kind:'new',resolution,contents,settings:{...ui.settings,camera:{position:[2.4,1.7,3.3],target:[0,0,0]}}},libraryAbort.signal)).data,
  handoff:async(action,data,name)=>{const wasXR=xrBlocked();if(wasXR)await xrExperience!.session.exit();if(action==='import'){libraryDialog.close();document.getElementById('open-project')!.focus();if(!wasXR){projectFile.value='';projectFile.click();}ui.projectMessage('Click Import Project to choose a portable .form file.');}else if(data){download(new Blob([data],{type:'application/octet-stream'}),`${name}.form`);projectBrowser.status='Download requested. Check browser downloads; local save remains intact.';}},

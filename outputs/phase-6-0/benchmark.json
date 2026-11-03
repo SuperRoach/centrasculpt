@@ -1,0 +1,9 @@
+{
+  "kind": "host cut integration benchmark",
+  "runDate": "2026-11-03",
+  "measurements": [
+    { "resolution": "64^3", "elapsedMs": 139.7, "resultLayers": 2, "triangles": 76688, "trackedBytes": 11812992 },
+    { "resolution": "128^3", "elapsedMs": 937.7, "resultLayers": 2, "triangles": 312896, "trackedBytes": 72860160 }
+  ],
+  "method": "Single host integration run per resolution; includes cut preparation and incremental remeshing. Not a headset or sustained-session measurement."
+}

@@ -158,6 +158,8 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 .project-library-dialog :focus-visible { outline:3px solid #b0f2d7; outline-offset:3px; }
 
 .project-library-actions button[data-library-action^="library:select:"] { grid-column:1 / -1; background:#203b3f; border-color:#6f9d98; font-size:15px; }
+.project-library-preview { display:block; width:192px; height:192px; object-fit:cover; border-radius:14px; border:1px solid #6f9d98; margin:12px 0; background:#dfe4e1; }
+.project-library-row-preview { width:64px; height:64px; object-fit:cover; border-radius:10px; vertical-align:middle; margin-right:14px; background:#dfe4e1; }
 
 /* Keep enabled layer colour controls visibly interactive, including native swatches. */
 .layers-panel input[type=color] {
