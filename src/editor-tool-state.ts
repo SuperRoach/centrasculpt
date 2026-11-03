@@ -107,7 +107,7 @@ export const EDITOR_TOOLS = Object.freeze([
   {
     id: "tube",
     label: "Tube",
-    detail: "Draw an editable spline in free space",
+    detail: "Draw tubes · grab spline points to edit",
     enabled: true,
     layerGrab: false,
     sizing: "brush-radius",
@@ -147,17 +147,9 @@ export const EDITOR_TOOLS = Object.freeze([
 ] as const);
 /** Presentation hierarchy only; EDITOR_TOOLS retains every engine and desktop binding. */
 export const VR_WHEEL_TOOLS = [
-  ...[
-    "clay",
-    "smooth",
-    "flatten",
-    "inflate",
-    "stamp",
-    "move",
-    "tube",
-    "edit-spline",
-    "transform",
-  ].map((id) => EDITOR_TOOLS.find((t) => t.id === id)!),
+  ...["clay", "smooth", "flatten", "inflate", "stamp", "move", "tube", "transform"].map(
+    (id) => EDITOR_TOOLS.find((t) => t.id === id)!,
+  ),
   { id: "cut", label: "Cut", detail: "Plane · separate pieces", enabled: true } as const,
 ];
 export const MOVE_VARIANT_LABELS: Record<MoveVariant, string> = {
@@ -182,6 +174,7 @@ export type ToolOption = {
   increase: boolean;
   disabled: boolean;
   action?: string;
+  stepActions?: { decrease: string; increase: string };
   slider?: { min: number; max: number; value: number };
 };
 type Declaration = {
@@ -197,6 +190,7 @@ type Declaration = {
   format?: (v: number | string) => string;
   disabled?: boolean;
   action?: string;
+  stepActions?: { decrease: string; increase: string };
   slider?: boolean;
 };
 /** The port reads/writes the existing application state. There is no VR copy of tool values. */
@@ -215,6 +209,25 @@ export class EditorToolState {
   private rememberedMoveVariant: MoveVariant = "non-elastic";
   alternateTool: "off" | "clay" | "smooth" | "opposite" = "opposite";
   splinePointId: string | null = null;
+  private selectedTubeLayer: string | null = null;
+  private selectedTubeProject: object | null = null;
+  get tubeSplineSelected(): boolean {
+    return (
+      this.selectedTubeProject === this.port.layers().project &&
+      this.selectedTubeLayer === this.port.layers().project.activeLayerId &&
+      this.splinePointId === null
+    );
+  }
+  selectTubeSpline(): void {
+    this.selectedTubeProject = this.port.layers().project;
+    this.selectedTubeLayer = this.port.layers().project.activeLayerId;
+    this.splinePointId = null;
+    this.port.changed();
+  }
+  selectSplinePoint(id: string): void {
+    this.selectedTubeLayer = null;
+    this.splinePointId = id;
+  }
   private splineSelected: "tube" | "edit-spline" | null = null;
   private moveSelected = false;
   private previewOwner: { cancel: () => void } | null = null;
@@ -575,7 +588,18 @@ export class EditorToolState {
       let next = source;
       if (action === "tube-insert") next = insertTubePoint(source, index);
       else if (action === "tube-delete") next = deleteTubePoint(source, source.points[index].id);
-      else if (action === "tube-close") next = { ...source, closed: !source.closed };
+      else if (action === "tube-thinner" || action === "tube-thicker") {
+        next = validateTube(source);
+        const points = this.tubeSplineSelected ? next.points : [next.points[index]],
+          factor = Math.max(
+            0.005 / Math.min(...points.map((p) => p.radius)),
+            Math.min(
+              2 / Math.max(...points.map((p) => p.radius)),
+              action === "tube-thicker" ? 1.1 : 1 / 1.1,
+            ),
+          );
+        for (const point of points) point.radius *= factor;
+      } else if (action === "tube-close") next = { ...source, closed: !source.closed };
       else throw new Error("Unknown spline action.");
       await l.regenerateTube(next, layer.id);
     }
@@ -837,7 +861,7 @@ export class EditorToolState {
       });
     }
     if (active === "tube") {
-      brush("radius", "Tube radius", BRUSH_RADIUS_LIMITS.min, BRUSH_RADIUS_LIMITS.max, 0.02);
+      brush("radius", "New tube radius", BRUSH_RADIUS_LIMITS.min, BRUSH_RADIUS_LIMITS.max, 0.02);
       options.push(
         {
           id: "steady",
@@ -858,12 +882,12 @@ export class EditorToolState {
         {
           id: "tube-note",
           label: "Draw",
-          read: () => "Hold Tool trigger in free space · release commits",
+          read: () => "Drag empty space to draw · grab a point to edit",
           disabled: true,
         },
       );
     }
-    if (active === "edit-spline") {
+    if (active === "tube" || active === "edit-spline") {
       const source = l.active.layer.procedural,
         selected = source?.points.find((p) => p.id === this.splinePointId) ?? source?.points[0];
       options.push(
@@ -872,20 +896,29 @@ export class EditorToolState {
           label: "Spline selection",
           read: () =>
             source
-              ? `${l.active.layer.name} · ${source.points.length} points`
+              ? `${l.active.layer.name} · ${this.tubeSplineSelected ? "whole spline" : "point " + (source.points.findIndex((p) => p.id === selected?.id) + 1)} · ${source.points.length} points`
               : "Select a Tube in Layers, or point at its surface",
           disabled: true,
         },
         {
           id: "tube-radius",
-          label: "Point radius",
-          read: () => selected?.radius.toFixed(3) ?? "No point",
-          disabled: true,
+          label: this.tubeSplineSelected ? "Tube radius · all points" : "Point radius",
+          read: () =>
+            source
+              ? this.tubeSplineSelected
+                ? source.points.reduce((sum, p) => sum + p.radius, 0) / source.points.length
+                : selected!.radius
+              : 0,
+          format: (v) => (source ? Number(v).toFixed(3) : "No tube"),
+          min: 0.005,
+          max: 2,
+          stepActions: { decrease: "tube-thinner", increase: "tube-thicker" },
+          disabled: !source || !l.active.layer.editable,
         },
         {
           id: "tube-edit-note",
           label: "Controls",
-          read: () => "Point + trigger: grab · Tool stick: radius",
+          read: () => "Hover a point, then drag to move · tap line to select all",
           disabled: true,
         },
       );
@@ -900,7 +933,10 @@ export class EditorToolState {
           label,
           read: () => (action === "tube-bake" ? "Original source preserved" : "One Undo action"),
           action,
-          disabled: !source || !l.active.layer.editable,
+          disabled:
+            !source ||
+            !l.active.layer.editable ||
+            (this.tubeSplineSelected && ["tube-insert", "tube-delete"].includes(action)),
         });
     }
     if (active === "move") {
@@ -1286,12 +1322,22 @@ export class EditorToolState {
     );
   }
   options(): ToolOption[] {
-    return this.declarations().map((d) => {
+    const declarations = this.declarations();
+    if (
+      (this.active === "tube" || this.active === "edit-spline") &&
+      this.port.layers().active.layer.procedural
+    )
+      declarations.sort((a, b) => {
+        const rank = (id: string) => (id === "tube-selected" ? -2 : id === "tube-radius" ? -1 : 0);
+        return rank(a.id) - rank(b.id);
+      });
+    return declarations.map((d) => {
       const value = d.read(),
-        disabled = this.busy || !!d.disabled || (!d.write && !d.action),
+        disabled = this.busy || !!d.disabled || (!d.write && !d.action && !d.stepActions),
         index = d.choices?.indexOf(String(value)) ?? 0;
       return {
         action: d.action,
+        stepActions: d.stepActions,
         slider: d.slider ? { min: d.min!, max: d.max!, value: Number(value) } : undefined,
         id: d.id,
         label: d.label,

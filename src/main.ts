@@ -13,6 +13,7 @@ import { AppLifecycle } from "./app-lifecycle";
 import type { BakePlan } from "./bake";
 import { ClayStrokeSession } from "./clay-stroke-session";
 import { installDesktopColourPicker } from "./desktop-colour-picker";
+import { DesktopTubeTool } from "./desktop-tube-tool";
 import { LayerDisplayPreferences } from "./display-preferences";
 import { EditorToolState } from "./editor-tool-state";
 import { exportGlbAsync } from "./export-client";
@@ -22,6 +23,7 @@ import { IndependentLayers } from "./independent-layers";
 import type { EditorMode } from "./interaction";
 import { InputOwnership } from "./interaction";
 import { DesktopLayerPalette } from "./layer-palette";
+import { pickEditableLayer } from "./layer-picking";
 import type { LayerOperation } from "./layers";
 import { createBaseProject } from "./layers";
 import { prepareLibrary } from "./library-worker-client";
@@ -51,7 +53,11 @@ import { createShapeLibraryUI } from "./shape-ui";
 import type { ShapeDefinition } from "./shapes";
 import { StabilityMetrics } from "./stability-metrics";
 import { copyTransform, hasUniformScale, identityTransform, uniformScale } from "./transform";
-import { LayerTransformTools } from "./transform-tools";
+import {
+  LayerTransformTools,
+  rotateAxisForShortcut,
+  translateAxisForShortcut,
+} from "./transform-tools";
 import { createUI } from "./ui";
 import { createViewportTools, type WorkspaceTool } from "./viewport-tools";
 import { volumeLabel } from "./volume-store";
@@ -74,6 +80,7 @@ if (
     console.error("Quest emulator setup failed; desktop editor retained.", error);
   }
 }
+let editorTools: EditorToolState | undefined;
 const ui = createUI();
 let display = new LayerDisplayPreferences();
 let layers = new IndependentLayers(
@@ -342,6 +349,12 @@ transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () 
   },
   changed: syncTransformUI,
   error: (text) => ui.projectMessage(text, true),
+  hitLayer: (event) => {
+    updatePointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    return pickEditableLayer(raycaster, layers)?.layerId ?? null;
+  },
+  selectionChanged: refresh,
   busy: () =>
     loadingProject ||
     ui.modalOpen ||
@@ -456,25 +469,31 @@ renderer.domElement.addEventListener("pointermove", (event) => {
 });
 function syncViewportTools(): void {
   viewportTools?.sync(
-    shapeGhost.model.enabled
-      ? "boolean"
-      : ui.mode === "smooth"
-        ? "smooth"
-        : ui.mode === "paint" || ui.mode === "paint-erase"
-          ? "paint"
-          : "brush",
+    editorTools?.active === "tube" || editorTools?.active === "edit-spline"
+      ? "tube"
+      : shapeGhost.model.enabled
+        ? "boolean"
+        : ui.mode === "smooth"
+          ? "smooth"
+          : ui.mode === "paint" || ui.mode === "paint-erase"
+            ? "paint"
+            : "brush",
     input.mode,
     layers.active.layer.editable,
     loadingProject || ui.modalOpen || xrBlocked(),
     { colour: layers.paintColour, radius: ui.radius, strength: ui.strength },
   );
 }
-let editorTools: EditorToolState | undefined;
 function chooseWorkspace(tool: WorkspaceTool, fromXR = false): void {
   if (loadingProject || ui.modalOpen || (xrBlocked() && !fromXR)) return;
   editorTools?.clearMoveSelection();
   stop();
   shapeLibraryUI.setOpen(tool === "boolean", fromXR);
+  if (tool === "tube") {
+    editorTools!.select("tube");
+    precisionPanel.open = true;
+    return;
+  }
   if (tool === "paint") ui.setSettings({ ...ui.settings, mode: "paint" });
   else if (tool !== "boolean") ui.selectBrushTool(tool);
   transformTools!.setMode("sculpt");
@@ -494,7 +513,13 @@ function chooseLayerMode(mode: EditorMode, fromXR = false): void {
   transformTools!.setMode(mode);
   syncTransformUI();
   cursor.visible = false;
-  ui.status(`${mode} · ${layers.transformNode.name}`);
+  ui.status(
+    mode === "rotate"
+      ? `Rotate · ${layers.transformNode.name} · drag the surface; hold R/F/V for X/Y/Z`
+      : mode === "translate"
+        ? `Move · ${layers.transformNode.name} · drag the surface; hold E/D/C for X/Y/Z`
+        : `${mode} · ${layers.transformNode.name}`,
+  );
 }
 viewportTools = createViewportTools(ui.viewport, chooseWorkspace, chooseLayerMode, {
   colour: (value) => {
@@ -653,6 +678,20 @@ window.addEventListener("keydown", (event) => {
       return;
     }
   }
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && input.mode === "rotate") {
+    if (rotateAxisForShortcut(event.code)) {
+      event.preventDefault();
+      if (!event.repeat) transformTools?.holdRotateAxis(event.code);
+      return;
+    }
+  }
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && input.mode === "translate") {
+    if (translateAxisForShortcut(event.code)) {
+      event.preventDefault();
+      if (!event.repeat) transformTools?.holdTranslateAxis(event.code);
+      return;
+    }
+  }
   if (
     !event.metaKey &&
     !event.ctrlKey &&
@@ -713,7 +752,13 @@ window.addEventListener("keydown", (event) => {
       stop();
       transformTools!.setMode(mode);
       syncTransformUI();
-      ui.status(`${mode} · ${layers.transformNode.name}`);
+      ui.status(
+        mode === "rotate"
+          ? `Rotate · ${layers.transformNode.name} · drag the surface; hold R/F/V for X/Y/Z`
+          : mode === "translate"
+            ? `Move · ${layers.transformNode.name} · drag the surface; hold E/D/C for X/Y/Z`
+            : `${mode} · ${layers.transformNode.name}`,
+      );
       return;
     }
   }
@@ -722,6 +767,11 @@ window.addEventListener("keydown", (event) => {
     if (!event.repeat) changeHistory(event.shiftKey);
   }
 });
+window.addEventListener("keyup", (event) => {
+  transformTools?.releaseRotateAxis(event.code);
+  transformTools?.releaseTranslateAxis(event.code);
+});
+window.addEventListener("blur", () => transformTools?.clearAxisConstraints());
 let studioEnvironment: THREE.WebGLRenderTarget | null = null;
 function syncRenderStyle(): void {
   const style = display.renderStyle;
@@ -1542,19 +1592,18 @@ precisionPanel.className = "precision-settings";
 const precisionTitle = document.createElement("summary");
 precisionTitle.textContent = "PRECISION · SHARED TOOL SETTINGS";
 const precisionOptions = document.createElement("div");
+precisionOptions.className = "precision-options";
 precisionPanel.append(precisionTitle, precisionOptions);
 document.querySelector("#radius")!.closest("section")!.append(precisionPanel);
 let precisionKey = "";
 const tubeToolButtons = document.createElement("div");
-for (const [tool, label] of [
-  ["tube", "Tube (VR drawing)"],
-  ["edit-spline", "Edit Spline"],
-] as const) {
+for (const [tool, label] of [["tube", "Tube · draw & edit"]] as const) {
   const button = document.createElement("button");
   button.textContent = label;
   button.onclick = () => {
     try {
       editorTools!.select(tool);
+      precisionPanel.open = true;
     } catch (error) {
       ui.status(message(error));
     }
@@ -1569,10 +1618,30 @@ function syncPrecisionOptions() {
   precisionKey = key;
   precisionOptions.replaceChildren();
   for (const o of options) {
-    const row = document.createElement("p"),
-      label = document.createElement("span");
-    label.textContent = `${o.label}: ${o.value} `;
-    row.append(label);
+    if (
+      editorTools!.active === "tube" &&
+      !layers.active.layer.procedural &&
+      [
+        "tube-radius",
+        "tube-edit-note",
+        "tube-insert",
+        "tube-delete",
+        "tube-close",
+        "tube-bake",
+      ].includes(o.id)
+    )
+      continue;
+    const row = document.createElement("div"),
+      label = document.createElement("span"),
+      value = document.createElement("span"),
+      controls = document.createElement("div");
+    row.className = "precision-option";
+    label.className = "precision-option-label";
+    value.className = "precision-option-value";
+    controls.className = "precision-option-controls";
+    label.textContent = o.label;
+    value.textContent = o.value;
+    row.append(label, value, controls);
     if (o.id === "paint-colour") {
       const picker = document.createElement("input");
       picker.type = "color";
@@ -1586,9 +1655,9 @@ function syncPrecisionOptions() {
           ui.status(message(error));
         }
       };
-      row.append(picker);
+      controls.append(picker);
     }
-    if (o.increase || o.decrease)
+    if (o.stepActions || o.increase || o.decrease)
       for (const direction of [-1, 1] as const) {
         const button = document.createElement("button");
         button.type = "button";
@@ -1600,13 +1669,17 @@ function syncPrecisionOptions() {
         button.disabled = o.disabled || !(direction === 1 ? o.increase : o.decrease);
         button.onclick = () => {
           try {
-            editorTools!.adjust(o.id, direction);
+            if (o.stepActions) {
+              void editorTools!
+                .splineAction(direction === 1 ? o.stepActions.increase : o.stepActions.decrease)
+                .catch((error) => ui.status(message(error)));
+            } else editorTools!.adjust(o.id, direction);
             syncPrecisionOptions();
           } catch (error) {
             ui.status(message(error));
           }
         };
-        row.append(button);
+        controls.append(button);
       }
     if (
       o.action &&
@@ -1625,8 +1698,12 @@ function syncPrecisionOptions() {
           ui.status(message(error));
         }
       };
-      row.append(button);
+      row.classList.add("precision-option-action");
+      label.hidden = true;
+      value.hidden = o.action !== "tube-bake";
+      controls.append(button);
     }
+    if (!controls.childElementCount) row.classList.add("precision-option-note");
     precisionOptions.append(row);
   }
 }
@@ -1660,6 +1737,21 @@ const desktopPath = new THREE.Line(desktopPathGeometry, desktopPathMaterial),
 desktopPaths.matrixAutoUpdate = false;
 desktopPaths.add(desktopPath, desktopMirrorPath);
 scene.add(desktopPaths);
+const desktopTube = new DesktopTubeTool(
+  () => layers,
+  editorTools!,
+  desktopPreviewRoot,
+  camera,
+  renderer.domElement,
+  () => controls.target,
+  () =>
+    !loadingProject &&
+    !ui.modalOpen &&
+    !xrBlocked() &&
+    !input.referenceEditing &&
+    input.mode === "sculpt",
+  () => refresh(),
+);
 const xrRig = new XRSceneRig(scene, camera);
 xrRig.sculptureRoot.add(layers.group, layers.composite.group);
 const lighting = new LightRig(
@@ -2084,7 +2176,7 @@ xrExperience = new XRExperience(
 void xrExperience.check();
 const recoveryPanel = document.getElementById("recovery-slot")!;
 recoveryPanel.innerHTML =
-  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details id="session-resources"><summary>SESSION RESOURCE ESTIMATES</summary><output id="stability-status"></output></details></section>';
+  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details id="session-resources"><summary>Session resource estimates</summary><output id="stability-status"></output></details></section>';
 document
   .querySelector("main > aside")!
   .append(
@@ -2504,6 +2596,7 @@ renderer.setAnimationLoop((now, frame) => {
   referencesUI.sync();
   renderEmulatorFrame?.(now);
   if (xrBlocked()) {
+    desktopTube.cancel();
     desktopMirrorPlane.group.visible = false;
     desktopFieldCursor.hide();
     desktopMirrorCursor.hide();
@@ -2532,6 +2625,8 @@ renderer.setAnimationLoop((now, frame) => {
     }
   if (
     pointerInside &&
+    editorTools?.active !== "tube" &&
+    editorTools?.active !== "edit-spline" &&
     input.canSculpt(
       runtime.layer.editable,
       loadingProject || ui.modalOpen || xrBlocked() || shapeGhost.model.enabled,
@@ -2587,6 +2682,7 @@ renderer.setAnimationLoop((now, frame) => {
     if (desktopStroke.phase === "drawing" && !pointerInside) desktopStroke.pauseSurface(now);
     else layers.breakStrokePath();
   }
+  desktopTube.update(now);
   syncPrecisionOptions();
   desktopFieldCursor.hide();
   desktopMirrorPlane.sync();

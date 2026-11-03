@@ -609,8 +609,26 @@ export class XRMenuModel {
               disabled: option.disabled,
               slider: option.slider,
             });
-          add(`dec:${option.id}`, "-", 812, y + 22, 140, 92, false, !option.decrease);
-          add(`inc:${option.id}`, "+", 972, y + 22, 140, 92, false, !option.increase);
+          add(
+            option.stepActions?.decrease ?? `dec:${option.id}`,
+            "-",
+            812,
+            y + 22,
+            140,
+            92,
+            false,
+            !option.decrease,
+          );
+          add(
+            option.stepActions?.increase ?? `inc:${option.id}`,
+            "+",
+            972,
+            y + 22,
+            140,
+            92,
+            false,
+            !option.increase,
+          );
         });
     }
     return {

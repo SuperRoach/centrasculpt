@@ -131,12 +131,12 @@ test("fixed large typography wraps words and unbroken labels within explicit bou
   assert(VR_UI.radial >= 30);
   assert.equal(OPTIONS_PER_PAGE, 5);
 });
-test("floating wheel preserves all ten visible radial sectors, boundaries, transparent gaps and tool accessibility", () => {
+test("floating wheel preserves all nine visible radial sectors, boundaries, transparent gaps and tool accessibility", () => {
   const f = fixture();
   try {
     f.model.setRequest("tool-wheel");
     assert.equal(EDITOR_TOOLS.length, 14);
-    assert.equal(VR_WHEEL_TOOLS.length, 10);
+    assert.equal(VR_WHEEL_TOOLS.length, 9);
     for (let i = 0; i < VR_WHEEL_TOOLS.length; i++) {
       const angle = -Math.PI / 2 + (i * Math.PI * 2) / VR_WHEEL_TOOLS.length;
       for (const r of [WHEEL.inner + 0.01, 250, WHEEL.outer - 0.01])

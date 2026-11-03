@@ -176,16 +176,16 @@ test("radial and rectangular hit tests align with every visible target, includin
     f.dispose();
   }
 });
-test("Cut is a direct main-wheel control with a separate plane review and preserves all ten sector targets", () => {
+test("Cut is a direct main-wheel control with a separate plane review and preserves all nine sector targets", () => {
   const f = fixture();
   try {
     const m = f.model;
     m.setRequest("tool-wheel");
-    assert.equal(VR_WHEEL_TOOLS.length, 10);
+    assert.equal(VR_WHEEL_TOOLS.length, 9);
     assert.equal(m.hit(...buttonPoint(m, "tool:cut")), "tool:cut");
     const cut = m.content().buttons.find((b) => b.id === "tool:cut"),
       options = m.content().buttons.find((b) => b.id === "options");
-    assert.equal(cut.sector, 9);
+    assert.equal(cut.sector, 8);
     assert.equal(cut.rect, undefined);
     assert.deepEqual([options.rect.width, options.rect.height], [280, 144]);
     m.activate("tool:cut");

@@ -1,5 +1,35 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 6.0.2 handover
+
+Updated 2026-11-03. Desktop layer rotation now supports direct surface dragging with temporary axis constraints. The change uses the existing layer transform/history path; WebXR behavior is unchanged.
+
+### 1. What changed
+
+With Rotate active (E), clicking and dragging a visible layer surface starts free rotation without selecting a gizmo handle. Clicking another visible layer selects it and begins the drag on that layer. Hold R/F/V during the drag to constrain rotation to X/Y/Z; releasing returns to the free rotation or selected gizmo axis. Existing gizmo handles and World/Local space remain available. The sidebar help and Rotate tooltip show the shortcuts. `WHATS_NEW.md` has the dated user-facing entry.
+
+### 2. Architectural decisions
+
+Surface hits resolve to the layer ID already attached to each layer surface; Boolean view falls back to the current transform target. Rotation starts and finishes through `TransformControls` and the existing transactional `beginTransform` / `updateTransform` / `finishTransform` path, so SDF data remains untouched and one drag creates at most one metadata history action. R/F/V are hold-to-constrain keys; key release, focus loss and mode changes clear their temporary state. Axis shortcuts are active only in layer Rotate mode, so R continues to select Scale elsewhere.
+
+### 3. Build and test results
+
+Final `npm run check` passed after the change: formatting, lint, strict TypeScript, production build and **1,322/1,322 tests** (82 files; no failures, skips or cancellations). The focused `layer-transforms` suite passed **18/18**, including shortcut mapping, dynamic constraint return, direct handle-free rotation, layer selection, and one-action history. Biome warnings and the existing bundle-size advisory are unchanged.
+
+### 4. Benchmarks and regressions
+
+This is a pointer interaction and metadata-only transform change; it adds no surface sampling, remeshing, or asset work. Existing transform tests continue to verify exact history and unchanged SDF buffers. No rotation workload or timeout was shortened.
+
+### 5. Known limitations and blockers
+
+Desktop/browser pointer interaction has automated host coverage, but no new manual browser review was performed. Physical Quest interaction remains outside this desktop change. In Boolean view, a surface hit resolves to the current transform target because the unified surface does not identify one source layer.
+
+### 6. Next recommendations
+
+Try Rotate (E) on several overlapping layers in Separate Layers and Boolean views; confirm surface selection, the free drag feel, and held R/F/V constraints. Use the existing handles when precise handle-axis manipulation is preferred. This follow-up has not been committed or pushed.
+
+---
+
 ## Phase 6.0.1 handover
 
 Updated 2026-11-03. Code cleanliness and agent test workflow are complete. Phase 6.0 host implementation is complete; physical Quest 3 acceptance remains pending.

@@ -463,13 +463,13 @@ test("overlay updates existing attributes without remeshing, visibility changes 
     l.dispose();
   }
 });
-test("VR mask shortcut preserves ten radial tools and Move submenu; contextual mask operations are routed", () => {
+test("VR mask shortcut preserves nine radial tools and Move submenu; contextual mask operations are routed", () => {
   const { l, tools } = fixture(),
     menu = new XRMenuModel(tools);
   try {
     menu.setRequest("tool-wheel");
     const content = menu.content();
-    assert.equal(VR_WHEEL_TOOLS.length, 10);
+    assert.equal(VR_WHEEL_TOOLS.length, 9);
     assert(content.buttons.some((b) => b.id === "tool:mask"));
     menu.activate("tool:mask");
     assert.equal(tools.active, "mask");

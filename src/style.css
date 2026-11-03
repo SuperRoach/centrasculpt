@@ -244,7 +244,8 @@ button.viewport-label:hover{background:#fff}
 .hierarchy-row .hierarchy-row-header button[draggable] { border: 0; opacity: .5; }
 .hierarchy-row .hierarchy-row-header button[draggable]:hover { opacity: 1; }
 .hierarchy-row .hierarchy-row-header .layer-visibility { flex: 0 0 28px; margin-left: auto; padding: 6px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; }
-.hierarchy-row .hierarchy-row-header .layer-visibility[aria-pressed=false] { opacity: .45; }
+.hierarchy-row .hierarchy-row-header .layer-visibility[aria-pressed=false],
+.hierarchy-row .hierarchy-row-header .layer-visibility[data-inherited-hidden=true] { opacity: .45; }
 .hierarchy-row .boolean-order { display: flex; align-items: center; gap: 5px; width: 100%; font-size: 11px; color: #64715e; }
 .hierarchy-row .boolean-order span { flex: 1; }
 .hierarchy-row .boolean-order button { flex: 0 0 28px; margin: 0; padding: 5px; min-width: 28px; }
@@ -278,3 +279,31 @@ button.viewport-label:hover{background:#fff}
 #shape-library .shape-pose-actions > button,
 #shape-library .shape-operations > button { box-sizing: border-box; flex: 1 1 0; width: 0; min-width: 0; height: 40px; min-height: 40px; max-height: 40px; margin: 0; padding: 0 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; white-space: nowrap; }
 #shape-library .shape-library-icon { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Aligned shared settings and compact layer operations. */
+.precision-options{display:grid;gap:4px;margin-top:10px}
+.precision-option{display:grid;grid-template-columns:minmax(0,1fr) 68px;column-gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #daddd355;font-size:11px;line-height:1.35}
+.precision-option-label{font-weight:600;min-width:0}
+.precision-option-value{grid-column:1;font-size:10px;color:#64766a;overflow-wrap:anywhere}
+.precision-option-controls{grid-column:2;grid-row:1 / 3;display:flex;justify-content:flex-end;gap:4px}
+.precision-settings .precision-option-controls button{width:32px;min-width:32px;height:32px;margin:0;padding:0;font-size:14px}
+.precision-option-controls input[type=color]{box-sizing:border-box;width:68px;height:32px;margin:0;padding:2px}
+.precision-option-note{grid-template-columns:1fr;padding:5px 0}
+.precision-option-action{grid-template-columns:1fr}
+.precision-option-action .precision-option-controls{grid-column:1;grid-row:1;justify-content:stretch}
+.precision-settings .precision-option-action button{width:100%;height:auto;padding:7px 8px;font-size:11px;text-align:left}
+.precision-option-action .precision-option-value{grid-row:2;margin-top:3px;font-size:9px}
+.layer-geometry-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.layer-geometry-actions button{min-width:0;margin:0!important;font-size:11px}
+
+/* Use the same compact header in both collapsed and expanded desktop layers. */
+@media (min-width: 761px) {
+  .hierarchy-row { padding: 4px 8px; margin: 4px 0; }
+  .hierarchy-row.active { padding-bottom: 9px; }
+  .hierarchy-row .hierarchy-row-header button { min-height: 28px; padding: 4px 5px; }
+  .hierarchy-row .hierarchy-row-header button[draggable],
+  .hierarchy-row .hierarchy-row-header .hierarchy-fold { padding: 4px 3px; }
+  .hierarchy-row .hierarchy-row-header .hierarchy-name { line-height: 1.25; }
+  .hierarchy-row .hierarchy-row-header .layer-visibility,
+  .hierarchy-row .hierarchy-row-header .layer-lock { padding: 4px; }
+}

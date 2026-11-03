@@ -4,9 +4,11 @@ installFileReader();
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, Matrix4, Vector3 } from "three";
+import { Group, Matrix4, PerspectiveCamera, Vector3 } from "three";
+import { WebGLRenderList } from "three/src/renderers/webgl/WebGLRenderLists.js";
 import { RecoveryBrowserWorker } from "../scripts/fixtures/node-recovery-worker.mjs";
 import { prepareComposite } from "../work/test-build/compositor.mjs";
+import { DesktopTubeTool } from "../work/test-build/desktop-tube-tool.mjs";
 import { EditorToolState } from "../work/test-build/editor-tool-state.mjs";
 import { encodeExport } from "../work/test-build/glb-export.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
@@ -24,7 +26,8 @@ import { captureProject } from "../work/test-build/project-snapshot.mjs";
 import { encodeRecovery } from "../work/test-build/recovery-client.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
-import { toLocal, transformMatrix } from "../work/test-build/transform.mjs";
+import { identityTransform, toLocal, transformMatrix } from "../work/test-build/transform.mjs";
+import { XRMenuModel } from "../work/test-build/xr-menu-model.mjs";
 import { XRTubeTool } from "../work/test-build/xr-tube-tool.mjs";
 
 const settings = {
@@ -406,34 +409,35 @@ for (const steady of [0, 70])
       f.dispose();
     }
   });
-test("XR handle move and thumbstick thickness preview are one action, with no accidental sculpting", async () => {
-  const f = fixture();
-  try {
-    const tube = await f.layers.regenerateTube(line(0.15));
-    f.tools.select("edit-spline");
-    release(f.tool);
-    f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 0, true);
-    press(f.tool);
-    f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 16, true);
-    assert(f.stroke.active);
-    f.tool.buttons.trigger.justPressed = false;
-    f.tool.stick.y = -1;
-    f.stroke.update(f.tool, pose(-0.6, 0.2, 0.7), 66, true);
-    assert(f.stroke.preview.visible);
-    release(f.tool);
-    f.tool.stick.y = 0;
-    f.stroke.update(f.tool, pose(-0.6, 0.2, 0.7), 82, true);
-    await settle(f);
-    assert.equal(f.layers.undoCount, 2);
-    near(tube.procedural.points[0].position[1], 0.2);
-    assert(tube.procedural.points[0].radius > 0.15);
-    f.layers.undo();
-    near(tube.procedural.points[0].position[1], 0);
-    near(tube.procedural.points[0].radius, 0.15);
-  } finally {
-    f.dispose();
-  }
-});
+for (const toolMode of ["tube", "edit-spline"])
+  test(`XR ${toolMode} handle move and thickness edit the existing tube in one action`, async () => {
+    const f = fixture();
+    try {
+      const tube = await f.layers.regenerateTube(line(0.15));
+      f.tools.select(toolMode);
+      release(f.tool);
+      f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 0, true);
+      press(f.tool);
+      f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 16, true);
+      assert(f.stroke.active);
+      f.tool.buttons.trigger.justPressed = false;
+      f.tool.stick.y = -1;
+      f.stroke.update(f.tool, pose(-0.6, 0.2, 0.7), 66, true);
+      assert(f.stroke.preview.visible);
+      release(f.tool);
+      f.tool.stick.y = 0;
+      f.stroke.update(f.tool, pose(-0.6, 0.2, 0.7), 82, true);
+      await settle(f);
+      assert.equal(f.layers.undoCount, 2);
+      near(tube.procedural.points[0].position[1], 0.2);
+      assert(tube.procedural.points[0].radius > 0.15);
+      f.layers.undo();
+      near(tube.procedural.points[0].position[1], 0);
+      near(tube.procedural.points[0].radius, 0.15);
+    } finally {
+      f.dispose();
+    }
+  });
 test("XR lifecycle, handedness/connection and workspace changes cancel through shared preview ownership", async () => {
   for (const change of ["disabled", "connection", "workspace"]) {
     const f = fixture();
@@ -566,6 +570,283 @@ test("preview buffers are reused and idle radius edits form one cancellable tran
     await settle(f);
     assert.equal(f.layers.undoCount, 2);
     assert(tube.procedural.points[0].radius > 0.15);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("desktop Tube draws, edits visible handles, resizes a selected point and cancels safely", async () => {
+  const f = fixture(),
+    previousWindow = globalThis.window;
+  globalThis.window = new EventTarget();
+  class Canvas extends EventTarget {
+    style = {};
+    captured = null;
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: 1000, height: 1000 };
+    }
+    setPointerCapture(id) {
+      this.captured = id;
+    }
+    hasPointerCapture(id) {
+      return this.captured === id;
+    }
+    releasePointerCapture() {
+      this.captured = null;
+    }
+  }
+  const canvas = new Canvas(),
+    camera = new PerspectiveCamera(38, 1, 0.01, 100);
+  camera.position.set(0, 0, 4);
+  camera.updateMatrixWorld();
+  let changed = 0;
+  const desktop = new DesktopTubeTool(
+    () => f.layers,
+    f.tools,
+    f.root,
+    camera,
+    canvas,
+    () => new Vector3(),
+    () => true,
+    () => changed++,
+  );
+  const event = (type, x, y) => {
+    const p = new Vector3(x, y, 0).project(camera),
+      e = new Event(type);
+    Object.assign(e, {
+      button: 0,
+      pointerId: 1,
+      clientX: (p.x + 1) * 500,
+      clientY: (1 - p.y) * 500,
+    });
+    canvas.dispatchEvent(e);
+  };
+  const settleDesktop = async () => {
+    for (let i = 0; f.layers.generatingTube && i < 20000; i++)
+      await new Promise((r) => setTimeout(r, 1));
+    assert(!f.layers.generatingTube);
+  };
+  try {
+    f.tools.select("tube");
+    event("pointerdown", -0.6, 0);
+    event("pointermove", 0, 0.3);
+    desktop.update(performance.now());
+    event("pointerup", 0.6, 0);
+    await settleDesktop();
+    assert.equal(changed, 1);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    const tube = f.layers.active.layer,
+      original = structuredClone(tube.procedural);
+    const [x, y] = original.points[0].position;
+    event("pointerdown", x, y);
+    event("pointermove", x, y + 0.2);
+    desktop.update(performance.now());
+    event("pointerup", x, y + 0.2);
+    await settleDesktop();
+    assert.equal(changed, 2);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    assert(tube.procedural.points[0].position[1] > y + 0.15);
+    f.layers.undo();
+    assert.deepEqual(tube.procedural, original);
+    await f.tools.splineAction("tube-thicker");
+    assert(tube.procedural.points[0].radius > original.points[0].radius);
+    f.layers.undo();
+    event("pointerdown", x, y);
+    event("pointermove", x, y + 0.4);
+    desktop.update(performance.now());
+    canvas.dispatchEvent(new Event("pointercancel"));
+    assert.deepEqual(tube.procedural, original);
+    assert(!f.layers.previewing);
+  } finally {
+    desktop.cancel();
+    f.dispose();
+    globalThis.window = previousWindow;
+  }
+});
+
+test("Tube spline overlays render after ordered layer surfaces and remain visible away from handles", async () => {
+  const f = fixture();
+  try {
+    await f.layers.regenerateTube(line());
+    f.layers.syncPresentation();
+    f.tools.select("tube");
+    f.stroke.update(f.tool, pose(0, 1, 0.7), 16, true);
+    assert(f.stroke.preview.visible);
+    assert.equal(f.stroke.guides.children.filter((h) => h.visible).length, 2);
+    const list = new WebGLRenderList();
+    list.init();
+    // Match WebGLRenderer's group-order traversal and use its real render-list sorter.
+    function collect(object, groupOrder = 0) {
+      if (!object.visible) return;
+      if (object.isGroup) groupOrder = object.renderOrder;
+      if ((object.isMesh || object.isLine) && object.material.visible)
+        list.push(object, object.geometry, object.material, groupOrder, 0, null);
+      for (const child of object.children) collect(child, groupOrder);
+    }
+    collect(f.layers.group);
+    collect(f.root);
+    list.sort();
+    const drawOrder = [...list.opaque, ...list.transmissive, ...list.transparent].map(
+      (item) => item.object,
+    );
+    const surfaces = drawOrder.filter((object) => !f.stroke.preview.getObjectById(object.id));
+    assert(surfaces.length > 0);
+    for (const handle of f.stroke.guides.children) {
+      assert(handle.visible);
+      assert.equal(handle.material.depthTest, false);
+      assert.equal(handle.material.depthWrite, false);
+      for (const surface of surfaces)
+        assert(drawOrder.indexOf(handle) > drawOrder.indexOf(surface));
+    }
+    const skin = f.stroke.preview.children.find((object) => object.isMesh);
+    assert.equal(
+      skin.visible,
+      false,
+      "idle editing shows the source surface instead of a second skin",
+    );
+    f.tools.select("clay");
+    f.stroke.update(f.tool, pose(0, 1, 0.7), 32, true);
+    assert.equal(f.stroke.preview.visible, false);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("Tube handles are hollow, hover fills the target, and tapping the spline selects all radii through VR settings", async () => {
+  const f = fixture();
+  try {
+    const tube = await f.layers.regenerateTube({
+        ...line(),
+        points: [tubePoint([-0.6, 0, 0], 0.1), tubePoint([0.6, 0, 0], 0.2)],
+      }),
+      original = structuredClone(tube.procedural),
+      menu = new XRMenuModel(f.tools);
+    f.tools.select("tube");
+    f.stroke.update(f.tool, pose(0, 1, 0.7), 0, true);
+    assert(f.stroke.guides.children.every((h) => h.geometry.type === "TorusGeometry"));
+    f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 16, true);
+    assert.equal(f.stroke.hoverTarget, "point");
+    const hovered = f.stroke.guides.children[0];
+    assert.equal(hovered.geometry.type, "SphereGeometry");
+    assert.equal(hovered.material.color.getHexString(), "66ebdd");
+    assert.equal(f.stroke.guides.children[1].geometry.type, "TorusGeometry");
+    f.stroke.update(f.tool, pose(0, 0, 0.7), 32, true);
+    assert.equal(f.stroke.hoverTarget, "spline");
+    assert(f.stroke.guides.children.every((h) => h.geometry.type === "TorusGeometry"));
+    press(f.tool);
+    f.stroke.update(f.tool, pose(0, 0, 0.7), 48, true);
+    assert(f.tools.tubeSplineSelected);
+    assert(!f.stroke.active, "line selection must not start a tube or acquire a preview lock");
+    release(f.tool);
+    f.stroke.update(f.tool, pose(0, 1, 0.7), 64, true);
+    const lineHighlight = f.stroke.preview.children.find(
+      (h) => h.geometry?.type === "TubeGeometry",
+    );
+    assert(lineHighlight.visible, "selection stays thicker when the pointer moves to settings");
+    assert.equal(f.layers.undoCount, 1);
+    menu.setRequest("tool-options");
+    assert.equal(f.tools.options()[1].label, "Tube radius · all points");
+    assert(menu.content().buttons.some((b) => b.id === "tube-thicker" && !b.disabled));
+    menu.activate("tube-thicker");
+    for (let i = 0; f.layers.generatingTube && i < 20000; i++)
+      await new Promise((r) => setTimeout(r, 1));
+    assert(!f.layers.generatingTube);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    assert.equal(f.layers.undoCount, 2);
+    for (let i = 0; i < 2; i++) {
+      near(tube.procedural.points[i].radius, original.points[i].radius * 1.1);
+      assert.deepEqual(tube.procedural.points[i].position, original.points[i].position);
+    }
+    f.layers.undo();
+    assert.deepEqual(tube.procedural, original);
+    f.layers.select(f.layers.project.layerStack.layers[0].id);
+    assert.equal(f.tools.tubeSplineSelected, false, "selection is scoped to its source layer");
+  } finally {
+    f.dispose();
+  }
+});
+
+test("tapping a hollow point selects it without a geometry edit; VR settings change only that radius", async () => {
+  const f = fixture();
+  try {
+    const tube = await f.layers.regenerateTube(line()),
+      original = structuredClone(tube.procedural);
+    f.tools.select("tube");
+    f.stroke.update(f.tool, pose(0, 1, 0.7), 0, true);
+    press(f.tool);
+    f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 16, true);
+    release(f.tool);
+    f.stroke.update(f.tool, pose(-0.6, 0, 0.7), 32, true);
+    assert(!f.stroke.active);
+    assert.equal(f.layers.undoCount, 1);
+    assert.equal(f.tools.splinePointId, original.points[0].id);
+    f.stroke.update(f.tool, pose(0, 1, 0.7), 48, true);
+    assert.equal(f.stroke.guides.children[0].geometry.type, "SphereGeometry");
+    assert.equal(f.stroke.guides.children[0].material.color.getHexString(), "fff0a3");
+    assert.equal(f.tools.options()[1].label, "Point radius");
+    const menu = new XRMenuModel(f.tools);
+    menu.setRequest("tool-options");
+    menu.activate("tube-thinner");
+    for (let i = 0; f.layers.generatingTube && i < 20000; i++)
+      await new Promise((r) => setTimeout(r, 1));
+    assert(!f.layers.generatingTube);
+    near(tube.procedural.points[0].radius, original.points[0].radius / 1.1);
+    assert.deepEqual(tube.procedural.points[1], original.points[1]);
+    assert.equal(f.layers.undoCount, 2);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("Tube hover reveals another unlocked source without selecting; tapping selects its layer and spline", async () => {
+  const f = fixture();
+  try {
+    const base = f.layers.active.layer,
+      firstSource = {
+        ...line(),
+        points: [tubePoint([-0.6, 1.3, 0], 0.12), tubePoint([0.6, 1.3, 0], 0.12)],
+      },
+      first = await f.layers.regenerateTube(firstSource),
+      second = await f.layers.regenerateTube(line());
+    f.layers.setActiveTransform({ ...identityTransform(), position: [0, -1.3, 0] });
+    f.layers.select(base.id);
+    f.tools.select("tube");
+    const undoBefore = f.layers.undoCount;
+    f.stroke.update(f.tool, pose(0, 1.3, 0.7), 0, true);
+    assert(f.stroke.preview.visible);
+    assert.equal(f.layers.project.activeLayerId, base.id);
+    assert.equal(f.layers.undoCount, undoBefore);
+    near(f.stroke.guides.children[0].getWorldPosition(new Vector3()).y, 1.3);
+    // Hovering a foreign handle must not switch back to the active layer's geometry.
+    f.stroke.update(f.tool, pose(-0.6, 1.3, 0.7), 16, true);
+    assert(f.stroke.preview.visible);
+    assert.equal(f.stroke.hoverTarget, "point");
+    assert.equal(f.layers.project.activeLayerId, base.id);
+    press(f.tool);
+    f.stroke.update(f.tool, pose(0, 1.3, 0.7), 32, true);
+    assert.equal(f.layers.project.activeLayerId, first.id);
+    assert(f.tools.tubeSplineSelected);
+    assert(!f.stroke.active);
+    // Holding the same press and moving cannot start drawing or edit the new target.
+    f.tool.buttons.trigger.justPressed = false;
+    f.stroke.update(f.tool, pose(0, -1.3, 0.7), 48, true);
+    assert.equal(f.layers.project.activeLayerId, first.id);
+    assert(!f.stroke.active);
+    release(f.tool);
+    f.stroke.update(f.tool, pose(0, -1.3, 0.7), 64, true);
+    near(f.stroke.guides.children[0].getWorldPosition(new Vector3()).y, -1.3);
+    assert.equal(f.layers.project.activeLayerId, first.id);
+    f.layers.setFlag(second.id, "locked", true);
+    f.stroke.update(f.tool, pose(0, -1.3, 0.7), 80, true);
+    near(f.stroke.guides.children[0].getWorldPosition(new Vector3()).y, 1.3);
+    assert.equal(f.stroke.hoverTarget, null);
+    f.layers.setFlag(second.id, "locked", false);
+    f.layers.setFlag(second.id, "visible", false);
+    f.stroke.update(f.tool, pose(0, -1.3, 0.7), 96, true);
+    near(f.stroke.guides.children[0].getWorldPosition(new Vector3()).y, 1.3);
+    assert.equal(f.stroke.hoverTarget, null);
+    assert.deepEqual(first.procedural, firstSource);
+    assert.equal(f.layers.project.layerStack.layers.length, 3);
   } finally {
     f.dispose();
   }

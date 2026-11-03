@@ -51,6 +51,8 @@ for (const name of [
   "xr-ui-style",
   "procedural-tube",
   "xr-tube-tool",
+  "layer-picking",
+  "desktop-tube-tool",
   "xr-mirror-plane",
   "save-status",
   "tool-preferences",

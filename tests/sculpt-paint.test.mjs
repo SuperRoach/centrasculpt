@@ -403,7 +403,7 @@ test("Boolean export and explicit Bake sample winning source colours and keep or
     l.dispose();
   }
 });
-test("Paint menu has real swatches, one-action reset, ten radial tools and no accidental geometry", () => {
+test("Paint menu has real swatches, one-action reset, nine radial tools and no accidental geometry", () => {
   const { l, tools } = fixture(),
     menu = new XRMenuModel(tools);
   try {
@@ -411,7 +411,7 @@ test("Paint menu has real swatches, one-action reset, ten radial tools and no ac
     menu.setRequest("tool-wheel");
     menu.activate("tool:paint");
     assert.equal(tools.active, "paint");
-    assert.equal(VR_WHEEL_TOOLS.length, 10);
+    assert.equal(VR_WHEEL_TOOLS.length, 9);
     assert.equal(menu.content().buttons.filter((b) => b.id.startsWith("paint-swatch:")).length, 10);
     menu.activate(`paint-swatch:${PAINT_SWATCHES[2]}`);
     assert.equal(l.paintColour, PAINT_SWATCHES[2]);

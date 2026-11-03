@@ -1,8 +1,9 @@
 import { BRUSH_RADIUS_LIMITS } from "./brush-settings";
 import type { EditorMode } from "./interaction";
-export type WorkspaceTool = "brush" | "boolean" | "smooth" | "paint";
+export type WorkspaceTool = "brush" | "boolean" | "smooth" | "paint" | "tube";
 type Option = { id: string; label: string; shortcut?: string; icon: string };
 const icons: Record<string, string> = {
+  tube: '<path d="M4 18c0-12 16 12 16-12"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="6" r="2"/>',
   brush: '<path d="m14 4 6 6-9 9-6 1 1-6Z M12 6l6 6 M5 21h5"/>',
   paint:
     '<path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-3.7 1.5 1.5 0 0 1 1-2.8h2A4 4 0 0 0 21 10c0-4-4-7-9-7Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="11" cy="7" r="1"/><circle cx="15.5" cy="8" r="1"/>',
@@ -33,6 +34,7 @@ export function createViewportTools(
     { id: "boolean", label: "Boolean", icon: "boolean" },
     { id: "smooth", label: "Smooth", icon: "smooth" },
     { id: "paint", label: "Paint", icon: "paint" },
+    { id: "tube", label: "Tube", icon: "tube" },
   ];
   const layer: Option[] = [
     { id: "translate", label: "Move", shortcut: "W", icon: "translate" },

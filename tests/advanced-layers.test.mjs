@@ -1223,3 +1223,46 @@ test("VR layer resolution options require confirmation and preserve other layers
     l.dispose();
   }
 });
+
+test("visibility icons distinguish locally hidden layers from descendants hidden by a parent", () => {
+  const { l, menu } = setup();
+  try {
+    const root = l.active.layer,
+      child = l.create(64),
+      grandchild = l.create(64);
+    l.reparent(child.id, root.id);
+    l.reparent(grandchild.id, child.id);
+    menu.setRequest("layers");
+    const eye = (id) => menu.content().buttons.find((b) => b.id === `visible:${id}`);
+    assert.equal(eye(grandchild.id).label, "Visible");
+    assert.equal(eye(grandchild.id).muted, false);
+    l.setNodeFlag(child.id, "visible", false);
+    assert.equal(eye(child.id).label, "Hidden");
+    assert.equal(eye(child.id).muted, false);
+    assert.equal(eye(grandchild.id).label, "Visible");
+    assert.equal(eye(grandchild.id).detail, "Hidden by parent");
+    assert.equal(eye(grandchild.id).muted, true);
+    assert.equal(
+      eye(grandchild.id).disabled,
+      false,
+      "inherited hiding does not disable its own visibility toggle",
+    );
+    assert.equal(grandchild.localVisible, true);
+    l.setNodeFlag(child.id, "visible", true);
+    assert.equal(eye(grandchild.id).muted, false);
+    assert.equal(grandchild.visible, true);
+    l.setNodeFlag(grandchild.id, "visible", false);
+    l.setNodeFlag(root.id, "visible", false);
+    assert.equal(eye(child.id).muted, true);
+    assert.equal(eye(grandchild.id).label, "Hidden");
+    assert.equal(eye(grandchild.id).detail, "Hidden");
+    l.setNodeFlag(root.id, "visible", true);
+    assert.equal(
+      grandchild.visible,
+      false,
+      "showing the ancestor preserves an explicitly hidden descendant",
+    );
+  } finally {
+    l.dispose();
+  }
+});

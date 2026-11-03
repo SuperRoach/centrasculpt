@@ -76,18 +76,7 @@ test("wheel removes three grouped brushes while registry and desktop exact-engin
     f.model.setRequest("tool-wheel");
     assert.deepEqual(
       VR_WHEEL_TOOLS.map((t) => t.id),
-      [
-        "clay",
-        "smooth",
-        "flatten",
-        "inflate",
-        "stamp",
-        "move",
-        "tube",
-        "edit-spline",
-        "transform",
-        "cut",
-      ],
+      ["clay", "smooth", "flatten", "inflate", "stamp", "move", "tube", "transform", "cut"],
     );
     assert.equal(EDITOR_TOOLS.length, 14);
     for (const tool of ["pinch", "crease", "scrape"]) {

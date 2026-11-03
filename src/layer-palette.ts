@@ -441,8 +441,9 @@ export class LayerPaletteModel {
         160,
         112,
         busy || h.parentsLocked(n.id),
-        n.visible ? "Visible" : "Hidden",
+        n.localVisible && !n.visible ? "Hidden by parent" : n.visible ? "Visible" : "Hidden",
       );
+      buttons[buttons.length - 1].muted = n.localVisible && !n.visible;
       add(
         `locked:${n.id}`,
         n.localLocked ? "Unlock" : "Lock",
@@ -758,7 +759,18 @@ export class DesktopLayerPalette {
         h.parentsLocked(n.id),
       );
       visibility.className = "layer-visibility";
-      visibility.title = n.localVisible ? "Hide layer" : "Show layer";
+      const inheritedHidden = n.localVisible && !n.visible;
+      visibility.dataset.inheritedHidden = String(inheritedHidden);
+      visibility.title = inheritedHidden
+        ? "Visible locally · hidden by parent"
+        : n.localVisible
+          ? "Hide layer"
+          : "Show layer";
+      if (inheritedHidden)
+        visibility.setAttribute(
+          "aria-description",
+          "Visibility is enabled for this layer, but a parent is hidden.",
+        );
       visibility.setAttribute("aria-label", `${n.localVisible ? "Hide" : "Show"} ${n.name}`);
       visibility.setAttribute("aria-pressed", String(n.localVisible));
       visibility.innerHTML = n.localVisible

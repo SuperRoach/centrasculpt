@@ -1,3 +1,7 @@
+### Phase 6.0.2 — Easier desktop layer rotation (2026-11-03)
+
+- Select and rotate a layer directly from its visible surface without picking a gizmo handle. Rotation defaults to free view-space movement; hold **R**, **F** or **V** during the drag to constrain it to X, Y or Z. Existing rotation handles remain available.
+
 ### Phase 6.0.1 — Cleaner code and faster test feedback (2026-11-03)
 
 - Added consistent Biome formatting and lint checks for project code.

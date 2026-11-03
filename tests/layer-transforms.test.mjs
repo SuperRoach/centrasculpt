@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, Matrix4, PerspectiveCamera, Quaternion, Scene, Vector3 } from "three";
+import { Group, Matrix4, PerspectiveCamera, Quaternion, Raycaster, Scene, Vector3 } from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { InputOwnership } from "../work/test-build/interaction.mjs";
+import { pickEditableLayer } from "../work/test-build/layer-picking.mjs";
 import { createBaseProject } from "../work/test-build/layers.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
@@ -18,6 +19,7 @@ import {
 } from "../work/test-build/transform.mjs";
 import {
   LayerTransformTools,
+  rotateAxisForShortcut,
   UniformTransformControls,
 } from "../work/test-build/transform-tools.mjs";
 
@@ -378,6 +380,117 @@ test("TransformControls enforces isotropic XYZ scaling for every scale handle", 
   controls.pointerUp(null);
   controls.dispose();
 });
+test("desktop rotate shortcuts map R/F/V to X/Y/Z and held constraints return to free rotation", () => {
+  assert.equal(rotateAxisForShortcut("KeyR"), "X");
+  assert.equal(rotateAxisForShortcut("KeyF"), "Y");
+  assert.equal(rotateAxisForShortcut("KeyV"), "Z");
+  assert.equal(rotateAxisForShortcut("KeyE"), null);
+  const c = create(),
+    scene = new Scene(),
+    canvas = new FakeCanvas(),
+    input = new InputOwnership(),
+    camera = new PerspectiveCamera(38, 1, 0.01, 100),
+    tools = new LayerTransformTools(camera, canvas, scene, () => c, input, {
+      beforeDrag: () => {},
+      camera: () => {},
+      changed: () => {},
+      error: (text) => assert.fail(text),
+      busy: () => false,
+    });
+  tools.setMode("rotate");
+  tools.controls.dragging = true;
+  tools.controls.axis = "XYZE";
+  assert(tools.holdRotateAxis("KeyR"));
+  assert.equal(tools.controls.axis, "X");
+  assert(tools.holdRotateAxis("KeyF"));
+  assert.equal(tools.controls.axis, "Y");
+  tools.releaseRotateAxis("KeyF");
+  assert.equal(tools.controls.axis, "X");
+  tools.releaseRotateAxis("KeyR");
+  assert.equal(tools.controls.axis, "XYZE");
+  tools.controls.dragging = false;
+  tools.dispose();
+  c.dispose();
+});
+test("dragging a layer surface in Rotate mode starts a free metadata rotation without handles", () => {
+  const c = create(),
+    other = c.create(64),
+    undoBefore = c.undoCount,
+    scene = new Scene(),
+    canvas = new FakeCanvas(),
+    input = new InputOwnership(),
+    camera = new PerspectiveCamera(38, 800 / 600, 0.01, 100),
+    previousDocument = globalThis.document;
+  globalThis.document = { pointerLockElement: null };
+  scene.add(c.group);
+  camera.position.set(3, 2, 4);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  canvas.ownerDocument = { pointerLockElement: null };
+  const tools = new LayerTransformTools(camera, canvas, scene, () => c, input, {
+    beforeDrag: () => {},
+    camera: () => {},
+    changed: () => {},
+    error: (text) => assert.fail(text),
+    busy: () => false,
+    hitLayer: () => other.id,
+  });
+  tools.setMode("rotate");
+  scene.updateMatrixWorld(true);
+  const dispatchPointer = (type, values) => {
+    const event = Object.assign(new Event(type), values);
+    canvas.dispatchEvent(event);
+  };
+  tools.holdRotateAxis("KeyR");
+  dispatchPointer("pointerdown", {
+    button: 0,
+    buttons: 1,
+    clientX: 430,
+    clientY: 300,
+    isPrimary: true,
+    pointerId: 1,
+    pointerType: "mouse",
+  });
+  assert.equal(tools.controls.dragging, true);
+  assert.equal(c.project.activeLayerId, other.id);
+  assert.equal(tools.controls.axis, "X");
+  dispatchPointer("pointermove", {
+    button: -1,
+    buttons: 1,
+    clientX: 455,
+    clientY: 315,
+    isPrimary: true,
+    pointerId: 1,
+    pointerType: "mouse",
+  });
+  tools.releaseRotateAxis("KeyR");
+  assert.equal(tools.controls.axis, "XYZE");
+  dispatchPointer("pointermove", {
+    button: -1,
+    buttons: 1,
+    clientX: 480,
+    clientY: 330,
+    isPrimary: true,
+    pointerId: 1,
+    pointerType: "mouse",
+  });
+  dispatchPointer("pointerup", {
+    button: 0,
+    buttons: 0,
+    clientX: 480,
+    clientY: 330,
+    isPrimary: true,
+    pointerId: 1,
+    pointerType: "mouse",
+  });
+  assert.equal(tools.controls.dragging, false);
+  assert.equal(c.undoCount, undoBefore + 1);
+  assert(c.active.layer.transform.rotation.some((angle) => Math.abs(angle) > 1e-6));
+  tools.dispose();
+  c.dispose();
+  if (previousDocument === undefined) delete globalThis.document;
+  else globalThis.document = previousDocument;
+});
 test("gizmo event wiring commits one action, freezes camera input and never sculpts/remeshes", () => {
   const c = create(),
     scene = new Scene();
@@ -411,3 +524,81 @@ test("gizmo event wiring commits one action, freezes camera input and never scul
   tools.dispose();
   c.dispose();
 });
+
+for (const booleanPreview of [false, true])
+  test(`W Move surface tap selects a procedural tube, skipping hidden/locked sources (Boolean preview ${booleanPreview})`, async () => {
+    const c = create(),
+      canvas = new FakeCanvas(),
+      scene = new Scene(),
+      input = new InputOwnership(),
+      camera = new PerspectiveCamera(38, 800 / 600, 0.01, 100),
+      ray = new Raycaster(),
+      previousDocument = globalThis.document;
+    globalThis.document = { pointerLockElement: null };
+    canvas.ownerDocument = { pointerLockElement: null };
+    const base = c.active.layer,
+      tubeSource = (z) => ({
+        kind: "tube",
+        closed: false,
+        interpolation: "linear",
+        points: [
+          { id: "a", position: [-0.6, 1.3, z], radius: 0.12 },
+          { id: "b", position: [0.6, 1.3, z], radius: 0.12 },
+        ],
+      });
+    let tools;
+    try {
+      const tube = await c.regenerateTube(tubeSource(0)),
+        locked = await c.regenerateTube(tubeSource(0.4)),
+        hidden = await c.regenerateTube(tubeSource(0.8));
+      c.setFlag(locked.id, "locked", true);
+      c.setFlag(hidden.id, "visible", false);
+      c.select(base.id);
+      scene.add(c.group);
+      c.group.visible = !booleanPreview;
+      camera.position.set(0, 0, 4);
+      camera.updateMatrixWorld(true);
+      tools = new LayerTransformTools(camera, canvas, scene, () => c, input, {
+        beforeDrag() {},
+        camera() {},
+        changed() {},
+        busy: () => false,
+        error: (text) => assert.fail(text),
+        hitLayer: (event) => {
+          ray.setFromCamera({ x: event.clientX / 400 - 1, y: 1 - event.clientY / 300 }, camera);
+          return pickEditableLayer(ray, c)?.layerId ?? null;
+        },
+      });
+      tools.setMode("translate");
+      scene.updateMatrixWorld(true);
+      const pointer = new Vector3(0, 1.3, 0).project(camera),
+        values = {
+          button: 0,
+          clientX: (pointer.x + 1) * 400,
+          clientY: (1 - pointer.y) * 300,
+          isPrimary: true,
+          pointerId: 1,
+          pointerType: "mouse",
+        },
+        before = c.undoCount,
+        original = structuredClone(tube.procedural),
+        geometry = c.runtime(tube.id).surface.group.children.map((o) => o.geometry);
+      canvas.dispatchEvent(Object.assign(new Event("pointerdown"), values, { buttons: 1 }));
+      assert.equal(c.project.activeLayerId, tube.id);
+      assert.equal(input.mode, "translate");
+      assert.equal(tools.controls.object, c.runtime(tube.id).surface.group);
+      canvas.dispatchEvent(Object.assign(new Event("pointerup"), values, { buttons: 0 }));
+      assert.equal(c.undoCount, before);
+      assert.deepEqual(tube.procedural, original);
+      assert.deepEqual(
+        c.runtime(tube.id).surface.group.children.map((o) => o.geometry),
+        geometry,
+      );
+      assert.equal(input.transforming, false);
+    } finally {
+      tools?.dispose();
+      c.dispose();
+      if (previousDocument === undefined) delete globalThis.document;
+      else globalThis.document = previousDocument;
+    }
+  });
