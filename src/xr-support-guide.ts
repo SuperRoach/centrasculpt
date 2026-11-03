@@ -11,23 +11,19 @@ import {
   Vector3,
 } from "three";
 import type { XRControllerState } from "./xr-input";
+import {
+  GENERIC_SUPPORT_GUIDE_PROFILE,
+  resolveSupportGuideProfile,
+  SUPPORT_GUIDE_LAYOUT,
+  type SupportGuideHand,
+  type SupportGuideProfile,
+  type SupportGuideSelection,
+} from "./xr-support-guide-profiles";
 import type { XRShortcutBinding } from "./xr-support-shortcuts";
 import { SUPPORT_STICK_BINDINGS } from "./xr-support-shortcuts";
 import { VR_UI_SCALES } from "./xr-ui-style";
 
-export const SUPPORT_GUIDE_LAYOUT = Object.freeze({
-  width: 512,
-  height: 512,
-  metres: [0.11, 0.11] as const,
-  centre: [256, 256] as const,
-  arrow: { tipRadius: 224, innerRadius: 100, separatorWidth: 32 },
-  directions: {
-    left: { x: 92, y: 256, dx: -1, dy: 0 },
-    right: { x: 420, y: 256, dx: 1, dy: 0 },
-    up: { x: 256, y: 92, dx: 0, dy: -1 },
-    down: { x: 256, y: 420, dx: 0, dy: 1 },
-  },
-});
+export { SUPPORT_GUIDE_LAYOUT } from "./xr-support-guide-profiles";
 export const SUPPORT_GUIDE_STYLE = Object.freeze({
   arrow: "rgba(230, 232, 231, 0.38)",
   glyph: "rgba(28, 32, 34, 0.85)",
@@ -88,19 +84,41 @@ function drawShortcutGlyph(ctx: CanvasRenderingContext2D, binding: XRShortcutBin
  */
 export class XRSupportGuide {
   readonly mesh: Mesh<PlaneGeometry, MeshBasicMaterial>;
-  // Measured from the actual meta-quest-touch-plus left/right GLBs used by the app.
-  // Face centre, inset 9 mm along its normal and shifted 5 mm right; see tests/fixtures/quest-touch-plus-face.json.
-  readonly offset = new Vector3(0.005, -0.0043, -0.0207);
-  readonly orientationOffset = new Quaternion().setFromAxisAngle(
-    new Vector3(1, 0, 0),
-    // The top face tilts 37.2° from grip +Y. Plane +Z must follow that face normal.
-    (-(90 + 37.2) * Math.PI) / 180,
-  );
+  // Mutable tuning copies; the accepted baseline in the profile remains immutable.
+  readonly offset = new Vector3();
+  readonly orientationOffset = new Quaternion();
+  private readonly rotationAxis = new Vector3();
+  private selection: SupportGuideSelection = "auto";
+  private profile: SupportGuideProfile = GENERIC_SUPPORT_GUIDE_PROFILE;
+  private hand: SupportGuideHand = "left";
+  get activeProfile(): SupportGuideProfile {
+    return this.profile;
+  }
+  /** Code-level testing/configuration override; auto resumes source-based resolution.
+   * An uncalibrated steam-frame slot uses generic. No UI or project metadata changes.
+   */
+  setProfileOverride(selection: SupportGuideSelection): void {
+    if (selection === this.selection) return;
+    this.selection = selection;
+    this.applyProfile(resolveSupportGuideProfile(null, selection), this.hand);
+    this.hide();
+  }
+  private applyProfile(profile: SupportGuideProfile, hand: SupportGuideHand): void {
+    this.profile = profile;
+    this.hand = hand;
+    const pose = profile.hands[hand];
+    this.offset.fromArray(pose.offset);
+    this.orientationOffset.setFromAxisAngle(
+      this.rotationAxis.fromArray(pose.rotationAxis),
+      pose.rotationRadians,
+    );
+  }
   readonly texture: CanvasTexture;
   private readonly target = new Vector3();
   private readonly eye = new Vector3();
   private disposed = false;
   constructor(bindings = SUPPORT_STICK_BINDINGS) {
+    this.applyProfile(this.profile, this.hand);
     const canvas = document.createElement("canvas");
     canvas.width = SUPPORT_GUIDE_LAYOUT.width;
     canvas.height = SUPPORT_GUIDE_LAYOUT.height;
@@ -181,21 +199,25 @@ export class XRSupportGuide {
       this.hide();
       return;
     }
+    const profile = resolveSupportGuideProfile(state.source, this.selection);
+    const hand = state.handedness === "right" ? "right" : "left";
+    if (profile !== this.profile || hand !== this.hand) this.applyProfile(profile, hand);
     this.target.copy(this.offset);
     this.target.applyMatrix4(grip);
     this.eye.set(viewer.x, viewer.y, viewer.z);
     // Hide the whole guide before its nearest edge reaches the face. Hysteresis avoids flicker.
-    const clearance = 0.18 + GUIDE_RADIUS * scale;
+    const guideScale = scale * this.profile.scale;
+    const clearance = this.profile.faceClearance + GUIDE_RADIUS * guideScale;
     if (
       this.target.distanceToSquared(this.eye) <
-      (clearance + (this.mesh.visible ? 0 : 0.04)) ** 2
+      (clearance + (this.mesh.visible ? 0 : this.profile.reappearanceMargin)) ** 2
     ) {
       this.hide();
       return;
     }
     this.mesh.position.copy(this.target);
     this.mesh.quaternion.setFromRotationMatrix(grip).multiply(this.orientationOffset);
-    this.mesh.scale.setScalar(scale);
+    this.mesh.scale.setScalar(guideScale);
     this.mesh.visible = true;
   }
   dispose(): void {

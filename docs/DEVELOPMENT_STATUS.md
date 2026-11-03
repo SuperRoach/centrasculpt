@@ -1,5 +1,42 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Controller guide profiles handover
+
+Updated 2026-11-04. Small presentation-only refactor, based on latest commit `5dfd219`. Inspected Git status, guide/bridge/input code and this handover before editing; the active repository `/Users/brettjames/development/vrappPOC` was clean. No reset or normalization of the accepted calibration. User authorized committing and pushing this refactor on 2026-11-04.
+
+### 1. What changed
+
+Preserved the current Quest 3 support-guide calibration as a strongly typed, deeply frozen `QUEST_3_SUPPORT_GUIDE_PROFILE` in `src/xr-support-guide-profiles.ts`. The named frozen `QUEST_3_SUPPORT_GUIDE_LAYOUT` preserves the static texture measurements. Added deterministic source selection, a compatibility generic fallback, an uncalibrated Steam Frame slot, and a code-level override. No `WHATS_NEW.md` entry: this is a behind-the-scenes change, as requested by the user. There is no new user-facing setting.
+
+### 2. Architectural decisions
+
+Both hands retain **exactly** grip-local `[0.005, -0.0043, -0.0207]` metres and the original X-axis rotation expression `(-(90 + 37.2) * Math.PI) / 180`, with no mirroring, normalization, rounding, billboarding or orientation lag. Plane size remains 0.11 × 0.11 m, texture 512², centre `[256, 256]`, tip/opening/separator 224/100/32 px, glyph centres 92/420 on the original axes. Glyph paths, styles and canvas drawing operations remain unchanged. Shared UI scales remain 1.25/1.35; the profile multiplier is 1. Face clearance remains scaled half-diagonal + 0.18 m, with 0.04 m reappearance margin. Grip anchoring and wrist orientation remain unchanged; there are no other hand-specific offsets or positioning heuristics in this guide.
+
+Auto selection uses only the existing source's exact `meta-quest-touch-plus` profile ID. This identifies the controller profile, not a reliably detected Quest 3 headset. Older Touch IDs, missing sources and unknown controllers use `generic`, which deliberately preserves the previous pose without claiming calibrated fit. Existing gamepad mapping and axes establish input compatibility, not face geometry; no UA, button-count or Steam Frame identity guesses were added. The guide resolves the current logical Support state's source on update, so source replacement and dominance/session changes cannot latch another controller's profile. Existing bridge hide/tracking behavior is retained.
+
+Call `supportGuide.setProfileOverride("quest-3" | "generic" | "steam-frame" | "auto")` from code to test/configure; `activeProfile.id` reports the effective profile. Overrides hide immediately and survive tracking/session re-entry until changed. `steam-frame` currently falls back to generic because `STEAM_FRAME_SUPPORT_GUIDE_PROFILE` is explicitly null. To calibrate later, populate that slot with an independently measured, frozen `SupportGuideProfile`, including separate left/right poses and physical scale; select it explicitly until reliable source identification is established. Do not change the Quest baseline. Mutable `offset`/`orientationOffset` copies remain available for development tuning; profile/hand changes reload those copies from immutable data.
+
+### 3. Build and test results
+
+`npm run check` passed: Biome format, lint (**547 warnings / 95 infos**, zero errors), strict TypeScript, production build, and **1,347/1,347 tests** across 83 files, zero failures/skips/cancellations; test command wall time **28.37 s**. Existing Vite bundle-size advisory remains. Focused guide tests passed **16/16** and quick tests **21/21**. `git diff --check` passed. Registered the new module in the existing test compiler list.
+
+New deterministic tests freeze-check every baseline pose/layout value and assert exact pre-refactor position, quaternion components and scale for both hands, varied wrist rotations and both UI sizes. Clearance/reappearance boundaries, exact source selection, fallback, override/reset, live source change and resource reuse are covered. Actual bridge tests verify selection uses the Support source through both dominance layouts, disconnect/reconnect, visibility loss and repeated XR entry. Existing texture, measured GLB face alignment, noninteractive raycast, input/menu/history and persistence tests pass unchanged in behavior.
+
+### 4. Benchmarks and regressions
+
+No new draw calls, geometry, textures, repaint or frame objects. Indexed source-profile lookup returns existing frozen records; pose updates reuse vectors/quaternions. Resource identity and unchanged texture version are tested. Input mapping, glyphs, menu behavior, controller ownership and workspace transforms were not changed. No new physical GPU/frame-time benchmark was performed; suite duration is not a performance claim.
+
+### 5. Known limitations and blockers
+
+Exact host pose/texture regression checks preserve the accepted Quest calibration; no new physical headset acceptance was performed. Generic is compatibility behavior, not validated placement on other hardware. Steam Frame has no measurements or automatic match. Texture layout is intentionally shared and static; profiles configure pose, physical scale and clearance, not glyph drawing. Existing broader physical acceptance checklist below remains applicable.
+
+### 6. Next recommendations
+
+Keep the Quest baseline intact. When Steam Frame hardware is available, measure both support-hand layouts in grip space, fill the independent profile slot and test with the explicit override before adding any verified automatic source ID. Confirm physical fit/readability and lifecycle on hardware, then record measurements and captures separately.
+
+---
+
+
 ## Phase 6.0.3 handover — Support Controller Shortcut Guide
 
 Updated 2026-11-04. Host implementation complete; user accepted the final controller-guide positioning and appearance after headset iteration. Remaining Quest lifecycle/performance acceptance is pending. Active repository: `/Users/brettjames/development/vrappPOC`, baseline `d28c399`. Working tree was clean before this milestone. Read current handovers and latest Git changes, including Biome/test infrastructure and the newer desktop/tube work. User explicitly authorized committing and pushing this milestone on 2026-11-04.

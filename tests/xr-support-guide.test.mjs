@@ -21,6 +21,13 @@ import {
   SUPPORT_GUIDE_STYLE,
   XRSupportGuide,
 } from "../work/test-build/xr-support-guide.mjs";
+import {
+  GENERIC_SUPPORT_GUIDE_PROFILE,
+  QUEST_3_SUPPORT_GUIDE_LAYOUT,
+  QUEST_3_SUPPORT_GUIDE_PROFILE,
+  resolveSupportGuideProfile,
+  STEAM_FRAME_SUPPORT_GUIDE_PROFILE,
+} from "../work/test-build/xr-support-guide-profiles.mjs";
 import { SUPPORT_STICK_BINDINGS } from "../work/test-build/xr-support-shortcuts.mjs";
 import { VR_UI_SCALES } from "../work/test-build/xr-ui-style.mjs";
 import { XRWorldMenu } from "../work/test-build/xr-world-menu.mjs";
@@ -381,6 +388,10 @@ for (const dominant of ["left", "right"])
         assert(f.guide.mesh.visible);
       }
       const supportIndex = roles.support === "left" ? 0 : 1;
+      assert.equal(f.guide.activeProfile.id, "quest-3");
+      sources[1 - supportIndex].profiles = ["generic-trigger-squeeze-thumbstick"];
+      step();
+      assert.equal(f.guide.activeProfile.id, "quest-3", "tool source cannot select guide profile");
       assert.equal(Math.sign(f.guide.mesh.position.x), supportIndex ? 1 : -1);
       sources[supportIndex].gamepad.axes[3] = -1;
       step();
@@ -407,6 +418,11 @@ for (const dominant of ["left", "right"])
       step();
       assert.equal(Math.sign(f.guide.mesh.position.x), supportIndex ? -1 : 1);
       const newIndex = 1 - supportIndex;
+      assert.equal(
+        f.guide.activeProfile.id,
+        "generic",
+        "profile follows logical support after dominance swap",
+      );
       grips[newIndex].visible = false;
       step();
       assert(!f.guide.mesh.visible);
@@ -435,6 +451,7 @@ for (const dominant of ["left", "right"])
         });
         step();
         assert(f.guide.mesh.visible);
+        assert.equal(f.guide.activeProfile.id, "generic");
       }
       assert.equal(layers.undoCount, 0);
       assert.equal(layers.redoCount, 0);
@@ -591,5 +608,172 @@ test("expanded icon ring clears the controller while shorter tips keep a compact
       );
       assert(radius > 126 * 1.3, "shortcut ring expanded at least 30%");
     }
+  }
+});
+
+test("Quest 3 accepted baseline is deeply immutable, including both hand poses and texture measurements", () => {
+  const p = QUEST_3_SUPPORT_GUIDE_PROFILE;
+  assert.deepEqual(p, {
+    id: "quest-3",
+    anchor: "grip",
+    orientation: "grip-local",
+    hands: {
+      left: {
+        offset: [0.005, -0.0043, -0.0207],
+        rotationAxis: [1, 0, 0],
+        rotationRadians: (-(90 + 37.2) * Math.PI) / 180,
+      },
+      right: {
+        offset: [0.005, -0.0043, -0.0207],
+        rotationAxis: [1, 0, 0],
+        rotationRadians: (-(90 + 37.2) * Math.PI) / 180,
+      },
+    },
+    scale: 1,
+    faceClearance: 0.18,
+    reappearanceMargin: 0.04,
+  });
+  assert.deepEqual(QUEST_3_SUPPORT_GUIDE_LAYOUT, {
+    width: 512,
+    height: 512,
+    metres: [0.11, 0.11],
+    centre: [256, 256],
+    arrow: { tipRadius: 224, innerRadius: 100, separatorWidth: 32 },
+    directions: {
+      left: { x: 92, y: 256, dx: -1, dy: 0 },
+      right: { x: 420, y: 256, dx: 1, dy: 0 },
+      up: { x: 256, y: 92, dx: 0, dy: -1 },
+      down: { x: 256, y: 420, dx: 0, dy: 1 },
+    },
+  });
+  const frozen = (value) => {
+    assert(Object.isFrozen(value));
+    for (const child of Object.values(value)) if (child && typeof child === "object") frozen(child);
+  };
+  frozen(p);
+  frozen(QUEST_3_SUPPORT_GUIDE_LAYOUT);
+  assert.deepEqual(VR_UI_SCALES, { normal: 1.25, large: 1.35 });
+  assert.throws(() => {
+    p.hands.left.offset[0] = 10;
+  }, TypeError);
+});
+
+test("profile resolution uses only exact Touch Plus identity; generic and empty Steam Frame slot are explicit", () => {
+  for (const profiles of [
+    [],
+    ["oculus-touch"],
+    ["oculus-touch-v3"],
+    ["steam-frame"],
+    ["unknown-touch-plus"],
+  ]) {
+    assert.equal(
+      resolveSupportGuideProfile({ profiles, gamepad: { mapping: "xr-standard", id: "Quest 3" } }),
+      GENERIC_SUPPORT_GUIDE_PROFILE,
+    );
+  }
+  for (const source of [null, undefined])
+    assert.equal(resolveSupportGuideProfile(source), GENERIC_SUPPORT_GUIDE_PROFILE);
+  const touch = { profiles: ["unknown", "meta-quest-touch-plus", "generic-trigger"] };
+  assert.equal(resolveSupportGuideProfile(touch), QUEST_3_SUPPORT_GUIDE_PROFILE);
+  assert.equal(resolveSupportGuideProfile(touch, "generic"), GENERIC_SUPPORT_GUIDE_PROFILE);
+  assert.equal(resolveSupportGuideProfile(null, "quest-3"), QUEST_3_SUPPORT_GUIDE_PROFILE);
+  assert.equal(STEAM_FRAME_SUPPORT_GUIDE_PROFILE, null);
+  assert.equal(resolveSupportGuideProfile(touch, "steam-frame"), GENERIC_SUPPORT_GUIDE_PROFILE);
+});
+
+for (const hand of ["left", "right"])
+  test(`${hand} Quest 3 exact pre-refactor position, quaternion, scale and clearance at varied wrist poses`, () => {
+    const f = fixture();
+    const s = { ...state(hand), source: source(hand) };
+    try {
+      for (const scale of Object.values(VR_UI_SCALES)) {
+        for (const angle of [0, 0.7, -1.8, Math.PI]) {
+          const grip = new Matrix4().compose(
+            new Vector3(-0.3, 1, -0.5),
+            new Quaternion().setFromAxisAngle(new Vector3(1, 2, 3).normalize(), angle),
+            new Vector3(1, 1, 1),
+          );
+          // Literal pre-refactor operations from 5dfd219, independent of profile data.
+          const oldPosition = new Vector3(0.005, -0.0043, -0.0207).applyMatrix4(grip);
+          const oldRotation = new Quaternion()
+            .setFromRotationMatrix(grip)
+            .multiply(
+              new Quaternion().setFromAxisAngle(
+                new Vector3(1, 0, 0),
+                (-(90 + 37.2) * Math.PI) / 180,
+              ),
+            );
+          f.guide.update(s, grip, eye, 16, true, scale);
+          assert.equal(f.guide.activeProfile, QUEST_3_SUPPORT_GUIDE_PROFILE);
+          assert.deepEqual(f.guide.mesh.position.toArray(), oldPosition.toArray());
+          assert.deepEqual(f.guide.mesh.quaternion.toArray(), oldRotation.toArray());
+          assert.deepEqual(f.guide.mesh.scale.toArray(), [scale, scale, scale]);
+          const clearance = 0.18 + (Math.hypot(0.11, 0.11) / 2) * scale;
+          const atDistance = (d) => oldPosition.clone().add(new Vector3(0, d, 0));
+          f.guide.update(s, grip, atDistance(clearance - 1e-8), 32, true, scale);
+          assert(!f.guide.mesh.visible);
+          f.guide.update(s, grip, atDistance(clearance + 0.04 - 1e-8), 48, true, scale);
+          assert(!f.guide.mesh.visible);
+          f.guide.update(s, grip, atDistance(clearance + 0.04 + 1e-8), 64, true, scale);
+          assert(f.guide.mesh.visible);
+        }
+      }
+    } finally {
+      f.dispose();
+    }
+  });
+
+test("profile overrides, live source replacement, hand swap and tracking re-entry reuse guide resources", () => {
+  const f = fixture();
+  const s = { ...state(), source: source("left") };
+  const { mesh, texture, offset, orientationOffset } = f.guide;
+  const resources = [mesh.geometry, mesh.material, texture, offset, orientationOffset];
+  const version = texture.version;
+  const step = () => f.guide.update(s, pose(), eye, 16, true);
+  try {
+    step();
+    const original = mesh.position.toArray();
+    assert.equal(f.guide.activeProfile.id, "quest-3");
+    f.guide.setProfileOverride("generic");
+    assert(!mesh.visible);
+    step();
+    assert.equal(f.guide.activeProfile.id, "generic");
+    assert.deepEqual(mesh.position.toArray(), original);
+    s.source = { ...source("left"), profiles: ["unknown"] };
+    f.guide.setProfileOverride("quest-3");
+    step();
+    assert.equal(f.guide.activeProfile.id, "quest-3");
+    f.guide.setProfileOverride("auto");
+    step();
+    assert.equal(f.guide.activeProfile.id, "generic");
+    s.source = source("right");
+    s.handedness = "right";
+    step();
+    assert.equal(f.guide.activeProfile.id, "quest-3");
+    assert.deepEqual(mesh.position.toArray(), original);
+    f.guide.setProfileOverride("steam-frame");
+    step();
+    assert.equal(f.guide.activeProfile.id, "generic");
+    s.connected = false;
+    step();
+    assert(!mesh.visible);
+    f.guide.setProfileOverride("auto");
+    s.source = null;
+    s.connected = true;
+    step();
+    assert.equal(f.guide.activeProfile.id, "generic");
+    s.source = source("right");
+    f.guide.hide();
+    step();
+    assert.equal(f.guide.activeProfile.id, "quest-3");
+    assert(mesh.visible);
+    assert.deepEqual(mesh.position.toArray(), original);
+    assert.equal(texture.version, version);
+    assert.deepEqual(
+      [mesh.geometry, mesh.material, texture, f.guide.offset, f.guide.orientationOffset],
+      resources,
+    );
+  } finally {
+    f.dispose();
   }
 });

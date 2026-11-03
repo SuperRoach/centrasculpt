@@ -17,6 +17,7 @@ const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 for (const name of [
   "xr-snap-guide",
   "xr-support-guide",
+  "xr-support-guide-profiles",
   "transform-preview",
   "whats-new",
   "export-filename",
