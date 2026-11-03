@@ -1,5 +1,8 @@
 ### Phase 5.4 — Easier desktop painting (2026-11-03)
 
+- Shape Library uses the same stamp symbol as VR.
+- Compacted the desktop Shape Library, with paired Move/Rotate controls and shorter stamping hints.
+- Hid routine Autosave off and waiting messages to keep the sidebar compact.
 - Keep your paint when the pointer slips off the sculpture. Painting pauses off the surface and resumes when you return, without drawing across the gap. Undo and Redo still treat it as one stroke.
 - Paint now has its own canvas tool icon, with colour selection, radius and strength in its expanded controls.
 - Smooth has quick radius and strength controls beside the canvas, with values kept in sync with the sidebar.

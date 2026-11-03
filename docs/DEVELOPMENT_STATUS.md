@@ -129,3 +129,11 @@ Desktop controls validation: full automated suite **1,297/1,297 PASS** (--test-c
 Desktop paint surface-miss validation: production build PASS; 52/52 paint tests and complete suite **1,298/1,298 PASS** (--test-concurrency=4). Regression covers a multi-second surface miss, retained paint, gap-free resume, unchanged geometry and one Undo/Redo transaction. Actual desktop feel still needs user confirmation.
 
 2026-11-03 publication: user authorized committing and pushing desktop Paint/Smooth controls, single-dialog recovery and off-surface paint preservation, with the polished Easier desktop painting What’s New entry.
+
+2026-11-03: Hid the routine Autosave off · manual saves are separate status line. Recovery warnings/errors remain visible.
+
+2026-11-03 desktop Shape Library compact pass: removed Show ghost preview and duplicate sidebar Stamp once at preview controls; opening/closing library still manages preview, and canvas Apply stamp remains available. Move/Rotate share one compact row; lengthy stamping instructions moved into a tooltip with a short keyboard hint.
+
+2026-11-03: Desktop Shape Library heading now uses an SVG matching the VR stamp icon geometry.
+
+2026-11-03: Hid the routine autosave waiting-for-idle message; warnings remain visible.
