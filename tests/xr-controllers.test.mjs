@@ -1,82 +1,559 @@
-import {canvasContext} from '../scripts/fixtures/canvas-context.mjs';
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {Group,Scene,PerspectiveCamera,Vector3} from 'three';
-import {XRControllerInput,applyStickDeadZone,resolveXRMapping} from '../work/test-build/xr-input.mjs';
-import {XRControllers} from '../work/test-build/xr-controllers.mjs';
-import {XRControllerRoles,PLANNED_XR_ACTIONS} from '../work/test-build/xr-controller-roles.mjs';
-import {XRDiagnostics,diagnosticAction} from '../work/test-build/xr-diagnostics.mjs';
-import {XRSceneRig} from '../work/test-build/xr-scene.mjs';
-import {SDFVolume} from '../work/test-build/sdf.mjs';
-import {createBaseProject} from '../work/test-build/layers.mjs';
-import {IndependentLayers} from '../work/test-build/independent-layers.mjs';
-import {saveSculptProject} from '../work/test-build/project.mjs';
-const source=(hand='right',profiles=['meta-quest-touch-plus'],mapping='xr-standard')=>({handedness:hand,profiles,targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping,axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false,touched:false}))}});
-const connect=(input,index,s)=>{input.connect(index,s);input.setTracking(index,true,true);};
-const press=(s,index,value,pressed=value>=.55)=>Object.assign(s.gamepad.buttons[index],{value,pressed,touched:value>0});
-test('physical handedness is source-derived even when connection slots arrive in reverse order',()=>{
- const roles=new XRControllerRoles(),input=new XRControllerInput(roles),left=source('left'),right=source('right');connect(input,0,right);connect(input,1,left);input.update();assert.equal(input.byHand('left').slot,1);assert.equal(input.byHand('right').role,'tool');const id=input.byHand('left').connectionId;roles.setDominant('left');input.update();assert.equal(input.byHand('left').role,'tool');assert.equal(input.byHand('right').role,'support');assert.equal(input.byHand('left').connectionId,id);assert.equal(left.handedness,'left');assert.equal(roles.bindingsFor('left').grip,'grab-selected-layer');assert.equal(roles.bindingsFor('right').grip,'grab-workspace');assert.equal(roles.bindingsFor('none'),undefined);assert.equal(PLANNED_XR_ACTIONS.support.grip,'grab-workspace');
+import assert from "node:assert/strict";
+import test from "node:test";
+import { Group, PerspectiveCamera, Scene } from "three";
+import { canvasContext } from "../scripts/fixtures/canvas-context.mjs";
+import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
+import { createBaseProject } from "../work/test-build/layers.mjs";
+import { saveSculptProject } from "../work/test-build/project.mjs";
+import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { PLANNED_XR_ACTIONS, XRControllerRoles } from "../work/test-build/xr-controller-roles.mjs";
+import { XRControllers } from "../work/test-build/xr-controllers.mjs";
+import { diagnosticAction, XRDiagnostics } from "../work/test-build/xr-diagnostics.mjs";
+import {
+  applyStickDeadZone,
+  resolveXRMapping,
+  XRControllerInput,
+} from "../work/test-build/xr-input.mjs";
+import { XRSceneRig } from "../work/test-build/xr-scene.mjs";
+
+const source = (hand = "right", profiles = ["meta-quest-touch-plus"], mapping = "xr-standard") => ({
+  handedness: hand,
+  profiles,
+  targetRayMode: "tracked-pointer",
+  gripSpace: {},
+  gamepad: {
+    mapping,
+    axes: [0, 0, 0, 0],
+    buttons: Array.from({ length: 6 }, () => ({ value: 0, pressed: false, touched: false })),
+  },
 });
-test('known Quest mapping exposes analog triggers/grips, stick click and both face buttons',()=>{
- const input=new XRControllerInput(),s=source();connect(input,0,s);press(s,0,.63);press(s,1,.82);press(s,3,1);press(s,4,1);press(s,5,1);input.update();const b=input.states[0].buttons;assert.equal(b.trigger.value,.63);assert.equal(b.grip.value,.82);assert(b.thumbstick.pressed&&b.primary.pressed&&b.secondary.pressed);assert(b.trigger.touched);assert.equal(input.states[0].mapping,'quest-touch');
+const connect = (input, index, s) => {
+  input.connect(index, s);
+  input.setTracking(index, true, true);
+};
+const press = (s, index, value, pressed = value >= 0.55) =>
+  Object.assign(s.gamepad.buttons[index], { value, pressed, touched: value > 0 });
+test("physical handedness is source-derived even when connection slots arrive in reverse order", () => {
+  const roles = new XRControllerRoles(),
+    input = new XRControllerInput(roles),
+    left = source("left"),
+    right = source("right");
+  connect(input, 0, right);
+  connect(input, 1, left);
+  input.update();
+  assert.equal(input.byHand("left").slot, 1);
+  assert.equal(input.byHand("right").role, "tool");
+  const id = input.byHand("left").connectionId;
+  roles.setDominant("left");
+  input.update();
+  assert.equal(input.byHand("left").role, "tool");
+  assert.equal(input.byHand("right").role, "support");
+  assert.equal(input.byHand("left").connectionId, id);
+  assert.equal(left.handedness, "left");
+  assert.equal(roles.bindingsFor("left").grip, "grab-selected-layer");
+  assert.equal(roles.bindingsFor("right").grip, "grab-workspace");
+  assert.equal(roles.bindingsFor("none"), undefined);
+  assert.equal(PLANNED_XR_ACTIONS.support.grip, "grab-workspace");
 });
-test('holds produce one press transition and one release, with analog dead zone and hysteresis',()=>{
- const input=new XRControllerInput(),s=source();connect(input,0,s);input.update();press(s,0,.02,false);input.update();assert.equal(input.states[0].buttons.trigger.value,0);assert.equal(input.states[0].buttons.trigger.rawValue,.02);press(s,0,.6,false);input.update();assert(input.states[0].buttons.trigger.justPressed);for(let i=0;i<20;i++){input.update();assert.equal(input.states[0].buttons.trigger.justPressed,false);}press(s,0,.5,false);input.update();assert(input.states[0].buttons.trigger.pressed);press(s,0,.2,false);input.update();assert(input.states[0].buttons.trigger.justReleased);input.update();assert.equal(input.states[0].buttons.trigger.justReleased,false);
+test("known Quest mapping exposes analog triggers/grips, stick click and both face buttons", () => {
+  const input = new XRControllerInput(),
+    s = source();
+  connect(input, 0, s);
+  press(s, 0, 0.63);
+  press(s, 1, 0.82);
+  press(s, 3, 1);
+  press(s, 4, 1);
+  press(s, 5, 1);
+  input.update();
+  const b = input.states[0].buttons;
+  assert.equal(b.trigger.value, 0.63);
+  assert.equal(b.grip.value, 0.82);
+  assert(b.thumbstick.pressed && b.primary.pressed && b.secondary.pressed);
+  assert(b.trigger.touched);
+  assert.equal(input.states[0].mapping, "quest-touch");
 });
-test('thumbstick radial dead zone removes drift, remaps smoothly and clamps invalid axes',()=>{
- const out={x:9,y:9};applyStickDeadZone(out,.08,-.08);assert.deepEqual(out,{x:0,y:0});applyStickDeadZone(out,1,1);assert(Math.abs(Math.hypot(out.x,out.y)-1)<1e-12);applyStickDeadZone(out,NaN,Infinity);assert.deepEqual(out,{x:0,y:0});const input=new XRControllerInput(),s=source();connect(input,0,s);s.gamepad.axes=[1,1,.575,0];input.update();assert(Math.abs(input.states[0].stick.x-.5)<1e-10);assert.equal(input.states[0].stick.y,0);assert.throws(()=>new XRControllerInput(undefined,{axisDeadZone:1}));
+test("holds produce one press transition and one release, with analog dead zone and hysteresis", () => {
+  const input = new XRControllerInput(),
+    s = source();
+  connect(input, 0, s);
+  input.update();
+  press(s, 0, 0.02, false);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.value, 0);
+  assert.equal(input.states[0].buttons.trigger.rawValue, 0.02);
+  press(s, 0, 0.6, false);
+  input.update();
+  assert(input.states[0].buttons.trigger.justPressed);
+  for (let i = 0; i < 20; i++) {
+    input.update();
+    assert.equal(input.states[0].buttons.trigger.justPressed, false);
+  }
+  press(s, 0, 0.5, false);
+  input.update();
+  assert(input.states[0].buttons.trigger.pressed);
+  press(s, 0, 0.2, false);
+  input.update();
+  assert(input.states[0].buttons.trigger.justReleased);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.justReleased, false);
 });
-test('unknown mappings never guess face indices and standard fallback preserves placeholder indices',()=>{
- const input=new XRControllerInput(),s=source('right',['unrecognized'],'');connect(input,0,s);press(s,4,1);press(s,0,1);input.update();assert.equal(input.states[0].buttons.primary.available,false);assert.equal(input.states[0].buttons.primary.pressed,false);assert.equal(input.states[0].buttons.trigger.pressed,false);input.semantic(s,'trigger',true);input.update();assert(input.states[0].buttons.trigger.pressed);s.gamepad.mapping='xr-standard';assert.equal(resolveXRMapping(s).buttons.primary,undefined);assert.deepEqual(resolveXRMapping(s).axes,[2,3]);
+test("thumbstick radial dead zone removes drift, remaps smoothly and clamps invalid axes", () => {
+  const out = { x: 9, y: 9 };
+  applyStickDeadZone(out, 0.08, -0.08);
+  assert.deepEqual(out, { x: 0, y: 0 });
+  applyStickDeadZone(out, 1, 1);
+  assert(Math.abs(Math.hypot(out.x, out.y) - 1) < 1e-12);
+  applyStickDeadZone(out, NaN, Infinity);
+  assert.deepEqual(out, { x: 0, y: 0 });
+  const input = new XRControllerInput(),
+    s = source();
+  connect(input, 0, s);
+  s.gamepad.axes = [1, 1, 0.575, 0];
+  input.update();
+  assert(Math.abs(input.states[0].stick.x - 0.5) < 1e-10);
+  assert.equal(input.states[0].stick.y, 0);
+  assert.throws(() => new XRControllerInput(undefined, { axisDeadZone: 1 }));
 });
-test('missing gamepads/buttons/axes and non-finite analog values remain safe and neutral',()=>{
- const input=new XRControllerInput(),s=source();s.gamepad.buttons=[{value:NaN,pressed:false}];s.gamepad.axes=[];connect(input,0,s);input.update();assert.equal(input.states[0].buttons.trigger.value,0);assert.equal(input.states[0].buttons.secondary.available,false);assert.equal(input.states[0].stick.available,false);s.gamepad=null;input.update();assert.equal(input.states[0].buttons.grip.value,0);assert.equal(input.states[0].stick.x,0);
+test("unknown mappings never guess face indices and standard fallback preserves placeholder indices", () => {
+  const input = new XRControllerInput(),
+    s = source("right", ["unrecognized"], "");
+  connect(input, 0, s);
+  press(s, 4, 1);
+  press(s, 0, 1);
+  input.update();
+  assert.equal(input.states[0].buttons.primary.available, false);
+  assert.equal(input.states[0].buttons.primary.pressed, false);
+  assert.equal(input.states[0].buttons.trigger.pressed, false);
+  input.semantic(s, "trigger", true);
+  input.update();
+  assert(input.states[0].buttons.trigger.pressed);
+  s.gamepad.mapping = "xr-standard";
+  assert.equal(resolveXRMapping(s).buttons.primary, undefined);
+  assert.deepEqual(resolveXRMapping(s).axes, [2, 3]);
 });
-test('custom profile maps can supply alternate indices without changing the tool API',()=>{
- const mapping={id:'custom',buttons:{trigger:2,primary:0},axes:[0,1]},input=new XRControllerInput(undefined,{profiles:new Map([['custom-device',mapping]])}),s=source('left',['custom-device'],'');connect(input,0,s);press(s,2,.8);input.update();assert.equal(input.states[0].buttons.trigger.value,.8);assert.equal(input.states[0].mapping,'custom');
+test("missing gamepads/buttons/axes and non-finite analog values remain safe and neutral", () => {
+  const input = new XRControllerInput(),
+    s = source();
+  s.gamepad.buttons = [{ value: NaN, pressed: false }];
+  s.gamepad.axes = [];
+  connect(input, 0, s);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.value, 0);
+  assert.equal(input.states[0].buttons.secondary.available, false);
+  assert.equal(input.states[0].stick.available, false);
+  s.gamepad = null;
+  input.update();
+  assert.equal(input.states[0].buttons.grip.value, 0);
+  assert.equal(input.states[0].stick.x, 0);
 });
-test('disconnect neutralizes held state once, preserves the other hand and gives reconnect a new identity',()=>{
- const input=new XRControllerInput(),s=source(),other=source('left');connect(input,0,s);connect(input,1,other);press(s,0,1);press(other,1,.7);input.update();const old=input.states[0].connectionId;input.disconnect(0);assert.equal(input.states[0].buttons.trigger.pressed,false);input.update();assert(input.states[0].justDisconnected);assert(input.states[0].buttons.trigger.justReleased);assert.equal(input.states[1].buttons.grip.value,.7);input.update();assert.equal(input.states[0].buttons.trigger.justReleased,false);connect(input,0,s);input.update();assert(input.states[0].justConnected);assert(input.states[0].connectionId>old);
+test("custom profile maps can supply alternate indices without changing the tool API", () => {
+  const mapping = { id: "custom", buttons: { trigger: 2, primary: 0 }, axes: [0, 1] },
+    input = new XRControllerInput(undefined, { profiles: new Map([["custom-device", mapping]]) }),
+    s = source("left", ["custom-device"], "");
+  connect(input, 0, s);
+  press(s, 2, 0.8);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.value, 0.8);
+  assert.equal(input.states[0].mapping, "custom");
 });
-test('suspend and tracking loss cancel holds and require physical release before a new action',()=>{
- const input=new XRControllerInput(),s=source();connect(input,0,s);press(s,0,1);input.update();input.suspend();input.update();assert.equal(input.states[0].buttons.trigger.justPressed,false);assert(input.states[0].buttons.trigger.justReleased);assert.equal(input.states[0].buttons.trigger.pressed,false);press(s,0,0);input.update();press(s,0,1);input.update();assert(input.states[0].buttons.trigger.justPressed);input.setTracking(0,false,false);input.update();assert.equal(input.states[0].buttons.trigger.pressed,false);input.setTracking(0,true,true);input.update();assert.equal(input.states[0].buttons.trigger.justPressed,false);
+test("disconnect neutralizes held state once, preserves the other hand and gives reconnect a new identity", () => {
+  const input = new XRControllerInput(),
+    s = source(),
+    other = source("left");
+  connect(input, 0, s);
+  connect(input, 1, other);
+  press(s, 0, 1);
+  press(other, 1, 0.7);
+  input.update();
+  const old = input.states[0].connectionId;
+  input.disconnect(0);
+  assert.equal(input.states[0].buttons.trigger.pressed, false);
+  input.update();
+  assert(input.states[0].justDisconnected);
+  assert(input.states[0].buttons.trigger.justReleased);
+  assert.equal(input.states[1].buttons.grip.value, 0.7);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.justReleased, false);
+  connect(input, 0, s);
+  input.update();
+  assert(input.states[0].justConnected);
+  assert(input.states[0].connectionId > old);
 });
-test('semantic quick taps survive between polls and repeated starts cannot repeat actions',()=>{
- const input=new XRControllerInput(),s=source();s.gamepad=null;connect(input,0,s);input.semantic(s,'trigger',true);input.semantic(s,'trigger',false);input.update();assert(input.states[0].buttons.trigger.justPressed);assert(input.states[0].buttons.trigger.justReleased);input.update();assert.equal(input.states[0].buttons.trigger.justPressed,false);input.semantic(s,'trigger',true);input.update();input.semantic(s,'trigger',true);input.update();assert.equal(input.states[0].buttons.trigger.justPressed,false);
+test("suspend and tracking loss cancel holds and require physical release before a new action", () => {
+  const input = new XRControllerInput(),
+    s = source();
+  connect(input, 0, s);
+  press(s, 0, 1);
+  input.update();
+  input.suspend();
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.justPressed, false);
+  assert(input.states[0].buttons.trigger.justReleased);
+  assert.equal(input.states[0].buttons.trigger.pressed, false);
+  press(s, 0, 0);
+  input.update();
+  press(s, 0, 1);
+  input.update();
+  assert(input.states[0].buttons.trigger.justPressed);
+  input.setTracking(0, false, false);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.pressed, false);
+  input.setTracking(0, true, true);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.justPressed, false);
 });
-class FakeSession extends EventTarget{visibilityState='visible';listeners=new Map();addEventListener(type,fn,...args){super.addEventListener(type,fn,...args);if(!this.listeners.has(type))this.listeners.set(type,new Set());this.listeners.get(type).add(fn);}removeEventListener(type,fn,...args){super.removeEventListener(type,fn,...args);this.listeners.get(type)?.delete(fn);}get listenerCount(){return [...this.listeners.values()].reduce((n,s)=>n+s.size,0);}}
-function harness(){const rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),roles=new XRControllerRoles(),bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles);return {bridge,rays,grips,root};}
-test('controller bridge uses native ray/grip parents and cleans temporary visuals/listeners across repeated sessions',()=>{
- const {bridge,rays,grips,root}=harness(),s=source('left');try{for(let n=0;n<4;n++){const session=new FakeSession();rays[1].dispatchEvent({type:'connected',data:s});bridge.start(session);bridge.start(session);assert.equal(session.listenerCount,6);rays[1].position.set(.2,1.1,-.4);bridge.update(n*100);assert.equal(bridge.input.states[1].handedness,'left');assert.equal(bridge.slots[1].rayVisual.parent,rays[1]);assert.equal(bridge.slots[1].gripVisual.parent,grips[1]);assert.equal(rays[1].parent,root);assert.equal(bridge.slots[1].line.geometry.getAttribute('position').getZ(1),-1.5);session.dispatchEvent(new Event('end'));assert.equal(session.listenerCount,0);assert.equal(bridge.slots[1].rayVisual.parent,null);assert.equal(root.visible,false);assert.equal(bridge.input.states[1].connected,false);}}finally{bridge.dispose();}assert.equal(rays[1]._listeners.connected.length,0);
+test("semantic quick taps survive between polls and repeated starts cannot repeat actions", () => {
+  const input = new XRControllerInput(),
+    s = source();
+  s.gamepad = null;
+  connect(input, 0, s);
+  input.semantic(s, "trigger", true);
+  input.semantic(s, "trigger", false);
+  input.update();
+  assert(input.states[0].buttons.trigger.justPressed);
+  assert(input.states[0].buttons.trigger.justReleased);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.justPressed, false);
+  input.semantic(s, "trigger", true);
+  input.update();
+  input.semantic(s, "trigger", true);
+  input.update();
+  assert.equal(input.states[0].buttons.trigger.justPressed, false);
 });
-test('bridge hides lost/hand tracking, handles visibility cancellation, and role changes never move tracked poses',()=>{
- const {bridge,rays,grips}=harness(),session=new FakeSession(),s=source();try{rays[0].dispatchEvent({type:'connected',data:s});bridge.start(session);press(s,0,1);bridge.update(1);assert(bridge.slots[0].rayVisual.visible);rays[0].visible=false;grips[0].visible=false;bridge.update(2);assert.equal(bridge.slots[0].rayVisual.visible,false);assert.equal(bridge.input.states[0].tracked,false);rays[0].visible=grips[0].visible=true;bridge.setDominant('left');bridge.update(3);assert.equal(bridge.input.states[0].role,'support');assert.deepEqual(rays[0].position.toArray(),[0,0,0]);session.visibilityState='visible-blurred';session.dispatchEvent(new Event('visibilitychange'));assert.equal(bridge.input.states[0].buttons.trigger.pressed,false);bridge.update(4);assert.equal(bridge.slots[0].rayVisual.visible,false);session.visibilityState='visible';bridge.update(5);assert.equal(bridge.input.states[0].buttons.trigger.justPressed,false);s.hand={};bridge.update(6);assert.equal(bridge.slots[0].rayVisual.visible,false);}finally{bridge.dispose();}
+class FakeSession extends EventTarget {
+  visibilityState = "visible";
+  listeners = new Map();
+  addEventListener(type, fn, ...args) {
+    super.addEventListener(type, fn, ...args);
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type).add(fn);
+  }
+  removeEventListener(type, fn, ...args) {
+    super.removeEventListener(type, fn, ...args);
+    this.listeners.get(type)?.delete(fn);
+  }
+  get listenerCount() {
+    return [...this.listeners.values()].reduce((n, s) => n + s.size, 0);
+  }
+}
+function harness() {
+  const rays = [new Group(), new Group()],
+    grips = [new Group(), new Group()],
+    root = new Group(),
+    roles = new XRControllerRoles(),
+    bridge = new XRControllers(
+      { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+      root,
+      roles,
+    );
+  return { bridge, rays, grips, root };
+}
+test("controller bridge uses native ray/grip parents and cleans temporary visuals/listeners across repeated sessions", () => {
+  const { bridge, rays, grips, root } = harness(),
+    s = source("left");
+  try {
+    for (let n = 0; n < 4; n++) {
+      const session = new FakeSession();
+      rays[1].dispatchEvent({ type: "connected", data: s });
+      bridge.start(session);
+      bridge.start(session);
+      assert.equal(session.listenerCount, 6);
+      rays[1].position.set(0.2, 1.1, -0.4);
+      bridge.update(n * 100);
+      assert.equal(bridge.input.states[1].handedness, "left");
+      assert.equal(bridge.slots[1].rayVisual.parent, rays[1]);
+      assert.equal(bridge.slots[1].gripVisual.parent, grips[1]);
+      assert.equal(rays[1].parent, root);
+      assert.equal(bridge.slots[1].line.geometry.getAttribute("position").getZ(1), -1.5);
+      session.dispatchEvent(new Event("end"));
+      assert.equal(session.listenerCount, 0);
+      assert.equal(bridge.slots[1].rayVisual.parent, null);
+      assert.equal(root.visible, false);
+      assert.equal(bridge.input.states[1].connected, false);
+    }
+  } finally {
+    bridge.dispose();
+  }
+  assert.equal(rays[1]._listeners.connected.length, 0);
 });
-test('controller polling/role switches/session exit preserve sculpture voxels, layer transforms and native bytes',()=>{
- const c=new IndependentLayers(createBaseProject(new SDFVolume(24),{mode:'add',radius:.22,strength:.35,hardness:.5,camera:{position:[2,2,3],target:[0,0,0]}})),scene=new Scene(),rig=new XRSceneRig(scene,new PerspectiveCamera()),{bridge,rays,root}=harness();rig.sculptureRoot.add(c.group);rig.trackingOrigin.add(root);const native=saveSculptProject(c.project),geometry=c.active.surface.group.children.map(m=>m.geometry),session=new FakeSession(),s=source();try{rig.enter();rays[0].dispatchEvent({type:'connected',data:s});bridge.start(session);for(let i=0;i<30;i++){rays[0].position.x=i/100;press(s,0,i%2);bridge.update(i*16);}bridge.setDominant('left');bridge.stop();rig.exit();assert.deepEqual(new Uint8Array(saveSculptProject(c.project)),new Uint8Array(native));assert.deepEqual(c.active.surface.group.children.map(m=>m.geometry),geometry);assert.equal(c.active.mesher.rebuildChunks(),null);assert.equal(c.undoCount,0);}finally{bridge.dispose();c.dispose();}
+test("bridge hides lost/hand tracking, handles visibility cancellation, and role changes never move tracked poses", () => {
+  const { bridge, rays, grips } = harness(),
+    session = new FakeSession(),
+    s = source();
+  try {
+    rays[0].dispatchEvent({ type: "connected", data: s });
+    bridge.start(session);
+    press(s, 0, 1);
+    bridge.update(1);
+    assert(bridge.slots[0].rayVisual.visible);
+    rays[0].visible = false;
+    grips[0].visible = false;
+    bridge.update(2);
+    assert.equal(bridge.slots[0].rayVisual.visible, false);
+    assert.equal(bridge.input.states[0].tracked, false);
+    rays[0].visible = grips[0].visible = true;
+    bridge.setDominant("left");
+    bridge.update(3);
+    assert.equal(bridge.input.states[0].role, "support");
+    assert.deepEqual(rays[0].position.toArray(), [0, 0, 0]);
+    session.visibilityState = "visible-blurred";
+    session.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(bridge.input.states[0].buttons.trigger.pressed, false);
+    bridge.update(4);
+    assert.equal(bridge.slots[0].rayVisual.visible, false);
+    session.visibilityState = "visible";
+    bridge.update(5);
+    assert.equal(bridge.input.states[0].buttons.trigger.justPressed, false);
+    s.hand = {};
+    bridge.update(6);
+    assert.equal(bridge.slots[0].rayVisual.visible, false);
+  } finally {
+    bridge.dispose();
+  }
 });
-test('diagnostic controls only accept explicit button regions and remain available when details are hidden',()=>{
- assert.equal(diagnosticAction({x:.25,y:.83}),'swap');assert.equal(diagnosticAction({x:.75,y:.83}),'toggle');assert.equal(diagnosticAction({x:.5,y:.5}),null);assert.equal(diagnosticAction({x:2,y:.83}),null);
- const original=globalThis.document,draws=[];globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>canvasContext({clearRect(){},fillRect(){},fillText(text){draws.push(text);}})})};let panel;try{panel=new XRDiagnostics();const roles=new XRControllerRoles(),input=new XRControllerInput(roles);panel.start();panel.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const placement=panel.group.position.clone();panel.place({x:1,y:2,z:1},{x:0,y:0,z:0,w:1});assert.deepEqual(panel.group.position,placement);assert(panel.group.position.x>.325+.31);panel.paint(0,input.states,0);const count=draws.length;panel.paint(20,input.states,0);assert.equal(draws.length,count);panel.expanded=false;panel.invalidate();panel.paint(21,input.states,0);assert(draws.includes('Show diagnostics'));panel.stop();assert.equal(panel.group.visible,false);}finally{panel?.dispose();globalThis.document=original;}
+test("controller polling/role switches/session exit preserve sculpture voxels, layer transforms and native bytes", () => {
+  const c = new IndependentLayers(
+      createBaseProject(new SDFVolume(24), {
+        mode: "add",
+        radius: 0.22,
+        strength: 0.35,
+        hardness: 0.5,
+        camera: { position: [2, 2, 3], target: [0, 0, 0] },
+      }),
+    ),
+    scene = new Scene(),
+    rig = new XRSceneRig(scene, new PerspectiveCamera()),
+    { bridge, rays, root } = harness();
+  rig.sculptureRoot.add(c.group);
+  rig.trackingOrigin.add(root);
+  const native = saveSculptProject(c.project),
+    geometry = c.active.surface.group.children.map((m) => m.geometry),
+    session = new FakeSession(),
+    s = source();
+  try {
+    rig.enter();
+    rays[0].dispatchEvent({ type: "connected", data: s });
+    bridge.start(session);
+    for (let i = 0; i < 30; i++) {
+      rays[0].position.x = i / 100;
+      press(s, 0, i % 2);
+      bridge.update(i * 16);
+    }
+    bridge.setDominant("left");
+    bridge.stop();
+    rig.exit();
+    assert.deepEqual(new Uint8Array(saveSculptProject(c.project)), new Uint8Array(native));
+    assert.deepEqual(
+      c.active.surface.group.children.map((m) => m.geometry),
+      geometry,
+    );
+    assert.equal(c.active.mesher.rebuildChunks(), null);
+    assert.equal(c.undoCount, 0);
+  } finally {
+    bridge.dispose();
+    c.dispose();
+  }
 });
-test('ray-trigger debug controls activate once per tap, swap live roles and toggle diagnostics without tool actions',()=>{
- const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>canvasContext({clearRect(){},fillRect(){},fillText(){}})})};let panel,bridge;
- try{panel=new XRDiagnostics();const rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),roles=new XRControllerRoles(),s=source();let changes=0;bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,panel,()=>changes++);rays[0].dispatchEvent({type:'connected',data:s});bridge.start(new FakeSession());panel.group.position.z=-1;panel.group.visible=true;panel.group.updateMatrixWorld(true);rays[0].position.set(-.155,.127875,0);bridge.update(0);press(s,0,1);bridge.update(16);assert.equal(roles.dominant,'left');assert.equal(changes,1);for(let i=2;i<10;i++)bridge.update(i*16);assert.equal(changes,1);press(s,0,0);bridge.update(160);rays[0].position.x=.155;press(s,0,1);bridge.update(176);assert.equal(panel.expanded,false);assert.equal(changes,2);bridge.update(192);assert.equal(changes,2);press(s,0,0);bridge.update(208);press(s,0,1);bridge.update(224);assert.equal(panel.expanded,true);assert.equal(changes,3);
- }finally{bridge?.dispose();globalThis.document=original;}
+test("diagnostic controls only accept explicit button regions and remain available when details are hidden", () => {
+  assert.equal(diagnosticAction({ x: 0.25, y: 0.83 }), "swap");
+  assert.equal(diagnosticAction({ x: 0.75, y: 0.83 }), "toggle");
+  assert.equal(diagnosticAction({ x: 0.5, y: 0.5 }), null);
+  assert.equal(diagnosticAction({ x: 2, y: 0.83 }), null);
+  const original = globalThis.document,
+    draws = [];
+  globalThis.document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () =>
+        canvasContext({
+          clearRect() {},
+          fillRect() {},
+          fillText(text) {
+            draws.push(text);
+          },
+        }),
+    }),
+  };
+  let panel;
+  try {
+    panel = new XRDiagnostics();
+    const roles = new XRControllerRoles(),
+      input = new XRControllerInput(roles);
+    panel.start();
+    panel.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const placement = panel.group.position.clone();
+    panel.place({ x: 1, y: 2, z: 1 }, { x: 0, y: 0, z: 0, w: 1 });
+    assert.deepEqual(panel.group.position, placement);
+    assert(panel.group.position.x > 0.325 + 0.31);
+    panel.paint(0, input.states, 0);
+    const count = draws.length;
+    panel.paint(20, input.states, 0);
+    assert.equal(draws.length, count);
+    panel.expanded = false;
+    panel.invalidate();
+    panel.paint(21, input.states, 0);
+    assert(draws.includes("Show diagnostics"));
+    panel.stop();
+    assert.equal(panel.group.visible, false);
+  } finally {
+    panel?.dispose();
+    globalThis.document = original;
+  }
 });
-test('frame states and visual geometry are reused across controller polling',()=>{
- const {bridge,rays}=harness(),s=source();try{rays[0].dispatchEvent({type:'connected',data:s});bridge.start(new FakeSession());const state=bridge.input.states[0],buttons=state.buttons,stick=state.stick,geometry=bridge.slots[0].line.geometry;for(let i=0;i<100;i++)bridge.update(i*11);assert.equal(bridge.input.states[0],state);assert.equal(state.buttons,buttons);assert.equal(state.stick,stick);assert.equal(bridge.slots[0].line.geometry,geometry);}finally{bridge.dispose();}
+test("ray-trigger debug controls activate once per tap, swap live roles and toggle diagnostics without tool actions", () => {
+  const original = globalThis.document;
+  globalThis.document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => canvasContext({ clearRect() {}, fillRect() {}, fillText() {} }),
+    }),
+  };
+  let panel, bridge;
+  try {
+    panel = new XRDiagnostics();
+    const rays = [new Group(), new Group()],
+      grips = [new Group(), new Group()],
+      root = new Group(),
+      roles = new XRControllerRoles(),
+      s = source();
+    let changes = 0;
+    bridge = new XRControllers(
+      { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+      root,
+      roles,
+      panel,
+      () => changes++,
+    );
+    rays[0].dispatchEvent({ type: "connected", data: s });
+    bridge.start(new FakeSession());
+    panel.group.position.z = -1;
+    panel.group.visible = true;
+    panel.group.updateMatrixWorld(true);
+    rays[0].position.set(-0.155, 0.127875, 0);
+    bridge.update(0);
+    press(s, 0, 1);
+    bridge.update(16);
+    assert.equal(roles.dominant, "left");
+    assert.equal(changes, 1);
+    for (let i = 2; i < 10; i++) bridge.update(i * 16);
+    assert.equal(changes, 1);
+    press(s, 0, 0);
+    bridge.update(160);
+    rays[0].position.x = 0.155;
+    press(s, 0, 1);
+    bridge.update(176);
+    assert.equal(panel.expanded, false);
+    assert.equal(changes, 2);
+    bridge.update(192);
+    assert.equal(changes, 2);
+    press(s, 0, 0);
+    bridge.update(208);
+    press(s, 0, 1);
+    bridge.update(224);
+    assert.equal(panel.expanded, true);
+    assert.equal(changes, 3);
+  } finally {
+    bridge?.dispose();
+    globalThis.document = original;
+  }
+});
+test("frame states and visual geometry are reused across controller polling", () => {
+  const { bridge, rays } = harness(),
+    s = source();
+  try {
+    rays[0].dispatchEvent({ type: "connected", data: s });
+    bridge.start(new FakeSession());
+    const state = bridge.input.states[0],
+      buttons = state.buttons,
+      stick = state.stick,
+      geometry = bridge.slots[0].line.geometry;
+    for (let i = 0; i < 100; i++) bridge.update(i * 11);
+    assert.equal(bridge.input.states[0], state);
+    assert.equal(state.buttons, buttons);
+    assert.equal(state.stick, stick);
+    assert.equal(bridge.slots[0].line.geometry, geometry);
+  } finally {
+    bridge.dispose();
+  }
 });
 
-test('automatic grip precedence and both release transitions work with either dominant hand',()=>{
- for(const hand of ['left','right']){
- const layers=new IndependentLayers(createBaseProject(new SDFVolume(17),{mode:'add',radius:.3,strength:.5,hardness:.6,camera:{position:[2,2,3],target:[0,0,0]}})),roles=new XRControllerRoles();roles.setDominant(hand);
- const rays=[new Group(),new Group()],grips=[new Group(),new Group()],workspace=new Group();workspace.add(layers.group);
- const c=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},new Group(),roles,undefined,()=>{},{toolMode:()=> 'transform',workspace,layers:()=>layers});
- const session={visibilityState:'visible',addEventListener(){},removeEventListener(){}};c.start(session);
- const tool=source(hand),support=source(hand==='left'?'right':'left');rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});c.update(0);
- press(tool,1,1);c.update(16);assert(c.layerGrab.active);assert.equal(c.grab.active,false);grips[0].position.x=.4;c.update(32);assert(Math.abs(layers.active.layer.transform.position[0]-.4)<1e-8);
- press(support,1,1);c.update(48);assert.equal(c.grab.state,'two-hand-grab');assert.equal(c.layerGrab.active,false);assert.equal(layers.undoCount,1);const layerPose=JSON.stringify(layers.active.layer.transform);grips[1].position.y=.3;c.update(64);assert.equal(c.grab.state,'two-hand-grab');assert.equal(JSON.stringify(layers.active.layer.transform),layerPose);
- press(tool,1,0);c.update(80);assert.equal(layers.undoCount,1);assert(c.grab.active);press(tool,1,1);c.update(96);assert.equal(c.grab.state,'two-hand-grab');press(support,1,0);c.update(112);assert(c.layerGrab.active);assert.equal(c.grab.active,false);const anchor=JSON.stringify(layers.active.layer.transform);c.update(128);assert(Math.abs(layers.active.layer.transform.position[0]-JSON.parse(anchor).position[0])<1e-10);assert(Math.abs(layers.active.layer.transform.position[1]-JSON.parse(anchor).position[1])<1e-10);grips[0].position.z+=.1;c.update(144);press(tool,1,0);c.update(160);assert.equal(layers.undoCount,2);c.stop();c.dispose();layers.dispose();
- }
+test("automatic grip precedence and both release transitions work with either dominant hand", () => {
+  for (const hand of ["left", "right"]) {
+    const layers = new IndependentLayers(
+        createBaseProject(new SDFVolume(17), {
+          mode: "add",
+          radius: 0.3,
+          strength: 0.5,
+          hardness: 0.6,
+          camera: { position: [2, 2, 3], target: [0, 0, 0] },
+        }),
+      ),
+      roles = new XRControllerRoles();
+    roles.setDominant(hand);
+    const rays = [new Group(), new Group()],
+      grips = [new Group(), new Group()],
+      workspace = new Group();
+    workspace.add(layers.group);
+    const c = new XRControllers(
+      { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+      new Group(),
+      roles,
+      undefined,
+      () => {},
+      { toolMode: () => "transform", workspace, layers: () => layers },
+    );
+    const session = { visibilityState: "visible", addEventListener() {}, removeEventListener() {} };
+    c.start(session);
+    const tool = source(hand),
+      support = source(hand === "left" ? "right" : "left");
+    rays[0].dispatchEvent({ type: "connected", data: tool });
+    rays[1].dispatchEvent({ type: "connected", data: support });
+    c.update(0);
+    press(tool, 1, 1);
+    c.update(16);
+    assert(c.layerGrab.active);
+    assert.equal(c.grab.active, false);
+    grips[0].position.x = 0.4;
+    c.update(32);
+    assert(Math.abs(layers.active.layer.transform.position[0] - 0.4) < 1e-8);
+    press(support, 1, 1);
+    c.update(48);
+    assert.equal(c.grab.state, "two-hand-grab");
+    assert.equal(c.layerGrab.active, false);
+    assert.equal(layers.undoCount, 1);
+    const layerPose = JSON.stringify(layers.active.layer.transform);
+    grips[1].position.y = 0.3;
+    c.update(64);
+    assert.equal(c.grab.state, "two-hand-grab");
+    assert.equal(JSON.stringify(layers.active.layer.transform), layerPose);
+    press(tool, 1, 0);
+    c.update(80);
+    assert.equal(layers.undoCount, 1);
+    assert(c.grab.active);
+    press(tool, 1, 1);
+    c.update(96);
+    assert.equal(c.grab.state, "two-hand-grab");
+    press(support, 1, 0);
+    c.update(112);
+    assert(c.layerGrab.active);
+    assert.equal(c.grab.active, false);
+    const anchor = JSON.stringify(layers.active.layer.transform);
+    c.update(128);
+    assert(
+      Math.abs(layers.active.layer.transform.position[0] - JSON.parse(anchor).position[0]) < 1e-10,
+    );
+    assert(
+      Math.abs(layers.active.layer.transform.position[1] - JSON.parse(anchor).position[1]) < 1e-10,
+    );
+    grips[0].position.z += 0.1;
+    c.update(144);
+    press(tool, 1, 0);
+    c.update(160);
+    assert.equal(layers.undoCount, 2);
+    c.stop();
+    c.dispose();
+    layers.dispose();
+  }
 });

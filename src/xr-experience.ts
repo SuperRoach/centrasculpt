@@ -1,138 +1,607 @@
-import {questCapture} from './performance-capture';
-import type {LightRig} from './light-rig';
-import type {ReferenceView} from './reference-view';
-import {turntableSettings} from './world-settings';
-import {VR_UI_SCALES,validateVRUIScale} from './xr-ui-style';
-import {XRTubeTool} from './xr-tube-tool';
-import {XRMoveTool} from './xr-move-tool';
-import {XRAlternateTool} from './xr-alternate-tool';
-import type {IndependentLayers} from './independent-layers';
-import type {PerspectiveCamera,WebGLRenderer,Object3D} from 'three';
-import {XRLayerSelection} from './xr-layer-selection';
-import {XRBrushSizing} from './xr-brush-sizing';
-import {XRShapeStamp,XRToolInteraction} from './xr-shape-stamp';
-import {XRClayStroke} from './xr-clay-stroke';
-import type {EditorToolState} from './editor-tool-state';
-import {XRMenuModel} from './xr-menu-model';
-import {XRMenuView} from './xr-menu-view';
-import {XRShortcutView} from './xr-shortcut-view';
-import {projectHistoryShortcuts} from './xr-history-shortcuts';
-import {XRPerformancePanel} from './xr-performance';
-import type {XREditMetrics,XRSculptureInfo} from './xr-performance';
-import {ControllerModels} from './controller-models';
-import {FactoryControllerModelProvider} from './controller-model-provider';
-import {XRControllers} from './xr-controllers';
-import {XRMirrorPlane} from './xr-mirror-plane';
-import {XRDiagnostics} from './xr-diagnostics';
-import {XRSceneRig} from './xr-scene';
-import {XRControllerRoles} from './xr-controller-roles';
-import {XRFrameStats,XRSessionController} from './xr-session';
-export type XRExperienceHooks={projectBrowser?:import('./project-browser').ProjectBrowser;projectAction?:(action:import('./xr-world-menu').ProjectAction)=>Promise<void>;projectStatus?:()=>string;entryResolvable?:()=>boolean;resolveEntry?:()=>void;blockedReason?:()=>string;stability?:()=>string;canEnter:()=>boolean;lockDesktop:(blocked:boolean)=>void;restored:()=>void;hidden:readonly Object3D[];tools?:EditorToolState;lighting?:LightRig;references?:ReferenceView;importReferences?:()=>void;layers?:()=>IndependentLayers;historyChanged?:()=>void;sculptureInfo?:()=>XRSculptureInfo};
+import type { Object3D, WebGLRenderer } from "three";
+import { FactoryControllerModelProvider } from "./controller-model-provider";
+import { ControllerModels } from "./controller-models";
+import type { EditorToolState } from "./editor-tool-state";
+import type { IndependentLayers } from "./independent-layers";
+import type { LightRig } from "./light-rig";
+import { questCapture } from "./performance-capture";
+import type { ReferenceView } from "./reference-view";
+import { turntableSettings } from "./world-settings";
+import { XRAlternateTool } from "./xr-alternate-tool";
+import { XRBrushSizing } from "./xr-brush-sizing";
+import { XRClayStroke } from "./xr-clay-stroke";
+import { XRControllerRoles } from "./xr-controller-roles";
+import { XRControllers } from "./xr-controllers";
+import { XRDiagnostics } from "./xr-diagnostics";
+import { projectHistoryShortcuts } from "./xr-history-shortcuts";
+import { XRLayerSelection } from "./xr-layer-selection";
+import { XRMenuModel } from "./xr-menu-model";
+import { XRMenuView } from "./xr-menu-view";
+import { XRMirrorPlane } from "./xr-mirror-plane";
+import { XRMoveTool } from "./xr-move-tool";
+import type { XREditMetrics, XRSculptureInfo } from "./xr-performance";
+import { XRPerformancePanel } from "./xr-performance";
+import type { XRSceneRig } from "./xr-scene";
+import { XRFrameStats, XRSessionController } from "./xr-session";
+import { XRShapeStamp, XRToolInteraction } from "./xr-shape-stamp";
+import { XRShortcutView } from "./xr-shortcut-view";
+import { XRTubeTool } from "./xr-tube-tool";
+import { VR_UI_SCALES, validateVRUIScale } from "./xr-ui-style";
+export type XRExperienceHooks = {
+  projectBrowser?: import("./project-browser").ProjectBrowser;
+  projectAction?: (action: import("./xr-world-menu").ProjectAction) => Promise<void>;
+  projectStatus?: () => string;
+  entryResolvable?: () => boolean;
+  resolveEntry?: () => void;
+  blockedReason?: () => string;
+  stability?: () => string;
+  canEnter: () => boolean;
+  lockDesktop: (blocked: boolean) => void;
+  restored: () => void;
+  hidden: readonly Object3D[];
+  tools?: EditorToolState;
+  lighting?: LightRig;
+  references?: ReferenceView;
+  importReferences?: () => void;
+  layers?: () => IndependentLayers;
+  historyChanged?: () => void;
+  sculptureInfo?: () => XRSculptureInfo;
+};
 /** Existing renderer/session bridge. Layer editing uses the existing metadata transaction boundary. */
 export class XRExperience {
- readonly session:XRSessionController;
- readonly roles=new XRControllerRoles();
- readonly controllers:XRControllers;
- readonly diagnostics:XRDiagnostics;
- readonly stats=new XRFrameStats();
- readonly menus?:XRMenuView;
- readonly tube?:XRTubeTool;
- readonly clay?:XRClayStroke;
- readonly stamp?:XRShapeStamp;
- readonly move?:XRMoveTool;
- readonly interaction?:XRToolInteraction;
- readonly sizing?:XRBrushSizing;
- readonly alternate?:XRAlternateTool;
- readonly selection?:XRLayerSelection;
- readonly shortcutView=new XRShortcutView();
- readonly performancePanel=new XRPerformancePanel();
- private sculpture:XRSculptureInfo={activeResolution:'unknown',resolutions:'unknown',layerMeshes:0,compositeMeshes:0};
- private lastPerformance=-Infinity;private turntableProject:unknown;
- readonly button:HTMLButtonElement;
- private readonly reason:HTMLElement;
- private readonly metrics:HTMLElement;
- private readonly sourceInfo:HTMLElement;private readonly renderMetrics:HTMLElement;
- private statsSession:XRSession|null=null;
- private readonly pauseFrames=()=>{if(this.statsSession?.visibilityState!=='visible')this.stats.pause();};
- private readonly dismissedEntryReasons=new Set<string>();
- private lastReport=0;
- private framesWithPose=0;
- constructor(readonly renderer:WebGLRenderer,readonly rig:XRSceneRig,private readonly hooks:XRExperienceHooks,readonly emulated=false){
-  renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local');renderer.xr.setFramebufferScaleFactor(.8);renderer.xr.setFoveation(1);
-  if(hooks.tools)this.alternate=new XRAlternateTool(hooks.tools);
-  if(hooks.tools)this.sizing=new XRBrushSizing(hooks.tools);
-  if(hooks.tools)this.menus=new XRMenuView(new XRMenuModel(hooks.tools,{projectBrowser:hooks.projectBrowser,projectAction:hooks.projectAction,projectStatus:hooks.projectStatus,lighting:hooks.lighting,references:hooks.references,importReferences:hooks.importReferences,turntable:()=>rig.turntable,centreTurntable:()=>{rig.visibleBounds().getCenter(rig.turntable.centre);},session:()=>this.session,diagnostics:()=>this.diagnostics.expanded,toggleDiagnostics:()=>{this.controllers.setDiagnostics(!this.diagnostics.expanded);this.syncDebugControls();},performance:()=>this.performancePanel.enabled,togglePerformance:()=>{const enabled=!this.performancePanel.enabled;this.performancePanel.setEnabled(enabled);hooks.layers?.().metrics.setEnabled(enabled&&this.session.state==='presenting');this.syncDebugControls();}}));
-  const issue=(event:'cancel'|'error')=>this.controllers?.reportToolIssue(event);
-  if(hooks.tools&&hooks.layers)this.clay=new XRClayStroke(hooks.layers,hooks.tools,rig.controllerTracking,()=>{hooks.historyChanged?.();this.refreshSculptureInfo();},issue,()=>!!this.sizing?.changing);
-  if(hooks.tools&&hooks.layers&&this.clay){this.move=new XRMoveTool(hooks.layers,hooks.tools,rig.controllerTracking,event=>this.controllers.haptics.pulse(this.controllers.input.byHand(this.roles.dominant),event==='grab'?'grab':'stroke-end'),()=>{hooks.historyChanged?.();this.refreshSculptureInfo();},issue);this.stamp=new XRShapeStamp(hooks.layers,hooks.tools,rig.controllerTracking,()=>{this.controllers.haptics.pulse(this.controllers.input.byHand(this.roles.dominant),'stamp');hooks.historyChanged?.();this.refreshSculptureInfo();},issue);this.tube=new XRTubeTool(hooks.layers,hooks.tools,rig.controllerTracking,()=>{hooks.historyChanged?.();this.refreshSculptureInfo();},issue);this.interaction=new XRToolInteraction(hooks.tools,this.clay,this.stamp,this.move,new XRMirrorPlane(hooks.tools,rig.controllerTracking),this.tube);}
-  if(hooks.tools&&hooks.layers)this.selection=new XRLayerSelection(hooks.layers,hooks.tools,rig.controllerTracking);
-  this.diagnostics=new XRDiagnostics();this.controllers=new XRControllers(renderer.xr,rig.controllerTracking,this.roles,this.diagnostics,()=>this.syncDebugControls(),{lighting:hooks.lighting,references:hooks.references,alternate:this.alternate,selection:this.selection,sizing:this.sizing,stroke:this.interaction,toolMode:()=>hooks.tools?.active??'clay',menus:this.menus,shortcuts:{interactiveMenus:!!this.menus,commands:hooks.layers?projectHistoryShortcuts(hooks.layers,()=>{this.controllers.haptics.pulse(this.controllers.input.byHand(this.roles.support),'history');hooks.historyChanged?.();this.sculpture=hooks.sculptureInfo?.()??this.sculpture;}):undefined},layers:hooks.layers,presentationStep:(time,blocked,visible)=>{const layers=hooks.layers?.();if(!layers)return;if(this.turntableProject!==layers.project){if(hooks.references){hooks.references.editing=false;hooks.references.cancel();}hooks.lighting?.stop();rig.turntable.stop();this.turntableProject=layers.project;}const unsupported=!!this.interaction?.active&&!['clay','smooth','flatten','inflate','scrape','pinch','crease','stamp'].includes(hooks.tools?.active??'');rig.turntable.step(time,turntableSettings(layers.display.world),blocked||unsupported||!!this.interaction?.mirror?.active,visible);},workspace:rig.workspaceRoot,models:new ControllerModels(new FactoryControllerModelProvider()),resetView:()=>rig.resetWorkspaceView(),setPerformance:enabled=>{this.performancePanel.setEnabled(enabled);hooks.layers?.().metrics.setEnabled(enabled&&this.session.state==='presenting');}});
-  const header=document.querySelector('#xr-entry-slot')!,panel=document.querySelector('#xr-diagnostics-slot')!;
-  header.innerHTML='<label for="xr-environment">Environment </label><select id="xr-environment" aria-describedby="xr-environment-help"><option value="studio">Studio</option><option value="passthrough" disabled>Passthrough (checking…)</option></select><button type="button" id="enter-vr" aria-describedby="xr-entry-status" disabled>Checking VR…</button><span id="xr-entry-status" hidden><span id="xr-entry-message" role="status"></span><button type="button" id="xr-dismiss-entry" aria-label="Dismiss VR entry message" title="Dismiss">×</button></span>';
-  panel.innerHTML='<details class="xr-diagnostics"><summary>VR / WEBXR DIAGNOSTICS</summary><p id="xr-environment-help" role="status"></p><p id="xr-reason" role="status"></p><p id="xr-session-state"></p><label for="xr-tool-hand">DOMINANT TOOL HAND</label><select id="xr-tool-hand"><option value="right">Right tool / Left support</option><option value="left">Left tool / Right support</option></select><label><input type="checkbox" id="xr-show-diagnostics" checked> Show in-headset diagnostics</label><label for="xr-controller-display">CONTROLLER DISPLAY</label><select id="xr-controller-display"><option value="realistic">Realistic · fallback indicators</option><option value="simple">Simple indicators</option><option value="minimal">Minimal tool indicators</option></select><label for="xr-ui-scale">VR UI SIZE</label><select id="xr-ui-scale"><option value="normal" selected>Default</option><option value="large">Large</option></select><label for="xr-hints">CONTROL HINTS</label><select id="xr-hints"><option value="hidden">Hidden</option><option value="on-demand" selected>On demand · point at card / touch stick</option><option value="always">Always visible</option></select><label><input id="xr-haptics" type="checkbox" checked> Subtle controller haptics</label><label><input id="xr-show-performance" type="checkbox"> Show VR performance</label><button type="button" id="xr-reset-workspace" disabled>Reset Workspace View</button><p>In Transform Layer mode, Tool grip moves/rotates the selected visible unlocked layer in Separate Layers. Support grip moves workspace. Both grips rotate/scale workspace. Release commits layer changes; tracking loss cancels. In Transform Layer, point at a visible layer and tap trigger to select it; locked layers can be inspected. Mint bounds mark selection; blue bounds mark hover. Layers Palette handles overlapping/empty layers. Reset Layer Transform in Options asks for confirmation and changes the saved layer, not workspace navigation. Support stick: Left Undo · Right Redo · hold Up Tool Wheel · hold Down Layers. Point with Tool Hand and tap trigger. Selecting a tool opens its Options; release stick to dismiss. Centre to rearm; shortcuts pause during grabs/strokes. Move Tool: choose Non-Elastic or Elastic for a persistent edit, or Preview only to restore on release. Elastic stiffness controls compliance. Point at the active-layer surface and hold Tool trigger to pull. Persistent Move release reconstructs while the preview stays visible, then commits one Undo action. Menus/grips/tracking/session loss cancel unfinished reconstruction. Tool stick Up/Down sizes Clay even while drawing; Smooth, Move and Stamp size while idle. During an Elastic grab it changes edge softness; centre after menus/grabs/strokes. Clay places at the Tool tip in free space by default; choose Surface follow in Clay Options if desired. Smooth and Subtract use the same tip and leave empty space unchanged. Create an Empty clay volume on desktop for floating strokes. Add grows the volume automatically within memory limits. Subtract and Smooth do not allocate empty space. Hold Support trigger for opposite Clay Add/Subtract by default; Move defaults to alternate Smooth (configurable in Options); release restores the previous brush and settings after any active Tool stroke finishes. Menus/grips take priority; release and re-press after interruption. Hold Tool trigger for Clay/Smooth. Stamp: hold Tool grip and move wrist relative to the held shape; release to preserve attachment. Options: Reset Stamp Offset, Single or Continuous and spacing. Single taps once; Continuous holds to draw repeated oriented shapes as one Undo action. Release and allow queued samples to finish. Add stamps grow the volume to fit; resource limits reject safely. Steady / Straight Line preview while held and apply after release.</p><output id="xr-metrics">XR frame diagnostics appear during a session.</output><p id="xr-input-sources"></p><output id="xr-render-metrics">Performance sampling is off.</output></details>';
-  document.querySelector('#xr-dismiss-entry')!.addEventListener('click',()=>{this.dismissedEntryReasons.add(this.button.title);this.refreshButton();});
-  this.button=document.querySelector<HTMLButtonElement>('#enter-vr')!;this.reason=document.querySelector('#xr-reason')!;this.metrics=document.querySelector('#xr-metrics')!;this.sourceInfo=document.querySelector('#xr-input-sources')!;this.renderMetrics=document.querySelector('#xr-render-metrics')!;
-  this.session=new XRSessionController(renderer.xr,{
-   prepare:()=>{this.statsSession=this.session.session;this.statsSession?.addEventListener('visibilitychange',this.pauseFrames);this.applyUIScale();this.rig.enter(hooks.hidden,this.session.activeEnvironment??'studio');this.sculpture=hooks.sculptureInfo?.()??this.sculpture;rig.controllerTracking.add(this.performancePanel.mesh,this.shortcutView.mesh);this.shortcutView.start();if(this.menus){rig.controllerTracking.add(this.menus.mesh);this.menus.start();}this.performancePanel.start();hooks.layers?.().metrics.setEnabled(this.performancePanel.enabled);this.lastPerformance=-Infinity;this.stats.reset();this.framesWithPose=0;},
-   restore:()=>{questCapture.stop();this.statsSession?.removeEventListener('visibilitychange',this.pauseFrames);this.statsSession=null;this.menus?.stop();this.shortcutView.stop();this.performancePanel.stop();this.controllers.stop();hooks.lighting?.stop();hooks.references?.clear();hooks.tools?.clearMoveSelection();hooks.layers?.().metrics.setEnabled(false);this.rig.exit();hooks.restored();},changed:()=>this.update(),
-  });
-  document.querySelector<HTMLSelectElement>('#xr-environment')!.addEventListener('change',event=>{void this.session.select((event.target as HTMLSelectElement).value as 'studio'|'passthrough');});
-  this.button.addEventListener('click',()=>{if(this.session.state==='presenting')void this.session.exit();else if(hooks.canEnter())void this.session.enter();else if(hooks.entryResolvable?.())hooks.resolveEntry?.();});
-  document.querySelector<HTMLSelectElement>('#xr-tool-hand')!.addEventListener('change',event=>this.controllers.setDominant((event.target as HTMLSelectElement).value));
-  document.querySelector<HTMLSelectElement>('#xr-controller-display')!.addEventListener('change',event=>this.controllers.setDisplay((event.target as HTMLSelectElement).value));
-  document.querySelector<HTMLSelectElement>('#xr-ui-scale')!.addEventListener('change',event=>{const l=this.hooks.layers?.();if(l){l.display.vrUiScale=validateVRUIScale((event.target as HTMLSelectElement).value);this.applyUIScale();this.hooks.tools?.port.changed();}});
-  document.querySelector<HTMLSelectElement>('#xr-hints')!.addEventListener('change',event=>this.controllers.setHints((event.target as HTMLSelectElement).value));
-  document.querySelector<HTMLInputElement>('#xr-haptics')!.addEventListener('change',event=>this.controllers.haptics.enabled=(event.target as HTMLInputElement).checked);
-  document.querySelector<HTMLInputElement>('#xr-show-performance')!.addEventListener('change',event=>this.controllers.setPerformance((event.target as HTMLInputElement).checked));
-  document.querySelector('#xr-reset-workspace')!.addEventListener('click',()=>this.controllers.resetWorkspaceView());
-  document.querySelector<HTMLInputElement>('#xr-show-diagnostics')!.addEventListener('change',event=>this.controllers.setDiagnostics((event.target as HTMLInputElement).checked));
- }
- private applyUIScale():void{const world=this.hooks.layers?.().display.world;if(world)this.rig.applyWorldSettings(world);const size=this.hooks.layers?.().display.vrUiScale??'normal',scale=VR_UI_SCALES[size];this.diagnostics.setUIScale(scale);this.performancePanel.setUIScale(scale);this.shortcutView.mesh.scale.setScalar(scale);const select=document.querySelector<HTMLSelectElement>('#xr-ui-scale');if(select&&select.value!==size)select.value=size;}
- private syncDebugControls():void{const hand=document.querySelector<HTMLSelectElement>('#xr-tool-hand'),show=document.querySelector<HTMLInputElement>('#xr-show-diagnostics');if(hand)hand.value=this.roles.dominant;if(show)show.checked=this.diagnostics.expanded;const display=document.querySelector<HTMLSelectElement>('#xr-controller-display'),hints=document.querySelector<HTMLSelectElement>('#xr-hints');if(display)display.value=this.controllers.displayMode;if(hints)hints.value=this.diagnostics.hints.mode;const perf=document.querySelector<HTMLInputElement>('#xr-show-performance');if(perf)perf.checked=this.performancePanel.enabled;}
- get blocking():boolean{return this.session.blocking;}
- async check():Promise<void>{await this.session.check(window.isSecureContext,navigator.xr);}
- refreshButton():void {
-  this.applyUIScale();
-  const s=this.session;
-  if(s.state==='ready'){
-   const busy=!this.hooks.canEnter();this.button.disabled=busy&&!this.hooks.entryResolvable?.();
-   this.button.title=busy?(this.hooks.blockedReason?.()??'Finish the current project operation or wait for the Boolean preview before entering XR.'):s.reason;
+  readonly session: XRSessionController;
+  readonly roles = new XRControllerRoles();
+  readonly controllers: XRControllers;
+  readonly diagnostics: XRDiagnostics;
+  readonly stats = new XRFrameStats();
+  readonly menus?: XRMenuView;
+  readonly tube?: XRTubeTool;
+  readonly clay?: XRClayStroke;
+  readonly stamp?: XRShapeStamp;
+  readonly move?: XRMoveTool;
+  readonly interaction?: XRToolInteraction;
+  readonly sizing?: XRBrushSizing;
+  readonly alternate?: XRAlternateTool;
+  readonly selection?: XRLayerSelection;
+  readonly shortcutView = new XRShortcutView();
+  readonly performancePanel = new XRPerformancePanel();
+  private sculpture: XRSculptureInfo = {
+    activeResolution: "unknown",
+    resolutions: "unknown",
+    layerMeshes: 0,
+    compositeMeshes: 0,
+  };
+  private lastPerformance = -Infinity;
+  private turntableProject: unknown;
+  readonly button: HTMLButtonElement;
+  private readonly reason: HTMLElement;
+  private readonly metrics: HTMLElement;
+  private readonly sourceInfo: HTMLElement;
+  private readonly renderMetrics: HTMLElement;
+  private statsSession: XRSession | null = null;
+  private readonly pauseFrames = () => {
+    if (this.statsSession?.visibilityState !== "visible") this.stats.pause();
+  };
+  private readonly dismissedEntryReasons = new Set<string>();
+  private lastReport = 0;
+  private framesWithPose = 0;
+  constructor(
+    readonly renderer: WebGLRenderer,
+    readonly rig: XRSceneRig,
+    private readonly hooks: XRExperienceHooks,
+    readonly emulated = false,
+  ) {
+    renderer.xr.enabled = true;
+    renderer.xr.setReferenceSpaceType("local");
+    renderer.xr.setFramebufferScaleFactor(0.8);
+    renderer.xr.setFoveation(1);
+    if (hooks.tools) this.alternate = new XRAlternateTool(hooks.tools);
+    if (hooks.tools) this.sizing = new XRBrushSizing(hooks.tools);
+    if (hooks.tools)
+      this.menus = new XRMenuView(
+        new XRMenuModel(hooks.tools, {
+          projectBrowser: hooks.projectBrowser,
+          projectAction: hooks.projectAction,
+          projectStatus: hooks.projectStatus,
+          lighting: hooks.lighting,
+          references: hooks.references,
+          importReferences: hooks.importReferences,
+          turntable: () => rig.turntable,
+          centreTurntable: () => {
+            rig.visibleBounds().getCenter(rig.turntable.centre);
+          },
+          session: () => this.session,
+          diagnostics: () => this.diagnostics.expanded,
+          toggleDiagnostics: () => {
+            this.controllers.setDiagnostics(!this.diagnostics.expanded);
+            this.syncDebugControls();
+          },
+          performance: () => this.performancePanel.enabled,
+          togglePerformance: () => {
+            const enabled = !this.performancePanel.enabled;
+            this.performancePanel.setEnabled(enabled);
+            hooks.layers?.().metrics.setEnabled(enabled && this.session.state === "presenting");
+            this.syncDebugControls();
+          },
+        }),
+      );
+    const issue = (event: "cancel" | "error") => this.controllers?.reportToolIssue(event);
+    if (hooks.tools && hooks.layers)
+      this.clay = new XRClayStroke(
+        hooks.layers,
+        hooks.tools,
+        rig.controllerTracking,
+        () => {
+          hooks.historyChanged?.();
+          this.refreshSculptureInfo();
+        },
+        issue,
+        () => !!this.sizing?.changing,
+      );
+    if (hooks.tools && hooks.layers && this.clay) {
+      this.move = new XRMoveTool(
+        hooks.layers,
+        hooks.tools,
+        rig.controllerTracking,
+        (event) =>
+          this.controllers.haptics.pulse(
+            this.controllers.input.byHand(this.roles.dominant),
+            event === "grab" ? "grab" : "stroke-end",
+          ),
+        () => {
+          hooks.historyChanged?.();
+          this.refreshSculptureInfo();
+        },
+        issue,
+      );
+      this.stamp = new XRShapeStamp(
+        hooks.layers,
+        hooks.tools,
+        rig.controllerTracking,
+        () => {
+          this.controllers.haptics.pulse(
+            this.controllers.input.byHand(this.roles.dominant),
+            "stamp",
+          );
+          hooks.historyChanged?.();
+          this.refreshSculptureInfo();
+        },
+        issue,
+      );
+      this.tube = new XRTubeTool(
+        hooks.layers,
+        hooks.tools,
+        rig.controllerTracking,
+        () => {
+          hooks.historyChanged?.();
+          this.refreshSculptureInfo();
+        },
+        issue,
+      );
+      this.interaction = new XRToolInteraction(
+        hooks.tools,
+        this.clay,
+        this.stamp,
+        this.move,
+        new XRMirrorPlane(hooks.tools, rig.controllerTracking),
+        this.tube,
+      );
+    }
+    if (hooks.tools && hooks.layers)
+      this.selection = new XRLayerSelection(hooks.layers, hooks.tools, rig.controllerTracking);
+    this.diagnostics = new XRDiagnostics();
+    this.controllers = new XRControllers(
+      renderer.xr,
+      rig.controllerTracking,
+      this.roles,
+      this.diagnostics,
+      () => this.syncDebugControls(),
+      {
+        lighting: hooks.lighting,
+        references: hooks.references,
+        alternate: this.alternate,
+        selection: this.selection,
+        sizing: this.sizing,
+        stroke: this.interaction,
+        toolMode: () => hooks.tools?.active ?? "clay",
+        menus: this.menus,
+        shortcuts: {
+          interactiveMenus: !!this.menus,
+          commands: hooks.layers
+            ? projectHistoryShortcuts(hooks.layers, () => {
+                this.controllers.haptics.pulse(
+                  this.controllers.input.byHand(this.roles.support),
+                  "history",
+                );
+                hooks.historyChanged?.();
+                this.sculpture = hooks.sculptureInfo?.() ?? this.sculpture;
+              })
+            : undefined,
+        },
+        layers: hooks.layers,
+        presentationStep: (time, blocked, visible) => {
+          const layers = hooks.layers?.();
+          if (!layers) return;
+          if (this.turntableProject !== layers.project) {
+            if (hooks.references) {
+              hooks.references.editing = false;
+              hooks.references.cancel();
+            }
+            hooks.lighting?.stop();
+            rig.turntable.stop();
+            this.turntableProject = layers.project;
+          }
+          const unsupported =
+            !!this.interaction?.active &&
+            ![
+              "clay",
+              "smooth",
+              "flatten",
+              "inflate",
+              "scrape",
+              "pinch",
+              "crease",
+              "stamp",
+            ].includes(hooks.tools?.active ?? "");
+          rig.turntable.step(
+            time,
+            turntableSettings(layers.display.world),
+            blocked || unsupported || !!this.interaction?.mirror?.active,
+            visible,
+          );
+        },
+        workspace: rig.workspaceRoot,
+        models: new ControllerModels(new FactoryControllerModelProvider()),
+        resetView: () => rig.resetWorkspaceView(),
+        setPerformance: (enabled) => {
+          this.performancePanel.setEnabled(enabled);
+          hooks.layers?.().metrics.setEnabled(enabled && this.session.state === "presenting");
+        },
+      },
+    );
+    const header = document.querySelector("#xr-entry-slot")!,
+      panel = document.querySelector("#xr-diagnostics-slot")!;
+    header.innerHTML =
+      '<label for="xr-environment">Environment </label><select id="xr-environment" aria-describedby="xr-environment-help"><option value="studio">Studio</option><option value="passthrough" disabled>Passthrough (checking…)</option></select><button type="button" id="enter-vr" aria-describedby="xr-entry-status" disabled>Checking VR…</button><span id="xr-entry-status" hidden><span id="xr-entry-message" role="status"></span><button type="button" id="xr-dismiss-entry" aria-label="Dismiss VR entry message" title="Dismiss">×</button></span>';
+    panel.innerHTML =
+      '<details class="xr-diagnostics"><summary>VR / WEBXR DIAGNOSTICS</summary><p id="xr-environment-help" role="status"></p><p id="xr-reason" role="status"></p><p id="xr-session-state"></p><label for="xr-tool-hand">DOMINANT TOOL HAND</label><select id="xr-tool-hand"><option value="right">Right tool / Left support</option><option value="left">Left tool / Right support</option></select><label><input type="checkbox" id="xr-show-diagnostics" checked> Show in-headset diagnostics</label><label for="xr-controller-display">CONTROLLER DISPLAY</label><select id="xr-controller-display"><option value="realistic">Realistic · fallback indicators</option><option value="simple">Simple indicators</option><option value="minimal">Minimal tool indicators</option></select><label for="xr-ui-scale">VR UI SIZE</label><select id="xr-ui-scale"><option value="normal" selected>Default</option><option value="large">Large</option></select><label for="xr-hints">CONTROL HINTS</label><select id="xr-hints"><option value="hidden">Hidden</option><option value="on-demand" selected>On demand · point at card / touch stick</option><option value="always">Always visible</option></select><label><input id="xr-haptics" type="checkbox" checked> Subtle controller haptics</label><label><input id="xr-show-performance" type="checkbox"> Show VR performance</label><button type="button" id="xr-reset-workspace" disabled>Reset Workspace View</button><p>In Transform Layer mode, Tool grip moves/rotates the selected visible unlocked layer in Separate Layers. Support grip moves workspace. Both grips rotate/scale workspace. Release commits layer changes; tracking loss cancels. In Transform Layer, point at a visible layer and tap trigger to select it; locked layers can be inspected. Mint bounds mark selection; blue bounds mark hover. Layers Palette handles overlapping/empty layers. Reset Layer Transform in Options asks for confirmation and changes the saved layer, not workspace navigation. Support stick: Left Undo · Right Redo · hold Up Tool Wheel · hold Down Layers. Point with Tool Hand and tap trigger. Selecting a tool opens its Options; release stick to dismiss. Centre to rearm; shortcuts pause during grabs/strokes. Move Tool: choose Non-Elastic or Elastic for a persistent edit, or Preview only to restore on release. Elastic stiffness controls compliance. Point at the active-layer surface and hold Tool trigger to pull. Persistent Move release reconstructs while the preview stays visible, then commits one Undo action. Menus/grips/tracking/session loss cancel unfinished reconstruction. Tool stick Up/Down sizes Clay even while drawing; Smooth, Move and Stamp size while idle. During an Elastic grab it changes edge softness; centre after menus/grabs/strokes. Clay places at the Tool tip in free space by default; choose Surface follow in Clay Options if desired. Smooth and Subtract use the same tip and leave empty space unchanged. Create an Empty clay volume on desktop for floating strokes. Add grows the volume automatically within memory limits. Subtract and Smooth do not allocate empty space. Hold Support trigger for opposite Clay Add/Subtract by default; Move defaults to alternate Smooth (configurable in Options); release restores the previous brush and settings after any active Tool stroke finishes. Menus/grips take priority; release and re-press after interruption. Hold Tool trigger for Clay/Smooth. Stamp: hold Tool grip and move wrist relative to the held shape; release to preserve attachment. Options: Reset Stamp Offset, Single or Continuous and spacing. Single taps once; Continuous holds to draw repeated oriented shapes as one Undo action. Release and allow queued samples to finish. Add stamps grow the volume to fit; resource limits reject safely. Steady / Straight Line preview while held and apply after release.</p><output id="xr-metrics">XR frame diagnostics appear during a session.</output><p id="xr-input-sources"></p><output id="xr-render-metrics">Performance sampling is off.</output></details>';
+    document.querySelector("#xr-dismiss-entry")!.addEventListener("click", () => {
+      this.dismissedEntryReasons.add(this.button.title);
+      this.refreshButton();
+    });
+    this.button = document.querySelector<HTMLButtonElement>("#enter-vr")!;
+    this.reason = document.querySelector("#xr-reason")!;
+    this.metrics = document.querySelector("#xr-metrics")!;
+    this.sourceInfo = document.querySelector("#xr-input-sources")!;
+    this.renderMetrics = document.querySelector("#xr-render-metrics")!;
+    this.session = new XRSessionController(renderer.xr, {
+      prepare: () => {
+        this.statsSession = this.session.session;
+        this.statsSession?.addEventListener("visibilitychange", this.pauseFrames);
+        this.applyUIScale();
+        this.rig.enter(hooks.hidden, this.session.activeEnvironment ?? "studio");
+        this.sculpture = hooks.sculptureInfo?.() ?? this.sculpture;
+        rig.controllerTracking.add(this.performancePanel.mesh, this.shortcutView.mesh);
+        this.shortcutView.start();
+        if (this.menus) {
+          rig.controllerTracking.add(this.menus.mesh);
+          this.menus.start();
+        }
+        this.performancePanel.start();
+        hooks.layers?.().metrics.setEnabled(this.performancePanel.enabled);
+        this.lastPerformance = -Infinity;
+        this.stats.reset();
+        this.framesWithPose = 0;
+      },
+      restore: () => {
+        questCapture.stop();
+        this.statsSession?.removeEventListener("visibilitychange", this.pauseFrames);
+        this.statsSession = null;
+        this.menus?.stop();
+        this.shortcutView.stop();
+        this.performancePanel.stop();
+        this.controllers.stop();
+        hooks.lighting?.stop();
+        hooks.references?.clear();
+        hooks.tools?.clearMoveSelection();
+        hooks.layers?.().metrics.setEnabled(false);
+        this.rig.exit();
+        hooks.restored();
+      },
+      changed: () => this.update(),
+    });
+    document
+      .querySelector<HTMLSelectElement>("#xr-environment")!
+      .addEventListener("change", (event) => {
+        void this.session.select(
+          (event.target as HTMLSelectElement).value as "studio" | "passthrough",
+        );
+      });
+    this.button.addEventListener("click", () => {
+      if (this.session.state === "presenting") void this.session.exit();
+      else if (hooks.canEnter()) void this.session.enter();
+      else if (hooks.entryResolvable?.()) hooks.resolveEntry?.();
+    });
+    document
+      .querySelector<HTMLSelectElement>("#xr-tool-hand")!
+      .addEventListener("change", (event) =>
+        this.controllers.setDominant((event.target as HTMLSelectElement).value),
+      );
+    document
+      .querySelector<HTMLSelectElement>("#xr-controller-display")!
+      .addEventListener("change", (event) =>
+        this.controllers.setDisplay((event.target as HTMLSelectElement).value),
+      );
+    document
+      .querySelector<HTMLSelectElement>("#xr-ui-scale")!
+      .addEventListener("change", (event) => {
+        const l = this.hooks.layers?.();
+        if (l) {
+          l.display.vrUiScale = validateVRUIScale((event.target as HTMLSelectElement).value);
+          this.applyUIScale();
+          this.hooks.tools?.port.changed();
+        }
+      });
+    document
+      .querySelector<HTMLSelectElement>("#xr-hints")!
+      .addEventListener("change", (event) =>
+        this.controllers.setHints((event.target as HTMLSelectElement).value),
+      );
+    document
+      .querySelector<HTMLInputElement>("#xr-haptics")!
+      .addEventListener(
+        "change",
+        (event) => (this.controllers.haptics.enabled = (event.target as HTMLInputElement).checked),
+      );
+    document
+      .querySelector<HTMLInputElement>("#xr-show-performance")!
+      .addEventListener("change", (event) =>
+        this.controllers.setPerformance((event.target as HTMLInputElement).checked),
+      );
+    document
+      .querySelector("#xr-reset-workspace")!
+      .addEventListener("click", () => this.controllers.resetWorkspaceView());
+    document
+      .querySelector<HTMLInputElement>("#xr-show-diagnostics")!
+      .addEventListener("change", (event) =>
+        this.controllers.setDiagnostics((event.target as HTMLInputElement).checked),
+      );
   }
-  const status=document.querySelector<HTMLElement>('#xr-entry-status')!;
-  const show=this.button.disabled&&s.state==='ready'&&!this.dismissedEntryReasons.has(this.button.title);
-  if(status.hidden===show)status.hidden=!show;
-  const message=document.querySelector<HTMLElement>('#xr-entry-message')!,text=show?this.button.title:'';if(message.textContent!==text)message.textContent=text;
- }
- private update():void {
-  const s=this.session;if(s.state==='presenting'&&s.session)this.controllers.start(s.session);
-  const name=s.environment==='passthrough'?'Passthrough':'Studio',select=document.querySelector<HTMLSelectElement>('#xr-environment')!;
-  select.value=s.environment;select.disabled=s.state==='checking'||s.state==='requesting'||s.state==='ending';
-  for(const mode of ['studio','passthrough'] as const){const option=select.querySelector<HTMLOptionElement>(`option[value="${mode}"]`)!;option.disabled=!s.availability[mode].supported;option.textContent=mode==='studio'?'Studio':s.availability[mode].supported?'Passthrough':'Passthrough (unavailable)';}
-  document.querySelector('#xr-environment-help')!.textContent=s.availability.passthrough.supported?' Exit to change environment; click Enter again.':s.availability.passthrough.reason;
-  this.button.textContent=s.state==='presenting'?`Exit ${s.activeEnvironment==='passthrough'?'Passthrough':'Studio'}`:s.state==='requesting'?`Starting ${name}…`:s.state==='ending'?'Exiting…':s.state==='ready'?`Enter ${name}`:'XR unavailable';
-  this.button.disabled=s.state!=='ready'&&s.state!=='presenting';this.button.title=s.reason;this.reason.textContent=(this.emulated?'EMULATED QUEST 3 · ':'')+s.reason;
-  document.querySelector<HTMLSelectElement>('#xr-tool-hand')!.disabled=s.state==='requesting'||s.state==='ending';
-  document.querySelector<HTMLButtonElement>('#xr-reset-workspace')!.disabled=s.state!=='presenting';
-  document.querySelector('#xr-session-state')!.textContent=`Session: ${s.state} · Secure context: ${window.isSecureContext?'yes':'no'} · WebXR API: ${navigator.xr?'available':'absent'}${s.session?` · Blend: ${s.session.environmentBlendMode}`:''}`;
-  this.hooks.lockDesktop(this.blocking);this.refreshButton();
- }
- frame(time:number,frame:XRFrame):void {
-  this.applyUIScale();
-  const reference=this.renderer.xr.getReferenceSpace(),pose=reference?frame.getViewerPose(reference):null;
-  if(pose){this.rig.placeFirstView(pose.transform.position,pose.transform.orientation);this.controllers.placePanel(pose.transform.position,pose.transform.orientation);this.performancePanel.place(pose.transform.position,pose.transform.orientation);this.shortcutView.place(pose.transform.position,pose.transform.orientation);this.menus?.place(pose.transform.position,pose.transform.orientation);this.framesWithPose++;}
-  this.controllers.update(time);
-  const feedback=this.hooks.tools?.active==='move'&&this.move?.notifying?this.move.feedback:this.sizing?.feedback||this.alternate?.feedback||this.interaction?.feedback;
-  this.shortcutView.paint(this.controllers.shortcuts,time,this.session.session?.visibilityState==='visible'&&!this.interaction?.active,!this.menus,feedback? `Tool: ${this.hooks.tools?.active==='clay'?`Clay ${this.hooks.tools.port.settings().mode==='subtract'?'SUBTRACT':'ADD'}${this.alternate?.active?' (alternate)':''}`:this.hooks.tools?.active??'clay'} · ${feedback}`:'',this.selection?.feedback?this.controllers.layerGrab?.active?'Release Tool grip to commit · Undo available':this.controllers.grab?.active?'Workspace navigation · project unchanged':'Trigger selects · Tool grip moves/rotates':this.move?.liveSizing==='move-falloff'?'Tool stick · Up softer / Down firmer':'Tool stick · Up grows / Down shrinks');
-  if(this.session.session?.visibilityState==='visible')this.stats.frame(time);else this.stats.pause();
-  if(time-this.lastReport>=1000){this.lastReport=time;this.metrics.textContent=`${this.emulated?'EMULATOR · ':''}${this.stats.fps.toFixed(1)} FPS · interval ${this.stats.averageMs.toFixed(2)} ms · p95 ${this.stats.p95Ms.toFixed(2)} ms · JS render ${this.stats.cpuMs.toFixed(2)} ms · ${this.framesWithPose} tracked frames · ${this.controllers.grab?.state??'idle'} · input/debug ${this.controllers.inputMs.toFixed(3)} ms · ${this.rig.workspaceRoot.scale.x.toFixed(4)} m / model unit`;
-   this.metrics.dataset.frames=String(this.stats.frames);this.metrics.dataset.fps=String(this.stats.fps);this.sourceInfo.textContent=this.controllers.describe();
+  private applyUIScale(): void {
+    const world = this.hooks.layers?.().display.world;
+    if (world) this.rig.applyWorldSettings(world);
+    const size = this.hooks.layers?.().display.vrUiScale ?? "normal",
+      scale = VR_UI_SCALES[size];
+    this.diagnostics.setUIScale(scale);
+    this.performancePanel.setUIScale(scale);
+    this.shortcutView.mesh.scale.setScalar(scale);
+    const select = document.querySelector<HTMLSelectElement>("#xr-ui-scale");
+    if (select && select.value !== size) select.value = size;
   }
- }
- refreshSculptureInfo():void{this.sculpture=this.hooks.sculptureInfo?.()??this.sculpture;}
- private editMetrics():XREditMetrics|undefined{const layers=this.hooks.layers?.(),tools=this.hooks.tools;if(!layers||!tools)return;const m=layers.metrics;
-  const heap=(performance as Performance&{memory?:{usedJSHeapSize?:number}}).memory?.usedJSHeapSize;
-  const runtime=layers.active,v=runtime.volume,b=v.bounds;
-  return {stability:this.hooks.stability?.(),move:this.move?{milliseconds:this.move.lastMs,p95:m.movePreview.summary().p95,vertices:this.move.preview.affectedVertices,chunks:this.move.preview.affectedChunks,active:this.move.active,committing:layers.deforming,commitMs:layers.lastMoveStats?.wallMs??null,commitVoxels:layers.lastMoveStats?.changedVoxels??0}:undefined,allocation:{dimensions:v.dimensions.join('×'),bounds:b.min.map(n=>n.toFixed(1)).join(',')+' → '+b.max.map(n=>n.toFixed(1)).join(','),samples:v.dimensions.reduce((a,b)=>a*b,1),chunks:runtime.mesher.allocatedChunks,storageBytes:v.dimensions.reduce((a,b)=>a*b,1)*8,expansions:runtime.expansions,lastMs:runtime.lastExpansionMs},tool:tools.active,radius:tools.brushRadius,brush:m.brush.summary(),remesh:m.remesh.summary(),path:m.path.summary(),stroke:m.stroke.summary(),xrStroke:m.xrStroke.summary(),pendingChunks:layers.pendingChunks,replayRemaining:this.clay?.session.replayRemaining??0,memory:m.memory(layers.trackedBytes,heap)};
- }
- finishFrame(cpuMs:number):void{this.stats.cpuMs=cpuMs;const time=performance.now();questCapture.tick(time,cpuMs,this.controllers.inputMs,this.hooks.layers?.().pendingChunks??0);if((this.performancePanel.enabled||questCapture.active)&&this.session.state==='presenting'&&time-this.lastPerformance>=500){this.lastPerformance=time;const render=this.renderer.info.render,edit=this.editMetrics();questCapture.sample(time,{mode:'xr',edit,resources:this.hooks.layers?.().resourceStats(),renderer:{...this.renderer.info.memory,calls:render.calls,triangles:render.triangles}});this.renderMetrics.textContent=`Last frame: ${render.calls} draw calls · ${render.triangles.toLocaleString()} rendered triangles · active ${this.sculpture.activeResolution} · visible meshes ${this.sculpture.layerMeshes} layer / ${this.sculpture.compositeMeshes} composite · peak ${this.stats.maxMs.toFixed(2)} ms · median ${this.stats.medianMs.toFixed(2)} · p99 ${this.stats.p99Ms?.toFixed(2)??'n/a'} ms · spikes ${this.stats.recentSpikes} recent / ${this.stats.spikes} session${edit?` · ${edit.tool} radius ${edit.radius.toFixed(3)} · brush ${edit.brush.latest.toFixed(2)} ms · remesh ${edit.remesh.latest.toFixed(2)} ms · dirty ${edit.pendingChunks} / replay ${edit.replayRemaining}`:''}`;this.performancePanel.paint(time,{edit,medianMs:this.stats.medianMs,p99Ms:this.stats.p99Ms,sampleCount:this.stats.sampleCount,recentSpikes:this.stats.recentSpikes,fps:this.stats.fps,averageMs:this.stats.averageMs,latestMs:this.stats.latestMs,maxMs:this.stats.maxMs,p95Ms:this.stats.p95Ms,spikes:this.stats.spikes,cpuMs,inputMs:this.controllers.inputMs,calls:render.calls,triangles:render.triangles,sculpture:this.sculpture});}}
+  private syncDebugControls(): void {
+    const hand = document.querySelector<HTMLSelectElement>("#xr-tool-hand"),
+      show = document.querySelector<HTMLInputElement>("#xr-show-diagnostics");
+    if (hand) hand.value = this.roles.dominant;
+    if (show) show.checked = this.diagnostics.expanded;
+    const display = document.querySelector<HTMLSelectElement>("#xr-controller-display"),
+      hints = document.querySelector<HTMLSelectElement>("#xr-hints");
+    if (display) display.value = this.controllers.displayMode;
+    if (hints) hints.value = this.diagnostics.hints.mode;
+    const perf = document.querySelector<HTMLInputElement>("#xr-show-performance");
+    if (perf) perf.checked = this.performancePanel.enabled;
+  }
+  get blocking(): boolean {
+    return this.session.blocking;
+  }
+  async check(): Promise<void> {
+    await this.session.check(window.isSecureContext, navigator.xr);
+  }
+  refreshButton(): void {
+    this.applyUIScale();
+    const s = this.session;
+    if (s.state === "ready") {
+      const busy = !this.hooks.canEnter();
+      this.button.disabled = busy && !this.hooks.entryResolvable?.();
+      this.button.title = busy
+        ? (this.hooks.blockedReason?.() ??
+          "Finish the current project operation or wait for the Boolean preview before entering XR.")
+        : s.reason;
+    }
+    const status = document.querySelector<HTMLElement>("#xr-entry-status")!;
+    const show =
+      this.button.disabled &&
+      s.state === "ready" &&
+      !this.dismissedEntryReasons.has(this.button.title);
+    if (status.hidden === show) status.hidden = !show;
+    const message = document.querySelector<HTMLElement>("#xr-entry-message")!,
+      text = show ? this.button.title : "";
+    if (message.textContent !== text) message.textContent = text;
+  }
+  private update(): void {
+    const s = this.session;
+    if (s.state === "presenting" && s.session) this.controllers.start(s.session);
+    const name = s.environment === "passthrough" ? "Passthrough" : "Studio",
+      select = document.querySelector<HTMLSelectElement>("#xr-environment")!;
+    select.value = s.environment;
+    select.disabled = s.state === "checking" || s.state === "requesting" || s.state === "ending";
+    for (const mode of ["studio", "passthrough"] as const) {
+      const option = select.querySelector<HTMLOptionElement>(`option[value="${mode}"]`)!;
+      option.disabled = !s.availability[mode].supported;
+      option.textContent =
+        mode === "studio"
+          ? "Studio"
+          : s.availability[mode].supported
+            ? "Passthrough"
+            : "Passthrough (unavailable)";
+    }
+    document.querySelector("#xr-environment-help")!.textContent = s.availability.passthrough
+      .supported
+      ? " Exit to change environment; click Enter again."
+      : s.availability.passthrough.reason;
+    this.button.textContent =
+      s.state === "presenting"
+        ? `Exit ${s.activeEnvironment === "passthrough" ? "Passthrough" : "Studio"}`
+        : s.state === "requesting"
+          ? `Starting ${name}…`
+          : s.state === "ending"
+            ? "Exiting…"
+            : s.state === "ready"
+              ? `Enter ${name}`
+              : "XR unavailable";
+    this.button.disabled = s.state !== "ready" && s.state !== "presenting";
+    this.button.title = s.reason;
+    this.reason.textContent = (this.emulated ? "EMULATED QUEST 3 · " : "") + s.reason;
+    document.querySelector<HTMLSelectElement>("#xr-tool-hand")!.disabled =
+      s.state === "requesting" || s.state === "ending";
+    document.querySelector<HTMLButtonElement>("#xr-reset-workspace")!.disabled =
+      s.state !== "presenting";
+    document.querySelector("#xr-session-state")!.textContent =
+      `Session: ${s.state} · Secure context: ${window.isSecureContext ? "yes" : "no"} · WebXR API: ${navigator.xr ? "available" : "absent"}${s.session ? ` · Blend: ${s.session.environmentBlendMode}` : ""}`;
+    this.hooks.lockDesktop(this.blocking);
+    this.refreshButton();
+  }
+  frame(time: number, frame: XRFrame): void {
+    this.applyUIScale();
+    const reference = this.renderer.xr.getReferenceSpace(),
+      pose = reference ? frame.getViewerPose(reference) : null;
+    if (pose) {
+      this.rig.placeFirstView(pose.transform.position, pose.transform.orientation);
+      this.controllers.placePanel(pose.transform.position, pose.transform.orientation);
+      this.performancePanel.place(pose.transform.position, pose.transform.orientation);
+      this.shortcutView.place(pose.transform.position, pose.transform.orientation);
+      this.menus?.place(pose.transform.position, pose.transform.orientation);
+      this.framesWithPose++;
+    }
+    this.controllers.update(time);
+    const feedback =
+      this.hooks.tools?.active === "move" && this.move?.notifying
+        ? this.move.feedback
+        : this.sizing?.feedback || this.alternate?.feedback || this.interaction?.feedback;
+    this.shortcutView.paint(
+      this.controllers.shortcuts,
+      time,
+      this.session.session?.visibilityState === "visible" && !this.interaction?.active,
+      !this.menus,
+      feedback
+        ? `Tool: ${this.hooks.tools?.active === "clay" ? `Clay ${this.hooks.tools.port.settings().mode === "subtract" ? "SUBTRACT" : "ADD"}${this.alternate?.active ? " (alternate)" : ""}` : (this.hooks.tools?.active ?? "clay")} · ${feedback}`
+        : "",
+      this.selection?.feedback
+        ? this.controllers.layerGrab?.active
+          ? "Release Tool grip to commit · Undo available"
+          : this.controllers.grab?.active
+            ? "Workspace navigation · project unchanged"
+            : "Trigger selects · Tool grip moves/rotates"
+        : this.move?.liveSizing === "move-falloff"
+          ? "Tool stick · Up softer / Down firmer"
+          : "Tool stick · Up grows / Down shrinks",
+    );
+    if (this.session.session?.visibilityState === "visible") this.stats.frame(time);
+    else this.stats.pause();
+    if (time - this.lastReport >= 1000) {
+      this.lastReport = time;
+      this.metrics.textContent = `${this.emulated ? "EMULATOR · " : ""}${this.stats.fps.toFixed(1)} FPS · interval ${this.stats.averageMs.toFixed(2)} ms · p95 ${this.stats.p95Ms.toFixed(2)} ms · JS render ${this.stats.cpuMs.toFixed(2)} ms · ${this.framesWithPose} tracked frames · ${this.controllers.grab?.state ?? "idle"} · input/debug ${this.controllers.inputMs.toFixed(3)} ms · ${this.rig.workspaceRoot.scale.x.toFixed(4)} m / model unit`;
+      this.metrics.dataset.frames = String(this.stats.frames);
+      this.metrics.dataset.fps = String(this.stats.fps);
+      this.sourceInfo.textContent = this.controllers.describe();
+    }
+  }
+  refreshSculptureInfo(): void {
+    this.sculpture = this.hooks.sculptureInfo?.() ?? this.sculpture;
+  }
+  private editMetrics(): XREditMetrics | undefined {
+    const layers = this.hooks.layers?.(),
+      tools = this.hooks.tools;
+    if (!layers || !tools) return;
+    const m = layers.metrics;
+    const heap = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
+      ?.usedJSHeapSize;
+    const runtime = layers.active,
+      v = runtime.volume,
+      b = v.bounds;
+    return {
+      stability: this.hooks.stability?.(),
+      move: this.move
+        ? {
+            milliseconds: this.move.lastMs,
+            p95: m.movePreview.summary().p95,
+            vertices: this.move.preview.affectedVertices,
+            chunks: this.move.preview.affectedChunks,
+            active: this.move.active,
+            committing: layers.deforming,
+            commitMs: layers.lastMoveStats?.wallMs ?? null,
+            commitVoxels: layers.lastMoveStats?.changedVoxels ?? 0,
+          }
+        : undefined,
+      allocation: {
+        dimensions: v.dimensions.join("×"),
+        bounds:
+          b.min.map((n) => n.toFixed(1)).join(",") +
+          " → " +
+          b.max.map((n) => n.toFixed(1)).join(","),
+        samples: v.dimensions.reduce((a, b) => a * b, 1),
+        chunks: runtime.mesher.allocatedChunks,
+        storageBytes: v.dimensions.reduce((a, b) => a * b, 1) * 8,
+        expansions: runtime.expansions,
+        lastMs: runtime.lastExpansionMs,
+      },
+      tool: tools.active,
+      radius: tools.brushRadius,
+      brush: m.brush.summary(),
+      remesh: m.remesh.summary(),
+      path: m.path.summary(),
+      stroke: m.stroke.summary(),
+      xrStroke: m.xrStroke.summary(),
+      pendingChunks: layers.pendingChunks,
+      replayRemaining: this.clay?.session.replayRemaining ?? 0,
+      memory: m.memory(layers.trackedBytes, heap),
+    };
+  }
+  finishFrame(cpuMs: number): void {
+    this.stats.cpuMs = cpuMs;
+    const time = performance.now();
+    questCapture.tick(
+      time,
+      cpuMs,
+      this.controllers.inputMs,
+      this.hooks.layers?.().pendingChunks ?? 0,
+    );
+    if (
+      (this.performancePanel.enabled || questCapture.active) &&
+      this.session.state === "presenting" &&
+      time - this.lastPerformance >= 500
+    ) {
+      this.lastPerformance = time;
+      const render = this.renderer.info.render,
+        edit = this.editMetrics();
+      questCapture.sample(time, {
+        mode: "xr",
+        edit,
+        resources: this.hooks.layers?.().resourceStats(),
+        renderer: {
+          ...this.renderer.info.memory,
+          calls: render.calls,
+          triangles: render.triangles,
+        },
+      });
+      this.renderMetrics.textContent = `Last frame: ${render.calls} draw calls · ${render.triangles.toLocaleString()} rendered triangles · active ${this.sculpture.activeResolution} · visible meshes ${this.sculpture.layerMeshes} layer / ${this.sculpture.compositeMeshes} composite · peak ${this.stats.maxMs.toFixed(2)} ms · median ${this.stats.medianMs.toFixed(2)} · p99 ${this.stats.p99Ms?.toFixed(2) ?? "n/a"} ms · spikes ${this.stats.recentSpikes} recent / ${this.stats.spikes} session${edit ? ` · ${edit.tool} radius ${edit.radius.toFixed(3)} · brush ${edit.brush.latest.toFixed(2)} ms · remesh ${edit.remesh.latest.toFixed(2)} ms · dirty ${edit.pendingChunks} / replay ${edit.replayRemaining}` : ""}`;
+      this.performancePanel.paint(time, {
+        edit,
+        medianMs: this.stats.medianMs,
+        p99Ms: this.stats.p99Ms,
+        sampleCount: this.stats.sampleCount,
+        recentSpikes: this.stats.recentSpikes,
+        fps: this.stats.fps,
+        averageMs: this.stats.averageMs,
+        latestMs: this.stats.latestMs,
+        maxMs: this.stats.maxMs,
+        p95Ms: this.stats.p95Ms,
+        spikes: this.stats.spikes,
+        cpuMs,
+        inputMs: this.controllers.inputMs,
+        calls: render.calls,
+        triangles: render.triangles,
+        sculpture: this.sculpture,
+      });
+    }
+  }
 }

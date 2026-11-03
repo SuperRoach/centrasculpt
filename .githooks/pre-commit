@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if [ ! -x node_modules/.bin/biome ]; then
+  echo "Biome is not installed. Run npm ci before committing." >&2
+  exit 1
+fi
+
+echo "Running Biome formatting, lint and import checks..."
+npm run --silent lint

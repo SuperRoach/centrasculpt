@@ -1,21 +1,191 @@
 /** Standard saturation/value field, hue strip and quick colours for desktop layers. */
-export function installDesktopColourPicker():void{
- const dialog=document.createElement('dialog');dialog.className='desktop-colour-picker';dialog.setAttribute('aria-labelledby','desktop-colour-title');
- dialog.innerHTML='<form method="dialog"><h2 id="desktop-colour-title">Select colour</h2><canvas class="colour-field" width="320" height="190" tabindex="0" role="slider" aria-label="Colour saturation and brightness" aria-valuemin="0" aria-valuemax="100"></canvas><label class="hue-label">Hue<input class="colour-hue" type="range" min="0" max="359" step="1" aria-label="Hue"></label><div class="quick-colours" role="group" aria-label="Quick colours"></div><div class="colour-preview" aria-hidden="true"></div><label>Hex colour<input name="hex" type="text" maxlength="7" pattern="#[0-9a-fA-F]{6}" required spellcheck="false"></label><div class="dialog-actions"><button type="button" class="cancel-colour">Cancel</button><button class="set-colour" value="set">Set colour</button></div></form>';
- document.body.append(dialog);
- const hex=dialog.querySelector<HTMLInputElement>('[name=hex]')!,preview=dialog.querySelector<HTMLElement>('.colour-preview')!,field=dialog.querySelector<HTMLCanvasElement>('.colour-field')!,hue=dialog.querySelector<HTMLInputElement>('.colour-hue')!,ctx=field.getContext('2d')!;
- let target:HTMLInputElement|null=null,h=0,s=1,v=1;
- const rgb=()=>{const c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c;const trip=h<60?[c,x,0]:h<120?[x,c,0]:h<180?[0,c,x]:h<240?[0,x,c]:h<300?[x,0,c]:[c,0,x];return '#'+trip.map(n=>Math.round((n+m)*255).toString(16).padStart(2,'0')).join('');};
- const paint=()=>{ctx.fillStyle=`hsl(${h} 100% 50%)`;ctx.fillRect(0,0,320,190);const white=ctx.createLinearGradient(0,0,320,0);white.addColorStop(0,'#fff');white.addColorStop(1,'#fff0');ctx.fillStyle=white;ctx.fillRect(0,0,320,190);const black=ctx.createLinearGradient(0,0,0,190);black.addColorStop(0,'#0000');black.addColorStop(1,'#000');ctx.fillStyle=black;ctx.fillRect(0,0,320,190);ctx.beginPath();ctx.arc(s*320,(1-v)*190,6,0,Math.PI*2);ctx.strokeStyle='#000';ctx.lineWidth=4;ctx.stroke();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();preview.style.backgroundColor=hex.value;hue.value=String(Math.round(h));field.setAttribute('aria-valuenow',String(Math.round(s*100)));field.setAttribute('aria-valuetext',`Saturation ${Math.round(s*100)}%, brightness ${Math.round(v*100)}%`);};
- const fromHex=()=>{if(!/^#[0-9a-f]{6}$/i.test(hex.value))return;const [r,g,b]=[1,3,5].map(i=>parseInt(hex.value.slice(i,i+2),16)/255),max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;v=max;s=max?d/max:0;if(d)h=((max===r?(g-b)/d:max===g?(b-r)/d+2:(r-g)/d+4)*60+360)%360;paint();};
- const change=()=>{hex.value=rgb();paint();};
- const pick=(event:PointerEvent)=>{const rect=field.getBoundingClientRect();s=Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width));v=1-Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height));change();};
- field.onpointerdown=e=>{field.setPointerCapture(e.pointerId);pick(e);};field.onpointermove=e=>{if(field.hasPointerCapture(e.pointerId))pick(e);};field.onpointerup=e=>{if(field.hasPointerCapture(e.pointerId))field.releasePointerCapture(e.pointerId);};
- field.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();const step=e.shiftKey?.1:.01;s=Math.max(0,Math.min(1,s+(e.key==='ArrowRight'?step:e.key==='ArrowLeft'?-step:0)));v=Math.max(0,Math.min(1,v+(e.key==='ArrowUp'?step:e.key==='ArrowDown'?-step:0)));change();};
- hue.oninput=()=>{h=Number(hue.value);change();};hex.oninput=fromHex;
- const quick=dialog.querySelector('.quick-colours')!;
- for(const [name,colour]of [['Clay','#aabd8d'],['White','#ffffff'],['Black','#202020'],['Red','#e34b45'],['Orange','#ef923c'],['Yellow','#f2d35e'],['Green','#62ab73'],['Teal','#499eaa'],['Blue','#4a78d0'],['Purple','#9973c7'],['Pink','#dc83ac'],['Brown','#986849']]){const button=document.createElement('button');button.type='button';button.className='quick-colour';button.style.backgroundColor=colour;button.setAttribute('aria-label',name);button.title=name;button.onclick=()=>{hex.value=colour;fromHex();};quick.append(button);}
- dialog.querySelector<HTMLButtonElement>('.cancel-colour')!.onclick=()=>dialog.close('cancel');
- document.addEventListener('click',event=>{const input=event.target;if(!(input instanceof HTMLInputElement)||input.type!=='color'||!input.closest('.layers-panel')||input.disabled)return;event.preventDefault();if(dialog.open)return;target=input;hex.value=input.value;fromHex();dialog.returnValue='cancel';dialog.showModal();field.focus();},true);
- dialog.addEventListener('close',()=>{const input=target;target=null;if(dialog.returnValue==='set'&&input?.isConnected&&!input.disabled&&/^#[0-9a-f]{6}$/i.test(hex.value)){input.value=hex.value;input.dispatchEvent(new Event('change',{bubbles:true}));}input?.focus();});
+export function installDesktopColourPicker(): void {
+  const dialog = document.createElement("dialog");
+  dialog.className = "desktop-colour-picker";
+  dialog.setAttribute("aria-labelledby", "desktop-colour-title");
+  dialog.innerHTML =
+    '<form method="dialog"><h2 id="desktop-colour-title">Select colour</h2><canvas class="colour-field" width="320" height="190" tabindex="0" role="slider" aria-label="Colour saturation and brightness" aria-valuemin="0" aria-valuemax="100"></canvas><label class="hue-label">Hue<input class="colour-hue" type="range" min="0" max="359" step="1" aria-label="Hue"></label><div class="quick-colours" role="group" aria-label="Quick colours"></div><div class="colour-preview" aria-hidden="true"></div><label>Hex colour<input name="hex" type="text" maxlength="7" pattern="#[0-9a-fA-F]{6}" required spellcheck="false"></label><div class="dialog-actions"><button type="button" class="cancel-colour">Cancel</button><button class="set-colour" value="set">Set colour</button></div></form>';
+  document.body.append(dialog);
+  const hex = dialog.querySelector<HTMLInputElement>("[name=hex]")!,
+    preview = dialog.querySelector<HTMLElement>(".colour-preview")!,
+    field = dialog.querySelector<HTMLCanvasElement>(".colour-field")!,
+    hue = dialog.querySelector<HTMLInputElement>(".colour-hue")!,
+    ctx = field.getContext("2d")!;
+  let target: HTMLInputElement | null = null,
+    h = 0,
+    s = 1,
+    v = 1;
+  const rgb = () => {
+    const c = v * s,
+      x = c * (1 - Math.abs(((h / 60) % 2) - 1)),
+      m = v - c;
+    const trip =
+      h < 60
+        ? [c, x, 0]
+        : h < 120
+          ? [x, c, 0]
+          : h < 180
+            ? [0, c, x]
+            : h < 240
+              ? [0, x, c]
+              : h < 300
+                ? [x, 0, c]
+                : [c, 0, x];
+    return (
+      "#" +
+      trip
+        .map((n) =>
+          Math.round((n + m) * 255)
+            .toString(16)
+            .padStart(2, "0"),
+        )
+        .join("")
+    );
+  };
+  const paint = () => {
+    ctx.fillStyle = `hsl(${h} 100% 50%)`;
+    ctx.fillRect(0, 0, 320, 190);
+    const white = ctx.createLinearGradient(0, 0, 320, 0);
+    white.addColorStop(0, "#fff");
+    white.addColorStop(1, "#fff0");
+    ctx.fillStyle = white;
+    ctx.fillRect(0, 0, 320, 190);
+    const black = ctx.createLinearGradient(0, 0, 0, 190);
+    black.addColorStop(0, "#0000");
+    black.addColorStop(1, "#000");
+    ctx.fillStyle = black;
+    ctx.fillRect(0, 0, 320, 190);
+    ctx.beginPath();
+    ctx.arc(s * 320, (1 - v) * 190, 6, 0, Math.PI * 2);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    preview.style.backgroundColor = hex.value;
+    hue.value = String(Math.round(h));
+    field.setAttribute("aria-valuenow", String(Math.round(s * 100)));
+    field.setAttribute(
+      "aria-valuetext",
+      `Saturation ${Math.round(s * 100)}%, brightness ${Math.round(v * 100)}%`,
+    );
+  };
+  const fromHex = () => {
+    if (!/^#[0-9a-f]{6}$/i.test(hex.value)) return;
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.value.slice(i, i + 2), 16) / 255),
+      max = Math.max(r, g, b),
+      min = Math.min(r, g, b),
+      d = max - min;
+    v = max;
+    s = max ? d / max : 0;
+    if (d)
+      h =
+        ((max === r ? (g - b) / d : max === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60 + 360) %
+        360;
+    paint();
+  };
+  const change = () => {
+    hex.value = rgb();
+    paint();
+  };
+  const pick = (event: PointerEvent) => {
+    const rect = field.getBoundingClientRect();
+    s = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    v = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    change();
+  };
+  field.onpointerdown = (e) => {
+    field.setPointerCapture(e.pointerId);
+    pick(e);
+  };
+  field.onpointermove = (e) => {
+    if (field.hasPointerCapture(e.pointerId)) pick(e);
+  };
+  field.onpointerup = (e) => {
+    if (field.hasPointerCapture(e.pointerId)) field.releasePointerCapture(e.pointerId);
+  };
+  field.onkeydown = (e) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+    e.preventDefault();
+    const step = e.shiftKey ? 0.1 : 0.01;
+    s = Math.max(
+      0,
+      Math.min(1, s + (e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0)),
+    );
+    v = Math.max(
+      0,
+      Math.min(1, v + (e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0)),
+    );
+    change();
+  };
+  hue.oninput = () => {
+    h = Number(hue.value);
+    change();
+  };
+  hex.oninput = fromHex;
+  const quick = dialog.querySelector(".quick-colours")!;
+  for (const [name, colour] of [
+    ["Clay", "#aabd8d"],
+    ["White", "#ffffff"],
+    ["Black", "#202020"],
+    ["Red", "#e34b45"],
+    ["Orange", "#ef923c"],
+    ["Yellow", "#f2d35e"],
+    ["Green", "#62ab73"],
+    ["Teal", "#499eaa"],
+    ["Blue", "#4a78d0"],
+    ["Purple", "#9973c7"],
+    ["Pink", "#dc83ac"],
+    ["Brown", "#986849"],
+  ]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "quick-colour";
+    button.style.backgroundColor = colour;
+    button.setAttribute("aria-label", name);
+    button.title = name;
+    button.onclick = () => {
+      hex.value = colour;
+      fromHex();
+    };
+    quick.append(button);
+  }
+  dialog.querySelector<HTMLButtonElement>(".cancel-colour")!.onclick = () => dialog.close("cancel");
+  document.addEventListener(
+    "click",
+    (event) => {
+      const input = event.target;
+      if (
+        !(input instanceof HTMLInputElement) ||
+        input.type !== "color" ||
+        !input.closest(".layers-panel") ||
+        input.disabled
+      )
+        return;
+      event.preventDefault();
+      if (dialog.open) return;
+      target = input;
+      hex.value = input.value;
+      fromHex();
+      dialog.returnValue = "cancel";
+      dialog.showModal();
+      field.focus();
+    },
+    true,
+  );
+  dialog.addEventListener("close", () => {
+    const input = target;
+    target = null;
+    if (
+      dialog.returnValue === "set" &&
+      input?.isConnected &&
+      !input.disabled &&
+      /^#[0-9a-f]{6}$/i.test(hex.value)
+    ) {
+      input.value = hex.value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    input?.focus();
+  });
 }

@@ -1,281 +1,1504 @@
-import {ProjectBrowser} from '../work/test-build/project-browser.mjs';
-import {XRClayStroke} from '../work/test-build/xr-clay-stroke.mjs';
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {Group,Matrix4,Quaternion,Vector3,Mesh,BoxGeometry,MeshBasicMaterial} from 'three';
-import {EditorToolState,EDITOR_TOOLS,VR_WHEEL_TOOLS} from '../work/test-build/editor-tool-state.mjs';
-import {XRMenuModel,MENU_SIZE,WHEEL} from '../work/test-build/xr-menu-model.mjs';
-import {XRMenuView} from '../work/test-build/xr-menu-view.mjs';
-import {XRControllers} from '../work/test-build/xr-controllers.mjs';
-import {XRControllerRoles} from '../work/test-build/xr-controller-roles.mjs';
-import {XRSupportShortcuts} from '../work/test-build/xr-support-shortcuts.mjs';
-import {projectHistoryShortcuts} from '../work/test-build/xr-history-shortcuts.mjs';
-import {InputOwnership} from '../work/test-build/interaction.mjs';
-import {ShapePreviewModel} from '../work/test-build/shape-preview.mjs';
-import {IndependentLayers} from '../work/test-build/independent-layers.mjs';
-import {createBaseProject} from '../work/test-build/layers.mjs';
-import {SDFVolume} from '../work/test-build/sdf.mjs';
-import {saveSculptProject,openSculptProject} from '../work/test-build/project.mjs';
-const initial={mode:'add',radius:.22,strength:.35,hardness:0,camera:{position:[2,2,3],target:[0,0,0]}};
-function fixture(worldPort){
- const layers=new IndependentLayers(createBaseProject(new SDFVolume(17),initial)),input=new InputOwnership(),shape=new ShapePreviewModel(layers.project.activeLayerId);let settings={...initial},busy=false,changed=0,clay='add';
- const tools=new EditorToolState({layers:()=>layers,shape,settings:()=>settings,setSettings:v=>{settings=v;if(v.mode!=='smooth')clay=v.mode;},mode:()=>input.mode,
-  selectTool:id=>{shape.setEnabled(id==='stamp',layers.project.layerStack);input.mode=id==='transform'?'translate':'sculpt';if(id==='clay'||id==='smooth')settings={...settings,mode:id==='smooth'?'smooth':clay};},
-  selectTransform:mode=>{shape.setEnabled(false,layers.project.layerStack);input.mode=mode;},busy:()=>busy,changed:()=>changed++});
- return {layers,input,shape,tools,model:new XRMenuModel(tools,worldPort),get settings(){return settings;},set busy(v){busy=v;},get changed(){return changed;},dispose:()=>layers.dispose()};
+import assert from "node:assert/strict";
+import test from "node:test";
+import { BoxGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, Quaternion, Vector3 } from "three";
+import { EditorToolState, VR_WHEEL_TOOLS } from "../work/test-build/editor-tool-state.mjs";
+import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
+import { InputOwnership } from "../work/test-build/interaction.mjs";
+import { createBaseProject } from "../work/test-build/layers.mjs";
+import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
+import { ProjectBrowser } from "../work/test-build/project-browser.mjs";
+import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
+import { XRClayStroke } from "../work/test-build/xr-clay-stroke.mjs";
+import { XRControllerRoles } from "../work/test-build/xr-controller-roles.mjs";
+import { XRControllers } from "../work/test-build/xr-controllers.mjs";
+import { projectHistoryShortcuts } from "../work/test-build/xr-history-shortcuts.mjs";
+import { MENU_SIZE, WHEEL, XRMenuModel } from "../work/test-build/xr-menu-model.mjs";
+import { XRMenuView } from "../work/test-build/xr-menu-view.mjs";
+import { XRSupportShortcuts } from "../work/test-build/xr-support-shortcuts.mjs";
+
+const initial = {
+  mode: "add",
+  radius: 0.22,
+  strength: 0.35,
+  hardness: 0,
+  camera: { position: [2, 2, 3], target: [0, 0, 0] },
+};
+function fixture(worldPort) {
+  const layers = new IndependentLayers(createBaseProject(new SDFVolume(17), initial)),
+    input = new InputOwnership(),
+    shape = new ShapePreviewModel(layers.project.activeLayerId);
+  let settings = { ...initial },
+    busy = false,
+    changed = 0,
+    clay = "add";
+  const tools = new EditorToolState({
+    layers: () => layers,
+    shape,
+    settings: () => settings,
+    setSettings: (v) => {
+      settings = v;
+      if (v.mode !== "smooth") clay = v.mode;
+    },
+    mode: () => input.mode,
+    selectTool: (id) => {
+      shape.setEnabled(id === "stamp", layers.project.layerStack);
+      input.mode = id === "transform" ? "translate" : "sculpt";
+      if (id === "clay" || id === "smooth")
+        settings = { ...settings, mode: id === "smooth" ? "smooth" : clay };
+    },
+    selectTransform: (mode) => {
+      shape.setEnabled(false, layers.project.layerStack);
+      input.mode = mode;
+    },
+    busy: () => busy,
+    changed: () => changed++,
+  });
+  return {
+    layers,
+    input,
+    shape,
+    tools,
+    model: new XRMenuModel(tools, worldPort),
+    get settings() {
+      return settings;
+    },
+    set busy(v) {
+      busy = v;
+    },
+    get changed() {
+      return changed;
+    },
+    dispose: () => layers.dispose(),
+  };
 }
-function fakeDocument(){const original=globalThis.document;globalThis.document={createElement:()=>({width:0,height:0,getContext:()=>new Proxy({}, {get:()=>()=>{}})})};return ()=>globalThis.document=original;}
-const toolState=()=>({connectionId:7,role:'tool',connected:true,tracked:true,gripTracked:true,buttons:{trigger:{pressed:false,rawValue:0,justPressed:false},grip:{pressed:false,rawValue:0}}});
-function buttonPoint(model,id){const button=model.content().buttons.find(b=>b.id===id);assert(button,`missing ${id}`);if(button.rect)return [button.rect.x+button.rect.width/2,button.rect.y+button.rect.height/2];const a=-Math.PI/2+button.sector*Math.PI*2/VR_WHEEL_TOOLS.length;return [WHEEL.x+Math.cos(a)*WHEEL.labelRadius,WHEEL.y+Math.sin(a)*WHEEL.labelRadius];}
-function rayPose(view,x,y){view.mesh.updateWorldMatrix(true,false);const target=new Vector3((x/MENU_SIZE-.5)*.72,(.5-y/MENU_SIZE)*.72,0).applyMatrix4(view.mesh.matrixWorld),normal=new Vector3(0,0,1).transformDirection(view.mesh.matrixWorld);return new Matrix4().compose(target.addScaledVector(normal,.6),view.mesh.getWorldQuaternion(new Quaternion()),new Vector3(1,1,1));}
-function trigger(state,pressed){state.buttons.trigger={pressed,rawValue:pressed?1:0,justPressed:pressed};}
-test('Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly',()=>{
- const f=fixture();try{const {model,tools}=f;assert.equal(model.request,null);model.setRequest('tool-wheel');assert.equal(model.content().title,'TOOL WHEEL');assert(model.content().buttons.find(b=>b.id==='tool:clay').selected);
- for(const id of ['smooth','stamp','transform','move','clay']){model.activate(`tool:${id}`);assert.equal(tools.active,id);assert.equal(model.page,'tool-options');assert(model.content().title.includes(id==='move'?'MOVE':'OPTIONS'));model.activate('tools');assert(model.content().buttons.find(b=>b.id===`tool:${id}`).selected);}
- model.activate('tool:move');assert.equal(tools.active,'move');assert.equal(model.feedback,'');model.activate('tools');model.activate('tool:clay');model.setRequest(null);model.activate('tool:smooth');assert.equal(tools.active,'clay');assert.equal(model.hover,null);assert.equal(model.hit(576,280),null);assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
-});
-test('radial and rectangular hit tests align with every visible target, including experimental Move',()=>{
- const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');for(const definition of VR_WHEEL_TOOLS){const id=`tool:${definition.id}`;assert.equal(m.hit(...buttonPoint(m,id)),id);}
- assert.equal(m.hit(1100,1050),'project');assert.equal(m.hit(576,554),'options');assert.equal(m.hit(576,626),'options');for(const point of [[0,0],[-1,300],[NaN,0],[1153,200],[1130,1050]])assert.equal(m.hit(...point),null);
- m.activate('options');for(const b of m.content().buttons)assert.equal(m.hit(...buttonPoint(m,b.id)),b.id);
- }finally{f.dispose();}
-});
-test('Cut is a direct main-wheel control with a separate plane review and preserves all ten sector targets',()=>{
- const f=fixture();try{const m=f.model;m.setRequest('tool-wheel');assert.equal(VR_WHEEL_TOOLS.length,10);assert.equal(m.hit(...buttonPoint(m,'tool:cut')),'tool:cut');const cut=m.content().buttons.find(b=>b.id==='tool:cut'),options=m.content().buttons.find(b=>b.id==='options');assert.equal(cut.sector,9);assert.equal(cut.rect,undefined);assert.deepEqual([options.rect.width,options.rect.height],[280,144]);m.activate('tool:cut');assert.equal(m.page,'cut');assert.equal(m.content().title,'PLANE CUT');m.activate('cut-axis:z');m.activate('cut-offset-inc');m.activate('cut-tilt-x-inc');m.activate('cut-preview');assert.equal(m.page,'cut-confirm');assert.match(m.content().labels[0].text,/0\.10/);m.activate('cut-back');assert.equal(m.page,'cut');m.activate('cut-cancel');assert.equal(m.page,'tool-wheel');}finally{f.dispose();}
-});
-test('Clay/Smooth options update the same desktop settings without voxel/history changes',()=>{
- const f=fixture();try{const bytes=new Uint8Array(saveSculptProject(f.layers.project)),volume=f.layers.active.volume.getDenseView().slice(),geometry=f.layers.active.surface.group.children.map(o=>o.geometry);
- f.tools.adjust('operation',1);assert.equal(f.settings.mode,'subtract');f.tools.adjust('radius',1);assert.equal(f.settings.radius,.24);f.tools.adjust('strength',1);assert.equal(f.settings.strength,.4);f.tools.adjust('hardness',1);assert.equal(f.settings.hardness,.05);assert.throws(()=>f.tools.adjust('spacing',1));
- f.tools.select('smooth');assert.equal(f.settings.mode,'smooth');assert.deepEqual(f.tools.options().map(o=>o.id),['placement','radius','strength','quality','application','global-snap','symmetry','symmetry-axis','symmetry-offset','alternate-tool']);f.tools.adjust('strength',-1);assert.equal(f.settings.strength,.35);f.tools.select('clay');assert.equal(f.settings.mode,'subtract');
- f.tools.port.setSettings({...f.settings,radius:.3});assert.equal(f.tools.options().find(o=>o.id==='radius').value,'0.300');f.input.mode='rotate';assert.equal(f.tools.active,'transform');f.shape.setEnabled(true,f.layers.project.layerStack);assert.equal(f.tools.active,'stamp');
- assert.deepEqual(f.layers.active.volume.getDenseView(),volume);assert.deepEqual(f.layers.active.surface.group.children.map(o=>o.geometry),geometry);assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)),bytes);assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
-});
-test('data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp',()=>{
- const f=fixture();try{const bytes=f.layers.active.volume.getDenseView().slice();f.tools.select('stamp');f.tools.adjust('dimension-0',1);assert.deepEqual(f.shape.definition.dimensions,[.85,.85,.85]);assert(f.tools.options().find(o=>o.id==='dimension-1').disabled);assert.throws(()=>f.tools.adjust('dimension-2',1));
- f.tools.adjust('shape',1);assert.equal(f.shape.definition.kind,'box');f.tools.adjust('dimension-1',1);assert.equal(f.shape.definition.dimensions[1],.9);f.tools.adjust('rotation-0',1);assert(Math.abs(f.shape.definition.transform.rotation[0]-Math.PI/12)<1e-10);f.tools.adjust('shape-scale',1);assert.deepEqual(f.shape.definition.transform.scale,[1.1,1.1,1.1]);f.tools.adjust('operation',1);assert.equal(f.shape.definition.operation,'subtract');
- f.tools.adjust('shape',1);f.tools.adjust('shape',1);assert.equal(f.shape.definition.kind,'pyramid');f.tools.adjust('dimension-0',1);assert.equal(f.shape.definition.dimensions[0],f.shape.definition.dimensions[2]);assert(f.tools.options().find(o=>o.id==='dimension-2').disabled);
- f.model.setRequest('tool-wheel');f.model.activate('options');f.model.activate('next');assert.equal(f.model.optionPage,1);f.model.activate('next');assert.equal(f.model.optionPage,2);assert(f.model.content().labels.some(l=>l.text==='Uniform scale'));f.model.activate('prev');f.model.activate('prev');assert.equal(f.model.optionPage,0);
- assert.deepEqual(f.layers.active.volume.getDenseView(),bytes);assert.equal(f.layers.undoCount,0);f.layers.setFlag(f.layers.project.activeLayerId,'locked',true);assert(f.tools.options().filter(o=>o.id!=='application'&&o.id!=='alternate-tool'&&o.id!=='global-snap').every(o=>o.disabled));assert.throws(()=>f.tools.adjust('shape',1));
- }finally{f.dispose();}
-});
-test('Transform options edit metadata with existing undo and native persistence, never SDF resampling',()=>{
- const f=fixture();try{const {tools,layers}=f,volume=layers.active.volume,bytes=volume.getDenseView().slice();tools.select('transform');tools.adjust('layer-0',1);assert.equal(layers.active.layer.transform.position[0],.1);assert.equal(layers.undoCount,1);
- tools.adjust('transform-mode',1);assert.equal(f.input.mode,'rotate');tools.adjust('layer-2',1);assert(Math.abs(layers.active.layer.transform.rotation[2]-5*Math.PI/180)<1e-10);tools.adjust('transform-mode',1);assert.equal(f.input.mode,'scale');tools.adjust('layer-scale',1);assert.deepEqual(layers.active.layer.transform.scale,[1.1,1.1,1.1]);assert.equal(layers.undoCount,3);
- const opened=openSculptProject(saveSculptProject(layers.project));assert.deepEqual(opened.layerStack.active.transform,layers.active.layer.transform);layers.undo();assert.deepEqual(layers.active.layer.transform.scale,[1,1,1]);layers.undo(true);assert.deepEqual(layers.active.layer.transform.scale,[1.1,1.1,1.1]);assert.equal(layers.active.volume,volume);assert.deepEqual(volume.getDenseView(),bytes);
- tools.adjust('surface-view',1);assert.equal(layers.viewMode,'boolean');assert.match(tools.options().find(o=>o.id==='grip').value,/Separate Layers/);
- layers.active.layer.locked=true;assert(tools.options().find(o=>o.id==='layer-scale').disabled);layers.active.layer.locked=false;layers.active.layer.transform.scale=[1,2,1];assert(tools.options().find(o=>o.id==='layer-scale').disabled);layers.viewMode='separate';assert.match(tools.options().find(o=>o.id==='grip').value,/Uniform/);
- }finally{f.dispose();}
-});
-test('Layers panel selects visible, hidden or locked rows and toggles flags using existing commands',()=>{
- const f=fixture();try{const first=f.layers.active.layer,second=f.layers.create(64),a=first.volume.getDenseView().slice(),b=second.volume.getDenseView().slice(),m=f.model;m.setRequest('layers');assert.equal(m.content().buttons.length,16);
- m.activate(`select:${first.id}`);assert.equal(f.layers.project.activeLayerId,first.id);assert(m.content().buttons.find(b=>b.id===`select:${first.id}`).selected);m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert.equal(first.visible,false);assert.equal(first.locked,true);m.activate(`select:${second.id}`);assert.equal(f.layers.project.activeLayerId,second.id);m.activate(`select:${first.id}`);assert.equal(f.layers.active.layer.id,first.id);
- const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.activeLayerId,first.id);assert.equal(opened.layerStack.active.visible,false);assert.equal(opened.layerStack.active.locked,true);assert.deepEqual(first.volume.getDenseView(),a);assert.deepEqual(second.volume.getDenseView(),b);assert.equal(f.layers.undoCount,0);assert.equal(f.layers.project.layerStack.layers.length,2);
- m.activate(`visible:${first.id}`);m.activate(`locked:${first.id}`);assert(first.visible&&!first.locked);assert(f.changed>=6);
- }finally{f.dispose();}
-});
-test('busy/current edit guards reject menu business commands instead of committing an edit',()=>{
- const f=fixture();try{f.model.setRequest('tool-wheel');f.busy=true;assert.throws(()=>f.tools.select('smooth'));f.model.activate('tool:smooth');assert.equal(f.tools.active,'clay');f.busy=false;
- f.layers.beginTransform();assert.throws(()=>f.tools.selectLayer(f.layers.project.activeLayerId));assert.throws(()=>f.tools.toggleLayer(f.layers.project.activeLayerId,'visible'));assert.throws(()=>f.tools.adjust('radius',1));assert(f.layers.transforming);f.layers.cancelTransform();f.layers.beginStroke();assert.throws(()=>f.tools.select('stamp'));assert(f.layers.drawing);f.layers.finishStroke();assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
-});
-test('tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect',()=>{
- const restore=fakeDocument(),f=fixture();let view;try{view=new XRMenuView(f.model);new Group().add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const s=toolState();trigger(s,true);view.update('tool-wheel',s,new Matrix4(),0,true);const pose=rayPose(view,...buttonPoint(f.model,'tool:smooth'));
- view.update('tool-wheel',s,pose,16,true);assert.equal(f.tools.active,'clay');trigger(s,false);view.update('tool-wheel',s,pose,32,true);assert.equal(f.model.hover,'tool:smooth');trigger(s,true);view.update('tool-wheel',s,pose,48,true);assert.equal(f.tools.active,'smooth');assert.equal(f.model.page,'tool-options');const changed=f.changed;for(let t=64;t<300;t+=16){s.buttons.trigger.justPressed=false;view.update('tool-wheel',s,pose,t,true);}assert.equal(f.changed,changed);
- view.update(null,s,pose,310,true);assert.equal(view.mesh.visible,false);assert.equal(view.active,false);view.update('tool-wheel',s,pose,320,true);assert.equal(f.tools.active,'smooth');trigger(s,false);view.update('tool-wheel',s,pose,336,true);s.connectionId++;trigger(s,true);view.update('tool-wheel',s,pose,352,true);assert.equal(f.model.page,'tool-wheel');assert.equal(f.tools.active,'smooth');
- }finally{view?.dispose();f.dispose();restore();}
-});
-test('view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity',()=>{
- const restore=fakeDocument(),f=fixture();let view;try{view=new XRMenuView(f.model);const root=new Group();root.position.set(2,1,-1);root.rotation.y=.5;root.add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const s=toolState();view.update('tool-wheel',s,new Matrix4(),0,true);const pose=rayPose(view,...buttonPoint(f.model,'tool:stamp'));assert(view.update('tool-wheel',s,pose,16,true)>0);assert.equal(f.model.hover,'tool:stamp');
- s.role='support';trigger(s,true);view.update('tool-wheel',s,pose,32,true);assert.equal(f.tools.active,'clay');assert.equal(f.model.hover,null);s.role='tool';s.tracked=false;view.update('tool-wheel',s,pose,48,true);s.tracked=true;view.update('tool-wheel',s,new Matrix4().makeScale(0,0,0),64,true);assert.equal(f.model.hover,null);view.update('tool-wheel',s,new Matrix4().makeTranslation(100,100,100),80,true);assert.equal(f.model.hover,null);assert.equal(f.tools.active,'clay');
- }finally{view?.dispose();f.dispose();restore();}
-});
-test('view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions',()=>{
- const restore=fakeDocument(),f=fixture();let view;try{view=new XRMenuView(f.model);const root=new Group();root.add(view.mesh);view.start();view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});view.update('tool-wheel',undefined,undefined,0,true);const anchor=view.mesh.position.clone(),count=view.paintCount;
- for(let i=1;i<20;i++)view.update('tool-wheel',undefined,undefined,i*16,true);assert.equal(view.paintCount,count);view.place({x:2,y:1.6,z:0},{x:0,y:0,z:0,w:1});view.update('tool-wheel',undefined,undefined,330,true);assert.deepEqual(view.mesh.position,anchor);view.update(null,undefined,undefined,340,true);view.update('layers',undefined,undefined,350,true);assert.equal(view.mesh.position.x,2);assert.equal(root.children.length,1);
- view.update('layers',undefined,undefined,360,false);assert.equal(view.mesh.visible,false);assert.equal(f.model.request,null);for(let i=0;i<3;i++){view.stop();assert.equal(view.mesh.parent,null);root.add(view.mesh);view.start();assert.equal(view.mesh.visible,false);assert.equal(root.children.length,1);}view.dispose();assert.equal(view.mesh.parent,null);
- }finally{view?.dispose();f.dispose();restore();}
-});
-function source(hand){return {handedness:hand,profiles:['meta-quest-touch-plus'],targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping:'xr-standard',axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false,touched:false}))}};}
-class Session extends EventTarget{visibilityState='visible';}
-function bridgeFixture(hand,sculpt=false,worldPort){const f=fixture(worldPort),restore=fakeDocument(),view=new XRMenuView(f.model),rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group(),workspace=new Group(),roles=new XRControllerRoles();roles.setDominant(hand);workspace.add(f.layers.group);root.add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});
- const clay=sculpt?new XRClayStroke(()=>f.layers,f.tools,root):undefined;
- const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{stroke:clay,workspace,layers:()=>f.layers,toolMode:()=>f.tools.active,menus:view,shortcuts:{interactiveMenus:true,commands:projectHistoryShortcuts(()=>f.layers)}}),support=source(hand==='left'?'right':'left'),tool=source(hand),session=new Session();bridge.start(session);rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});let time=0;
- const update=()=>bridge.update(time+=16),press=(s,index,down)=>{Object.assign(s.gamepad.buttons[index],{value:down?1:0,pressed:down});update();},stick=(x=0,y=0)=>{support.gamepad.axes=[0,0,x,y];update();},point=id=>{const p=rayPose(view,...buttonPoint(f.model,id));p.decompose(rays[0].position,rays[0].quaternion,rays[0].scale);update();};update();
- return {...f,clay,view,bridge,rays,grips,tool,support,session,update,press,stick,point,dispose(){bridge.dispose();clay?.dispose();view.dispose();f.dispose();restore();}};
+function fakeDocument() {
+  const original = globalThis.document;
+  globalThis.document = {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => new Proxy({}, { get: () => () => {} }),
+    }),
+  };
+  return () => (globalThis.document = original);
 }
-for(const hand of ['left','right'])test(`interactive menus select shared tools/layers with ${hand} dominance; old shortcuts and grips remain exclusive`,()=>{
- const h=bridgeFixture(hand);try{h.stick(0,-1);assert.equal(h.model.request,'tool-wheel');assert(h.bridge.slots[0].rayVisual.visible);h.point('tool:transform');h.press(h.tool,0,true);assert.equal(h.tools.active,'transform');assert.equal(h.model.page,'tool-options');assert.equal(h.layers.transforming,false);assert.equal(h.layers.undoCount,0);h.update();assert.equal(h.layers.undoCount,0);h.press(h.tool,0,false);h.point('inc:layer-0');h.press(h.tool,0,true);assert.equal(h.layers.active.layer.transform.position[0],.1);assert.equal(h.layers.undoCount,1);h.press(h.tool,0,false);h.stick();assert.equal(h.view.active,false);
- h.stick(-1,0);assert.equal(h.layers.undoCount,0);h.stick();h.stick(1,0);assert.equal(h.layers.undoCount,1);h.stick();
- h.press(h.tool,1,true);assert(h.bridge.layerGrab.active);h.grips[0].position.z=.2;h.update();h.press(h.support,1,true);assert.equal(h.bridge.grab.state,'two-hand-grab');assert.equal(h.bridge.layerGrab.active,false);h.stick(0,1);assert.equal(h.view.active,false);h.press(h.tool,1,false);assert.equal(h.bridge.grab.state,'workspace-grab');h.press(h.support,1,false);h.stick();
- h.stick(0,1);h.point(`locked:${h.layers.project.activeLayerId}`);h.press(h.tool,0,true);assert(h.layers.active.layer.locked);h.press(h.tool,0,false);h.point(`visible:${h.layers.project.activeLayerId}`);h.press(h.tool,0,true);assert.equal(h.layers.active.layer.visible,false);h.press(h.tool,0,false);h.stick();assert.equal(h.view.active,false);
- }finally{h.dispose();}
+const toolState = () => ({
+  connectionId: 7,
+  role: "tool",
+  connected: true,
+  tracked: true,
+  gripTracked: true,
+  buttons: {
+    trigger: { pressed: false, rawValue: 0, justPressed: false },
+    grip: { pressed: false, rawValue: 0 },
+  },
 });
-test('Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm',()=>{
- const h=bridgeFixture('right');try{h.grips[0].position.x=-.2;h.grips[1].position.x=.2;
- for(const mode of ['clay','smooth','stamp']){h.tools.select(mode);h.update();h.press(h.tool,1,true);assert.equal(h.bridge.layerGrab.active,false);assert.equal(h.layers.transforming,false);h.press(h.support,1,true);assert.equal(h.bridge.grab.state,'two-hand-grab');h.press(h.support,1,false);assert.equal(h.bridge.grab.active,false);assert.equal(h.bridge.layerGrab.active,false);h.press(h.tool,1,false);}
- h.tools.select('transform');h.update();h.press(h.tool,1,true);h.grips[0].position.x=.4;h.update();assert(h.layers.transforming);assert.equal(h.layers.undoCount,0);h.input.mode='sculpt';h.update();assert.equal(h.bridge.layerGrab.active,false);assert.equal(h.layers.transforming,false);assert.deepEqual(h.layers.active.layer.transform.position,[0,0,0]);assert.equal(h.layers.undoCount,0);h.input.mode='translate';h.update();assert.equal(h.bridge.layerGrab.active,false);h.press(h.tool,1,false);h.press(h.tool,1,true);assert(h.bridge.layerGrab.active);
- }finally{h.dispose();}
-});
-test('menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak',()=>{
- const h=bridgeFixture('right');try{h.press(h.tool,0,true);h.stick(0,-1);assert.equal(h.view.active,false);h.press(h.tool,0,false);h.stick(0,-1);assert.equal(h.view.active,false);h.stick();h.stick(0,-1);assert(h.view.active);
- h.press(h.support,1,true);assert.equal(h.view.active,false);assert.equal(h.bridge.grab.state,'idle');h.press(h.support,1,false);h.press(h.support,1,true);assert.equal(h.bridge.grab.state,'workspace-grab');h.press(h.support,1,false);h.stick();h.stick(0,-1);h.bridge.setDominant('left');assert.equal(h.view.active,false);assert.equal(h.model.hover,null);h.bridge.setDominant('right');h.stick();h.stick(0,1);assert(h.view.active);h.session.visibilityState='visible-blurred';h.session.dispatchEvent(new Event('visibilitychange'));assert.equal(h.view.active,false);h.session.visibilityState='visible';h.update();assert.equal(h.view.active,false);h.stick();h.stick(0,-1);h.rays[0].visible=false;h.update();assert.equal(h.model.hover,null);h.rays[0].dispatchEvent({type:'disconnected'});assert.equal(h.view.active,false);h.stick();h.stick(0,1);h.bridge.resetWorkspaceView();assert.equal(h.view.active,false);h.stick();h.stick(0,-1);h.session.dispatchEvent(new Event('end'));assert.equal(h.view.active,false);assert.equal(h.bridge.input.states[0].connected,false);
- }finally{h.dispose();}
-});
-test('interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held',()=>{
- const roles=new XRControllerRoles(),support={...toolState(),connectionId:1,role:'support',stick:{available:true,x:0,y:0}},tool=toolState(),r=new XRSupportShortcuts({interactiveMenus:true});const step=()=>r.step(support,[support,tool],'idle',0,true);step();support.stick.y=-1;step();assert.equal(r.menu,'tool-wheel');trigger(tool,true);step();assert.equal(r.menu,'tool-wheel');support.stick.x=-1;support.stick.y=0;step();assert.equal(r.menu,null);assert.equal(r.message,'');trigger(tool,false);step();assert.equal(r.menu,null);support.stick.x=0;step();support.stick.y=1;step();assert.equal(r.menu,'layers');trigger(support,true);step();assert.equal(r.menu,null);assert.equal(roles.roleFor('left'),'support');
-});
-test('numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only',()=>{
- const f=fixture();try{for(let i=0;i<40;i++)f.tools.adjust('radius',-1);assert.equal(f.settings.radius,.12);assert.equal(f.tools.options().find(o=>o.id==='radius').decrease,false);for(let i=0;i<40;i++)f.tools.adjust('strength',1);assert.equal(f.settings.strength,1);
- f.layers.project.settings={...f.settings,camera:initial.camera};const native=saveSculptProject(f.layers.project);const opened=openSculptProject(native);assert.equal(opened.settings.radius,.12);assert.equal(opened.settings.strength,1);f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');f.tools.adjust('shape',1);assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)),new Uint8Array(native));assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
-});
-test('eight layer rows, paginated options and radial targets stay within the usable menu surface',()=>{
- const f=fixture();try{for(let i=1;i<8;i++)f.layers.create(64);f.model.setRequest('layers');assert.equal(f.model.content().buttons.length,26);for(const button of f.model.content().buttons){const r=button.rect;assert(r.x>=0&&r.x+r.width<=MENU_SIZE);assert(r.y>=0&&r.y+r.height<1040);assert.equal(f.model.hit(...buttonPoint(f.model,button.id)),button.id);}
- f.model.setRequest('tool-wheel');f.model.activate('tool:stamp');for(let page=0;page<10;page++){for(const b of f.model.content().buttons){const r=b.rect;assert(r.x+r.width<=MENU_SIZE&&r.y+r.height<1040);}if(f.model.content().buttons.find(b=>b.id==='next').disabled)break;f.model.activate('next');}assert(f.model.content().buttons.find(b=>b.id==='next').disabled);
- }finally{f.dispose();}
-});
-
- test('VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history',()=>{
-  const f=fixture();try{
-   f.tools.select('stamp');f.tools.stampAttachment.position[0]=.12;
-   const original=f.layers.active.layer;f.layers.setActiveTransform({position:[.3,0,0],rotation:[0,0,0],scale:[1,1,1]});f.layers.undo();
-   const bytes=original.volume.getDenseView().slice(),metadata=original.metadata(),undo=f.layers.undoCount,redo=f.layers.redoCount;
-   f.model.setRequest('layers');assert.equal(f.model.hit(...buttonPoint(f.model,'new-layer')),'new-layer');f.model.activate('new-layer');
-   const layer=f.layers.active.layer;assert.notEqual(layer.id,original.id);assert.equal(f.layers.project.layerStack.layers.length,2);assert.equal(layer.volume.resolution,64);assert(layer.volume.values.every(v=>v>0));assert.equal(layer.visible,true);assert.equal(layer.locked,false);
-   assert.equal(f.tools.active,'stamp');assert.equal(f.shape.definition.targetLayerId,layer.id);assert.equal(f.tools.stampAttachment.position[0],.12);
-   assert.deepEqual(original.metadata(),metadata);assert.deepEqual(original.volume.getDenseView(),bytes);assert.equal(f.layers.undoCount,undo);assert.equal(f.layers.redoCount,redo);assert.equal(f.model.page,'layers');assert.equal(f.changed,2);
-   const opened=openSculptProject(saveSculptProject(f.layers.project));assert.equal(opened.layerStack.layers.length,2);assert.equal(opened.layerStack.activeLayerId,layer.id);
-  }finally{f.dispose();}
- });
- test('VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors',()=>{
-  const f=fixture();try{
-   f.model.setRequest('layers');f.busy=true;assert(f.model.content().buttons.find(b=>b.id==='new-layer').disabled);f.model.activate('new-layer');assert.equal(f.layers.project.layerStack.layers.length,1);assert.throws(()=>f.tools.createLayer(),/Finish/);f.busy=false;
-   f.layers.beginStroke();assert.throws(()=>f.tools.createLayer(),/Finish/);f.layers.finishStroke();
-   const create=f.layers.create;f.layers.create=()=>{throw Error('Project voxel budget exceeded');};f.model.activate('new-layer');assert.match(f.model.feedback,/voxel budget/);assert.equal(f.layers.project.layerStack.layers.length,1);f.layers.create=create;
-   while(f.layers.project.layerStack.layers.length<8)f.tools.createLayer();
-   const content=f.model.content(),button=content.buttons.find(b=>b.id==='new-layer');assert(button.disabled);assert.match(button.detail,/Maximum/);f.model.activate('new-layer');assert.equal(f.layers.project.layerStack.layers.length,8);
-   for(const b of content.buttons){assert(b.rect.y+b.rect.height<1092);assert.equal(f.model.hit(...buttonPoint(f.model,b.id)),b.id);}
-  }finally{f.dispose();}
- });
- test('Tool Hand trigger adds a VR layer only once per press',()=>{
-  const restore=fakeDocument(),f=fixture();let view;try{
-   view=new XRMenuView(f.model);new Group().add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const state=toolState();view.update('layers',state,new Matrix4(),0,true);const pose=rayPose(view,...buttonPoint(f.model,'new-layer'));
-   trigger(state,false);view.update('layers',state,pose,16,true);trigger(state,true);view.update('layers',state,pose,32,true);assert.equal(f.layers.project.layerStack.layers.length,2);
-   state.buttons.trigger.justPressed=false;for(let t=48;t<160;t+=16)view.update('layers',state,pose,t,true);assert.equal(f.layers.project.layerStack.layers.length,2);
-   trigger(state,false);view.update('layers',state,pose,176,true);trigger(state,true);view.update('layers',state,pose,192,true);assert.equal(f.layers.project.layerStack.layers.length,3);
-  }finally{view?.dispose();f.dispose();restore();}
- });
-
-test('interactive menu renders after transparent scene panels and previews',()=>{
- const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
- assert.equal(view.mesh.material.transparent,true);assert.equal(view.mesh.material.opacity,1);
- assert.equal(view.mesh.material.depthTest,false);assert.equal(view.mesh.material.depthWrite,false);
- assert(view.mesh.renderOrder>30);
- }finally{view.dispose();f.dispose();restore();}
-});
-
-for(const hand of ['left','right'])test(`menu pointer overlays the panel and clears on dismissal (${hand})`,()=>{
- const h=bridgeFixture(hand);try{
- h.stick(0,-1);h.point('tool:stamp');const line=h.bridge.slots[0].line;
- assert(h.bridge.slots[0].rayVisual.visible);assert(line.renderOrder>h.view.mesh.renderOrder);assert.equal(line.material.depthTest,false);assert.equal(line.material.depthWrite,false);
- assert(h.view.cursor.visible);assert(h.view.cursor.renderOrder>line.renderOrder);assert.equal(h.view.cursor.material.transparent,true);assert.equal(h.view.cursor.material.depthTest,false);
- h.rays[0].position.set(100,100,100);h.update();assert.equal(h.view.cursor.visible,false);
- h.point('tool:stamp');assert(h.view.cursor.visible);h.stick();assert.equal(h.view.cursor.visible,false);assert.equal(line.renderOrder,0);assert.equal(line.material.depthTest,true);assert.equal(line.material.depthWrite,true);
- }finally{h.dispose();}
-});
-
-test('controller overlay includes realistic model meshes, restores materials and handles session cleanup',()=>{
- const h=bridgeFixture('right'),model=new Group(),mesh=new Mesh(new BoxGeometry(),new MeshBasicMaterial()),original=mesh.material;model.add(mesh);
- h.bridge.options.models={entries:[{asset:{object:model}},{}],ready:()=>true,stop(){},dispose(){}};
- try{h.stick(0,-1);const body=h.bridge.slots[0].body;
- assert(body.renderOrder>h.view.mesh.renderOrder);assert(mesh.renderOrder>h.view.cursor.renderOrder);assert.notEqual(mesh.material,original);assert.equal(mesh.material.transparent,true);assert.equal(mesh.material.depthTest,original.depthTest);assert.equal(mesh.material.depthWrite,original.depthWrite);assert.equal(original.transparent,false);
- const overlay=mesh.material;h.update();assert.equal(mesh.material,overlay);
- h.stick();assert.equal(mesh.material,original);assert.equal(mesh.renderOrder,0);assert.equal(body.renderOrder,0);
- h.stick(0,-1);assert.notEqual(mesh.material,original);h.bridge.stop();assert.equal(mesh.material,original);
- }finally{h.dispose();mesh.geometry.dispose();original.dispose();}
-});
-
-test('menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled',()=>{
- const h=bridgeFixture('right');try{h.stick(0,-1);let clears=0;let writable=false;const renderer={state:{buffers:{depth:{setMask:v=>writable=v}}},clearDepth:()=>{assert(writable);clears++;writable=false;}};
- h.view.mesh.onAfterRender(renderer);h.view.mesh.onAfterRender(renderer);assert.equal(clears,2);
- const body=h.bridge.slots[0].body;assert.equal(body.material.depthTest,true);assert.equal(body.material.depthWrite,true);assert(body.renderOrder>h.view.mesh.renderOrder);
- h.stick();assert.equal(body.material.depthTest,true);assert.equal(body.material.depthWrite,true);
- }finally{h.dispose();}
-});
-for(const hand of ['left','right'])test(`Move submenu ${hand}: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush`,()=>{
- const h=bridgeFixture(hand,true);try{const values=h.layers.active.volume.values.slice();h.stick(0,-1);h.point('tool:move');h.press(h.tool,0,true);assert.equal(h.model.content().title,'MOVE VARIANTS');h.press(h.tool,0,false);h.point('move-variant:pinch');h.press(h.tool,0,true);assert.equal(h.tools.active,'pinch');assert(!h.clay.active);assert.equal(h.layers.undoCount,0);h.stick();h.update();assert(!h.clay.active);assert.deepEqual(h.layers.active.volume.values,values);h.grips[0].position.set(.7,0,.12);h.press(h.tool,0,false);h.press(h.tool,0,true);assert(h.clay.active);h.bridge.suspend();assert(!h.clay.active);assert.equal(h.layers.undoCount,0);assert.equal(h.tools.lastMoveVariant,'pinch');}finally{h.dispose();}
-});
-
-test('Phase 5 Project route is reachable, bounded, disabled without an adapter and preserves source/history',()=>{
- const f=fixture();try{
-  const before=saveSculptProject(f.layers.project);f.model.setRequest('tool-wheel');
-  f.model.activate('project');assert.equal(f.model.world.section,'project');
-  for(const action of ['new','open','save','export','recover']){const b=f.model.content().buttons.find(b=>b.id===`project:${action}`);assert(b.disabled);assert.equal(f.model.hit(...buttonPoint(f.model,b.id)),b.id);f.model.activate(b.id);assert.equal(f.model.content().footer,'Unavailable');}
-  f.model.activate('tools');assert.equal(f.model.page,'tool-wheel');assert.deepEqual(saveSculptProject(f.layers.project),before);assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
-});
-test('Phase 5 menu status follows paint/mask operations, Move variants, locks and busy state',()=>{
- const f=fixture();try{f.model.setRequest('tool-wheel');
-  for(const [tool,mode,label] of [['paint','paint-erase','Erase colour'],['mask','mask-erase','Erase protection'],['clay','subtract','Subtract']]){
-   f.tools.select(tool);f.tools.port.setSettings({...f.settings,mode});assert(f.tools.workflowStatus.includes(label));assert.equal(f.model.content().subtitle,f.tools.workflowStatus);
+function buttonPoint(model, id) {
+  const button = model.content().buttons.find((b) => b.id === id);
+  assert(button, `missing ${id}`);
+  if (button.rect)
+    return [button.rect.x + button.rect.width / 2, button.rect.y + button.rect.height / 2];
+  const a = -Math.PI / 2 + (button.sector * Math.PI * 2) / VR_WHEEL_TOOLS.length;
+  return [WHEEL.x + Math.cos(a) * WHEEL.labelRadius, WHEEL.y + Math.sin(a) * WHEEL.labelRadius];
+}
+function rayPose(view, x, y) {
+  view.mesh.updateWorldMatrix(true, false);
+  const target = new Vector3(
+      (x / MENU_SIZE - 0.5) * 0.72,
+      (0.5 - y / MENU_SIZE) * 0.72,
+      0,
+    ).applyMatrix4(view.mesh.matrixWorld),
+    normal = new Vector3(0, 0, 1).transformDirection(view.mesh.matrixWorld);
+  return new Matrix4().compose(
+    target.addScaledVector(normal, 0.6),
+    view.mesh.getWorldQuaternion(new Quaternion()),
+    new Vector3(1, 1, 1),
+  );
+}
+function trigger(state, pressed) {
+  state.buttons.trigger = { pressed, rawValue: pressed ? 1 : 0, justPressed: pressed };
+}
+test("Tool Wheel opens, selects all enabled tools, shows active state, and dismisses cleanly", () => {
+  const f = fixture();
+  try {
+    const { model, tools } = f;
+    assert.equal(model.request, null);
+    model.setRequest("tool-wheel");
+    assert.equal(model.content().title, "TOOL WHEEL");
+    assert(model.content().buttons.find((b) => b.id === "tool:clay").selected);
+    for (const id of ["smooth", "stamp", "transform", "move", "clay"]) {
+      model.activate(`tool:${id}`);
+      assert.equal(tools.active, id);
+      assert.equal(model.page, "tool-options");
+      assert(model.content().title.includes(id === "move" ? "MOVE" : "OPTIONS"));
+      model.activate("tools");
+      assert(model.content().buttons.find((b) => b.id === `tool:${id}`).selected);
+    }
+    model.activate("tool:move");
+    assert.equal(tools.active, "move");
+    assert.equal(model.feedback, "");
+    model.activate("tools");
+    model.activate("tool:clay");
+    model.setRequest(null);
+    model.activate("tool:smooth");
+    assert.equal(tools.active, "clay");
+    assert.equal(model.hover, null);
+    assert.equal(model.hit(576, 280), null);
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
   }
-  for(const variant of ['non-elastic','elastic','rotate-twist','pinch','crease','scrape']){f.tools.selectMoveVariant(variant);assert(f.tools.workflowStatus.startsWith(f.tools.contextLabel));}
-  f.busy=true;assert(f.tools.workflowStatus.includes('Working'));assert(f.model.content().footer.includes('Working'));f.busy=false;
-  f.layers.active.layer.locked=true;assert(f.tools.workflowStatus.includes('locked'));assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
 });
-test('Phase 5 project adapter dispatch is guarded by busy state and returns via Tools',async()=>{
- const f=fixture();let calls=[];try{
-  const model=new XRMenuModel(f.tools,{projectAction:async a=>calls.push(a),projectStatus:()=> 'Unsaved changes'});model.setRequest('tool-wheel');model.activate('project');
-  for(const a of ['new','open','save','export','recover'])model.activate(`project:${a}`);assert.deepEqual(calls,['new','open','save','export','recover']);
-  f.busy=true;model.activate('project:new');assert.equal(calls.length,5);assert.equal(model.content().footer,'Unavailable');f.busy=false;
-  model.activate('tools');assert.equal(model.page,'tool-wheel');assert.equal(f.layers.undoCount,0);
- }finally{f.dispose();}
+test("radial and rectangular hit tests align with every visible target, including experimental Move", () => {
+  const f = fixture();
+  try {
+    const m = f.model;
+    m.setRequest("tool-wheel");
+    for (const definition of VR_WHEEL_TOOLS) {
+      const id = `tool:${definition.id}`;
+      assert.equal(m.hit(...buttonPoint(m, id)), id);
+    }
+    assert.equal(m.hit(1100, 1050), "project");
+    assert.equal(m.hit(576, 554), "options");
+    assert.equal(m.hit(576, 626), "options");
+    for (const point of [
+      [0, 0],
+      [-1, 300],
+      [NaN, 0],
+      [1153, 200],
+      [1130, 1050],
+    ])
+      assert.equal(m.hit(...point), null);
+    m.activate("options");
+    for (const b of m.content().buttons) assert.equal(m.hit(...buttonPoint(m, b.id)), b.id);
+  } finally {
+    f.dispose();
+  }
 });
-test('Phase 5 World and Layers show rejected actions rather than hiding feedback',()=>{
- const f=fixture();try{for(const request of ['tool-wheel','layers']){f.model.setRequest(request);if(request==='tool-wheel')f.model.activate('world');f.model.activate('nonexistent');assert.equal(f.model.content().footer,'Unavailable');f.model.setRequest(null);assert.equal(f.model.feedback,'');}}finally{f.dispose();}
+test("Cut is a direct main-wheel control with a separate plane review and preserves all ten sector targets", () => {
+  const f = fixture();
+  try {
+    const m = f.model;
+    m.setRequest("tool-wheel");
+    assert.equal(VR_WHEEL_TOOLS.length, 10);
+    assert.equal(m.hit(...buttonPoint(m, "tool:cut")), "tool:cut");
+    const cut = m.content().buttons.find((b) => b.id === "tool:cut"),
+      options = m.content().buttons.find((b) => b.id === "options");
+    assert.equal(cut.sector, 9);
+    assert.equal(cut.rect, undefined);
+    assert.deepEqual([options.rect.width, options.rect.height], [280, 144]);
+    m.activate("tool:cut");
+    assert.equal(m.page, "cut");
+    assert.equal(m.content().title, "PLANE CUT");
+    m.activate("cut-axis:z");
+    m.activate("cut-offset-inc");
+    m.activate("cut-tilt-x-inc");
+    m.activate("cut-preview");
+    assert.equal(m.page, "cut-confirm");
+    assert.match(m.content().labels[0].text, /0\.10/);
+    m.activate("cut-back");
+    assert.equal(m.page, "cut");
+    m.activate("cut-cancel");
+    assert.equal(m.page, "tool-wheel");
+  } finally {
+    f.dispose();
+  }
+});
+test("Clay/Smooth options update the same desktop settings without voxel/history changes", () => {
+  const f = fixture();
+  try {
+    const bytes = new Uint8Array(saveSculptProject(f.layers.project)),
+      volume = f.layers.active.volume.getDenseView().slice(),
+      geometry = f.layers.active.surface.group.children.map((o) => o.geometry);
+    f.tools.adjust("operation", 1);
+    assert.equal(f.settings.mode, "subtract");
+    f.tools.adjust("radius", 1);
+    assert.equal(f.settings.radius, 0.24);
+    f.tools.adjust("strength", 1);
+    assert.equal(f.settings.strength, 0.4);
+    f.tools.adjust("hardness", 1);
+    assert.equal(f.settings.hardness, 0.05);
+    assert.throws(() => f.tools.adjust("spacing", 1));
+    f.tools.select("smooth");
+    assert.equal(f.settings.mode, "smooth");
+    assert.deepEqual(
+      f.tools.options().map((o) => o.id),
+      [
+        "placement",
+        "radius",
+        "strength",
+        "quality",
+        "application",
+        "global-snap",
+        "symmetry",
+        "symmetry-axis",
+        "symmetry-offset",
+        "alternate-tool",
+      ],
+    );
+    f.tools.adjust("strength", -1);
+    assert.equal(f.settings.strength, 0.35);
+    f.tools.select("clay");
+    assert.equal(f.settings.mode, "subtract");
+    f.tools.port.setSettings({ ...f.settings, radius: 0.3 });
+    assert.equal(f.tools.options().find((o) => o.id === "radius").value, "0.300");
+    f.input.mode = "rotate";
+    assert.equal(f.tools.active, "transform");
+    f.shape.setEnabled(true, f.layers.project.layerStack);
+    assert.equal(f.tools.active, "stamp");
+    assert.deepEqual(f.layers.active.volume.getDenseView(), volume);
+    assert.deepEqual(
+      f.layers.active.surface.group.children.map((o) => o.geometry),
+      geometry,
+    );
+    assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)), bytes);
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("data-driven Stamp options use the existing preview model and linked dimensions, without applying a stamp", () => {
+  const f = fixture();
+  try {
+    const bytes = f.layers.active.volume.getDenseView().slice();
+    f.tools.select("stamp");
+    f.tools.adjust("dimension-0", 1);
+    assert.deepEqual(f.shape.definition.dimensions, [0.85, 0.85, 0.85]);
+    assert(f.tools.options().find((o) => o.id === "dimension-1").disabled);
+    assert.throws(() => f.tools.adjust("dimension-2", 1));
+    f.tools.adjust("shape", 1);
+    assert.equal(f.shape.definition.kind, "box");
+    f.tools.adjust("dimension-1", 1);
+    assert.equal(f.shape.definition.dimensions[1], 0.9);
+    f.tools.adjust("rotation-0", 1);
+    assert(Math.abs(f.shape.definition.transform.rotation[0] - Math.PI / 12) < 1e-10);
+    f.tools.adjust("shape-scale", 1);
+    assert.deepEqual(f.shape.definition.transform.scale, [1.1, 1.1, 1.1]);
+    f.tools.adjust("operation", 1);
+    assert.equal(f.shape.definition.operation, "subtract");
+    f.tools.adjust("shape", 1);
+    f.tools.adjust("shape", 1);
+    assert.equal(f.shape.definition.kind, "pyramid");
+    f.tools.adjust("dimension-0", 1);
+    assert.equal(f.shape.definition.dimensions[0], f.shape.definition.dimensions[2]);
+    assert(f.tools.options().find((o) => o.id === "dimension-2").disabled);
+    f.model.setRequest("tool-wheel");
+    f.model.activate("options");
+    f.model.activate("next");
+    assert.equal(f.model.optionPage, 1);
+    f.model.activate("next");
+    assert.equal(f.model.optionPage, 2);
+    assert(f.model.content().labels.some((l) => l.text === "Uniform scale"));
+    f.model.activate("prev");
+    f.model.activate("prev");
+    assert.equal(f.model.optionPage, 0);
+    assert.deepEqual(f.layers.active.volume.getDenseView(), bytes);
+    assert.equal(f.layers.undoCount, 0);
+    f.layers.setFlag(f.layers.project.activeLayerId, "locked", true);
+    assert(
+      f.tools
+        .options()
+        .filter(
+          (o) => o.id !== "application" && o.id !== "alternate-tool" && o.id !== "global-snap",
+        )
+        .every((o) => o.disabled),
+    );
+    assert.throws(() => f.tools.adjust("shape", 1));
+  } finally {
+    f.dispose();
+  }
+});
+test("Transform options edit metadata with existing undo and native persistence, never SDF resampling", () => {
+  const f = fixture();
+  try {
+    const { tools, layers } = f,
+      volume = layers.active.volume,
+      bytes = volume.getDenseView().slice();
+    tools.select("transform");
+    tools.adjust("layer-0", 1);
+    assert.equal(layers.active.layer.transform.position[0], 0.1);
+    assert.equal(layers.undoCount, 1);
+    tools.adjust("transform-mode", 1);
+    assert.equal(f.input.mode, "rotate");
+    tools.adjust("layer-2", 1);
+    assert(Math.abs(layers.active.layer.transform.rotation[2] - (5 * Math.PI) / 180) < 1e-10);
+    tools.adjust("transform-mode", 1);
+    assert.equal(f.input.mode, "scale");
+    tools.adjust("layer-scale", 1);
+    assert.deepEqual(layers.active.layer.transform.scale, [1.1, 1.1, 1.1]);
+    assert.equal(layers.undoCount, 3);
+    const opened = openSculptProject(saveSculptProject(layers.project));
+    assert.deepEqual(opened.layerStack.active.transform, layers.active.layer.transform);
+    layers.undo();
+    assert.deepEqual(layers.active.layer.transform.scale, [1, 1, 1]);
+    layers.undo(true);
+    assert.deepEqual(layers.active.layer.transform.scale, [1.1, 1.1, 1.1]);
+    assert.equal(layers.active.volume, volume);
+    assert.deepEqual(volume.getDenseView(), bytes);
+    tools.adjust("surface-view", 1);
+    assert.equal(layers.viewMode, "boolean");
+    assert.match(tools.options().find((o) => o.id === "grip").value, /Separate Layers/);
+    layers.active.layer.locked = true;
+    assert(tools.options().find((o) => o.id === "layer-scale").disabled);
+    layers.active.layer.locked = false;
+    layers.active.layer.transform.scale = [1, 2, 1];
+    assert(tools.options().find((o) => o.id === "layer-scale").disabled);
+    layers.viewMode = "separate";
+    assert.match(tools.options().find((o) => o.id === "grip").value, /Uniform/);
+  } finally {
+    f.dispose();
+  }
+});
+test("Layers panel selects visible, hidden or locked rows and toggles flags using existing commands", () => {
+  const f = fixture();
+  try {
+    const first = f.layers.active.layer,
+      second = f.layers.create(64),
+      a = first.volume.getDenseView().slice(),
+      b = second.volume.getDenseView().slice(),
+      m = f.model;
+    m.setRequest("layers");
+    assert.equal(m.content().buttons.length, 16);
+    m.activate(`select:${first.id}`);
+    assert.equal(f.layers.project.activeLayerId, first.id);
+    assert(m.content().buttons.find((b) => b.id === `select:${first.id}`).selected);
+    m.activate(`visible:${first.id}`);
+    m.activate(`locked:${first.id}`);
+    assert.equal(first.visible, false);
+    assert.equal(first.locked, true);
+    m.activate(`select:${second.id}`);
+    assert.equal(f.layers.project.activeLayerId, second.id);
+    m.activate(`select:${first.id}`);
+    assert.equal(f.layers.active.layer.id, first.id);
+    const opened = openSculptProject(saveSculptProject(f.layers.project));
+    assert.equal(opened.layerStack.activeLayerId, first.id);
+    assert.equal(opened.layerStack.active.visible, false);
+    assert.equal(opened.layerStack.active.locked, true);
+    assert.deepEqual(first.volume.getDenseView(), a);
+    assert.deepEqual(second.volume.getDenseView(), b);
+    assert.equal(f.layers.undoCount, 0);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    m.activate(`visible:${first.id}`);
+    m.activate(`locked:${first.id}`);
+    assert(first.visible && !first.locked);
+    assert(f.changed >= 6);
+  } finally {
+    f.dispose();
+  }
+});
+test("busy/current edit guards reject menu business commands instead of committing an edit", () => {
+  const f = fixture();
+  try {
+    f.model.setRequest("tool-wheel");
+    f.busy = true;
+    assert.throws(() => f.tools.select("smooth"));
+    f.model.activate("tool:smooth");
+    assert.equal(f.tools.active, "clay");
+    f.busy = false;
+    f.layers.beginTransform();
+    assert.throws(() => f.tools.selectLayer(f.layers.project.activeLayerId));
+    assert.throws(() => f.tools.toggleLayer(f.layers.project.activeLayerId, "visible"));
+    assert.throws(() => f.tools.adjust("radius", 1));
+    assert(f.layers.transforming);
+    f.layers.cancelTransform();
+    f.layers.beginStroke();
+    assert.throws(() => f.tools.select("stamp"));
+    assert(f.layers.drawing);
+    f.layers.finishStroke();
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("tool trigger selects only a current hovered menu target, once per press, with a fresh release on opening/reconnect", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    view = new XRMenuView(f.model);
+    new Group().add(view.mesh);
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const s = toolState();
+    trigger(s, true);
+    view.update("tool-wheel", s, new Matrix4(), 0, true);
+    const pose = rayPose(view, ...buttonPoint(f.model, "tool:smooth"));
+    view.update("tool-wheel", s, pose, 16, true);
+    assert.equal(f.tools.active, "clay");
+    trigger(s, false);
+    view.update("tool-wheel", s, pose, 32, true);
+    assert.equal(f.model.hover, "tool:smooth");
+    trigger(s, true);
+    view.update("tool-wheel", s, pose, 48, true);
+    assert.equal(f.tools.active, "smooth");
+    assert.equal(f.model.page, "tool-options");
+    const changed = f.changed;
+    for (let t = 64; t < 300; t += 16) {
+      s.buttons.trigger.justPressed = false;
+      view.update("tool-wheel", s, pose, t, true);
+    }
+    assert.equal(f.changed, changed);
+    view.update(null, s, pose, 310, true);
+    assert.equal(view.mesh.visible, false);
+    assert.equal(view.active, false);
+    view.update("tool-wheel", s, pose, 320, true);
+    assert.equal(f.tools.active, "smooth");
+    trigger(s, false);
+    view.update("tool-wheel", s, pose, 336, true);
+    s.connectionId++;
+    trigger(s, true);
+    view.update("tool-wheel", s, pose, 352, true);
+    assert.equal(f.model.page, "tool-wheel");
+    assert.equal(f.tools.active, "smooth");
+  } finally {
+    view?.dispose();
+    f.dispose();
+    restore();
+  }
+});
+test("view hit conversion respects a transformed tracking parent, misses, roles and tracked pose validity", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    view = new XRMenuView(f.model);
+    const root = new Group();
+    root.position.set(2, 1, -1);
+    root.rotation.y = 0.5;
+    root.add(view.mesh);
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const s = toolState();
+    view.update("tool-wheel", s, new Matrix4(), 0, true);
+    const pose = rayPose(view, ...buttonPoint(f.model, "tool:stamp"));
+    assert(view.update("tool-wheel", s, pose, 16, true) > 0);
+    assert.equal(f.model.hover, "tool:stamp");
+    s.role = "support";
+    trigger(s, true);
+    view.update("tool-wheel", s, pose, 32, true);
+    assert.equal(f.tools.active, "clay");
+    assert.equal(f.model.hover, null);
+    s.role = "tool";
+    s.tracked = false;
+    view.update("tool-wheel", s, pose, 48, true);
+    s.tracked = true;
+    view.update("tool-wheel", s, new Matrix4().makeScale(0, 0, 0), 64, true);
+    assert.equal(f.model.hover, null);
+    view.update("tool-wheel", s, new Matrix4().makeTranslation(100, 100, 100), 80, true);
+    assert.equal(f.model.hover, null);
+    assert.equal(f.tools.active, "clay");
+  } finally {
+    view?.dispose();
+    f.dispose();
+    restore();
+  }
+});
+test("view caches canvas content, stays fixed during a hold, reanchors per opening and cleans up across sessions", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    view = new XRMenuView(f.model);
+    const root = new Group();
+    root.add(view.mesh);
+    view.start();
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    view.update("tool-wheel", undefined, undefined, 0, true);
+    const anchor = view.mesh.position.clone(),
+      count = view.paintCount;
+    for (let i = 1; i < 20; i++) view.update("tool-wheel", undefined, undefined, i * 16, true);
+    assert.equal(view.paintCount, count);
+    view.place({ x: 2, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    view.update("tool-wheel", undefined, undefined, 330, true);
+    assert.deepEqual(view.mesh.position, anchor);
+    view.update(null, undefined, undefined, 340, true);
+    view.update("layers", undefined, undefined, 350, true);
+    assert.equal(view.mesh.position.x, 2);
+    assert.equal(root.children.length, 1);
+    view.update("layers", undefined, undefined, 360, false);
+    assert.equal(view.mesh.visible, false);
+    assert.equal(f.model.request, null);
+    for (let i = 0; i < 3; i++) {
+      view.stop();
+      assert.equal(view.mesh.parent, null);
+      root.add(view.mesh);
+      view.start();
+      assert.equal(view.mesh.visible, false);
+      assert.equal(root.children.length, 1);
+    }
+    view.dispose();
+    assert.equal(view.mesh.parent, null);
+  } finally {
+    view?.dispose();
+    f.dispose();
+    restore();
+  }
+});
+function source(hand) {
+  return {
+    handedness: hand,
+    profiles: ["meta-quest-touch-plus"],
+    targetRayMode: "tracked-pointer",
+    gripSpace: {},
+    gamepad: {
+      mapping: "xr-standard",
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 6 }, () => ({ value: 0, pressed: false, touched: false })),
+    },
+  };
+}
+class Session extends EventTarget {
+  visibilityState = "visible";
+}
+function bridgeFixture(hand, sculpt = false, worldPort) {
+  const f = fixture(worldPort),
+    restore = fakeDocument(),
+    view = new XRMenuView(f.model),
+    rays = [new Group(), new Group()],
+    grips = [new Group(), new Group()],
+    root = new Group(),
+    workspace = new Group(),
+    roles = new XRControllerRoles();
+  roles.setDominant(hand);
+  workspace.add(f.layers.group);
+  root.add(view.mesh);
+  view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+  const clay = sculpt ? new XRClayStroke(() => f.layers, f.tools, root) : undefined;
+  const bridge = new XRControllers(
+      { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+      root,
+      roles,
+      undefined,
+      () => {},
+      {
+        stroke: clay,
+        workspace,
+        layers: () => f.layers,
+        toolMode: () => f.tools.active,
+        menus: view,
+        shortcuts: { interactiveMenus: true, commands: projectHistoryShortcuts(() => f.layers) },
+      },
+    ),
+    support = source(hand === "left" ? "right" : "left"),
+    tool = source(hand),
+    session = new Session();
+  bridge.start(session);
+  rays[0].dispatchEvent({ type: "connected", data: tool });
+  rays[1].dispatchEvent({ type: "connected", data: support });
+  let time = 0;
+  const update = () => bridge.update((time += 16)),
+    press = (s, index, down) => {
+      Object.assign(s.gamepad.buttons[index], { value: down ? 1 : 0, pressed: down });
+      update();
+    },
+    stick = (x = 0, y = 0) => {
+      support.gamepad.axes = [0, 0, x, y];
+      update();
+    },
+    point = (id) => {
+      const p = rayPose(view, ...buttonPoint(f.model, id));
+      p.decompose(rays[0].position, rays[0].quaternion, rays[0].scale);
+      update();
+    };
+  update();
+  return {
+    ...f,
+    clay,
+    view,
+    bridge,
+    rays,
+    grips,
+    tool,
+    support,
+    session,
+    update,
+    press,
+    stick,
+    point,
+    dispose() {
+      bridge.dispose();
+      clay?.dispose();
+      view.dispose();
+      f.dispose();
+      restore();
+    },
+  };
+}
+for (const hand of ["left", "right"])
+  test(`interactive menus select shared tools/layers with ${hand} dominance; old shortcuts and grips remain exclusive`, () => {
+    const h = bridgeFixture(hand);
+    try {
+      h.stick(0, -1);
+      assert.equal(h.model.request, "tool-wheel");
+      assert(h.bridge.slots[0].rayVisual.visible);
+      h.point("tool:transform");
+      h.press(h.tool, 0, true);
+      assert.equal(h.tools.active, "transform");
+      assert.equal(h.model.page, "tool-options");
+      assert.equal(h.layers.transforming, false);
+      assert.equal(h.layers.undoCount, 0);
+      h.update();
+      assert.equal(h.layers.undoCount, 0);
+      h.press(h.tool, 0, false);
+      h.point("inc:layer-0");
+      h.press(h.tool, 0, true);
+      assert.equal(h.layers.active.layer.transform.position[0], 0.1);
+      assert.equal(h.layers.undoCount, 1);
+      h.press(h.tool, 0, false);
+      h.stick();
+      assert.equal(h.view.active, false);
+      h.stick(-1, 0);
+      assert.equal(h.layers.undoCount, 0);
+      h.stick();
+      h.stick(1, 0);
+      assert.equal(h.layers.undoCount, 1);
+      h.stick();
+      h.press(h.tool, 1, true);
+      assert(h.bridge.layerGrab.active);
+      h.grips[0].position.z = 0.2;
+      h.update();
+      h.press(h.support, 1, true);
+      assert.equal(h.bridge.grab.state, "two-hand-grab");
+      assert.equal(h.bridge.layerGrab.active, false);
+      h.stick(0, 1);
+      assert.equal(h.view.active, false);
+      h.press(h.tool, 1, false);
+      assert.equal(h.bridge.grab.state, "workspace-grab");
+      h.press(h.support, 1, false);
+      h.stick();
+      h.stick(0, 1);
+      h.point(`locked:${h.layers.project.activeLayerId}`);
+      h.press(h.tool, 0, true);
+      assert(h.layers.active.layer.locked);
+      h.press(h.tool, 0, false);
+      h.point(`visible:${h.layers.project.activeLayerId}`);
+      h.press(h.tool, 0, true);
+      assert.equal(h.layers.active.layer.visible, false);
+      h.press(h.tool, 0, false);
+      h.stick();
+      assert.equal(h.view.active, false);
+    } finally {
+      h.dispose();
+    }
+  });
+test("Tool grip is inert in Clay, Smooth and Stamp; both grips still navigate; external mode changes cancel/rearm", () => {
+  const h = bridgeFixture("right");
+  try {
+    h.grips[0].position.x = -0.2;
+    h.grips[1].position.x = 0.2;
+    for (const mode of ["clay", "smooth", "stamp"]) {
+      h.tools.select(mode);
+      h.update();
+      h.press(h.tool, 1, true);
+      assert.equal(h.bridge.layerGrab.active, false);
+      assert.equal(h.layers.transforming, false);
+      h.press(h.support, 1, true);
+      assert.equal(h.bridge.grab.state, "two-hand-grab");
+      h.press(h.support, 1, false);
+      assert.equal(h.bridge.grab.active, false);
+      assert.equal(h.bridge.layerGrab.active, false);
+      h.press(h.tool, 1, false);
+    }
+    h.tools.select("transform");
+    h.update();
+    h.press(h.tool, 1, true);
+    h.grips[0].position.x = 0.4;
+    h.update();
+    assert(h.layers.transforming);
+    assert.equal(h.layers.undoCount, 0);
+    h.input.mode = "sculpt";
+    h.update();
+    assert.equal(h.bridge.layerGrab.active, false);
+    assert.equal(h.layers.transforming, false);
+    assert.deepEqual(h.layers.active.layer.transform.position, [0, 0, 0]);
+    assert.equal(h.layers.undoCount, 0);
+    h.input.mode = "translate";
+    h.update();
+    assert.equal(h.bridge.layerGrab.active, false);
+    h.press(h.tool, 1, false);
+    h.press(h.tool, 1, true);
+    assert(h.bridge.layerGrab.active);
+  } finally {
+    h.dispose();
+  }
+});
+test("menus dismiss on grabs, role swap, blur, lost input, reset and session end; preheld triggers never leak", () => {
+  const h = bridgeFixture("right");
+  try {
+    h.press(h.tool, 0, true);
+    h.stick(0, -1);
+    assert.equal(h.view.active, false);
+    h.press(h.tool, 0, false);
+    h.stick(0, -1);
+    assert.equal(h.view.active, false);
+    h.stick();
+    h.stick(0, -1);
+    assert(h.view.active);
+    h.press(h.support, 1, true);
+    assert.equal(h.view.active, false);
+    assert.equal(h.bridge.grab.state, "idle");
+    h.press(h.support, 1, false);
+    h.press(h.support, 1, true);
+    assert.equal(h.bridge.grab.state, "workspace-grab");
+    h.press(h.support, 1, false);
+    h.stick();
+    h.stick(0, -1);
+    h.bridge.setDominant("left");
+    assert.equal(h.view.active, false);
+    assert.equal(h.model.hover, null);
+    h.bridge.setDominant("right");
+    h.stick();
+    h.stick(0, 1);
+    assert(h.view.active);
+    h.session.visibilityState = "visible-blurred";
+    h.session.dispatchEvent(new Event("visibilitychange"));
+    assert.equal(h.view.active, false);
+    h.session.visibilityState = "visible";
+    h.update();
+    assert.equal(h.view.active, false);
+    h.stick();
+    h.stick(0, -1);
+    h.rays[0].visible = false;
+    h.update();
+    assert.equal(h.model.hover, null);
+    h.rays[0].dispatchEvent({ type: "disconnected" });
+    assert.equal(h.view.active, false);
+    h.stick();
+    h.stick(0, 1);
+    h.bridge.resetWorkspaceView();
+    assert.equal(h.view.active, false);
+    h.stick();
+    h.stick(0, -1);
+    h.session.dispatchEvent(new Event("end"));
+    assert.equal(h.view.active, false);
+    assert.equal(h.bridge.input.states[0].connected, false);
+  } finally {
+    h.dispose();
+  }
+});
+test("interactive menu support keeps the four-direction neutral latch and only permits Tool trigger while held", () => {
+  const roles = new XRControllerRoles(),
+    support = {
+      ...toolState(),
+      connectionId: 1,
+      role: "support",
+      stick: { available: true, x: 0, y: 0 },
+    },
+    tool = toolState(),
+    r = new XRSupportShortcuts({ interactiveMenus: true });
+  const step = () => r.step(support, [support, tool], "idle", 0, true);
+  step();
+  support.stick.y = -1;
+  step();
+  assert.equal(r.menu, "tool-wheel");
+  trigger(tool, true);
+  step();
+  assert.equal(r.menu, "tool-wheel");
+  support.stick.x = -1;
+  support.stick.y = 0;
+  step();
+  assert.equal(r.menu, null);
+  assert.equal(r.message, "");
+  trigger(tool, false);
+  step();
+  assert.equal(r.menu, null);
+  support.stick.x = 0;
+  step();
+  support.stick.y = 1;
+  step();
+  assert.equal(r.menu, "layers");
+  trigger(support, true);
+  step();
+  assert.equal(r.menu, null);
+  assert.equal(roles.roleFor("left"), "support");
+});
+test("numeric bounds clamp, brush settings retain the existing native save/load contract, and menu state stays session-only", () => {
+  const f = fixture();
+  try {
+    for (let i = 0; i < 40; i++) f.tools.adjust("radius", -1);
+    assert.equal(f.settings.radius, 0.12);
+    assert.equal(f.tools.options().find((o) => o.id === "radius").decrease, false);
+    for (let i = 0; i < 40; i++) f.tools.adjust("strength", 1);
+    assert.equal(f.settings.strength, 1);
+    f.layers.project.settings = { ...f.settings, camera: initial.camera };
+    const native = saveSculptProject(f.layers.project);
+    const opened = openSculptProject(native);
+    assert.equal(opened.settings.radius, 0.12);
+    assert.equal(opened.settings.strength, 1);
+    f.model.setRequest("tool-wheel");
+    f.model.activate("tool:stamp");
+    f.tools.adjust("shape", 1);
+    assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)), new Uint8Array(native));
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("eight layer rows, paginated options and radial targets stay within the usable menu surface", () => {
+  const f = fixture();
+  try {
+    for (let i = 1; i < 8; i++) f.layers.create(64);
+    f.model.setRequest("layers");
+    assert.equal(f.model.content().buttons.length, 26);
+    for (const button of f.model.content().buttons) {
+      const r = button.rect;
+      assert(r.x >= 0 && r.x + r.width <= MENU_SIZE);
+      assert(r.y >= 0 && r.y + r.height < 1040);
+      assert.equal(f.model.hit(...buttonPoint(f.model, button.id)), button.id);
+    }
+    f.model.setRequest("tool-wheel");
+    f.model.activate("tool:stamp");
+    for (let page = 0; page < 10; page++) {
+      for (const b of f.model.content().buttons) {
+        const r = b.rect;
+        assert(r.x + r.width <= MENU_SIZE && r.y + r.height < 1040);
+      }
+      if (f.model.content().buttons.find((b) => b.id === "next").disabled) break;
+      f.model.activate("next");
+    }
+    assert(f.model.content().buttons.find((b) => b.id === "next").disabled);
+  } finally {
+    f.dispose();
+  }
 });
 
-test('Phase 5 held trigger cannot route to Project until released, in either hand',()=>{
- const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
- for(const hand of ['left','right']){view.close();view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const state=toolState();state.handedness=hand;trigger(state,true);view.update('tool-wheel',state,undefined,0,true);
- const pose=rayPose(view,...buttonPoint(f.model,'project'));view.update('tool-wheel',state,pose,120,true);assert.equal(f.model.page,'tool-wheel');
- trigger(state,false);view.update('tool-wheel',state,pose,140,true);trigger(state,true);view.update('tool-wheel',state,pose,160,true);assert.equal(f.model.world.section,'project');
- view.update(null,state,pose,180,true);assert(!view.active);assert.equal(f.layers.undoCount,0);}
- }finally{view.dispose();f.dispose();restore();}
+test("VR Add New Layer creates/selects an empty independent 64³ layer and preserves tools and existing history", () => {
+  const f = fixture();
+  try {
+    f.tools.select("stamp");
+    f.tools.stampAttachment.position[0] = 0.12;
+    const original = f.layers.active.layer;
+    f.layers.setActiveTransform({ position: [0.3, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+    f.layers.undo();
+    const bytes = original.volume.getDenseView().slice(),
+      metadata = original.metadata(),
+      undo = f.layers.undoCount,
+      redo = f.layers.redoCount;
+    f.model.setRequest("layers");
+    assert.equal(f.model.hit(...buttonPoint(f.model, "new-layer")), "new-layer");
+    f.model.activate("new-layer");
+    const layer = f.layers.active.layer;
+    assert.notEqual(layer.id, original.id);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    assert.equal(layer.volume.resolution, 64);
+    assert(layer.volume.values.every((v) => v > 0));
+    assert.equal(layer.visible, true);
+    assert.equal(layer.locked, false);
+    assert.equal(f.tools.active, "stamp");
+    assert.equal(f.shape.definition.targetLayerId, layer.id);
+    assert.equal(f.tools.stampAttachment.position[0], 0.12);
+    assert.deepEqual(original.metadata(), metadata);
+    assert.deepEqual(original.volume.getDenseView(), bytes);
+    assert.equal(f.layers.undoCount, undo);
+    assert.equal(f.layers.redoCount, redo);
+    assert.equal(f.model.page, "layers");
+    assert.equal(f.changed, 2);
+    const opened = openSculptProject(saveSculptProject(f.layers.project));
+    assert.equal(opened.layerStack.layers.length, 2);
+    assert.equal(opened.layerStack.activeLayerId, layer.id);
+  } finally {
+    f.dispose();
+  }
 });
-test('Phase 5 disabled paint swatches and sliders never mutate or capture input',()=>{
- const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
- f.tools.select('paint');view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const state=toolState();view.update('tool-wheel',state,undefined,0,true);f.model.activate('options');f.busy=true;
- const swatch=f.model.content().buttons.find(b=>b.id.startsWith('paint-swatch:'));assert(swatch.disabled);const before=f.layers.paintColour;f.model.activate(swatch.id);assert.equal(f.layers.paintColour,before);
- // A busy slider must not keep capture when the job finishes while trigger is held.
- f.model.optionPage=Math.floor(f.tools.options().findIndex(o=>o.slider)/5);
- const slider=f.model.content().buttons.find(b=>b.slider);assert(slider?.disabled);const pose=rayPose(view,...buttonPoint(f.model,slider.id));
- trigger(state,false);view.update('tool-wheel',state,pose,120,true);trigger(state,true);view.update('tool-wheel',state,pose,140,true);f.busy=false;state.buttons.trigger.justPressed=false;
- const value=f.model.content().buttons.find(b=>b.id===slider.id).slider.value;view.update('tool-wheel',state,pose,260,true);assert.equal(f.model.content().buttons.find(b=>b.id===slider.id).slider.value,value);assert.equal(f.layers.undoCount,0);
- }finally{view.dispose();f.dispose();restore();}
+test("VR new-layer action is guarded during edits, at layer capacity, and reports allocation errors", () => {
+  const f = fixture();
+  try {
+    f.model.setRequest("layers");
+    f.busy = true;
+    assert(f.model.content().buttons.find((b) => b.id === "new-layer").disabled);
+    f.model.activate("new-layer");
+    assert.equal(f.layers.project.layerStack.layers.length, 1);
+    assert.throws(() => f.tools.createLayer(), /Finish/);
+    f.busy = false;
+    f.layers.beginStroke();
+    assert.throws(() => f.tools.createLayer(), /Finish/);
+    f.layers.finishStroke();
+    const create = f.layers.create;
+    f.layers.create = () => {
+      throw Error("Project voxel budget exceeded");
+    };
+    f.model.activate("new-layer");
+    assert.match(f.model.feedback, /voxel budget/);
+    assert.equal(f.layers.project.layerStack.layers.length, 1);
+    f.layers.create = create;
+    while (f.layers.project.layerStack.layers.length < 8) f.tools.createLayer();
+    const content = f.model.content(),
+      button = content.buttons.find((b) => b.id === "new-layer");
+    assert(button.disabled);
+    assert.match(button.detail, /Maximum/);
+    f.model.activate("new-layer");
+    assert.equal(f.layers.project.layerStack.layers.length, 8);
+    for (const b of content.buttons) {
+      assert(b.rect.y + b.rect.height < 1092);
+      assert.equal(f.model.hit(...buttonPoint(f.model, b.id)), b.id);
+    }
+  } finally {
+    f.dispose();
+  }
 });
-test('Phase 5 static Project polling retains one canvas and no repaints',t=>{
- const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{
- view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});view.update('tool-wheel',undefined,undefined,0,true);f.model.activate('project');view.update('tool-wheel',undefined,undefined,100,true);
- const count=view.paintCount,texture=view.mesh.material.map,start=performance.now();for(let i=1;i<=360;i++)view.update('tool-wheel',undefined,undefined,100+i*16,true);
- t.diagnostic(`Host mock-canvas 360 polls: ${(performance.now()-start).toFixed(2)} ms; additional repaints ${view.paintCount-count}`);assert.equal(view.paintCount,count);assert.equal(view.mesh.material.map,texture);
- }finally{view.dispose();f.dispose();restore();}
+test("Tool Hand trigger adds a VR layer only once per press", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    view = new XRMenuView(f.model);
+    new Group().add(view.mesh);
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const state = toolState();
+    view.update("layers", state, new Matrix4(), 0, true);
+    const pose = rayPose(view, ...buttonPoint(f.model, "new-layer"));
+    trigger(state, false);
+    view.update("layers", state, pose, 16, true);
+    trigger(state, true);
+    view.update("layers", state, pose, 32, true);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    state.buttons.trigger.justPressed = false;
+    for (let t = 48; t < 160; t += 16) view.update("layers", state, pose, t, true);
+    assert.equal(f.layers.project.layerStack.layers.length, 2);
+    trigger(state, false);
+    view.update("layers", state, pose, 176, true);
+    trigger(state, true);
+    view.update("layers", state, pose, 192, true);
+    assert.equal(f.layers.project.layerStack.layers.length, 3);
+  } finally {
+    view?.dispose();
+    f.dispose();
+    restore();
+  }
 });
 
-for(const hand of ['left','right'])test(`Project library ${hand}: menu ray owns trigger, form selection never sculpts, held close is disarmed`,async()=>{
- const browser=new ProjectBrowser({list:async()=>[]},{key:()=> 'unchanged',ready:()=>true,changed(){}});
- const h=bridgeFixture(hand,true,{projectBrowser:browser});try{
- const bytes=saveSculptProject(h.layers.project);h.stick(0,-1);h.point('project');h.press(h.tool,0,true);assert.equal(h.model.content().title,'PROJECT LIBRARY');h.press(h.tool,0,false);
- const rects=h.model.content().buttons.filter(b=>b.rect);for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){const a=rects[i].rect,b=rects[j].rect;assert(!(a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y),`${rects[i].id} overlaps ${rects[j].id}`);}
- h.point('library:new');h.press(h.tool,0,true);await new Promise(r=>setImmediate(r));assert.equal(browser.form,'new');assert(!h.clay.active);h.stick();h.update();assert(!h.clay.active);assert.equal(h.layers.undoCount,0);assert.deepEqual(saveSculptProject(h.layers.project),bytes);
- }finally{h.dispose();}
+test("interactive menu renders after transparent scene panels and previews", () => {
+  const restore = fakeDocument(),
+    f = fixture(),
+    view = new XRMenuView(f.model);
+  try {
+    assert.equal(view.mesh.material.transparent, true);
+    assert.equal(view.mesh.material.opacity, 1);
+    assert.equal(view.mesh.material.depthTest, false);
+    assert.equal(view.mesh.material.depthWrite, false);
+    assert(view.mesh.renderOrder > 30);
+  } finally {
+    view.dispose();
+    f.dispose();
+    restore();
+  }
 });
 
-test('high-resolution VR menu keeps logical hit coordinates and cached texture',()=>{const restore=fakeDocument(),f=fixture(),view=new XRMenuView(f.model);try{assert.equal(view.canvas.width,2048);assert.equal(view.canvas.height,2048);assert.equal(view.mesh.material.map.anisotropy,4);assert.equal(view.mesh.material.map.generateMipmaps,true);assert.equal(MENU_SIZE,1152);assert.equal(view.mesh.geometry.parameters.width,.72);}finally{view.dispose();f.layers.dispose();restore();}});
-test('VR dragging shows source-colour cursor, destination ring and detach feedback',()=>{const restore=fakeDocument(),f=fixture();let view;try{const source=f.layers.active.layer,target=f.layers.create(64);view=new XRMenuView(f.model);new Group().add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const s=toolState();view.update('layers',s,new Matrix4(),0,true);trigger(s,false);view.update('layers',s,rayPose(view,...buttonPoint(f.model,`select:${target.id}`)),16,true);f.model.palette.beginDrag(source.id);trigger(s,true);view.update('layers',s,rayPose(view,...buttonPoint(f.model,`select:${target.id}`)),32,true);assert(view.cursor.visible);assert(view.dragRing.visible);assert.equal(view.cursor.material.color.getHexString(),f.layers.display.colour(f.layers.project.id,source.id,source.order).slice(1));assert.match(f.model.palette.dropPreview(`select:${target.id}`).message,/attach/);assert.match(f.model.palette.dropPreview('hier:root').message,/detach/);s.tracked=false;view.update('layers',s,new Matrix4(),48,true);assert.equal(f.model.palette.dragged,null);assert.equal(view.dragRing.visible,false);}finally{view?.dispose();f.layers.dispose();restore();}});
-test('empty VR list space detaches on release while off-panel release cancels',()=>{const restore=fakeDocument(),f=fixture();let view;try{const child=f.layers.active.layer,parent=f.layers.create(64);f.layers.reparent(child.id,parent.id);view=new XRMenuView(f.model);new Group().add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const s=toolState();view.update('layers',s,new Matrix4(),0,true);trigger(s,false);view.update('layers',s,new Matrix4(),16,true);f.model.palette.beginDrag(child.id);s.buttons.trigger.pressed=true;s.buttons.trigger.justPressed=false;view.update('layers',s,rayPose(view,600,900),32,true);assert.equal(f.model.hover,'hier:root');trigger(s,false);view.update('layers',s,rayPose(view,600,900),48,true);assert.equal(f.layers.project.layerStack.hierarchy.parent(child.id),null);f.layers.reparent(child.id,parent.id);f.model.palette.beginDrag(child.id);s.buttons.trigger.pressed=true;view.update('layers',s,new Matrix4().makeTranslation(100,100,100),64,true);trigger(s,false);view.update('layers',s,new Matrix4().makeTranslation(100,100,100),80,true);assert.equal(f.layers.project.layerStack.hierarchy.parent(child.id),parent.id);}finally{view?.dispose();f.layers.dispose();restore();}});
-test('tool stick scrolls continuously within bounds and ignores horizontal input',()=>{const restore=fakeDocument(),f=fixture();let view;try{for(let i=1;i<5;i++)f.layers.create(64);view=new XRMenuView(f.model);new Group().add(view.mesh);view.place({x:0,y:1.6,z:0},{x:0,y:0,z:0,w:1});const s=toolState();s.stick={available:true,x:0,y:0};view.update('layers',s,new Matrix4(),0,true);s.stick.y=1;view.update('layers',s,new Matrix4(),16,true);assert(view.scrollOffset>0&&view.scrollOffset<20);view.update('layers',s,new Matrix4(),40,true);assert.equal(view.scrollOffset,20);s.stick.y=-1;view.update('layers',s,new Matrix4(),64,true);const offset=view.scrollOffset;assert(offset<20);s.stick={available:true,x:1,y:.8};view.update('layers',s,new Matrix4(),80,true);assert.equal(view.scrollOffset,offset);view.close();assert.equal(f.model.request,null);}finally{view?.dispose();f.layers.dispose();restore();}});
-test('scroll viewport hides paging controls and clips hit targets; no overflow has zero range',()=>{const restore=fakeDocument(),f=fixture();let view;try{view=new XRMenuView(f.model);f.model.setRequest('layers');let content=view.menuContent();assert.equal(content.scroll.max,0);assert(!content.buttons.some(b=>b.id==='hier:next'));for(let i=1;i<8;i++)f.layers.create(64);content=view.menuContent();assert(content.scroll.max>0);const last=f.layers.project.layerStack.layers.at(-1),offscreen=content.buttons.find(b=>b.id===`select:${last.id}`);assert(offscreen.rect.y>896);assert.equal(f.model.hit(offscreen.rect.x+10,offscreen.rect.y+10,content),null);view.scrollOffset=content.scroll.max;content=view.menuContent();const visible=content.buttons.find(b=>b.id===`select:${last.id}`);assert.equal(f.model.hit(visible.rect.x+10,visible.rect.y+30,content),visible.id);f.model.activate(visible.id,content);assert.equal(f.layers.project.activeLayerId,last.id);}finally{view?.dispose();f.layers.dispose();restore();}});
+for (const hand of ["left", "right"])
+  test(`menu pointer overlays the panel and clears on dismissal (${hand})`, () => {
+    const h = bridgeFixture(hand);
+    try {
+      h.stick(0, -1);
+      h.point("tool:stamp");
+      const line = h.bridge.slots[0].line;
+      assert(h.bridge.slots[0].rayVisual.visible);
+      assert(line.renderOrder > h.view.mesh.renderOrder);
+      assert.equal(line.material.depthTest, false);
+      assert.equal(line.material.depthWrite, false);
+      assert(h.view.cursor.visible);
+      assert(h.view.cursor.renderOrder > line.renderOrder);
+      assert.equal(h.view.cursor.material.transparent, true);
+      assert.equal(h.view.cursor.material.depthTest, false);
+      h.rays[0].position.set(100, 100, 100);
+      h.update();
+      assert.equal(h.view.cursor.visible, false);
+      h.point("tool:stamp");
+      assert(h.view.cursor.visible);
+      h.stick();
+      assert.equal(h.view.cursor.visible, false);
+      assert.equal(line.renderOrder, 0);
+      assert.equal(line.material.depthTest, true);
+      assert.equal(line.material.depthWrite, true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+test("controller overlay includes realistic model meshes, restores materials and handles session cleanup", () => {
+  const h = bridgeFixture("right"),
+    model = new Group(),
+    mesh = new Mesh(new BoxGeometry(), new MeshBasicMaterial()),
+    original = mesh.material;
+  model.add(mesh);
+  h.bridge.options.models = {
+    entries: [{ asset: { object: model } }, {}],
+    ready: () => true,
+    stop() {},
+    dispose() {},
+  };
+  try {
+    h.stick(0, -1);
+    const body = h.bridge.slots[0].body;
+    assert(body.renderOrder > h.view.mesh.renderOrder);
+    assert(mesh.renderOrder > h.view.cursor.renderOrder);
+    assert.notEqual(mesh.material, original);
+    assert.equal(mesh.material.transparent, true);
+    assert.equal(mesh.material.depthTest, original.depthTest);
+    assert.equal(mesh.material.depthWrite, original.depthWrite);
+    assert.equal(original.transparent, false);
+    const overlay = mesh.material;
+    h.update();
+    assert.equal(mesh.material, overlay);
+    h.stick();
+    assert.equal(mesh.material, original);
+    assert.equal(mesh.renderOrder, 0);
+    assert.equal(body.renderOrder, 0);
+    h.stick(0, -1);
+    assert.notEqual(mesh.material, original);
+    h.bridge.stop();
+    assert.equal(mesh.material, original);
+  } finally {
+    h.dispose();
+    mesh.geometry.dispose();
+    original.dispose();
+  }
+});
+
+test("menu starts a fresh foreground depth layer for each eye while controller self-depth remains enabled", () => {
+  const h = bridgeFixture("right");
+  try {
+    h.stick(0, -1);
+    let clears = 0;
+    let writable = false;
+    const renderer = {
+      state: { buffers: { depth: { setMask: (v) => (writable = v) } } },
+      clearDepth: () => {
+        assert(writable);
+        clears++;
+        writable = false;
+      },
+    };
+    h.view.mesh.onAfterRender(renderer);
+    h.view.mesh.onAfterRender(renderer);
+    assert.equal(clears, 2);
+    const body = h.bridge.slots[0].body;
+    assert.equal(body.material.depthTest, true);
+    assert.equal(body.material.depthWrite, true);
+    assert(body.renderOrder > h.view.mesh.renderOrder);
+    h.stick();
+    assert.equal(body.material.depthTest, true);
+    assert.equal(body.material.depthWrite, true);
+  } finally {
+    h.dispose();
+  }
+});
+for (const hand of ["left", "right"])
+  test(`Move submenu ${hand}: variant ray selection owns trigger, held close never sculpts, fresh press rearms original brush`, () => {
+    const h = bridgeFixture(hand, true);
+    try {
+      const values = h.layers.active.volume.values.slice();
+      h.stick(0, -1);
+      h.point("tool:move");
+      h.press(h.tool, 0, true);
+      assert.equal(h.model.content().title, "MOVE VARIANTS");
+      h.press(h.tool, 0, false);
+      h.point("move-variant:pinch");
+      h.press(h.tool, 0, true);
+      assert.equal(h.tools.active, "pinch");
+      assert(!h.clay.active);
+      assert.equal(h.layers.undoCount, 0);
+      h.stick();
+      h.update();
+      assert(!h.clay.active);
+      assert.deepEqual(h.layers.active.volume.values, values);
+      h.grips[0].position.set(0.7, 0, 0.12);
+      h.press(h.tool, 0, false);
+      h.press(h.tool, 0, true);
+      assert(h.clay.active);
+      h.bridge.suspend();
+      assert(!h.clay.active);
+      assert.equal(h.layers.undoCount, 0);
+      assert.equal(h.tools.lastMoveVariant, "pinch");
+    } finally {
+      h.dispose();
+    }
+  });
+
+test("Phase 5 Project route is reachable, bounded, disabled without an adapter and preserves source/history", () => {
+  const f = fixture();
+  try {
+    const before = saveSculptProject(f.layers.project);
+    f.model.setRequest("tool-wheel");
+    f.model.activate("project");
+    assert.equal(f.model.world.section, "project");
+    for (const action of ["new", "open", "save", "export", "recover"]) {
+      const b = f.model.content().buttons.find((b) => b.id === `project:${action}`);
+      assert(b.disabled);
+      assert.equal(f.model.hit(...buttonPoint(f.model, b.id)), b.id);
+      f.model.activate(b.id);
+      assert.equal(f.model.content().footer, "Unavailable");
+    }
+    f.model.activate("tools");
+    assert.equal(f.model.page, "tool-wheel");
+    assert.deepEqual(saveSculptProject(f.layers.project), before);
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("Phase 5 menu status follows paint/mask operations, Move variants, locks and busy state", () => {
+  const f = fixture();
+  try {
+    f.model.setRequest("tool-wheel");
+    for (const [tool, mode, label] of [
+      ["paint", "paint-erase", "Erase colour"],
+      ["mask", "mask-erase", "Erase protection"],
+      ["clay", "subtract", "Subtract"],
+    ]) {
+      f.tools.select(tool);
+      f.tools.port.setSettings({ ...f.settings, mode });
+      assert(f.tools.workflowStatus.includes(label));
+      assert.equal(f.model.content().subtitle, f.tools.workflowStatus);
+    }
+    for (const variant of ["non-elastic", "elastic", "rotate-twist", "pinch", "crease", "scrape"]) {
+      f.tools.selectMoveVariant(variant);
+      assert(f.tools.workflowStatus.startsWith(f.tools.contextLabel));
+    }
+    f.busy = true;
+    assert(f.tools.workflowStatus.includes("Working"));
+    assert(f.model.content().footer.includes("Working"));
+    f.busy = false;
+    f.layers.active.layer.locked = true;
+    assert(f.tools.workflowStatus.includes("locked"));
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("Phase 5 project adapter dispatch is guarded by busy state and returns via Tools", async () => {
+  const f = fixture();
+  const calls = [];
+  try {
+    const model = new XRMenuModel(f.tools, {
+      projectAction: async (a) => calls.push(a),
+      projectStatus: () => "Unsaved changes",
+    });
+    model.setRequest("tool-wheel");
+    model.activate("project");
+    for (const a of ["new", "open", "save", "export", "recover"]) model.activate(`project:${a}`);
+    assert.deepEqual(calls, ["new", "open", "save", "export", "recover"]);
+    f.busy = true;
+    model.activate("project:new");
+    assert.equal(calls.length, 5);
+    assert.equal(model.content().footer, "Unavailable");
+    f.busy = false;
+    model.activate("tools");
+    assert.equal(model.page, "tool-wheel");
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("Phase 5 World and Layers show rejected actions rather than hiding feedback", () => {
+  const f = fixture();
+  try {
+    for (const request of ["tool-wheel", "layers"]) {
+      f.model.setRequest(request);
+      if (request === "tool-wheel") f.model.activate("world");
+      f.model.activate("nonexistent");
+      assert.equal(f.model.content().footer, "Unavailable");
+      f.model.setRequest(null);
+      assert.equal(f.model.feedback, "");
+    }
+  } finally {
+    f.dispose();
+  }
+});
+
+test("Phase 5 held trigger cannot route to Project until released, in either hand", () => {
+  const restore = fakeDocument(),
+    f = fixture(),
+    view = new XRMenuView(f.model);
+  try {
+    for (const hand of ["left", "right"]) {
+      view.close();
+      view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+      const state = toolState();
+      state.handedness = hand;
+      trigger(state, true);
+      view.update("tool-wheel", state, undefined, 0, true);
+      const pose = rayPose(view, ...buttonPoint(f.model, "project"));
+      view.update("tool-wheel", state, pose, 120, true);
+      assert.equal(f.model.page, "tool-wheel");
+      trigger(state, false);
+      view.update("tool-wheel", state, pose, 140, true);
+      trigger(state, true);
+      view.update("tool-wheel", state, pose, 160, true);
+      assert.equal(f.model.world.section, "project");
+      view.update(null, state, pose, 180, true);
+      assert(!view.active);
+      assert.equal(f.layers.undoCount, 0);
+    }
+  } finally {
+    view.dispose();
+    f.dispose();
+    restore();
+  }
+});
+test("Phase 5 disabled paint swatches and sliders never mutate or capture input", () => {
+  const restore = fakeDocument(),
+    f = fixture(),
+    view = new XRMenuView(f.model);
+  try {
+    f.tools.select("paint");
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const state = toolState();
+    view.update("tool-wheel", state, undefined, 0, true);
+    f.model.activate("options");
+    f.busy = true;
+    const swatch = f.model.content().buttons.find((b) => b.id.startsWith("paint-swatch:"));
+    assert(swatch.disabled);
+    const before = f.layers.paintColour;
+    f.model.activate(swatch.id);
+    assert.equal(f.layers.paintColour, before);
+    // A busy slider must not keep capture when the job finishes while trigger is held.
+    f.model.optionPage = Math.floor(f.tools.options().findIndex((o) => o.slider) / 5);
+    const slider = f.model.content().buttons.find((b) => b.slider);
+    assert(slider?.disabled);
+    const pose = rayPose(view, ...buttonPoint(f.model, slider.id));
+    trigger(state, false);
+    view.update("tool-wheel", state, pose, 120, true);
+    trigger(state, true);
+    view.update("tool-wheel", state, pose, 140, true);
+    f.busy = false;
+    state.buttons.trigger.justPressed = false;
+    const value = f.model.content().buttons.find((b) => b.id === slider.id).slider.value;
+    view.update("tool-wheel", state, pose, 260, true);
+    assert.equal(f.model.content().buttons.find((b) => b.id === slider.id).slider.value, value);
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    view.dispose();
+    f.dispose();
+    restore();
+  }
+});
+test("Phase 5 static Project polling retains one canvas and no repaints", (t) => {
+  const restore = fakeDocument(),
+    f = fixture(),
+    view = new XRMenuView(f.model);
+  try {
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    view.update("tool-wheel", undefined, undefined, 0, true);
+    f.model.activate("project");
+    view.update("tool-wheel", undefined, undefined, 100, true);
+    const count = view.paintCount,
+      texture = view.mesh.material.map,
+      start = performance.now();
+    for (let i = 1; i <= 360; i++)
+      view.update("tool-wheel", undefined, undefined, 100 + i * 16, true);
+    t.diagnostic(
+      `Host mock-canvas 360 polls: ${(performance.now() - start).toFixed(2)} ms; additional repaints ${view.paintCount - count}`,
+    );
+    assert.equal(view.paintCount, count);
+    assert.equal(view.mesh.material.map, texture);
+  } finally {
+    view.dispose();
+    f.dispose();
+    restore();
+  }
+});
+
+for (const hand of ["left", "right"])
+  test(`Project library ${hand}: menu ray owns trigger, form selection never sculpts, held close is disarmed`, async () => {
+    const browser = new ProjectBrowser(
+      { list: async () => [] },
+      { key: () => "unchanged", ready: () => true, changed() {} },
+    );
+    const h = bridgeFixture(hand, true, { projectBrowser: browser });
+    try {
+      const bytes = saveSculptProject(h.layers.project);
+      h.stick(0, -1);
+      h.point("project");
+      h.press(h.tool, 0, true);
+      assert.equal(h.model.content().title, "PROJECT LIBRARY");
+      h.press(h.tool, 0, false);
+      const rects = h.model.content().buttons.filter((b) => b.rect);
+      for (let i = 0; i < rects.length; i++)
+        for (let j = i + 1; j < rects.length; j++) {
+          const a = rects[i].rect,
+            b = rects[j].rect;
+          assert(
+            !(
+              a.x < b.x + b.width &&
+              a.x + a.width > b.x &&
+              a.y < b.y + b.height &&
+              a.y + a.height > b.y
+            ),
+            `${rects[i].id} overlaps ${rects[j].id}`,
+          );
+        }
+      h.point("library:new");
+      h.press(h.tool, 0, true);
+      await new Promise((r) => setImmediate(r));
+      assert.equal(browser.form, "new");
+      assert(!h.clay.active);
+      h.stick();
+      h.update();
+      assert(!h.clay.active);
+      assert.equal(h.layers.undoCount, 0);
+      assert.deepEqual(saveSculptProject(h.layers.project), bytes);
+    } finally {
+      h.dispose();
+    }
+  });
+
+test("high-resolution VR menu keeps logical hit coordinates and cached texture", () => {
+  const restore = fakeDocument(),
+    f = fixture(),
+    view = new XRMenuView(f.model);
+  try {
+    assert.equal(view.canvas.width, 2048);
+    assert.equal(view.canvas.height, 2048);
+    assert.equal(view.mesh.material.map.anisotropy, 4);
+    assert.equal(view.mesh.material.map.generateMipmaps, true);
+    assert.equal(MENU_SIZE, 1152);
+    assert.equal(view.mesh.geometry.parameters.width, 0.72);
+  } finally {
+    view.dispose();
+    f.layers.dispose();
+    restore();
+  }
+});
+test("VR dragging shows source-colour cursor, destination ring and detach feedback", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    const source = f.layers.active.layer,
+      target = f.layers.create(64);
+    view = new XRMenuView(f.model);
+    new Group().add(view.mesh);
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const s = toolState();
+    view.update("layers", s, new Matrix4(), 0, true);
+    trigger(s, false);
+    view.update(
+      "layers",
+      s,
+      rayPose(view, ...buttonPoint(f.model, `select:${target.id}`)),
+      16,
+      true,
+    );
+    f.model.palette.beginDrag(source.id);
+    trigger(s, true);
+    view.update(
+      "layers",
+      s,
+      rayPose(view, ...buttonPoint(f.model, `select:${target.id}`)),
+      32,
+      true,
+    );
+    assert(view.cursor.visible);
+    assert(view.dragRing.visible);
+    assert.equal(
+      view.cursor.material.color.getHexString(),
+      f.layers.display.colour(f.layers.project.id, source.id, source.order).slice(1),
+    );
+    assert.match(f.model.palette.dropPreview(`select:${target.id}`).message, /attach/);
+    assert.match(f.model.palette.dropPreview("hier:root").message, /detach/);
+    s.tracked = false;
+    view.update("layers", s, new Matrix4(), 48, true);
+    assert.equal(f.model.palette.dragged, null);
+    assert.equal(view.dragRing.visible, false);
+  } finally {
+    view?.dispose();
+    f.layers.dispose();
+    restore();
+  }
+});
+test("empty VR list space detaches on release while off-panel release cancels", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    const child = f.layers.active.layer,
+      parent = f.layers.create(64);
+    f.layers.reparent(child.id, parent.id);
+    view = new XRMenuView(f.model);
+    new Group().add(view.mesh);
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const s = toolState();
+    view.update("layers", s, new Matrix4(), 0, true);
+    trigger(s, false);
+    view.update("layers", s, new Matrix4(), 16, true);
+    f.model.palette.beginDrag(child.id);
+    s.buttons.trigger.pressed = true;
+    s.buttons.trigger.justPressed = false;
+    view.update("layers", s, rayPose(view, 600, 900), 32, true);
+    assert.equal(f.model.hover, "hier:root");
+    trigger(s, false);
+    view.update("layers", s, rayPose(view, 600, 900), 48, true);
+    assert.equal(f.layers.project.layerStack.hierarchy.parent(child.id), null);
+    f.layers.reparent(child.id, parent.id);
+    f.model.palette.beginDrag(child.id);
+    s.buttons.trigger.pressed = true;
+    view.update("layers", s, new Matrix4().makeTranslation(100, 100, 100), 64, true);
+    trigger(s, false);
+    view.update("layers", s, new Matrix4().makeTranslation(100, 100, 100), 80, true);
+    assert.equal(f.layers.project.layerStack.hierarchy.parent(child.id), parent.id);
+  } finally {
+    view?.dispose();
+    f.layers.dispose();
+    restore();
+  }
+});
+test("tool stick scrolls continuously within bounds and ignores horizontal input", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    for (let i = 1; i < 5; i++) f.layers.create(64);
+    view = new XRMenuView(f.model);
+    new Group().add(view.mesh);
+    view.place({ x: 0, y: 1.6, z: 0 }, { x: 0, y: 0, z: 0, w: 1 });
+    const s = toolState();
+    s.stick = { available: true, x: 0, y: 0 };
+    view.update("layers", s, new Matrix4(), 0, true);
+    s.stick.y = 1;
+    view.update("layers", s, new Matrix4(), 16, true);
+    assert(view.scrollOffset > 0 && view.scrollOffset < 20);
+    view.update("layers", s, new Matrix4(), 40, true);
+    assert.equal(view.scrollOffset, 20);
+    s.stick.y = -1;
+    view.update("layers", s, new Matrix4(), 64, true);
+    const offset = view.scrollOffset;
+    assert(offset < 20);
+    s.stick = { available: true, x: 1, y: 0.8 };
+    view.update("layers", s, new Matrix4(), 80, true);
+    assert.equal(view.scrollOffset, offset);
+    view.close();
+    assert.equal(f.model.request, null);
+  } finally {
+    view?.dispose();
+    f.layers.dispose();
+    restore();
+  }
+});
+test("scroll viewport hides paging controls and clips hit targets; no overflow has zero range", () => {
+  const restore = fakeDocument(),
+    f = fixture();
+  let view;
+  try {
+    view = new XRMenuView(f.model);
+    f.model.setRequest("layers");
+    let content = view.menuContent();
+    assert.equal(content.scroll.max, 0);
+    assert(!content.buttons.some((b) => b.id === "hier:next"));
+    for (let i = 1; i < 8; i++) f.layers.create(64);
+    content = view.menuContent();
+    assert(content.scroll.max > 0);
+    const last = f.layers.project.layerStack.layers.at(-1),
+      offscreen = content.buttons.find((b) => b.id === `select:${last.id}`);
+    assert(offscreen.rect.y > 896);
+    assert.equal(f.model.hit(offscreen.rect.x + 10, offscreen.rect.y + 10, content), null);
+    view.scrollOffset = content.scroll.max;
+    content = view.menuContent();
+    const visible = content.buttons.find((b) => b.id === `select:${last.id}`);
+    assert.equal(f.model.hit(visible.rect.x + 10, visible.rect.y + 30, content), visible.id);
+    f.model.activate(visible.id, content);
+    assert.equal(f.layers.project.activeLayerId, last.id);
+  } finally {
+    view?.dispose();
+    f.layers.dispose();
+    restore();
+  }
+});

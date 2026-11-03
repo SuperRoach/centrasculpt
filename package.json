@@ -4,11 +4,16 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/install-hooks.mjs",
     "dev": "vite --host 0.0.0.0",
     "dev:https": "node scripts/dev-https.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node scripts/test.mjs",
+    "test:quick": "node scripts/test.mjs vr-polish whats-new test-selection test-config",
+    "test:full": "node scripts/test.mjs",
+    "test:tap": "node scripts/test.mjs --test-reporter=tap",
+    "test:junit": "node scripts/test.mjs --test-reporter=junit",
     "benchmark": "node scripts/benchmark.mjs",
     "benchmark:composite": "node scripts/benchmark-composite.mjs",
     "benchmark:bake": "node scripts/benchmark-bake.mjs",
@@ -19,12 +24,18 @@
     "benchmark:quality": "node scripts/benchmark-mesh-quality.mjs outputs/phase-3-quality-after.json",
     "benchmark:quality:move": "node scripts/benchmark-quality-move.mjs",
     "benchmark:recovery": "node scripts/benchmark-recovery.mjs",
-    "stress:session": "node scripts/stress-session.mjs"
+    "stress:session": "node scripts/stress-session.mjs",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome check .",
+    "check:types": "tsc --noEmit --strict",
+    "check": "npm run format:check && npm run lint && npm run check:types && npm run build && npm run test:full"
   },
   "dependencies": {
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.4",
     "@iwer/devui": "^2.7.0",
     "@types/three": "^0.180.0",
     "fake-indexeddb": "^6.2.6",

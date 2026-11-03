@@ -9,7 +9,7 @@ Software/browser validation is complete; physical Quest 3 acceptance is pending.
 
 ## Efficient test runs
 
-Use `npm test -- move-worker` for a focused file, `npm run test:changed` for affected tests, and `npm test` for the full suite. Compilation is cached automatically. See [testing commands and validation policy](docs/TESTING.md).
+Use `npm run test:quick` for a small smoke set, `npm test -- move-worker` for focused files, `npm run test:changed` for conservative impact selection, and `npm run test:full` for every test. Full runs default to four concurrent files; set `TEST_CONCURRENCY=2` to reduce memory pressure. `npm run check` runs formatting, lint, strict TypeScript, build and the full suite. Compilation is cached automatically. See [testing commands and validation policy](docs/TESTING.md).
 
 ## VR polish and performance — Phase 1.12d
 

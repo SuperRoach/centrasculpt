@@ -1,2 +1,3 @@
-import {BrowserWorker} from './node-browser-worker.mjs';
-globalThis.Worker=BrowserWorker;
+import { BrowserWorker } from "./node-browser-worker.mjs";
+
+globalThis.Worker = BrowserWorker;

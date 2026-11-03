@@ -1,20 +1,37 @@
-import {volumeLabel} from './volume-store';
-import {BRUSH_RADIUS_LIMITS} from './brush-settings';
-import type { RenderStyle } from './render-style';
-import './style.css';
-import type { BakeOptions, BakePlan, BakeProgress, SurfaceView } from './bake';
-import type { BrushMode } from './sdf';
-import type { VolumeTransform } from './transform';
-import { hasUniformScale } from './transform';
-import type { EditorMode, TransformSpace } from './interaction';
-import type { SdfLayer } from './layers';
-import type { ViewportMode } from './display-preferences';
-import type { SculptSettings } from './project';
-export type TransformField='px'|'py'|'pz'|'rx'|'ry'|'rz'|'scale';
-export type TransformUIAction={type:'mode';mode:EditorMode}|{type:'space';space:TransformSpace}|{type:'field';field:TransformField;value:number}|{type:'reset'};
-export type LayerAction='new'|'new-empty'|'select'|'rename'|'duplicate'|'delete'|'up'|'down'|'visible'|'lock'|'colour'|'mode'|'operation';
+import { BRUSH_RADIUS_LIMITS } from "./brush-settings";
+import type { RenderStyle } from "./render-style";
+import { volumeLabel } from "./volume-store";
+import "./style.css";
+import type { BakeOptions, BakePlan, BakeProgress, SurfaceView } from "./bake";
+import type { ViewportMode } from "./display-preferences";
+import type { EditorMode, TransformSpace } from "./interaction";
+import type { SdfLayer } from "./layers";
+import type { SculptSettings } from "./project";
+import type { BrushMode } from "./sdf";
+import type { VolumeTransform } from "./transform";
+import { hasUniformScale } from "./transform";
+export type TransformField = "px" | "py" | "pz" | "rx" | "ry" | "rz" | "scale";
+export type TransformUIAction =
+  | { type: "mode"; mode: EditorMode }
+  | { type: "space"; space: TransformSpace }
+  | { type: "field"; field: TransformField; value: number }
+  | { type: "reset" };
+export type LayerAction =
+  | "new"
+  | "new-empty"
+  | "select"
+  | "rename"
+  | "duplicate"
+  | "delete"
+  | "up"
+  | "down"
+  | "visible"
+  | "lock"
+  | "colour"
+  | "mode"
+  | "operation";
 export function createUI() {
-  document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
+  document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <header><a class="brand" href="./" aria-label="Centra Sculpt home"><span class="brand-mark" aria-hidden="true">◎</span><span>Centra <em>Sculpt</em></span></a><span class="subtitle">A SPACE TO SHAPE</span><div id="xr-entry-slot"></div><button type="button" id="header-save" data-state="unsaved" aria-label="Save project — Unsaved changes" title="Unsaved changes · Click to save project"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 3h12l4 4v14H3V3h2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></svg><span class="save-state-dot" aria-hidden="true"></span></button><span id="header-save-status" class="sr-only" role="status"></span></header>
     <main><aside><h1>Make room<br>for an idea.</h1>
     <div id="recovery-slot"></div><div id="xr-diagnostics-slot"></div><div id="shape-library-slot"></div>
@@ -44,161 +61,507 @@ export function createUI() {
     <dialog id="delete-layer-dialog"><form method="dialog"><h2>Delete layer?</h2><p id="delete-layer-message"></p><div class="dialog-actions"><button value="cancel">Cancel</button><button value="delete" class="danger">Delete layer</button></div></form></dialog>
     <dialog id="cut-dialog" aria-labelledby="cut-title"><form method="dialog"><h2 id="cut-title">Plane Cut</h2><p>Preview the cutting plane. The two closed SDF pieces will remain separate; the second piece becomes a new layer.</p><label for="cut-axis">PLANE NORMAL</label><select id="cut-axis"><option value="x">X axis</option><option value="y">Y axis</option><option value="z">Z axis</option></select><label for="cut-scope">AFFECTED LAYERS</label><select id="cut-scope"><option value="active">Active layer</option><option value="all-editable">All visible, unlocked SDF layers</option></select><label for="cut-offset">PLANE POSITION</label><input id="cut-offset" type="range" min="-1.4" max="1.4" step="0.02" value="0"/><output id="cut-offset-value">0.00</output><label for="cut-tilt-x">TILT X</label><input id="cut-tilt-x" type="range" min="-90" max="90" step="15" value="0"/><label for="cut-tilt-y">TILT Y</label><input id="cut-tilt-y" type="range" min="-90" max="90" step="15" value="0"/><p id="cut-preview-status" role="status">Plane preview only · no geometry changed</p><p id="cut-error" role="alert"></p><div class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button id="cut-apply" value="apply">Cut into new layer</button></div></form></dialog>
     <footer><span>A little curiosity. Infinite possibilities.</span><span>CENTRA SCULPT · YOUR CREATIVE SPACE</span></footer>`;
-  let brushSelection:((mode:BrushMode)=>void)|null=null;
-  let mode: BrushMode = 'add';
-  let clayMode:'add'|'subtract'='add';
+  let brushSelection: ((mode: BrushMode) => void) | null = null;
+  let mode: BrushMode = "add";
+  let clayMode: "add" | "subtract" = "add";
   function setMode(value: BrushMode): void {
-    mode = value;if(value==='add'||value==='subtract')clayMode=value;
-    for (const other of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease','mask','mask-erase','paint','paint-erase']) {
-      document.getElementById(other)!.classList.toggle('active', other === value);
-      document.getElementById(other)!.setAttribute('aria-pressed', String(other === value));
+    mode = value;
+    if (value === "add" || value === "subtract") clayMode = value;
+    for (const other of [
+      "add",
+      "subtract",
+      "smooth",
+      "flatten",
+      "inflate",
+      "scrape",
+      "pinch",
+      "crease",
+      "mask",
+      "mask-erase",
+      "paint",
+      "paint-erase",
+    ]) {
+      document.getElementById(other)!.classList.toggle("active", other === value);
+      document.getElementById(other)!.setAttribute("aria-pressed", String(other === value));
     }
   }
-  for (const value of ['add','subtract','smooth','flatten','inflate','scrape','pinch','crease','mask','mask-erase','paint','paint-erase'] as const) document.getElementById(value)!.addEventListener('click',()=>brushSelection?brushSelection(value):setMode(value));
-  const radius = document.querySelector<HTMLInputElement>('#radius')!;
-  radius.addEventListener('input', () => document.getElementById('radius-value')!.textContent = Number(radius.value).toFixed(3));
-  const strength = document.querySelector<HTMLInputElement>('#strength')!;
-  strength.addEventListener('input', () => document.getElementById('strength-value')!.textContent = `${Math.round(Number(strength.value)*100)}%`);
-  const hardness=document.querySelector<HTMLInputElement>('#hardness')!;
-  hardness.addEventListener('input',()=>document.getElementById('hardness-value')!.textContent=`${Math.round(Number(hardness.value)*100)}%`);
-  let transformAction:(action:TransformUIAction)=>void=()=>{};
-  for(const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]'))button.addEventListener('click',()=>transformAction({type:'mode',mode:button.dataset.tool as EditorMode}));
-  document.getElementById('transform-space')!.addEventListener('change',event=>transformAction({type:'space',space:(event.target as HTMLSelectElement).value as TransformSpace}));
-  for(const input of document.querySelectorAll<HTMLInputElement>('[data-transform-field]'))input.addEventListener('change',()=>transformAction({type:'field',field:input.dataset.transformField as TransformField,value:input.valueAsNumber}));
-  document.getElementById('reset-transform')!.addEventListener('click',()=>transformAction({type:'reset'}));
-  let layerAction: (action: LayerAction,id: string,value?: string)=>void=()=>{};
-  const list=document.getElementById('layer-list')!;
-  list.addEventListener('click',event=>{
-    const button=(event.target as Element).closest<HTMLButtonElement>('button[data-action]'),row=button?.closest<HTMLElement>('[data-layer-id]');
-    if(button&&row)layerAction(button.dataset.action as LayerAction,row.dataset.layerId!);
+  for (const value of [
+    "add",
+    "subtract",
+    "smooth",
+    "flatten",
+    "inflate",
+    "scrape",
+    "pinch",
+    "crease",
+    "mask",
+    "mask-erase",
+    "paint",
+    "paint-erase",
+  ] as const)
+    document
+      .getElementById(value)!
+      .addEventListener("click", () => (brushSelection ? brushSelection(value) : setMode(value)));
+  const radius = document.querySelector<HTMLInputElement>("#radius")!;
+  radius.addEventListener(
+    "input",
+    () => (document.getElementById("radius-value")!.textContent = Number(radius.value).toFixed(3)),
+  );
+  const strength = document.querySelector<HTMLInputElement>("#strength")!;
+  strength.addEventListener(
+    "input",
+    () =>
+      (document.getElementById("strength-value")!.textContent =
+        `${Math.round(Number(strength.value) * 100)}%`),
+  );
+  const hardness = document.querySelector<HTMLInputElement>("#hardness")!;
+  hardness.addEventListener(
+    "input",
+    () =>
+      (document.getElementById("hardness-value")!.textContent =
+        `${Math.round(Number(hardness.value) * 100)}%`),
+  );
+  let transformAction: (action: TransformUIAction) => void = () => {};
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-tool]"))
+    button.addEventListener("click", () =>
+      transformAction({ type: "mode", mode: button.dataset.tool as EditorMode }),
+    );
+  document.getElementById("transform-space")!.addEventListener("change", (event) =>
+    transformAction({
+      type: "space",
+      space: (event.target as HTMLSelectElement).value as TransformSpace,
+    }),
+  );
+  for (const input of document.querySelectorAll<HTMLInputElement>("[data-transform-field]"))
+    input.addEventListener("change", () =>
+      transformAction({
+        type: "field",
+        field: input.dataset.transformField as TransformField,
+        value: input.valueAsNumber,
+      }),
+    );
+  document
+    .getElementById("reset-transform")!
+    .addEventListener("click", () => transformAction({ type: "reset" }));
+  let layerAction: (action: LayerAction, id: string, value?: string) => void = () => {};
+  const list = document.getElementById("layer-list")!;
+  list.addEventListener("click", (event) => {
+    const button = (event.target as Element).closest<HTMLButtonElement>("button[data-action]"),
+      row = button?.closest<HTMLElement>("[data-layer-id]");
+    if (button && row) layerAction(button.dataset.action as LayerAction, row.dataset.layerId!);
   });
-  list.addEventListener('change',event=>{
-    const input=event.target as HTMLInputElement,row=input.closest<HTMLElement>('[data-layer-id]');
-    if(row&&(input.dataset.action==='rename'||input.dataset.action==='operation'))layerAction(input.dataset.action,row.dataset.layerId!,input.value);
+  list.addEventListener("change", (event) => {
+    const input = event.target as HTMLInputElement,
+      row = input.closest<HTMLElement>("[data-layer-id]");
+    if (row && (input.dataset.action === "rename" || input.dataset.action === "operation"))
+      layerAction(input.dataset.action, row.dataset.layerId!, input.value);
   });
-  list.addEventListener('input',event=>{
-    const input=event.target as HTMLInputElement,row=input.closest<HTMLElement>('[data-layer-id]');
-    if(row&&input.dataset.action==='colour')layerAction('colour',row.dataset.layerId!,input.value);
+  list.addEventListener("input", (event) => {
+    const input = event.target as HTMLInputElement,
+      row = input.closest<HTMLElement>("[data-layer-id]");
+    if (row && input.dataset.action === "colour")
+      layerAction("colour", row.dataset.layerId!, input.value);
   });
-  document.getElementById('new-layer')!.addEventListener('click',()=>layerAction(document.querySelector<HTMLSelectElement>('#new-layer-contents')!.value==='empty'?'new-empty':'new','',document.querySelector<HTMLSelectElement>('#new-layer-resolution')!.value));
-  document.getElementById('viewport-mode')!.addEventListener('change',event=>layerAction('mode','',(event.target as HTMLSelectElement).value));
-  const deleteDialog=document.querySelector<HTMLDialogElement>('#delete-layer-dialog')!;
-  const bakeDialog=document.querySelector<HTMLDialogElement>('#bake-dialog')!;
+  document
+    .getElementById("new-layer")!
+    .addEventListener("click", () =>
+      layerAction(
+        document.querySelector<HTMLSelectElement>("#new-layer-contents")!.value === "empty"
+          ? "new-empty"
+          : "new",
+        "",
+        document.querySelector<HTMLSelectElement>("#new-layer-resolution")!.value,
+      ),
+    );
+  document
+    .getElementById("viewport-mode")!
+    .addEventListener("change", (event) =>
+      layerAction("mode", "", (event.target as HTMLSelectElement).value),
+    );
+  const deleteDialog = document.querySelector<HTMLDialogElement>("#delete-layer-dialog")!;
+  const bakeDialog = document.querySelector<HTMLDialogElement>("#bake-dialog")!;
   return {
-    onBrushSelection(callback:(mode:BrushMode)=>void){brushSelection=callback;},
-    selectBrushTool(tool:'brush'|'smooth'){setMode(tool==='smooth'?'smooth':clayMode);},
-    onTransformAction(callback:typeof transformAction){transformAction=callback;},
-    transformState(transform:VolumeTransform,editable:boolean,mode:EditorMode,space:TransformSpace,busy=false){
-      for(const button of document.querySelectorAll<HTMLButtonElement>('[data-tool]')){button.setAttribute('aria-pressed',String(button.dataset.tool===mode));button.classList.toggle('active',button.dataset.tool===mode);button.disabled=busy;}
-      document.querySelector<HTMLSelectElement>('#transform-space')!.value=space;
-      for(const input of document.querySelectorAll<HTMLInputElement>('[data-transform-field]')) {
-        const field=input.dataset.transformField as TransformField;
-        const value=field==='scale'?(hasUniformScale(transform)?transform.scale[0]:NaN):field[0]==='p'?transform.position['xyz'.indexOf(field[1])]:transform.rotation['xyz'.indexOf(field[1])]*180/Math.PI;
-        input.value=Number.isFinite(value)?String(Number(value.toFixed(6))):'';input.disabled=!editable||busy;input.dataset.editable=String(editable);
-      }
-      document.querySelector<HTMLButtonElement>('#reset-transform')!.disabled=!editable||busy;document.getElementById('reset-transform')!.dataset.editable=String(editable);
-      document.getElementById('transform-note')!.textContent=!editable?'Show and unlock the active layer to edit it.':!hasUniformScale(transform)?'Legacy non-uniform scale preserved. Enter a uniform scale before sculpting or using Scale.':'';
+    onBrushSelection(callback: (mode: BrushMode) => void) {
+      brushSelection = callback;
     },
-    onLayerAction(callback: typeof layerAction) {layerAction=callback;},
-    surfaceView(view:SurfaceView,triangles?:number){for(const button of document.querySelectorAll<HTMLButtonElement>('[data-surface-view]')){button.setAttribute('aria-pressed',String(button.dataset.surfaceView===view));if(button.dataset.surfaceView==='boolean')button.title=`Show Boolean preview${triangles===undefined?'':` · ${triangles.toLocaleString()} triangles`}`;}},
-    requestBake(getPlan:(resolution:number,sourceIds?:string[])=>BakePlan,onBounds:(plan:BakePlan|null)=>void,sourceLayers:readonly SdfLayer[],activeId:string):Promise<BakeOptions|null> {
-      const name=document.querySelector<HTMLInputElement>('#bake-name')!,resolution=document.querySelector<HTMLSelectElement>('#bake-resolution')!,hide=document.querySelector<HTMLInputElement>('#bake-hide')!,confirm=document.querySelector<HTMLButtonElement>('#confirm-bake')!;
-      name.value='Baked sculpture';resolution.value='128';hide.checked=true;
-      const scope=document.querySelector<HTMLSelectElement>('#bake-scope')!,other=document.querySelector<HTMLSelectElement>('#bake-other')!;scope.value='visible';other.replaceChildren();for(const layer of sourceLayers.filter(l=>l.id!==activeId)){const option=document.createElement('option');option.value=layer.id;option.textContent=layer.name;other.append(option);}scope.options[1].disabled=!other.options.length;
-      const sources=()=>scope.value==='pair'?[activeId,other.value]:undefined;
-      const update=()=>{
-        document.getElementById('bake-title')!.textContent=scope.value==='pair'?'Merge two layers (Union)':'Bake visible Boolean result';document.querySelector('label[for="bake-other"]')!.textContent=`MERGE ${sourceLayers.find(l=>l.id===activeId)?.name??'SELECTED LAYER'} WITH`;
-        document.getElementById('bake-overlap-note')!.textContent=hide.checked?'Sources remain in the project, hidden and independently recoverable.':'Sources will stay visible. The viewport switches to Separate Layers to avoid recombining them with the baked result; surfaces may overlap.';
+    selectBrushTool(tool: "brush" | "smooth") {
+      setMode(tool === "smooth" ? "smooth" : clayMode);
+    },
+    onTransformAction(callback: typeof transformAction) {
+      transformAction = callback;
+    },
+    transformState(
+      transform: VolumeTransform,
+      editable: boolean,
+      mode: EditorMode,
+      space: TransformSpace,
+      busy = false,
+    ) {
+      for (const button of document.querySelectorAll<HTMLButtonElement>("[data-tool]")) {
+        button.setAttribute("aria-pressed", String(button.dataset.tool === mode));
+        button.classList.toggle("active", button.dataset.tool === mode);
+        button.disabled = busy;
+      }
+      document.querySelector<HTMLSelectElement>("#transform-space")!.value = space;
+      for (const input of document.querySelectorAll<HTMLInputElement>("[data-transform-field]")) {
+        const field = input.dataset.transformField as TransformField;
+        const value =
+          field === "scale"
+            ? hasUniformScale(transform)
+              ? transform.scale[0]
+              : NaN
+            : field[0] === "p"
+              ? transform.position["xyz".indexOf(field[1])]
+              : (transform.rotation["xyz".indexOf(field[1])] * 180) / Math.PI;
+        input.value = Number.isFinite(value) ? String(Number(value.toFixed(6))) : "";
+        input.disabled = !editable || busy;
+        input.dataset.editable = String(editable);
+      }
+      document.querySelector<HTMLButtonElement>("#reset-transform")!.disabled = !editable || busy;
+      document.getElementById("reset-transform")!.dataset.editable = String(editable);
+      document.getElementById("transform-note")!.textContent = !editable
+        ? "Show and unlock the active layer to edit it."
+        : !hasUniformScale(transform)
+          ? "Legacy non-uniform scale preserved. Enter a uniform scale before sculpting or using Scale."
+          : "";
+    },
+    onLayerAction(callback: typeof layerAction) {
+      layerAction = callback;
+    },
+    surfaceView(view: SurfaceView, triangles?: number) {
+      for (const button of document.querySelectorAll<HTMLButtonElement>("[data-surface-view]")) {
+        button.setAttribute("aria-pressed", String(button.dataset.surfaceView === view));
+        if (button.dataset.surfaceView === "boolean")
+          button.title = `Show Boolean preview${triangles === undefined ? "" : ` · ${triangles.toLocaleString()} triangles`}`;
+      }
+    },
+    requestBake(
+      getPlan: (resolution: number, sourceIds?: string[]) => BakePlan,
+      onBounds: (plan: BakePlan | null) => void,
+      sourceLayers: readonly SdfLayer[],
+      activeId: string,
+    ): Promise<BakeOptions | null> {
+      const name = document.querySelector<HTMLInputElement>("#bake-name")!,
+        resolution = document.querySelector<HTMLSelectElement>("#bake-resolution")!,
+        hide = document.querySelector<HTMLInputElement>("#bake-hide")!,
+        confirm = document.querySelector<HTMLButtonElement>("#confirm-bake")!;
+      name.value = "Baked sculpture";
+      resolution.value = "128";
+      hide.checked = true;
+      const scope = document.querySelector<HTMLSelectElement>("#bake-scope")!,
+        other = document.querySelector<HTMLSelectElement>("#bake-other")!;
+      scope.value = "visible";
+      other.replaceChildren();
+      for (const layer of sourceLayers.filter((l) => l.id !== activeId)) {
+        const option = document.createElement("option");
+        option.value = layer.id;
+        option.textContent = layer.name;
+        other.append(option);
+      }
+      scope.options[1].disabled = !other.options.length;
+      const sources = () => (scope.value === "pair" ? [activeId, other.value] : undefined);
+      const update = () => {
+        document.getElementById("bake-title")!.textContent =
+          scope.value === "pair" ? "Merge two layers (Union)" : "Bake visible Boolean result";
+        document.querySelector('label[for="bake-other"]')!.textContent =
+          `MERGE ${sourceLayers.find((l) => l.id === activeId)?.name ?? "SELECTED LAYER"} WITH`;
+        document.getElementById("bake-overlap-note")!.textContent = hide.checked
+          ? "Sources remain in the project, hidden and independently recoverable."
+          : "Sources will stay visible. The viewport switches to Separate Layers to avoid recombining them with the baked result; surfaces may overlap.";
         try {
-          other.disabled=scope.value!=='pair';const plan=getPlan(Number(resolution.value),sources());onBounds(plan);
-          document.getElementById('bake-bounds')!.textContent=`World bounds (cube)\nMin: ${plan.min.map(v=>v.toFixed(3)).join(', ')}\nMax: ${plan.max.map(v=>v.toFixed(3)).join(', ')}\nVoxel spacing: ${plan.worldStep.toFixed(5)} world units`;
-          document.getElementById('bake-estimate')!.textContent=`${plan.sourceIds.length} ${scope.value==='pair'?'chosen':'visible'} sources · New grid + scratch: ${(plan.gridBytes/1048576).toFixed(1)} MiB · All project grids + scratch: ${(plan.projectGridBytes/1048576).toFixed(1)} MiB. Preview caches, meshes, GPU buffers and history are additional.${plan.detailLimited?' Output sampling is coarser than the finest source.':''}`;
-          if(!name.value.trim())throw new Error('Enter a name for the baked layer.');
-          confirm.disabled=false;document.getElementById('bake-error')!.textContent='';
-        }catch(error){onBounds(null);confirm.disabled=true;document.getElementById('bake-error')!.textContent=(error as Error).message;document.getElementById('bake-bounds')!.textContent='';document.getElementById('bake-estimate')!.textContent='';}
-      };
-      for(const element of [name,resolution,hide,scope,other])element.addEventListener('input',update);
-      update();bakeDialog.returnValue='cancel';bakeDialog.showModal();
-      return new Promise(resolve=>bakeDialog.addEventListener('close',()=>{
-        for(const element of [name,resolution,hide,scope,other])element.removeEventListener('input',update);onBounds(null);
-        resolve(bakeDialog.returnValue==='bake'?{name:name.value.trim(),resolution:Number(resolution.value),hideSources:hide.checked,...(sources()?{sourceIds:sources()}:{} )}:null);
-      },{once:true}));
-    },
-    bakeBusy(busy:boolean){document.getElementById('bake-running')!.hidden=!busy;document.querySelector<HTMLButtonElement>('#cancel-bake')!.disabled=false;},
-    bakeProgress(progress:BakeProgress){document.getElementById('bake-progress')!.textContent=`${progress.stage==='sampling'?'Sampling SDF':'Generating chunks'}: ${progress.completed}/${progress.total}`;},
-    get modalOpen() {return !!document.querySelector('dialog[open]');},
-    confirmDelete(name: string): Promise<boolean> {
-      document.getElementById('delete-layer-message')!.textContent=`Delete “${name}” and its voxel data and undo history? Other layers will be kept.`;
-      deleteDialog.returnValue='cancel';
-      return new Promise(resolve=>{deleteDialog.addEventListener('close',()=>resolve(deleteDialog.returnValue==='delete'),{once:true});deleteDialog.showModal();});
-    },
-    compositeInfo(text:string){document.getElementById('composite-info')!.textContent=text;},
-    renderStyle(style:RenderStyle){document.querySelector<HTMLSelectElement>('#render-style')!.value=style;document.getElementById('cycle-render-style')!.textContent='◐ '+({normal:'Normal',matte:'Matte',glossy:'Glossy'}[style])+' · I';},
-    viewportMode(mode: ViewportMode) {document.querySelector<HTMLSelectElement>('#viewport-mode')!.value=mode;},
-    layerName(layer: SdfLayer) {
-      const row=Array.from(list.children).find(node=>(node as HTMLElement).dataset.layerId===layer.id) as HTMLElement|undefined;
-      if(!row)return;
-      const select=row.querySelector<HTMLButtonElement>('[data-action="select"]')!;select.textContent=`${layer.name} · ${volumeLabel(layer.volume)}`;select.setAttribute('aria-label',`Select ${layer.name}`);
-      row.querySelector<HTMLInputElement>('[data-action="rename"]')!.setAttribute('aria-label',`Rename ${layer.name}`);
-      row.querySelector<HTMLInputElement>('[data-action="colour"]')!.setAttribute('aria-label',`Viewport colour for ${layer.name}`);
-      row.querySelector<HTMLSelectElement>('[data-action="operation"]')!.setAttribute('aria-label',`Boolean operation for ${layer.name}`);
-      for(const [action,label] of [['visible',`${layer.visible?'Hide':'Show'} ${layer.name}`],['lock',`${layer.locked?'Unlock':'Lock'} ${layer.name}`],['up',`Move ${layer.name} up`],['down',`Move ${layer.name} down`],['duplicate',`Duplicate ${layer.name}`],['delete',`Delete ${layer.name}`]])row.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!.setAttribute('aria-label',label);
-    },
-    layerRows(layers: readonly SdfLayer[],activeId: string,colour: (layer:SdfLayer)=>string) {
-      list.replaceChildren();
-      for(const [index,layer] of layers.entries()) {
-        const row=document.createElement('div');row.className=`layer-row${layer.id===activeId?' active':''}`;row.dataset.layerId=layer.id;
-        const heading=document.createElement('div');heading.className='layer-heading';
-        const select=document.createElement('button');select.dataset.action='select';select.className='layer-select';select.textContent=`${layer.name} · ${volumeLabel(layer.volume)}`;select.setAttribute('aria-label',`Select ${layer.name}`);select.setAttribute('aria-pressed',String(layer.id===activeId));heading.append(select);
-        const picker=document.createElement('input');picker.type='color';picker.dataset.action='colour';picker.value=colour(layer);picker.setAttribute('aria-label',`Viewport colour for ${layer.name}`);heading.append(picker);row.append(heading);
-        const name=document.createElement('input');name.type='text';name.value=layer.name;name.maxLength=128;name.dataset.action='rename';name.setAttribute('aria-label',`Rename ${layer.name}`);row.append(name);
-        const operation=document.createElement('select');operation.dataset.action='operation';operation.setAttribute('aria-label',`Boolean operation for ${layer.name}`);
-        for(const [value,label] of [['union','Add / Union'],['difference','Subtract / Difference'],['intersect','Intersect']])operation.add(new Option(label,value));
-        operation.value=layer.operation;operation.disabled=layer.locked;operation.dataset.unavailable=String(layer.locked);row.append(operation);
-        const direction=document.createElement('p');direction.className='layers-hint';direction.textContent=`${index+1} · ${layer.visible?(layers.find(l=>l.visible)?.id===layer.id?'Initializes result (operation ignored)':'Applied to result above'):'Hidden · excluded from preview'}`;row.append(direction);
-        const tools=document.createElement('div');tools.className='layer-tools';
-        for(const [action,text,label,disabled] of [
-          ['visible',layer.visible?'Visible':'Hidden',`${layer.visible?'Hide':'Show'} ${layer.name}`,false],
-          ['lock',layer.locked?'Locked':'Unlocked',`${layer.locked?'Unlock':'Lock'} ${layer.name}`,false],
-          ['up','↑',`Move ${layer.name} up`,index===0],['down','↓',`Move ${layer.name} down`,index===layers.length-1],
-          ['duplicate','Copy',`Duplicate ${layer.name}`,false],['delete','Delete',`Delete ${layer.name}`,layers.length===1]
-        ] as const) {
-          const button=document.createElement('button');button.dataset.action=action;button.textContent=text;button.setAttribute('aria-label',label);button.disabled=disabled;button.dataset.unavailable=String(disabled);
-          if(action==='delete'&&disabled)button.title='Keep at least one layer';tools.append(button);
+          other.disabled = scope.value !== "pair";
+          const plan = getPlan(Number(resolution.value), sources());
+          onBounds(plan);
+          document.getElementById("bake-bounds")!.textContent =
+            `World bounds (cube)\nMin: ${plan.min.map((v) => v.toFixed(3)).join(", ")}\nMax: ${plan.max.map((v) => v.toFixed(3)).join(", ")}\nVoxel spacing: ${plan.worldStep.toFixed(5)} world units`;
+          document.getElementById("bake-estimate")!.textContent =
+            `${plan.sourceIds.length} ${scope.value === "pair" ? "chosen" : "visible"} sources · New grid + scratch: ${(plan.gridBytes / 1048576).toFixed(1)} MiB · All project grids + scratch: ${(plan.projectGridBytes / 1048576).toFixed(1)} MiB. Preview caches, meshes, GPU buffers and history are additional.${plan.detailLimited ? " Output sampling is coarser than the finest source." : ""}`;
+          if (!name.value.trim()) throw new Error("Enter a name for the baked layer.");
+          confirm.disabled = false;
+          document.getElementById("bake-error")!.textContent = "";
+        } catch (error) {
+          onBounds(null);
+          confirm.disabled = true;
+          document.getElementById("bake-error")!.textContent = (error as Error).message;
+          document.getElementById("bake-bounds")!.textContent = "";
+          document.getElementById("bake-estimate")!.textContent = "";
         }
-        row.append(tools);list.append(row);
+      };
+      for (const element of [name, resolution, hide, scope, other])
+        element.addEventListener("input", update);
+      update();
+      bakeDialog.returnValue = "cancel";
+      bakeDialog.showModal();
+      return new Promise((resolve) =>
+        bakeDialog.addEventListener(
+          "close",
+          () => {
+            for (const element of [name, resolution, hide, scope, other])
+              element.removeEventListener("input", update);
+            onBounds(null);
+            resolve(
+              bakeDialog.returnValue === "bake"
+                ? {
+                    name: name.value.trim(),
+                    resolution: Number(resolution.value),
+                    hideSources: hide.checked,
+                    ...(sources() ? { sourceIds: sources() } : {}),
+                  }
+                : null,
+            );
+          },
+          { once: true },
+        ),
+      );
+    },
+    bakeBusy(busy: boolean) {
+      document.getElementById("bake-running")!.hidden = !busy;
+      document.querySelector<HTMLButtonElement>("#cancel-bake")!.disabled = false;
+    },
+    bakeProgress(progress: BakeProgress) {
+      document.getElementById("bake-progress")!.textContent =
+        `${progress.stage === "sampling" ? "Sampling SDF" : "Generating chunks"}: ${progress.completed}/${progress.total}`;
+    },
+    get modalOpen() {
+      return !!document.querySelector("dialog[open]");
+    },
+    confirmDelete(name: string): Promise<boolean> {
+      document.getElementById("delete-layer-message")!.textContent =
+        `Delete “${name}” and its voxel data and undo history? Other layers will be kept.`;
+      deleteDialog.returnValue = "cancel";
+      return new Promise((resolve) => {
+        deleteDialog.addEventListener(
+          "close",
+          () => resolve(deleteDialog.returnValue === "delete"),
+          { once: true },
+        );
+        deleteDialog.showModal();
+      });
+    },
+    compositeInfo(text: string) {
+      document.getElementById("composite-info")!.textContent = text;
+    },
+    renderStyle(style: RenderStyle) {
+      document.querySelector<HTMLSelectElement>("#render-style")!.value = style;
+      document.getElementById("cycle-render-style")!.textContent =
+        "◐ " + { normal: "Normal", matte: "Matte", glossy: "Glossy" }[style] + " · I";
+    },
+    viewportMode(mode: ViewportMode) {
+      document.querySelector<HTMLSelectElement>("#viewport-mode")!.value = mode;
+    },
+    layerName(layer: SdfLayer) {
+      const row = Array.from(list.children).find(
+        (node) => (node as HTMLElement).dataset.layerId === layer.id,
+      ) as HTMLElement | undefined;
+      if (!row) return;
+      const select = row.querySelector<HTMLButtonElement>('[data-action="select"]')!;
+      select.textContent = `${layer.name} · ${volumeLabel(layer.volume)}`;
+      select.setAttribute("aria-label", `Select ${layer.name}`);
+      row
+        .querySelector<HTMLInputElement>('[data-action="rename"]')!
+        .setAttribute("aria-label", `Rename ${layer.name}`);
+      row
+        .querySelector<HTMLInputElement>('[data-action="colour"]')!
+        .setAttribute("aria-label", `Viewport colour for ${layer.name}`);
+      row
+        .querySelector<HTMLSelectElement>('[data-action="operation"]')!
+        .setAttribute("aria-label", `Boolean operation for ${layer.name}`);
+      for (const [action, label] of [
+        ["visible", `${layer.visible ? "Hide" : "Show"} ${layer.name}`],
+        ["lock", `${layer.locked ? "Unlock" : "Lock"} ${layer.name}`],
+        ["up", `Move ${layer.name} up`],
+        ["down", `Move ${layer.name} down`],
+        ["duplicate", `Duplicate ${layer.name}`],
+        ["delete", `Delete ${layer.name}`],
+      ])
+        row
+          .querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!
+          .setAttribute("aria-label", label);
+    },
+    layerRows(layers: readonly SdfLayer[], activeId: string, colour: (layer: SdfLayer) => string) {
+      list.replaceChildren();
+      for (const [index, layer] of layers.entries()) {
+        const row = document.createElement("div");
+        row.className = `layer-row${layer.id === activeId ? " active" : ""}`;
+        row.dataset.layerId = layer.id;
+        const heading = document.createElement("div");
+        heading.className = "layer-heading";
+        const select = document.createElement("button");
+        select.dataset.action = "select";
+        select.className = "layer-select";
+        select.textContent = `${layer.name} · ${volumeLabel(layer.volume)}`;
+        select.setAttribute("aria-label", `Select ${layer.name}`);
+        select.setAttribute("aria-pressed", String(layer.id === activeId));
+        heading.append(select);
+        const picker = document.createElement("input");
+        picker.type = "color";
+        picker.dataset.action = "colour";
+        picker.value = colour(layer);
+        picker.setAttribute("aria-label", `Viewport colour for ${layer.name}`);
+        heading.append(picker);
+        row.append(heading);
+        const name = document.createElement("input");
+        name.type = "text";
+        name.value = layer.name;
+        name.maxLength = 128;
+        name.dataset.action = "rename";
+        name.setAttribute("aria-label", `Rename ${layer.name}`);
+        row.append(name);
+        const operation = document.createElement("select");
+        operation.dataset.action = "operation";
+        operation.setAttribute("aria-label", `Boolean operation for ${layer.name}`);
+        for (const [value, label] of [
+          ["union", "Add / Union"],
+          ["difference", "Subtract / Difference"],
+          ["intersect", "Intersect"],
+        ])
+          operation.add(new Option(label, value));
+        operation.value = layer.operation;
+        operation.disabled = layer.locked;
+        operation.dataset.unavailable = String(layer.locked);
+        row.append(operation);
+        const direction = document.createElement("p");
+        direction.className = "layers-hint";
+        direction.textContent = `${index + 1} · ${layer.visible ? (layers.find((l) => l.visible)?.id === layer.id ? "Initializes result (operation ignored)" : "Applied to result above") : "Hidden · excluded from preview"}`;
+        row.append(direction);
+        const tools = document.createElement("div");
+        tools.className = "layer-tools";
+        for (const [action, text, label, disabled] of [
+          [
+            "visible",
+            layer.visible ? "Visible" : "Hidden",
+            `${layer.visible ? "Hide" : "Show"} ${layer.name}`,
+            false,
+          ],
+          [
+            "lock",
+            layer.locked ? "Locked" : "Unlocked",
+            `${layer.locked ? "Unlock" : "Lock"} ${layer.name}`,
+            false,
+          ],
+          ["up", "↑", `Move ${layer.name} up`, index === 0],
+          ["down", "↓", `Move ${layer.name} down`, index === layers.length - 1],
+          ["duplicate", "Copy", `Duplicate ${layer.name}`, false],
+          ["delete", "Delete", `Delete ${layer.name}`, layers.length === 1],
+        ] as const) {
+          const button = document.createElement("button");
+          button.dataset.action = action;
+          button.textContent = text;
+          button.setAttribute("aria-label", label);
+          button.disabled = disabled;
+          button.dataset.unavailable = String(disabled);
+          if (action === "delete" && disabled) button.title = "Keep at least one layer";
+          tools.append(button);
+        }
+        row.append(tools);
+        list.append(row);
       }
-      const create=document.querySelector<HTMLButtonElement>('#new-layer')!;create.disabled=layers.length>=8;create.dataset.unavailable=String(create.disabled);
+      const create = document.querySelector<HTMLButtonElement>("#new-layer")!;
+      create.disabled = layers.length >= 8;
+      create.dataset.unavailable = String(create.disabled);
     },
-    get hardness() {return Number(hardness.value);},
+    get hardness() {
+      return Number(hardness.value);
+    },
     resolution(value: number) {
-      const select=document.querySelector<HTMLSelectElement>('#resolution')!;
-      for(const option of Array.from(select.options))if(option.dataset.custom)option.remove();
-      if(!Array.from(select.options).some(o=>o.value===String(value))) {const option=new Option(`${value}³ · Loaded`,String(value));option.dataset.custom='true';select.add(option);}
-      select.value=String(value);
+      const select = document.querySelector<HTMLSelectElement>("#resolution")!;
+      for (const option of Array.from(select.options)) if (option.dataset.custom) option.remove();
+      if (!Array.from(select.options).some((o) => o.value === String(value))) {
+        const option = new Option(`${value}³ · Loaded`, String(value));
+        option.dataset.custom = "true";
+        select.add(option);
+      }
+      select.value = String(value);
     },
-    get settings(): SculptSettings { return {mode,radius:Number(radius.value),strength:Number(strength.value),hardness:Number(hardness.value)}; },
+    get settings(): SculptSettings {
+      return {
+        mode,
+        radius: Number(radius.value),
+        strength: Number(strength.value),
+        hardness: Number(hardness.value),
+      };
+    },
     setSettings(settings: SculptSettings) {
       // Preserve validated imported precision rather than snapping to the slider's default step.
-      radius.step='any'; strength.step='any'; hardness.step='any'; hardness.value=String(settings.hardness);
-      document.getElementById('hardness-value')!.textContent=`${Math.round(settings.hardness*100)}%`;
-      setMode(settings.mode); radius.value=String(settings.radius); strength.value=String(settings.strength);
-      document.getElementById('radius-value')!.textContent=Number(radius.value).toFixed(3);
-      document.getElementById('strength-value')!.textContent=`${Math.round(Number(strength.value)*100)}%`;
+      radius.step = "any";
+      strength.step = "any";
+      hardness.step = "any";
+      hardness.value = String(settings.hardness);
+      document.getElementById("hardness-value")!.textContent =
+        `${Math.round(settings.hardness * 100)}%`;
+      setMode(settings.mode);
+      radius.value = String(settings.radius);
+      strength.value = String(settings.strength);
+      document.getElementById("radius-value")!.textContent = Number(radius.value).toFixed(3);
+      document.getElementById("strength-value")!.textContent =
+        `${Math.round(Number(strength.value) * 100)}%`;
     },
-    history(undo: number, redo: number, busy=false) {
-      document.querySelector<HTMLButtonElement>('#undo')!.disabled=busy || undo===0;
-      document.querySelector<HTMLButtonElement>('#redo')!.disabled=busy || redo===0;
-      document.getElementById('history-info')!.textContent=`${undo} undo · ${redo} redo`;
+    history(undo: number, redo: number, busy = false) {
+      document.querySelector<HTMLButtonElement>("#undo")!.disabled = busy || undo === 0;
+      document.querySelector<HTMLButtonElement>("#redo")!.disabled = busy || redo === 0;
+      document.getElementById("history-info")!.textContent = `${undo} undo · ${redo} redo`;
     },
-    projectBusy(busy: boolean,preserveExportFocus=false) {
-      for (const id of ['new-project','open-project','save-project','reset','apply-resolution','export','export-selected','export-boolean','export-format','print-size','export-quality','cycle-render-style']) {const control=document.querySelector<HTMLButtonElement>(`#${id}`)!;const scopeButton=['export','export-selected','export-boolean'].includes(id);control.disabled=busy&&!(preserveExportFocus&&scopeButton);if(scopeButton)control.setAttribute('aria-disabled',String(busy));}
-      for(const control of document.querySelectorAll<HTMLInputElement|HTMLButtonElement>('#print-panel button,#print-panel input'))control.disabled=busy;
-      for(const control of document.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('.layers-panel button,.layers-panel input,.layers-panel select'))control.disabled=busy||control.dataset.unavailable==='true'||(control.matches('[data-transform-field],#reset-transform')&&control.dataset.editable==='false');
+    projectBusy(busy: boolean, preserveExportFocus = false) {
+      for (const id of [
+        "new-project",
+        "open-project",
+        "save-project",
+        "reset",
+        "apply-resolution",
+        "export",
+        "export-selected",
+        "export-boolean",
+        "export-format",
+        "print-size",
+        "export-quality",
+        "cycle-render-style",
+      ]) {
+        const control = document.querySelector<HTMLButtonElement>(`#${id}`)!;
+        const scopeButton = ["export", "export-selected", "export-boolean"].includes(id);
+        control.disabled = busy && !(preserveExportFocus && scopeButton);
+        if (scopeButton) control.setAttribute("aria-disabled", String(busy));
+      }
+      for (const control of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
+        "#print-panel button,#print-panel input",
+      ))
+        control.disabled = busy;
+      for (const control of document.querySelectorAll<
+        HTMLInputElement | HTMLButtonElement | HTMLSelectElement
+      >(".layers-panel button,.layers-panel input,.layers-panel select"))
+        control.disabled =
+          busy ||
+          control.dataset.unavailable === "true" ||
+          (control.matches("[data-transform-field],#reset-transform") &&
+            control.dataset.editable === "false");
     },
-    projectMessage(text: string, error=false) {
-      const element=document.getElementById('project-message')!;
-      element.textContent=text; element.classList.toggle('error',error); element.setAttribute('role',error?'alert':'status');
+    projectMessage(text: string, error = false) {
+      const element = document.getElementById("project-message")!;
+      element.textContent = text;
+      element.classList.toggle("error", error);
+      element.setAttribute("role", error ? "alert" : "status");
     },
-    get strength() { return Number(strength.value); }, performance(text: string) { document.getElementById('rebuild-info')!.textContent = text; }, viewport: document.getElementById('viewport')!, get mode() { return mode; }, get radius() { return Number(radius.value); }, status(text: string) { document.getElementById('status')!.textContent = text; }, meshInfo(triangles: number, resolution: number|string,composite=false) { document.getElementById('mesh-info')!.textContent = `${triangles.toLocaleString()} TRIANGLES · ACTIVE ${typeof resolution==='number'?`${resolution}³`:resolution} SAMPLES`;if(composite)document.getElementById('mesh-info')!.textContent=`${triangles.toLocaleString()} TRIANGLES · COMPOSITE ${resolution||'…'}³ SAMPLES`; } };
+    get strength() {
+      return Number(strength.value);
+    },
+    performance(text: string) {
+      document.getElementById("rebuild-info")!.textContent = text;
+    },
+    viewport: document.getElementById("viewport")!,
+    get mode() {
+      return mode;
+    },
+    get radius() {
+      return Number(radius.value);
+    },
+    status(text: string) {
+      document.getElementById("status")!.textContent = text;
+    },
+    meshInfo(triangles: number, resolution: number | string, composite = false) {
+      document.getElementById("mesh-info")!.textContent =
+        `${triangles.toLocaleString()} TRIANGLES · ACTIVE ${typeof resolution === "number" ? `${resolution}³` : resolution} SAMPLES`;
+      if (composite)
+        document.getElementById("mesh-info")!.textContent =
+          `${triangles.toLocaleString()} TRIANGLES · COMPOSITE ${resolution || "…"}³ SAMPLES`;
+    },
+  };
 }

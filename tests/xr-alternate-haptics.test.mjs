@@ -1,59 +1,619 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {Group,Matrix4} from 'three';
-import {EditorToolState} from '../work/test-build/editor-tool-state.mjs';
-import {XRAlternateTool} from '../work/test-build/xr-alternate-tool.mjs';
-import {XRControllers} from '../work/test-build/xr-controllers.mjs';
-import {XRControllerRoles} from '../work/test-build/xr-controller-roles.mjs';
-import {XRHaptics} from '../work/test-build/xr-haptics.mjs';
-import {XRClayStroke} from '../work/test-build/xr-clay-stroke.mjs';
-import {IndependentLayers} from '../work/test-build/independent-layers.mjs';
-import {SDFVolume} from '../work/test-build/sdf.mjs';
-import {createBaseProject} from '../work/test-build/layers.mjs';
-import {ShapePreviewModel} from '../work/test-build/shape-preview.mjs';
-import {saveSculptProject} from '../work/test-build/project.mjs';
-function fixture(){let settings={mode:'subtract',radius:.22,strength:.4,hardness:.7,camera:{position:[2,2,3],target:[0,0,0]}};const layers=new IndependentLayers(createBaseProject(new SDFVolume(25),settings)),shape=new ShapePreviewModel(layers.project.activeLayerId);const tools=new EditorToolState({layers:()=>layers,shape,settings:()=>settings,setSettings:v=>settings=v,mode:()=> 'sculpt',selectTool:t=>{settings={...settings,mode:t==='smooth'?'smooth':'add'};},selectTransform(){},busy:()=>false,changed(){}});tools.alternateTool='smooth';tools.path.steady=60;tools.path.straightLine=true;const alternate=new XRAlternateTool(tools),stroke=new XRClayStroke(()=>layers,tools,new Group()),state=(role,id)=>({role,connectionId:id,connected:true,tracked:true,gripTracked:true,source:{gamepad:{}},buttons:{trigger:{pressed:false,justPressed:false,rawValue:0}}});return {tools,layers,alternate,stroke,support:state('support',2),tool:state('tool',1),dispose(){stroke.dispose();layers.dispose();}};}
-const press=s=>Object.assign(s.buttons.trigger,{pressed:true,justPressed:true,rawValue:1});
-const release=s=>Object.assign(s.buttons.trigger,{pressed:false,justPressed:false,rawValue:0});
-const step=f=>f.alternate.update(f.support,f.tool,true,f.stroke.active);
-for(const conflict of ['menu','grab','diagnostics','hidden'])test(`alternate blocked by ${conflict} requires release/repress`,()=>{const f=fixture();try{step(f);press(f.support);f.alternate.update(f.support,f.tool,false,false);step(f);assert(!f.alternate.active);release(f.support);step(f);press(f.support);step(f);assert(f.alternate.active);}finally{f.alternate.cancel();f.dispose();}});
-test('alternate snapshots exact Subtract settings/path, restores without native/history changes',()=>{const f=fixture();try{const before=new Uint8Array(saveSculptProject(f.layers.project)),settings=structuredClone(f.tools.port.settings()),path={...f.tools.path};step(f);press(f.support);step(f);assert.equal(f.tools.active,'smooth');f.tools.port.setSettings({...f.tools.port.settings(),radius:.5,strength:.9});f.tools.path.steady=0;release(f.support);step(f);assert.equal(f.tools.active,'clay');assert.deepEqual(f.tools.port.settings(),settings);assert.deepEqual({...f.tools.path},path);assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)),before);assert.equal(f.layers.undoCount,0);}finally{f.dispose();}});
-test('release alternate during Smooth stroke preserves transaction, commits once then restores',()=>{const f=fixture(),pose=new Matrix4().makeTranslation(.7,0,.12);try{step(f);press(f.support);step(f);f.stroke.update(f.tool,pose,0,true);press(f.tool);f.stroke.update(f.tool,pose,16,true);assert(f.stroke.active);release(f.support);step(f);assert.equal(f.tools.active,'smooth');assert(f.stroke.active);f.tool.buttons.trigger.justPressed=false;f.stroke.update(f.tool,pose,32,true);release(f.tool);step(f);assert.equal(f.tools.active,'smooth');f.stroke.update(f.tool,pose,48,true);for(let i=0;f.stroke.active&&i<4096;i++)f.stroke.update(f.tool,pose,64+i*16,true);assert(!f.stroke.active);const count=f.layers.undoCount;step(f);assert.equal(f.tools.active,'clay');assert.equal(f.tools.port.settings().mode,'subtract');assert.equal(f.layers.undoCount,count);assert(count<=1);}finally{f.dispose();}});
-test('press alternate during buffered Clay defers across replay until finished',()=>{const f=fixture(),pose=new Matrix4().makeTranslation(.7,0,.12);try{step(f);f.stroke.update(f.tool,pose,0,true);press(f.tool);f.stroke.update(f.tool,pose,16,true);press(f.support);step(f);assert.equal(f.tools.active,'clay');release(f.tool);f.stroke.update(f.tool,pose,32,true);assert(f.stroke.active);step(f);assert.equal(f.tools.active,'clay');let time=48;while(f.stroke.active){f.stroke.update(f.tool,pose,time,true);time+=16;}step(f);assert.equal(f.tools.active,'smooth');}finally{f.alternate.cancel();f.dispose();}});
-for(const reason of ['role','disconnect','tracking','session'])test(`${reason} cancellation restores override and held Support cannot reenter`,()=>{const f=fixture();try{step(f);press(f.support);step(f);f.stroke.cancel();f.alternate.cancel();step(f);assert.equal(f.tools.active,'clay');assert(!f.alternate.active);release(f.support);step(f);press(f.support);step(f);assert(f.alternate.active);}finally{f.alternate.cancel();f.dispose();}});
-test('configurable Off/Opposite/Smooth; connection changes need release',()=>{const f=fixture();try{f.tools.adjust('alternate-tool',1);assert.equal(f.tools.alternateTool,'off');step(f);press(f.support);step(f);assert(!f.alternate.active);release(f.support);step(f);f.tools.adjust('alternate-tool',1);assert.equal(f.tools.alternateTool,'opposite');press(f.support);step(f);assert(f.alternate.active);assert.equal(f.tools.port.settings().mode,'add');release(f.support);step(f);f.tools.adjust('alternate-tool',1);assert.equal(f.tools.alternateTool,'smooth');press(f.support);f.support.connectionId++;step(f);assert(!f.alternate.active);}finally{f.dispose();}});
-const tick=()=>new Promise(resolve=>setImmediate(resolve));
-test('haptic strengths/durations subtle; shared cooldown, pending gate and disable',async()=>{const h=new XRHaptics(),calls=[],state={connected:true,tracked:true,source:{gamepad:{hapticActuators:[{pulse:(...v)=>{calls.push(v);return true;}}]}}};assert(h.pulse(state,'tool',0));assert(!h.pulse(state,'stamp',100));await tick();assert(!h.pulse(state,'history',70));assert(h.pulse(state,'stroke-start',80));await tick();h.enabled=false;assert(!h.pulse(state,'grab',200));assert.equal(calls.length,2);for(const [v,d] of calls){assert(v<=.25);assert(d<=28);}});
-test('haptics tolerate absent, false, throwing/rejected actuators and lost tracking',async()=>{const h=new XRHaptics();for(const pulse of [undefined,()=>false,()=>{throw Error('unsupported');},()=>Promise.reject(Error('unsupported'))]){const state={connected:true,tracked:true,source:{gamepad:{hapticActuators:[{pulse}]}}};assert.doesNotThrow(()=>h.pulse(state,'selection',0));await tick();state.tracked=false;assert.equal(h.pulse(state,'grab',100),false);}assert.equal(h.pulse(undefined,'tool'),false);});
+import assert from "node:assert/strict";
+import test from "node:test";
+import { Group, Matrix4 } from "three";
+import { EditorToolState } from "../work/test-build/editor-tool-state.mjs";
+import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
+import { createBaseProject } from "../work/test-build/layers.mjs";
+import { saveSculptProject } from "../work/test-build/project.mjs";
+import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
+import { XRAlternateTool } from "../work/test-build/xr-alternate-tool.mjs";
+import { XRClayStroke } from "../work/test-build/xr-clay-stroke.mjs";
+import { XRControllerRoles } from "../work/test-build/xr-controller-roles.mjs";
+import { XRControllers } from "../work/test-build/xr-controllers.mjs";
+import { XRHaptics } from "../work/test-build/xr-haptics.mjs";
+
+function fixture() {
+  let settings = {
+    mode: "subtract",
+    radius: 0.22,
+    strength: 0.4,
+    hardness: 0.7,
+    camera: { position: [2, 2, 3], target: [0, 0, 0] },
+  };
+  const layers = new IndependentLayers(createBaseProject(new SDFVolume(25), settings)),
+    shape = new ShapePreviewModel(layers.project.activeLayerId);
+  const tools = new EditorToolState({
+    layers: () => layers,
+    shape,
+    settings: () => settings,
+    setSettings: (v) => (settings = v),
+    mode: () => "sculpt",
+    selectTool: (t) => {
+      settings = { ...settings, mode: t === "smooth" ? "smooth" : "add" };
+    },
+    selectTransform() {},
+    busy: () => false,
+    changed() {},
+  });
+  tools.alternateTool = "smooth";
+  tools.path.steady = 60;
+  tools.path.straightLine = true;
+  const alternate = new XRAlternateTool(tools),
+    stroke = new XRClayStroke(() => layers, tools, new Group()),
+    state = (role, id) => ({
+      role,
+      connectionId: id,
+      connected: true,
+      tracked: true,
+      gripTracked: true,
+      source: { gamepad: {} },
+      buttons: { trigger: { pressed: false, justPressed: false, rawValue: 0 } },
+    });
+  return {
+    tools,
+    layers,
+    alternate,
+    stroke,
+    support: state("support", 2),
+    tool: state("tool", 1),
+    dispose() {
+      stroke.dispose();
+      layers.dispose();
+    },
+  };
+}
+const press = (s) =>
+  Object.assign(s.buttons.trigger, { pressed: true, justPressed: true, rawValue: 1 });
+const release = (s) =>
+  Object.assign(s.buttons.trigger, { pressed: false, justPressed: false, rawValue: 0 });
+const step = (f) => f.alternate.update(f.support, f.tool, true, f.stroke.active);
+for (const conflict of ["menu", "grab", "diagnostics", "hidden"])
+  test(`alternate blocked by ${conflict} requires release/repress`, () => {
+    const f = fixture();
+    try {
+      step(f);
+      press(f.support);
+      f.alternate.update(f.support, f.tool, false, false);
+      step(f);
+      assert(!f.alternate.active);
+      release(f.support);
+      step(f);
+      press(f.support);
+      step(f);
+      assert(f.alternate.active);
+    } finally {
+      f.alternate.cancel();
+      f.dispose();
+    }
+  });
+test("alternate snapshots exact Subtract settings/path, restores without native/history changes", () => {
+  const f = fixture();
+  try {
+    const before = new Uint8Array(saveSculptProject(f.layers.project)),
+      settings = structuredClone(f.tools.port.settings()),
+      path = { ...f.tools.path };
+    step(f);
+    press(f.support);
+    step(f);
+    assert.equal(f.tools.active, "smooth");
+    f.tools.port.setSettings({ ...f.tools.port.settings(), radius: 0.5, strength: 0.9 });
+    f.tools.path.steady = 0;
+    release(f.support);
+    step(f);
+    assert.equal(f.tools.active, "clay");
+    assert.deepEqual(f.tools.port.settings(), settings);
+    assert.deepEqual({ ...f.tools.path }, path);
+    assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)), before);
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+test("release alternate during Smooth stroke preserves transaction, commits once then restores", () => {
+  const f = fixture(),
+    pose = new Matrix4().makeTranslation(0.7, 0, 0.12);
+  try {
+    step(f);
+    press(f.support);
+    step(f);
+    f.stroke.update(f.tool, pose, 0, true);
+    press(f.tool);
+    f.stroke.update(f.tool, pose, 16, true);
+    assert(f.stroke.active);
+    release(f.support);
+    step(f);
+    assert.equal(f.tools.active, "smooth");
+    assert(f.stroke.active);
+    f.tool.buttons.trigger.justPressed = false;
+    f.stroke.update(f.tool, pose, 32, true);
+    release(f.tool);
+    step(f);
+    assert.equal(f.tools.active, "smooth");
+    f.stroke.update(f.tool, pose, 48, true);
+    for (let i = 0; f.stroke.active && i < 4096; i++)
+      f.stroke.update(f.tool, pose, 64 + i * 16, true);
+    assert(!f.stroke.active);
+    const count = f.layers.undoCount;
+    step(f);
+    assert.equal(f.tools.active, "clay");
+    assert.equal(f.tools.port.settings().mode, "subtract");
+    assert.equal(f.layers.undoCount, count);
+    assert(count <= 1);
+  } finally {
+    f.dispose();
+  }
+});
+test("press alternate during buffered Clay defers across replay until finished", () => {
+  const f = fixture(),
+    pose = new Matrix4().makeTranslation(0.7, 0, 0.12);
+  try {
+    step(f);
+    f.stroke.update(f.tool, pose, 0, true);
+    press(f.tool);
+    f.stroke.update(f.tool, pose, 16, true);
+    press(f.support);
+    step(f);
+    assert.equal(f.tools.active, "clay");
+    release(f.tool);
+    f.stroke.update(f.tool, pose, 32, true);
+    assert(f.stroke.active);
+    step(f);
+    assert.equal(f.tools.active, "clay");
+    let time = 48;
+    while (f.stroke.active) {
+      f.stroke.update(f.tool, pose, time, true);
+      time += 16;
+    }
+    step(f);
+    assert.equal(f.tools.active, "smooth");
+  } finally {
+    f.alternate.cancel();
+    f.dispose();
+  }
+});
+for (const reason of ["role", "disconnect", "tracking", "session"])
+  test(`${reason} cancellation restores override and held Support cannot reenter`, () => {
+    const f = fixture();
+    try {
+      step(f);
+      press(f.support);
+      step(f);
+      f.stroke.cancel();
+      f.alternate.cancel();
+      step(f);
+      assert.equal(f.tools.active, "clay");
+      assert(!f.alternate.active);
+      release(f.support);
+      step(f);
+      press(f.support);
+      step(f);
+      assert(f.alternate.active);
+    } finally {
+      f.alternate.cancel();
+      f.dispose();
+    }
+  });
+test("configurable Off/Opposite/Smooth; connection changes need release", () => {
+  const f = fixture();
+  try {
+    f.tools.adjust("alternate-tool", 1);
+    assert.equal(f.tools.alternateTool, "off");
+    step(f);
+    press(f.support);
+    step(f);
+    assert(!f.alternate.active);
+    release(f.support);
+    step(f);
+    f.tools.adjust("alternate-tool", 1);
+    assert.equal(f.tools.alternateTool, "opposite");
+    press(f.support);
+    step(f);
+    assert(f.alternate.active);
+    assert.equal(f.tools.port.settings().mode, "add");
+    release(f.support);
+    step(f);
+    f.tools.adjust("alternate-tool", 1);
+    assert.equal(f.tools.alternateTool, "smooth");
+    press(f.support);
+    f.support.connectionId++;
+    step(f);
+    assert(!f.alternate.active);
+  } finally {
+    f.dispose();
+  }
+});
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+test("haptic strengths/durations subtle; shared cooldown, pending gate and disable", async () => {
+  const h = new XRHaptics(),
+    calls = [],
+    state = {
+      connected: true,
+      tracked: true,
+      source: {
+        gamepad: {
+          hapticActuators: [
+            {
+              pulse: (...v) => {
+                calls.push(v);
+                return true;
+              },
+            },
+          ],
+        },
+      },
+    };
+  assert(h.pulse(state, "tool", 0));
+  assert(!h.pulse(state, "stamp", 100));
+  await tick();
+  assert(!h.pulse(state, "history", 70));
+  assert(h.pulse(state, "stroke-start", 80));
+  await tick();
+  h.enabled = false;
+  assert(!h.pulse(state, "grab", 200));
+  assert.equal(calls.length, 2);
+  for (const [v, d] of calls) {
+    assert(v <= 0.25);
+    assert(d <= 28);
+  }
+});
+test("haptics tolerate absent, false, throwing/rejected actuators and lost tracking", async () => {
+  const h = new XRHaptics();
+  for (const pulse of [
+    undefined,
+    () => false,
+    () => {
+      throw Error("unsupported");
+    },
+    () => Promise.reject(Error("unsupported")),
+  ]) {
+    const state = {
+      connected: true,
+      tracked: true,
+      source: { gamepad: { hapticActuators: [{ pulse }] } },
+    };
+    assert.doesNotThrow(() => h.pulse(state, "selection", 0));
+    await tick();
+    state.tracked = false;
+    assert.equal(h.pulse(state, "grab", 100), false);
+  }
+  assert.equal(h.pulse(undefined, "tool"), false);
+});
 
 // Exercise the actual polling bridge with reversed connection slots and roles.
 
-for(const dominant of ['left','right'])for(const interruption of ['visibility','disconnect','role','tracking','grip','stop'])test(`bridge ${dominant} Tool / reversed slots restores on ${interruption}`,()=>{
- const f=fixture(),roles=new XRControllerRoles();roles.setDominant(dominant);const rays=[new Group(),new Group()],grips=[new Group(),new Group()],root=new Group();const session=new EventTarget();session.visibilityState='visible';const source=hand=>({handedness:hand,profiles:['meta-quest-touch-plus'],targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping:'xr-standard',axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false}))}}),support=source(roles.support),tool=source(roles.dominant);const bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},root,roles,undefined,()=>{},{alternate:f.alternate,stroke:f.stroke,toolMode:()=>f.tools.active,layers:()=>f.layers,workspace:new Group()});const down=(src,index,value)=>Object.assign(src.gamepad.buttons[index],{value,pressed:!!value});
- try{rays[0].dispatchEvent({type:'connected',data:tool});rays[1].dispatchEvent({type:'connected',data:support});bridge.start(session);bridge.update(0);down(support,0,1);bridge.update(16);assert.equal(f.tools.active,'smooth');
- if(interruption==='visibility'){session.visibilityState='hidden';session.dispatchEvent(new Event('visibilitychange'));}
- if(interruption==='disconnect')rays[1].dispatchEvent({type:'disconnected'});
- if(interruption==='role')bridge.setDominant(roles.support);
- if(interruption==='tracking')rays[1].visible=false;
- if(interruption==='grip')down(support,1,1);
- if(interruption==='stop')bridge.stop();
- bridge.update(32);assert.equal(f.tools.active,'clay');assert.equal(f.tools.port.settings().mode,'subtract');assert.equal(f.layers.undoCount,0);assert(!f.stroke.active);
- }finally{bridge.dispose();f.dispose();}
+for (const dominant of ["left", "right"])
+  for (const interruption of ["visibility", "disconnect", "role", "tracking", "grip", "stop"])
+    test(`bridge ${dominant} Tool / reversed slots restores on ${interruption}`, () => {
+      const f = fixture(),
+        roles = new XRControllerRoles();
+      roles.setDominant(dominant);
+      const rays = [new Group(), new Group()],
+        grips = [new Group(), new Group()],
+        root = new Group();
+      const session = new EventTarget();
+      session.visibilityState = "visible";
+      const source = (hand) => ({
+          handedness: hand,
+          profiles: ["meta-quest-touch-plus"],
+          targetRayMode: "tracked-pointer",
+          gripSpace: {},
+          gamepad: {
+            mapping: "xr-standard",
+            axes: [0, 0, 0, 0],
+            buttons: Array.from({ length: 6 }, () => ({ value: 0, pressed: false })),
+          },
+        }),
+        support = source(roles.support),
+        tool = source(roles.dominant);
+      const bridge = new XRControllers(
+        { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+        root,
+        roles,
+        undefined,
+        () => {},
+        {
+          alternate: f.alternate,
+          stroke: f.stroke,
+          toolMode: () => f.tools.active,
+          layers: () => f.layers,
+          workspace: new Group(),
+        },
+      );
+      const down = (src, index, value) =>
+        Object.assign(src.gamepad.buttons[index], { value, pressed: !!value });
+      try {
+        rays[0].dispatchEvent({ type: "connected", data: tool });
+        rays[1].dispatchEvent({ type: "connected", data: support });
+        bridge.start(session);
+        bridge.update(0);
+        down(support, 0, 1);
+        bridge.update(16);
+        assert.equal(f.tools.active, "smooth");
+        if (interruption === "visibility") {
+          session.visibilityState = "hidden";
+          session.dispatchEvent(new Event("visibilitychange"));
+        }
+        if (interruption === "disconnect") rays[1].dispatchEvent({ type: "disconnected" });
+        if (interruption === "role") bridge.setDominant(roles.support);
+        if (interruption === "tracking") rays[1].visible = false;
+        if (interruption === "grip") down(support, 1, 1);
+        if (interruption === "stop") bridge.stop();
+        bridge.update(32);
+        assert.equal(f.tools.active, "clay");
+        assert.equal(f.tools.port.settings().mode, "subtract");
+        assert.equal(f.layers.undoCount, 0);
+        assert(!f.stroke.active);
+      } finally {
+        bridge.dispose();
+        f.dispose();
+      }
+    });
+test("100 rapid alternate-tool cycles preserve primary settings, native bytes and history", () => {
+  const f = fixture();
+  try {
+    const before = new Uint8Array(saveSculptProject(f.layers.project)),
+      settings = structuredClone(f.tools.port.settings()),
+      path = { ...f.tools.path };
+    for (let i = 0; i < 100; i++) {
+      release(f.support);
+      step(f);
+      press(f.support);
+      step(f);
+      assert.equal(f.tools.active, "smooth");
+      f.tools.setBrushRadius(0.3 + (i % 2) * 0.1);
+      release(f.support);
+      step(f);
+      assert.equal(f.tools.active, "clay");
+      assert.deepEqual(f.tools.port.settings(), settings);
+      assert.deepEqual({ ...f.tools.path }, path);
+    }
+    assert.equal(f.layers.undoCount, 0);
+    assert.equal(f.layers.redoCount, 0);
+    assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)), before);
+  } finally {
+    f.dispose();
+  }
 });
-test('100 rapid alternate-tool cycles preserve primary settings, native bytes and history',()=>{const f=fixture();try{const before=new Uint8Array(saveSculptProject(f.layers.project)),settings=structuredClone(f.tools.port.settings()),path={...f.tools.path};for(let i=0;i<100;i++){release(f.support);step(f);press(f.support);step(f);assert.equal(f.tools.active,'smooth');f.tools.setBrushRadius(.3+(i%2)*.1);release(f.support);step(f);assert.equal(f.tools.active,'clay');assert.deepEqual(f.tools.port.settings(),settings);assert.deepEqual({...f.tools.path},path);}assert.equal(f.layers.undoCount,0);assert.equal(f.layers.redoCount,0);assert.deepEqual(new Uint8Array(saveSculptProject(f.layers.project)),before);}finally{f.dispose();}});
 
-test('tool issue haptics coalesce to one short error, bypass a recent success cooldown and never repeat without a new gesture',async()=>{
- const h=new XRHaptics(),calls=[],state={connected:true,tracked:true,connectionId:1,source:{gamepad:{hapticActuators:[{pulse:(...args)=>{calls.push(args);return true;}}]}}};
- h.pulse(state,'stroke-start',0);h.report(state,'cancel');h.report(state,'error');assert(h.flush(state,1));assert.equal(calls.length,1);await tick();assert(h.flush(state,16));assert.deepEqual(calls[1],[.30,35]);await tick();h.report(state,'error');h.flush(state,200);assert.equal(calls.length,2);h.beginGesture(state);h.report(state,'cancel');h.flush(state,240);assert.deepEqual(calls[2],[.22,24]);
+test("tool issue haptics coalesce to one short error, bypass a recent success cooldown and never repeat without a new gesture", async () => {
+  const h = new XRHaptics(),
+    calls = [],
+    state = {
+      connected: true,
+      tracked: true,
+      connectionId: 1,
+      source: {
+        gamepad: {
+          hapticActuators: [
+            {
+              pulse: (...args) => {
+                calls.push(args);
+                return true;
+              },
+            },
+          ],
+        },
+      },
+    };
+  h.pulse(state, "stroke-start", 0);
+  h.report(state, "cancel");
+  h.report(state, "error");
+  assert(h.flush(state, 1));
+  assert.equal(calls.length, 1);
+  await tick();
+  assert(h.flush(state, 16));
+  assert.deepEqual(calls[1], [0.3, 35]);
+  await tick();
+  h.report(state, "error");
+  h.flush(state, 200);
+  assert.equal(calls.length, 2);
+  h.beginGesture(state);
+  h.report(state, "cancel");
+  h.flush(state, 240);
+  assert.deepEqual(calls[2], [0.22, 24]);
 });
-test('issue notifications drop on disable, source/connection changes, tracking loss and reset; no stale pulses',async()=>{
- const h=new XRHaptics(),calls=[],state={connected:true,tracked:true,connectionId:1,source:{gamepad:{hapticActuators:[{pulse:(...args)=>{calls.push(args);return true;}}]}}};
- for(const change of ['disabled','tracking','connection','source','reset']){h.reset();h.enabled=true;state.tracked=true;const original=state.source;h.report(state,'cancel');if(change==='disabled')h.enabled=false;if(change==='tracking')state.tracked=false;if(change==='connection')state.connectionId++;if(change==='source')state.source={gamepad:{}};if(change==='reset')h.reset();h.flush(state,200);h.enabled=true;state.tracked=true;state.source=original;h.flush(state,400);assert.equal(calls.length,0);}await tick();
+test("issue notifications drop on disable, source/connection changes, tracking loss and reset; no stale pulses", async () => {
+  const h = new XRHaptics(),
+    calls = [],
+    state = {
+      connected: true,
+      tracked: true,
+      connectionId: 1,
+      source: {
+        gamepad: {
+          hapticActuators: [
+            {
+              pulse: (...args) => {
+                calls.push(args);
+                return true;
+              },
+            },
+          ],
+        },
+      },
+    };
+  for (const change of ["disabled", "tracking", "connection", "source", "reset"]) {
+    h.reset();
+    h.enabled = true;
+    state.tracked = true;
+    const original = state.source;
+    h.report(state, "cancel");
+    if (change === "disabled") h.enabled = false;
+    if (change === "tracking") state.tracked = false;
+    if (change === "connection") state.connectionId++;
+    if (change === "source") state.source = { gamepad: {} };
+    if (change === "reset") h.reset();
+    h.flush(state, 200);
+    h.enabled = true;
+    state.tracked = true;
+    state.source = original;
+    h.flush(state, 400);
+    assert.equal(calls.length, 0);
+  }
+  await tick();
 });
-test('real Clay reports cancellation only for active work and error separately; ordinary release stays successful',()=>{
- const f=fixture(),events=[],stroke=new XRClayStroke(()=>f.layers,f.tools,new Group(),()=>{},event=>events.push(event)),pose=new Matrix4().makeTranslation(.7,0,.12);try{stroke.cancel();assert.deepEqual(events,[]);f.tools.path.steady=0;f.tools.path.straightLine=false;release(f.tool);stroke.update(f.tool,pose,0,true);press(f.tool);stroke.update(f.tool,pose,16,true);assert(stroke.active);stroke.cancel();stroke.cancel();assert.deepEqual(events,['cancel']);release(f.tool);stroke.update(f.tool,pose,32,true);press(f.tool);stroke.update(f.tool,pose,48,true);release(f.tool);stroke.update(f.tool,pose,64,true);let time=80;for(let i=0;stroke.active&&i<4096;i++,time+=16)stroke.update(f.tool,pose,time,true);assert(!stroke.active);assert.deepEqual(events,['cancel']);const apply=f.layers.applyStrokeLocal;f.layers.applyStrokeLocal=()=>{throw Error('test admission error');};stroke.update(f.tool,pose,time,true);press(f.tool);stroke.update(f.tool,pose,time+16,true);assert.equal(events.at(-1),'error');f.layers.applyStrokeLocal=apply;}finally{stroke.dispose();f.dispose();}
+test("real Clay reports cancellation only for active work and error separately; ordinary release stays successful", () => {
+  const f = fixture(),
+    events = [],
+    stroke = new XRClayStroke(
+      () => f.layers,
+      f.tools,
+      new Group(),
+      () => {},
+      (event) => events.push(event),
+    ),
+    pose = new Matrix4().makeTranslation(0.7, 0, 0.12);
+  try {
+    stroke.cancel();
+    assert.deepEqual(events, []);
+    f.tools.path.steady = 0;
+    f.tools.path.straightLine = false;
+    release(f.tool);
+    stroke.update(f.tool, pose, 0, true);
+    press(f.tool);
+    stroke.update(f.tool, pose, 16, true);
+    assert(stroke.active);
+    stroke.cancel();
+    stroke.cancel();
+    assert.deepEqual(events, ["cancel"]);
+    release(f.tool);
+    stroke.update(f.tool, pose, 32, true);
+    press(f.tool);
+    stroke.update(f.tool, pose, 48, true);
+    release(f.tool);
+    stroke.update(f.tool, pose, 64, true);
+    let time = 80;
+    for (let i = 0; stroke.active && i < 4096; i++, time += 16)
+      stroke.update(f.tool, pose, time, true);
+    assert(!stroke.active);
+    assert.deepEqual(events, ["cancel"]);
+    const apply = f.layers.applyStrokeLocal;
+    f.layers.applyStrokeLocal = () => {
+      throw Error("test admission error");
+    };
+    stroke.update(f.tool, pose, time, true);
+    press(f.tool);
+    stroke.update(f.tool, pose, time + 16, true);
+    assert.equal(events.at(-1), "error");
+    f.layers.applyStrokeLocal = apply;
+  } finally {
+    stroke.dispose();
+    f.dispose();
+  }
 });
-for(const dominant of ['left','right'])test(`controller issue alert reaches only the ${dominant} Tool and suppresses success-end for that frame`,async()=>{
- const roles=new XRControllerRoles();roles.setDominant(dominant);const rays=[new Group(),new Group()],grips=[new Group(),new Group()],calls=[[],[]],session=new EventTarget();session.visibilityState='visible';const source=(hand,i)=>({handedness:hand,profiles:['meta-quest-touch-plus'],targetRayMode:'tracked-pointer',gripSpace:{},gamepad:{mapping:'xr-standard',axes:[0,0,0,0],buttons:Array.from({length:6},()=>({value:0,pressed:false})),hapticActuators:[{pulse:(...args)=>{calls[i].push(args);return true;}}]}});let bridge;const stroke={active:false,cancel(){if(this.active)bridge.reportToolIssue('cancel');this.active=false;},update(){}};bridge=new XRControllers({getController:i=>rays[i],getControllerGrip:i=>grips[i]},new Group(),roles,undefined,()=>{},{stroke,toolMode:()=> 'clay'});try{bridge.start(session);rays[0].dispatchEvent({type:'connected',data:source(dominant,0)});rays[1].dispatchEvent({type:'connected',data:source(roles.support,1)});bridge.update(0);stroke.active=true;stroke.cancel();bridge.update(16);await tick();assert.deepEqual(calls[0],[[.22,24]]);assert.deepEqual(calls[1],[]);bridge.update(32);assert.equal(calls[0].length,1);bridge.reportToolIssue('error');bridge.stop();bridge.update(64);assert.equal(calls[0].length,1);}finally{bridge.dispose();}
+for (const dominant of ["left", "right"])
+  test(`controller issue alert reaches only the ${dominant} Tool and suppresses success-end for that frame`, async () => {
+    const roles = new XRControllerRoles();
+    roles.setDominant(dominant);
+    const rays = [new Group(), new Group()],
+      grips = [new Group(), new Group()],
+      calls = [[], []],
+      session = new EventTarget();
+    session.visibilityState = "visible";
+    const source = (hand, i) => ({
+      handedness: hand,
+      profiles: ["meta-quest-touch-plus"],
+      targetRayMode: "tracked-pointer",
+      gripSpace: {},
+      gamepad: {
+        mapping: "xr-standard",
+        axes: [0, 0, 0, 0],
+        buttons: Array.from({ length: 6 }, () => ({ value: 0, pressed: false })),
+        hapticActuators: [
+          {
+            pulse: (...args) => {
+              calls[i].push(args);
+              return true;
+            },
+          },
+        ],
+      },
+    });
+    let bridge;
+    const stroke = {
+      active: false,
+      cancel() {
+        if (this.active) bridge.reportToolIssue("cancel");
+        this.active = false;
+      },
+      update() {},
+    };
+    bridge = new XRControllers(
+      { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+      new Group(),
+      roles,
+      undefined,
+      () => {},
+      { stroke, toolMode: () => "clay" },
+    );
+    try {
+      bridge.start(session);
+      rays[0].dispatchEvent({ type: "connected", data: source(dominant, 0) });
+      rays[1].dispatchEvent({ type: "connected", data: source(roles.support, 1) });
+      bridge.update(0);
+      stroke.active = true;
+      stroke.cancel();
+      bridge.update(16);
+      await tick();
+      assert.deepEqual(calls[0], [[0.22, 24]]);
+      assert.deepEqual(calls[1], []);
+      bridge.update(32);
+      assert.equal(calls[0].length, 1);
+      bridge.reportToolIssue("error");
+      bridge.stop();
+      bridge.update(64);
+      assert.equal(calls[0].length, 1);
+    } finally {
+      bridge.dispose();
+    }
+  });
+test("diagnostic vibration uses noticeable bounded pulse and reports controller acknowledgement honestly", async () => {
+  const h = new XRHaptics(),
+    calls = [],
+    state = {
+      connected: true,
+      tracked: true,
+      source: {
+        gamepad: {
+          hapticActuators: [
+            {
+              pulse: (...args) => {
+                calls.push(args);
+                return true;
+              },
+            },
+          ],
+        },
+      },
+    };
+  assert.match(await h.test(state), /accepted/);
+  assert.deepEqual(calls, [[0.75, 250]]);
+  assert.match(await h.test(state), /retry/);
+  assert.match(await new XRHaptics().test({ ...state, tracked: false }), /not tracked/);
+  assert.match(await new XRHaptics().test({ ...state, source: { gamepad: {} } }), /unavailable/);
+  assert.match(
+    await new XRHaptics().test({
+      ...state,
+      source: { gamepad: { hapticActuators: [{ pulse: () => false }] } },
+    }),
+    /rejected/,
+  );
+  assert.match(
+    await new XRHaptics().test({
+      ...state,
+      source: {
+        gamepad: {
+          hapticActuators: [
+            {
+              pulse: () => {
+                throw Error("device");
+              },
+            },
+          ],
+        },
+      },
+    }),
+    /failed/,
+  );
 });
-test('diagnostic vibration uses noticeable bounded pulse and reports controller acknowledgement honestly',async()=>{const h=new XRHaptics(),calls=[],state={connected:true,tracked:true,source:{gamepad:{hapticActuators:[{pulse:(...args)=>{calls.push(args);return true;}}]}}};assert.match(await h.test(state),/accepted/);assert.deepEqual(calls,[[.75,250]]);assert.match(await h.test(state),/retry/);assert.match(await new XRHaptics().test({...state,tracked:false}),/not tracked/);assert.match(await new XRHaptics().test({...state,source:{gamepad:{}}}),/unavailable/);assert.match(await new XRHaptics().test({...state,source:{gamepad:{hapticActuators:[{pulse:()=>false}]}}}),/rejected/);assert.match(await new XRHaptics().test({...state,source:{gamepad:{hapticActuators:[{pulse:()=>{throw Error('device');}}]}}}),/failed/);});

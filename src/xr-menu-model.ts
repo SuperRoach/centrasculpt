@@ -1,143 +1,872 @@
-import {Euler,Vector3} from 'three';
-import {PAINT_SWATCHES} from './sculpt-paint';
-import {LayerPaletteModel} from './layer-palette';
-import {MOVE_VARIANTS,type MoveVariant} from './tool-preferences';
-import {XRWorldMenu,type XRWorldMenuPort} from './xr-world-menu';
-import {MAX_PROJECT_LAYERS} from './project';
-import {volumeLabel} from './volume-store';
-import {EDITOR_TOOLS,VR_WHEEL_TOOLS,MOVE_VARIANT_LABELS} from './editor-tool-state';
-import type {EditorToolState,EditorTool} from './editor-tool-state';
-import type {XRMenuRequest} from './xr-support-shortcuts';
-export type MenuRect={x:number;y:number;width:number;height:number};
-export type MenuButton={id:string;label:string;detail?:string;colour?:string;thumbnail?:string;muted?:boolean;swatch?:boolean;selected?:boolean;disabled?:boolean;rect?:MenuRect;sector?:number;clip?:MenuRect;layerInfo?:{resolution?:number;operation?:string;tube:boolean;children:number;collapsed:boolean};slider?:{value:number;min:number;max:number}};
-export type MenuContent={title:string;subtitle:string;buttons:MenuButton[];labels:{text:string;x:number;y:number;small?:boolean;width?:number;height?:number;value?:boolean}[];footer:string;scroll?:{offset:number;max:number}};
-export const MENU_SIZE=1152;
-export const OPTIONS_PER_PAGE=5;
-export const WHEEL=Object.freeze({x:576,y:590,inner:185,outer:430,labelRadius:328});
+import { Euler, Vector3 } from "three";
+import type { EditorTool, EditorToolState } from "./editor-tool-state";
+import { MOVE_VARIANT_LABELS, VR_WHEEL_TOOLS } from "./editor-tool-state";
+import { LayerPaletteModel } from "./layer-palette";
+import { MAX_PROJECT_LAYERS } from "./project";
+import { PAINT_SWATCHES } from "./sculpt-paint";
+import { MOVE_VARIANTS, type MoveVariant } from "./tool-preferences";
+import { volumeLabel } from "./volume-store";
+import type { XRMenuRequest } from "./xr-support-shortcuts";
+import { XRWorldMenu, type XRWorldMenuPort } from "./xr-world-menu";
+export type MenuRect = { x: number; y: number; width: number; height: number };
+export type MenuButton = {
+  id: string;
+  label: string;
+  detail?: string;
+  colour?: string;
+  thumbnail?: string;
+  muted?: boolean;
+  swatch?: boolean;
+  selected?: boolean;
+  disabled?: boolean;
+  rect?: MenuRect;
+  sector?: number;
+  clip?: MenuRect;
+  layerInfo?: {
+    resolution?: number;
+    operation?: string;
+    tube: boolean;
+    children: number;
+    collapsed: boolean;
+  };
+  slider?: { value: number; min: number; max: number };
+};
+export type MenuContent = {
+  title: string;
+  subtitle: string;
+  buttons: MenuButton[];
+  labels: {
+    text: string;
+    x: number;
+    y: number;
+    small?: boolean;
+    width?: number;
+    height?: number;
+    value?: boolean;
+  }[];
+  footer: string;
+  scroll?: { offset: number; max: number };
+};
+export const MENU_SIZE = 1152;
+export const OPTIONS_PER_PAGE = 5;
+export const WHEEL = Object.freeze({ x: 576, y: 590, inner: 185, outer: 430, labelRadius: 328 });
 /** Screen-independent menu state, hit targets and application command dispatch. */
 export class XRMenuModel {
- request:XRMenuRequest|null=null;page:XRMenuRequest|'cut'|'cut-confirm'='tool-wheel';optionPage=0;hover:string|null=null;feedback='';
- private merge:{project:unknown;id:string;other?:string;resolution:number}|null=null;private mergeAbort:AbortController|null=null;
- private resetTarget:{project:unknown;id:string}|null=null;
- private moveVariants=false;
- private cutAxis:'x'|'y'|'z'='x';private cutOffset=0;private cutTilt:[number,number]=[0,0];private cutAbort:AbortController|null=null;
- private cutScope:'active'|'all-editable'='active';
- readonly world:XRWorldMenu;readonly palette:LayerPaletteModel;
- constructor(readonly tools:EditorToolState,worldPort?:XRWorldMenuPort){this.world=new XRWorldMenu(tools,worldPort);this.palette=new LayerPaletteModel(tools);}
- setRequest(request:XRMenuRequest|null):void{if(request===this.request)return;this.palette.close();this.mergeAbort?.abort();this.mergeAbort=null;this.cutAbort?.abort();this.cutAbort=null;this.merge=null;this.resetTarget=null;this.request=request;this.page=request??'tool-wheel';this.optionPage=0;this.moveVariants=false;this.world.section='home';this.hover=null;this.feedback='';}
- get layerSelectionActive():boolean{return this.request!==null&&this.page==='layers'&&!this.merge&&!this.resetTarget;}
- content():MenuContent{const content=this.buildContent();for(const button of content.buttons)if(button.id==='snap-toggle'){button.muted=!this.tools.snapApplicable;button.detail=this.tools.snapApplicable?'15° direction snapping':'Applies to Straight Line strokes and Move rotation';}if(this.feedback){content.footer=this.feedback;if(this.page==='tool-wheel')content.subtitle=this.feedback;}else if(this.tools.busy)content.footer="Working… · Finish or cancel the current edit";content.buttons.push({id:'ui-scale',label:'Menu size',detail:this.tools.port.layers().display.vrUiScale==='large'?'Large → Standard':'Standard → Large',rect:{x:848,y:42,width:264,height:76},disabled:this.tools.busy});return content;}
- private buildContent():MenuContent{
-  if(this.page==='cut-confirm'){const layer=this.tools.port.layers().active.layer,normal=new Vector3(this.cutAxis==='x'?1:0,this.cutAxis==='y'?1:0,this.cutAxis==='z'?1:0).applyEuler(new Euler(this.cutTilt[0]*Math.PI/180,this.cutTilt[1]*Math.PI/180,0,'XYZ')).normalize();return {title:'REVIEW PLANE CUT',subtitle:`${layer.name} · preview before apply`,buttons:[{id:'cut-back',label:'Adjust plane',rect:{x:40,y:820,width:400,height:100}},{id:'cut-cancel',label:'Cancel',rect:{x:40,y:940,width:400,height:90}},{id:'cut-apply',label:this.cutAbort?'Cutting…':'Apply Cut · create new layer',rect:{x:600,y:940,width:512,height:90},disabled:!!this.cutAbort||this.tools.busy}],labels:[{text:`Plane through ${normal.clone().multiplyScalar(this.cutOffset).toArray().map(n=>n.toFixed(2)).join(', ')} · normal ${normal.toArray().map(n=>n.toFixed(3)).join(', ')}`,x:60,y:300,width:1040,height:84,value:true},{text:`${this.cutScope==='active'?'Active layer only':'All visible, unlocked SDF layers'} · Offset ${this.cutOffset.toFixed(2)} · tilt ${this.cutTilt[0]}° / ${this.cutTilt[1]}°`,x:60,y:420,width:1040,height:74},{text:'The field will be intersected with both half-spaces to form closed caps. Both pieces keep their paint and mask; the new cut face inherits paint from nearby surface samples.',x:60,y:530,width:1040,height:180}],footer:this.feedback||'Review the plane, then apply or adjust it'};}
-  if(this.page==='cut'){const layer=this.tools.port.layers().active.layer,buttons:MenuButton[]=[{id:'tools',label:'‹ Tool Wheel',rect:{x:40,y:140,width:300,height:74}},{id:'cut-axis:x',label:'X',selected:this.cutAxis==='x',rect:{x:40,y:270,width:330,height:90}},{id:'cut-axis:y',label:'Y',selected:this.cutAxis==='y',rect:{x:410,y:270,width:330,height:90}},{id:'cut-axis:z',label:'Z',selected:this.cutAxis==='z',rect:{x:780,y:270,width:332,height:90}},{id:'cut-offset-dec',label:'−',rect:{x:40,y:420,width:220,height:100}},{id:'cut-offset-inc',label:'+',rect:{x:892,y:420,width:220,height:100}},{id:'cut-scope',label:this.cutScope==='active'?'Affected · Active layer':'Affected · All visible editable layers',rect:{x:300,y:500,width:552,height:72}},{id:'cut-tilt-x-dec',label:'Tilt X −15°',rect:{x:40,y:590,width:320,height:88}},{id:'cut-tilt-x-inc',label:'Tilt X +15°',rect:{x:410,y:590,width:330,height:88}},{id:'cut-tilt-y-dec',label:'Tilt Y −15°',rect:{x:40,y:700,width:320,height:88}},{id:'cut-tilt-y-inc',label:'Tilt Y +15°',rect:{x:410,y:700,width:330,height:88}},{id:'cut-cancel',label:'‹ Tool Wheel',rect:{x:40,y:900,width:330,height:86}},{id:'cut-preview',label:'Preview Plane',rect:{x:780,y:900,width:332,height:86},disabled:this.tools.busy}];return {title:'PLANE CUT',subtitle:`${layer.name} · Separate into a new layer`,buttons,labels:[{text:`Plane normal ${this.cutAxis.toUpperCase()} · offset ${this.cutOffset.toFixed(2)} · tilt ${this.cutTilt[0]}° / ${this.cutTilt[1]}°`,x:280,y:434,width:600,height:72,value:true},{text:'Closed SDF pieces · new face colour inherits nearby paint',x:60,y:820,width:1040,height:56}],footer:this.feedback||'Set plane orientation and position, then preview before applying'};}
-  if(this.page==='world')return this.world.content();
-  if(this.page==='layers'&&!this.merge)return this.palette.content();
-  if(this.resetTarget&&(this.tools.active!=='transform'||this.tools.busy||this.tools.port.layers().project!==this.resetTarget.project||this.tools.port.layers().transformNode.id!==this.resetTarget.id)){this.resetTarget=null;this.feedback='Reset cancelled: selection or interaction changed';}
-  if(this.resetTarget){const l=this.tools.port.layers().transformNode;return {title:'RESET LAYER TRANSFORM?',subtitle:l.name,labels:[{text:'Position 0 · rotation 0 · uniform scale 1',x:60,y:320},{text:'Permanent layer edit · one Undo action',x:60,y:390},{text:'Workspace navigation stays unchanged',x:60,y:460}],buttons:[{id:'cancel-reset',label:'Cancel',rect:{x:60,y:600,width:480,height:110}},{id:'confirm-reset',label:'Reset layer',disabled:!l.editable,rect:{x:600,y:600,width:480,height:110}}],footer:'Release trigger, then confirm or cancel'};}
-  if(this.merge){const state=this.merge,l=this.tools.port.layers();if(l.project!==state.project||l.project.activeLayerId!==state.id&&!this.mergeAbort){this.merge=null;this.feedback='Merge cancelled: selected layer changed';return this.content();}
-   const running=!!this.mergeAbort,buttons:MenuButton[]=[{id:'cancel-merge',label:running?'Cancel merge':'‹ Back to Layers',rect:{x:40,y:150,width:1072,height:68}}];
-   if(!state.other){l.project.layerStack.layers.filter(x=>x.id!==state.id).forEach((layer,i)=>buttons.push({id:`merge-target:${layer.id}`,label:layer.name,rect:{x:40,y:240+i*100,width:1072,height:82},disabled:this.tools.busy}));}
-   else {buttons.push({id:'merge-resolution',label:`Output ${state.resolution}³ · tap to change`,rect:{x:40,y:440,width:1072,height:100},disabled:running},{id:'confirm-merge',label:'Merge these two layers',rect:{x:40,y:640,width:1072,height:100},disabled:this.tools.busy||running});}
-   return {title:running?'MERGING…':state.other?'MERGE TWO LAYERS?':'CHOOSE LAYER TO MERGE',subtitle:l.project.layerStack.get(state.id).name,buttons,labels:state.other?[{text:l.project.layerStack.get(state.other).name,x:52,y:310},{text:'Union · originals kept hidden · one Undo',x:52,y:370},{text:'Lower resolution can lose fine detail',x:52,y:590}]:[],footer:this.feedback||'Hold Support stick · release cancels'};
+  request: XRMenuRequest | null = null;
+  page: XRMenuRequest | "cut" | "cut-confirm" = "tool-wheel";
+  optionPage = 0;
+  hover: string | null = null;
+  feedback = "";
+  private merge: { project: unknown; id: string; other?: string; resolution: number } | null = null;
+  private mergeAbort: AbortController | null = null;
+  private resetTarget: { project: unknown; id: string } | null = null;
+  private moveVariants = false;
+  private cutAxis: "x" | "y" | "z" = "x";
+  private cutOffset = 0;
+  private cutTilt: [number, number] = [0, 0];
+  private cutAbort: AbortController | null = null;
+  private cutScope: "active" | "all-editable" = "active";
+  readonly world: XRWorldMenu;
+  readonly palette: LayerPaletteModel;
+  constructor(
+    readonly tools: EditorToolState,
+    worldPort?: XRWorldMenuPort,
+  ) {
+    this.world = new XRWorldMenu(tools, worldPort);
+    this.palette = new LayerPaletteModel(tools);
   }
-  if(this.page==='tool-options'&&this.tools.moveFamily&&this.moveVariants){
-   const buttons:MenuButton[]=[{id:'tools',label:'‹ Tools',rect:{x:40,y:140,width:240,height:74}},{id:'variant-settings',label:'Variant settings',detail:this.tools.contextLabel,disabled:this.tools.busy,rect:{x:40,y:844,width:1072,height:136}}];
-   MOVE_VARIANTS.forEach((variant,i)=>buttons.push({id:`move-variant:${variant}`,label:MOVE_VARIANT_LABELS[variant],selected:this.tools.lastMoveVariant===variant,disabled:this.tools.busy,rect:{x:40+(i%2)*548,y:244+Math.floor(i/2)*180,width:524,height:156}}));
-   return {title:'MOVE VARIANTS',subtitle:`Current · ${this.tools.contextLabel}`,buttons,labels:[],footer:this.feedback||'Tool trigger selects · release Support stick to close'};
+  setRequest(request: XRMenuRequest | null): void {
+    if (request === this.request) return;
+    this.palette.close();
+    this.mergeAbort?.abort();
+    this.mergeAbort = null;
+    this.cutAbort?.abort();
+    this.cutAbort = null;
+    this.merge = null;
+    this.resetTarget = null;
+    this.request = request;
+    this.page = request ?? "tool-wheel";
+    this.optionPage = 0;
+    this.moveVariants = false;
+    this.world.section = "home";
+    this.hover = null;
+    this.feedback = "";
   }
-  const buttons:MenuButton[]=[],labels:MenuContent['labels']=[],title=this.page==='tool-wheel'?'TOOL WHEEL':this.page==='layers'?'LAYERS':this.tools.moveFamily?this.tools.contextLabel.toUpperCase():`${this.tools.contextLabel.toUpperCase()} OPTIONS`;
-  const add=(id:string,label:string,x:number,y:number,width:number,height:number,selected=false,disabled=false,detail?:string)=>buttons.push({id,label,rect:{x,y,width,height},selected,disabled,detail});
-  if(this.page==='tool-wheel'){
-   add('tool:paint','Paint',392,1030,320,78,this.tools.active==='paint',this.tools.busy);
-   add('tool:mask','Mask',40,1030,320,78,this.tools.active==='mask',this.tools.busy);
-   add('project','Project',744,1030,368,78,false,this.tools.busy);
-   add('world','World Settings',760,140,352,74,false,this.tools.busy);
-   add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',40,140,300,74,!!this.tools.path.snap,this.tools.busy);
-   VR_WHEEL_TOOLS.forEach((tool,i)=>buttons.push({id:`tool:${tool.id}`,label:tool.label,detail:tool.id==='move'?MOVE_VARIANT_LABELS[this.tools.lastMoveVariant]:tool.detail,sector:i,selected:tool.id==='move'?this.tools.moveFamily:this.tools.active===tool.id,disabled:!tool.enabled||this.tools.busy}));
-   add('options','Options',436,518,280,144,false,false,this.tools.contextLabel);
-  }else if(this.page==='layers'){
-   const layers=this.tools.port.layers();
-   const full=layers.project.layerStack.layers.length>=MAX_PROJECT_LAYERS;
-   add('new-layer','＋ Add New Layer',40,960,524,78,false,this.tools.busy||full,full?'Maximum of 8 layers reached':'Empty clay volume · 64³ · selects new layer');
-   add('merge-layers','Merge with…',588,960,524,78,false,this.tools.busy||full||layers.project.layerStack.layers.length<2);
-   labels.push({text:'Select layer',x:48,y:174,width:650,height:38},{text:'Visibility',x:728,y:174,width:176,height:38},{text:'Lock',x:944,y:174,width:168,height:38});
-   layers.project.layerStack.layers.forEach((layer,i)=>{const y=216+i*94,active=layer.id===layers.project.activeLayerId;
-    add(`select:${layer.id}`,layer.name,40,y,664,82,active,this.tools.busy,`${active?'✓ Active · ':''}${volumeLabel(layer.volume)} · ${layer.operation==='union'?'Union':layer.operation==='difference'?'Difference':'Intersect'}`);
-    buttons[buttons.length-1].colour=layers.display.colour(layers.project.id,layer.id,layer.order);
-    add(`visible:${layer.id}`,layer.visible?'Visible':'Hidden',720,y,176,82,layer.visible,this.tools.busy);
-    add(`locked:${layer.id}`,layer.locked?'Locked':'Unlocked',912,y,200,82,layer.locked,this.tools.busy);
-   });
-  }else{
-   add('tools','‹ Tools',40,140,240,74);add('snap-toggle',this.tools.path.snap?'Snap 15° · On':'Snap 15° · Off',300,140,440,74,!!this.tools.path.snap,this.tools.busy);const all=this.tools.options(),pages=Math.max(1,Math.ceil(all.length/OPTIONS_PER_PAGE));this.optionPage=Math.min(this.optionPage,pages-1);
+  get layerSelectionActive(): boolean {
+    return this.request !== null && this.page === "layers" && !this.merge && !this.resetTarget;
+  }
+  content(): MenuContent {
+    const content = this.buildContent();
+    for (const button of content.buttons)
+      if (button.id === "snap-toggle") {
+        button.muted = !this.tools.snapApplicable;
+        button.detail = this.tools.snapApplicable
+          ? "15° direction snapping"
+          : "Applies to Straight Line strokes and Move rotation";
+      }
+    if (this.feedback) {
+      content.footer = this.feedback;
+      if (this.page === "tool-wheel") content.subtitle = this.feedback;
+    } else if (this.tools.busy) content.footer = "Working… · Finish or cancel the current edit";
+    content.buttons.push({
+      id: "ui-scale",
+      label: "Menu size",
+      detail:
+        this.tools.port.layers().display.vrUiScale === "large"
+          ? "Large → Standard"
+          : "Standard → Large",
+      rect: { x: 848, y: 42, width: 264, height: 76 },
+      disabled: this.tools.busy,
+    });
+    return content;
+  }
+  private buildContent(): MenuContent {
+    if (this.page === "cut-confirm") {
+      const layer = this.tools.port.layers().active.layer,
+        normal = new Vector3(
+          this.cutAxis === "x" ? 1 : 0,
+          this.cutAxis === "y" ? 1 : 0,
+          this.cutAxis === "z" ? 1 : 0,
+        )
+          .applyEuler(
+            new Euler(
+              (this.cutTilt[0] * Math.PI) / 180,
+              (this.cutTilt[1] * Math.PI) / 180,
+              0,
+              "XYZ",
+            ),
+          )
+          .normalize();
+      return {
+        title: "REVIEW PLANE CUT",
+        subtitle: `${layer.name} · preview before apply`,
+        buttons: [
+          {
+            id: "cut-back",
+            label: "Adjust plane",
+            rect: { x: 40, y: 820, width: 400, height: 100 },
+          },
+          { id: "cut-cancel", label: "Cancel", rect: { x: 40, y: 940, width: 400, height: 90 } },
+          {
+            id: "cut-apply",
+            label: this.cutAbort ? "Cutting…" : "Apply Cut · create new layer",
+            rect: { x: 600, y: 940, width: 512, height: 90 },
+            disabled: !!this.cutAbort || this.tools.busy,
+          },
+        ],
+        labels: [
+          {
+            text: `Plane through ${normal
+              .clone()
+              .multiplyScalar(this.cutOffset)
+              .toArray()
+              .map((n) => n.toFixed(2))
+              .join(", ")} · normal ${normal
+              .toArray()
+              .map((n) => n.toFixed(3))
+              .join(", ")}`,
+            x: 60,
+            y: 300,
+            width: 1040,
+            height: 84,
+            value: true,
+          },
+          {
+            text: `${this.cutScope === "active" ? "Active layer only" : "All visible, unlocked SDF layers"} · Offset ${this.cutOffset.toFixed(2)} · tilt ${this.cutTilt[0]}° / ${this.cutTilt[1]}°`,
+            x: 60,
+            y: 420,
+            width: 1040,
+            height: 74,
+          },
+          {
+            text: "The field will be intersected with both half-spaces to form closed caps. Both pieces keep their paint and mask; the new cut face inherits paint from nearby surface samples.",
+            x: 60,
+            y: 530,
+            width: 1040,
+            height: 180,
+          },
+        ],
+        footer: this.feedback || "Review the plane, then apply or adjust it",
+      };
+    }
+    if (this.page === "cut") {
+      const layer = this.tools.port.layers().active.layer,
+        buttons: MenuButton[] = [
+          { id: "tools", label: "‹ Tool Wheel", rect: { x: 40, y: 140, width: 300, height: 74 } },
+          {
+            id: "cut-axis:x",
+            label: "X",
+            selected: this.cutAxis === "x",
+            rect: { x: 40, y: 270, width: 330, height: 90 },
+          },
+          {
+            id: "cut-axis:y",
+            label: "Y",
+            selected: this.cutAxis === "y",
+            rect: { x: 410, y: 270, width: 330, height: 90 },
+          },
+          {
+            id: "cut-axis:z",
+            label: "Z",
+            selected: this.cutAxis === "z",
+            rect: { x: 780, y: 270, width: 332, height: 90 },
+          },
+          { id: "cut-offset-dec", label: "−", rect: { x: 40, y: 420, width: 220, height: 100 } },
+          { id: "cut-offset-inc", label: "+", rect: { x: 892, y: 420, width: 220, height: 100 } },
+          {
+            id: "cut-scope",
+            label:
+              this.cutScope === "active"
+                ? "Affected · Active layer"
+                : "Affected · All visible editable layers",
+            rect: { x: 300, y: 500, width: 552, height: 72 },
+          },
+          {
+            id: "cut-tilt-x-dec",
+            label: "Tilt X −15°",
+            rect: { x: 40, y: 590, width: 320, height: 88 },
+          },
+          {
+            id: "cut-tilt-x-inc",
+            label: "Tilt X +15°",
+            rect: { x: 410, y: 590, width: 330, height: 88 },
+          },
+          {
+            id: "cut-tilt-y-dec",
+            label: "Tilt Y −15°",
+            rect: { x: 40, y: 700, width: 320, height: 88 },
+          },
+          {
+            id: "cut-tilt-y-inc",
+            label: "Tilt Y +15°",
+            rect: { x: 410, y: 700, width: 330, height: 88 },
+          },
+          {
+            id: "cut-cancel",
+            label: "‹ Tool Wheel",
+            rect: { x: 40, y: 900, width: 330, height: 86 },
+          },
+          {
+            id: "cut-preview",
+            label: "Preview Plane",
+            rect: { x: 780, y: 900, width: 332, height: 86 },
+            disabled: this.tools.busy,
+          },
+        ];
+      return {
+        title: "PLANE CUT",
+        subtitle: `${layer.name} · Separate into a new layer`,
+        buttons,
+        labels: [
+          {
+            text: `Plane normal ${this.cutAxis.toUpperCase()} · offset ${this.cutOffset.toFixed(2)} · tilt ${this.cutTilt[0]}° / ${this.cutTilt[1]}°`,
+            x: 280,
+            y: 434,
+            width: 600,
+            height: 72,
+            value: true,
+          },
+          {
+            text: "Closed SDF pieces · new face colour inherits nearby paint",
+            x: 60,
+            y: 820,
+            width: 1040,
+            height: 56,
+          },
+        ],
+        footer: this.feedback || "Set plane orientation and position, then preview before applying",
+      };
+    }
+    if (this.page === "world") return this.world.content();
+    if (this.page === "layers" && !this.merge) return this.palette.content();
+    if (
+      this.resetTarget &&
+      (this.tools.active !== "transform" ||
+        this.tools.busy ||
+        this.tools.port.layers().project !== this.resetTarget.project ||
+        this.tools.port.layers().transformNode.id !== this.resetTarget.id)
+    ) {
+      this.resetTarget = null;
+      this.feedback = "Reset cancelled: selection or interaction changed";
+    }
+    if (this.resetTarget) {
+      const l = this.tools.port.layers().transformNode;
+      return {
+        title: "RESET LAYER TRANSFORM?",
+        subtitle: l.name,
+        labels: [
+          { text: "Position 0 · rotation 0 · uniform scale 1", x: 60, y: 320 },
+          { text: "Permanent layer edit · one Undo action", x: 60, y: 390 },
+          { text: "Workspace navigation stays unchanged", x: 60, y: 460 },
+        ],
+        buttons: [
+          { id: "cancel-reset", label: "Cancel", rect: { x: 60, y: 600, width: 480, height: 110 } },
+          {
+            id: "confirm-reset",
+            label: "Reset layer",
+            disabled: !l.editable,
+            rect: { x: 600, y: 600, width: 480, height: 110 },
+          },
+        ],
+        footer: "Release trigger, then confirm or cancel",
+      };
+    }
+    if (this.merge) {
+      const state = this.merge,
+        l = this.tools.port.layers();
+      if (
+        l.project !== state.project ||
+        (l.project.activeLayerId !== state.id && !this.mergeAbort)
+      ) {
+        this.merge = null;
+        this.feedback = "Merge cancelled: selected layer changed";
+        return this.content();
+      }
+      const running = !!this.mergeAbort,
+        buttons: MenuButton[] = [
+          {
+            id: "cancel-merge",
+            label: running ? "Cancel merge" : "‹ Back to Layers",
+            rect: { x: 40, y: 150, width: 1072, height: 68 },
+          },
+        ];
+      if (!state.other) {
+        l.project.layerStack.layers
+          .filter((x) => x.id !== state.id)
+          .forEach((layer, i) => {
+            buttons.push({
+              id: `merge-target:${layer.id}`,
+              label: layer.name,
+              rect: { x: 40, y: 240 + i * 100, width: 1072, height: 82 },
+              disabled: this.tools.busy,
+            });
+          });
+      } else {
+        buttons.push(
+          {
+            id: "merge-resolution",
+            label: `Output ${state.resolution}³ · tap to change`,
+            rect: { x: 40, y: 440, width: 1072, height: 100 },
+            disabled: running,
+          },
+          {
+            id: "confirm-merge",
+            label: "Merge these two layers",
+            rect: { x: 40, y: 640, width: 1072, height: 100 },
+            disabled: this.tools.busy || running,
+          },
+        );
+      }
+      return {
+        title: running ? "MERGING…" : state.other ? "MERGE TWO LAYERS?" : "CHOOSE LAYER TO MERGE",
+        subtitle: l.project.layerStack.get(state.id).name,
+        buttons,
+        labels: state.other
+          ? [
+              { text: l.project.layerStack.get(state.other).name, x: 52, y: 310 },
+              { text: "Union · originals kept hidden · one Undo", x: 52, y: 370 },
+              { text: "Lower resolution can lose fine detail", x: 52, y: 590 },
+            ]
+          : [],
+        footer: this.feedback || "Hold Support stick · release cancels",
+      };
+    }
+    if (this.page === "tool-options" && this.tools.moveFamily && this.moveVariants) {
+      const buttons: MenuButton[] = [
+        { id: "tools", label: "‹ Tools", rect: { x: 40, y: 140, width: 240, height: 74 } },
+        {
+          id: "variant-settings",
+          label: "Variant settings",
+          detail: this.tools.contextLabel,
+          disabled: this.tools.busy,
+          rect: { x: 40, y: 844, width: 1072, height: 136 },
+        },
+      ];
+      MOVE_VARIANTS.forEach((variant, i) => {
+        buttons.push({
+          id: `move-variant:${variant}`,
+          label: MOVE_VARIANT_LABELS[variant],
+          selected: this.tools.lastMoveVariant === variant,
+          disabled: this.tools.busy,
+          rect: {
+            x: 40 + (i % 2) * 548,
+            y: 244 + Math.floor(i / 2) * 180,
+            width: 524,
+            height: 156,
+          },
+        });
+      });
+      return {
+        title: "MOVE VARIANTS",
+        subtitle: `Current · ${this.tools.contextLabel}`,
+        buttons,
+        labels: [],
+        footer: this.feedback || "Tool trigger selects · release Support stick to close",
+      };
+    }
+    const buttons: MenuButton[] = [],
+      labels: MenuContent["labels"] = [],
+      title =
+        this.page === "tool-wheel"
+          ? "TOOL WHEEL"
+          : this.page === "layers"
+            ? "LAYERS"
+            : this.tools.moveFamily
+              ? this.tools.contextLabel.toUpperCase()
+              : `${this.tools.contextLabel.toUpperCase()} OPTIONS`;
+    const add = (
+      id: string,
+      label: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      selected = false,
+      disabled = false,
+      detail?: string,
+    ) => buttons.push({ id, label, rect: { x, y, width, height }, selected, disabled, detail });
+    if (this.page === "tool-wheel") {
+      add(
+        "tool:paint",
+        "Paint",
+        392,
+        1030,
+        320,
+        78,
+        this.tools.active === "paint",
+        this.tools.busy,
+      );
+      add("tool:mask", "Mask", 40, 1030, 320, 78, this.tools.active === "mask", this.tools.busy);
+      add("project", "Project", 744, 1030, 368, 78, false, this.tools.busy);
+      add("world", "World Settings", 760, 140, 352, 74, false, this.tools.busy);
+      add(
+        "snap-toggle",
+        this.tools.path.snap ? "Snap 15° · On" : "Snap 15° · Off",
+        40,
+        140,
+        300,
+        74,
+        !!this.tools.path.snap,
+        this.tools.busy,
+      );
+      VR_WHEEL_TOOLS.forEach((tool, i) => {
+        buttons.push({
+          id: `tool:${tool.id}`,
+          label: tool.label,
+          detail:
+            tool.id === "move" ? MOVE_VARIANT_LABELS[this.tools.lastMoveVariant] : tool.detail,
+          sector: i,
+          selected: tool.id === "move" ? this.tools.moveFamily : this.tools.active === tool.id,
+          disabled: !tool.enabled || this.tools.busy,
+        });
+      });
+      add("options", "Options", 436, 518, 280, 144, false, false, this.tools.contextLabel);
+    } else if (this.page === "layers") {
+      const layers = this.tools.port.layers();
+      const full = layers.project.layerStack.layers.length >= MAX_PROJECT_LAYERS;
+      add(
+        "new-layer",
+        "＋ Add New Layer",
+        40,
+        960,
+        524,
+        78,
+        false,
+        this.tools.busy || full,
+        full ? "Maximum of 8 layers reached" : "Empty clay volume · 64³ · selects new layer",
+      );
+      add(
+        "merge-layers",
+        "Merge with…",
+        588,
+        960,
+        524,
+        78,
+        false,
+        this.tools.busy || full || layers.project.layerStack.layers.length < 2,
+      );
+      labels.push(
+        { text: "Select layer", x: 48, y: 174, width: 650, height: 38 },
+        { text: "Visibility", x: 728, y: 174, width: 176, height: 38 },
+        { text: "Lock", x: 944, y: 174, width: 168, height: 38 },
+      );
+      layers.project.layerStack.layers.forEach((layer, i) => {
+        const y = 216 + i * 94,
+          active = layer.id === layers.project.activeLayerId;
+        add(
+          `select:${layer.id}`,
+          layer.name,
+          40,
+          y,
+          664,
+          82,
+          active,
+          this.tools.busy,
+          `${active ? "✓ Active · " : ""}${volumeLabel(layer.volume)} · ${layer.operation === "union" ? "Union" : layer.operation === "difference" ? "Difference" : "Intersect"}`,
+        );
+        buttons[buttons.length - 1].colour = layers.display.colour(
+          layers.project.id,
+          layer.id,
+          layer.order,
+        );
+        add(
+          `visible:${layer.id}`,
+          layer.visible ? "Visible" : "Hidden",
+          720,
+          y,
+          176,
+          82,
+          layer.visible,
+          this.tools.busy,
+        );
+        add(
+          `locked:${layer.id}`,
+          layer.locked ? "Locked" : "Unlocked",
+          912,
+          y,
+          200,
+          82,
+          layer.locked,
+          this.tools.busy,
+        );
+      });
+    } else {
+      add("tools", "‹ Tools", 40, 140, 240, 74);
+      add(
+        "snap-toggle",
+        this.tools.path.snap ? "Snap 15° · On" : "Snap 15° · Off",
+        300,
+        140,
+        440,
+        74,
+        !!this.tools.path.snap,
+        this.tools.busy,
+      );
+      const all = this.tools.options(),
+        pages = Math.max(1, Math.ceil(all.length / OPTIONS_PER_PAGE));
+      this.optionPage = Math.min(this.optionPage, pages - 1);
 
-   add('prev','‹',788,140,144,74,false,this.optionPage===0);add('next','›',948,140,164,74,false,this.optionPage===pages-1);
-   all.slice(this.optionPage*OPTIONS_PER_PAGE,this.optionPage*OPTIONS_PER_PAGE+OPTIONS_PER_PAGE).forEach((option,i)=>{const y=244+i*150;
-    if(option.id==='paint-colour'){labels.push({text:`Paint colour · ${option.value}`,x:56,y:y-16,small:true,width:1000,height:52});PAINT_SWATCHES.forEach((colour,j)=>buttons.push({id:`paint-swatch:${colour}`,label:'',colour,disabled:option.disabled,selected:this.tools.port.layers().paintColour===colour,rect:{x:40+j*108,y:y+42,width:96,height:88}}));return;}
-    if(option.action){add(option.action,option.label,40,y,1072,136,false,option.disabled,option.value);return;}
-    labels.push({text:option.label,x:56,y:y+2,small:true,width:724,height:68},{text:option.value,x:56,y:y+72,width:option.slider?280:724,height:76,value:true});
-    if(option.slider)buttons.push({id:`slider:${option.id}`,label:'',rect:{x:380,y:y+78,width:380,height:54},disabled:option.disabled,slider:option.slider});
-    add(`dec:${option.id}`,'-',812,y+22,140,92,false,!option.decrease);add(`inc:${option.id}`,'+',972,y+22,140,92,false,!option.increase);
-   });
+      add("prev", "‹", 788, 140, 144, 74, false, this.optionPage === 0);
+      add("next", "›", 948, 140, 164, 74, false, this.optionPage === pages - 1);
+      all
+        .slice(
+          this.optionPage * OPTIONS_PER_PAGE,
+          this.optionPage * OPTIONS_PER_PAGE + OPTIONS_PER_PAGE,
+        )
+        .forEach((option, i) => {
+          const y = 244 + i * 150;
+          if (option.id === "paint-colour") {
+            labels.push({
+              text: `Paint colour · ${option.value}`,
+              x: 56,
+              y: y - 16,
+              small: true,
+              width: 1000,
+              height: 52,
+            });
+            PAINT_SWATCHES.forEach((colour, j) => {
+              buttons.push({
+                id: `paint-swatch:${colour}`,
+                label: "",
+                colour,
+                disabled: option.disabled,
+                selected: this.tools.port.layers().paintColour === colour,
+                rect: { x: 40 + j * 108, y: y + 42, width: 96, height: 88 },
+              });
+            });
+            return;
+          }
+          if (option.action) {
+            add(
+              option.action,
+              option.label,
+              40,
+              y,
+              1072,
+              136,
+              false,
+              option.disabled,
+              option.value,
+            );
+            return;
+          }
+          labels.push(
+            { text: option.label, x: 56, y: y + 2, small: true, width: 724, height: 68 },
+            {
+              text: option.value,
+              x: 56,
+              y: y + 72,
+              width: option.slider ? 280 : 724,
+              height: 76,
+              value: true,
+            },
+          );
+          if (option.slider)
+            buttons.push({
+              id: `slider:${option.id}`,
+              label: "",
+              rect: { x: 380, y: y + 78, width: 380, height: 54 },
+              disabled: option.disabled,
+              slider: option.slider,
+            });
+          add(`dec:${option.id}`, "-", 812, y + 22, 140, 92, false, !option.decrease);
+          add(`inc:${option.id}`, "+", 972, y + 22, 140, 92, false, !option.increase);
+        });
+    }
+    return {
+      title,
+      subtitle:
+        this.page === "tool-options"
+          ? `Page ${this.optionPage + 1} / ${Math.max(1, Math.ceil(this.tools.options().length / OPTIONS_PER_PAGE))} · Tool trigger selects`
+          : this.page === "layers"
+            ? "Point with Tool Hand · trigger to select / toggle"
+            : this.tools.workflowStatus,
+      buttons,
+      labels,
+      footer: this.feedback || "Hold Support stick · release to close",
+    };
   }
-  return {title,subtitle:this.page==='tool-options'?`Page ${this.optionPage+1} / ${Math.max(1,Math.ceil(this.tools.options().length/OPTIONS_PER_PAGE))} · Tool trigger selects`:this.page==='layers'?'Point with Tool Hand · trigger to select / toggle':this.tools.workflowStatus,buttons,labels,footer:this.feedback||'Hold Support stick · release to close'};
- }
- hit(x:number,y:number,content=this.content()):string|null{
-  if(!this.request||!Number.isFinite(x)||!Number.isFinite(y)||x<0||y<0||x>MENU_SIZE||y>MENU_SIZE)return null;
-  for(const b of content.buttons)if((!b.clip||y>=b.clip.y&&y<=b.clip.y+b.clip.height)&&b.rect&&x>=b.rect.x&&x<=b.rect.x+b.rect.width&&y>=b.rect.y&&y<=b.rect.y+b.rect.height)return b.id;
-  if(this.page==='tool-wheel'){
-   const dx=x-WHEEL.x,dy=y-WHEEL.y,r=Math.hypot(dx,dy);if(r<WHEEL.inner||r>WHEEL.outer)return null;
-   const angle=((Math.atan2(dy,dx)+Math.PI/2+Math.PI/VR_WHEEL_TOOLS.length)%(2*Math.PI)+2*Math.PI)%(2*Math.PI),sector=Math.floor(angle/(2*Math.PI/VR_WHEEL_TOOLS.length));
-   return content.buttons.find(b=>b.sector===sector)?.id??null;
-  }return null;
- }
- setSlider(id:string,ratio:number):void{if(!this.request)return;const option=this.tools.options().find(o=>`slider:${o.id}`===id);if(!option?.slider||option.disabled)return;this.tools.setValue(option.id,option.slider.min+Math.max(0,Math.min(1,ratio))*(option.slider.max-option.slider.min));}
- activate(id:string,rendered?:MenuContent):void{
-  if(!this.request)return;
-  const button=(rendered??this.content()).buttons.find(b=>b.id===id);if(!button||button.disabled){this.feedback='Unavailable';return;}
-  try{
-   const separator=id.indexOf(':'),action=separator<0?id:id.slice(0,separator),value=id.slice(separator+1);
-   if(this.palette.activate(id)){}
-   else if(id==='project'){this.page='world';this.world.section='project';}
-   else if(id==='world'){this.page='world';this.world.section='home';}
-   else if(this.page==='world'&&this.world.activate(id)){}
-   else if(id==='ui-scale'||id==='world-ui-scale'){const l=this.tools.port.layers();l.display.vrUiScale=l.display.vrUiScale==='large'?'normal':'large';this.tools.port.changed();}
-   else if(action==='paint-swatch'){this.tools.setPaintColour(value);}
-   else if(id==='paint-clear')this.tools.paintAction();
-   else if(id.startsWith('mask-'))this.tools.maskAction(id);
-   else if(id.startsWith('tube-')){void this.tools.splineAction(id).catch(error=>{this.feedback=error instanceof Error?error.message:'Spline action failed';});}
-   else if(id==='snap-toggle')this.tools.adjust('global-snap',1);
-   else if(id==='merge-layers'){const l=this.tools.port.layers();this.merge={project:l.project,id:l.project.activeLayerId,resolution:128};}
-   else if(action==='merge-target'&&this.merge)this.merge.other=value;
-   else if(id==='merge-resolution'&&this.merge)this.merge.resolution=this.merge.resolution===64?128:this.merge.resolution===128?192:64;
-   else if(id==='cancel-merge'){this.mergeAbort?.abort();this.mergeAbort=null;this.merge=null;}
-   else if(id==='confirm-merge'&&this.merge?.other){const state=this.merge,l=this.tools.port.layers(),abort=new AbortController();this.mergeAbort=abort;
-    void l.bake({name:'Merged sculpture',resolution:state.resolution,hideSources:true,sourceIds:[state.id,state.other!]},abort.signal,p=>{this.feedback=`${p.stage} ${p.completed}/${p.total}`;}).then(()=>{if(this.mergeAbort!==abort)return;this.mergeAbort=null;this.merge=null;this.feedback='Merged · originals hidden · Undo restores';this.tools.port.shape.sync(l.project.layerStack);this.tools.port.changed();}).catch(error=>{if(this.mergeAbort!==abort)return;this.mergeAbort=null;this.feedback=error instanceof Error?error.message:'Merge failed; sources kept';});
-   }
-   else if(id==='reset-stamp-offset')this.tools.resetStampOffset();
-   else if(id==='reset-layer'){const l=this.tools.port.layers();this.resetTarget={project:l.project,id:l.transformNode.id};}
-   else if(id==='cancel-reset')this.resetTarget=null;
-   else if(id==='confirm-reset'){const target=this.resetTarget;this.resetTarget=null;if(target&&this.tools.port.layers().project===target.project)this.tools.resetLayerTransform(target.id);}
-   else if(id==='move-variants'){this.moveVariants=true;}
-   else if(id==='variant-settings'){this.moveVariants=false;this.optionPage=0;}
-   else if(action==='move-variant'){this.tools.selectMoveVariant(value as MoveVariant);this.moveVariants=false;this.optionPage=0;}
-   else if(action==='tool'){if(value==='cut'){this.page='cut';this.cutOffset=0;this.cutTilt=[0,0];}else{if(value==='move')this.tools.selectMoveGroup();else this.tools.select(value as EditorTool);this.moveVariants=value==='move';this.page='tool-options';this.optionPage=0;}}
-   else if(id==='options'){this.page='tool-options';this.optionPage=0;}
-   else if(id==='cut-cancel'){if(this.cutAbort)this.cutAbort.abort();else this.page='tool-wheel';}
-   else if(id==='cut-back')this.page='cut';
-   else if(id==='cut-preview')this.page='cut-confirm';
-   else if(id==='cut-scope')this.cutScope=this.cutScope==='active'?'all-editable':'active';
-   else if(action==='cut-axis'){this.cutAxis=value as 'x'|'y'|'z';}
-   else if(id==='cut-offset-inc'||id==='cut-offset-dec')this.cutOffset=Math.max(-1.4,Math.min(1.4,this.cutOffset+(id.endsWith('inc')?0.1:-0.1)));
-   else if(id==='cut-tilt-x-inc'||id==='cut-tilt-x-dec')this.cutTilt[0]=Math.max(-90,Math.min(90,this.cutTilt[0]+(id.endsWith('inc')?15:-15)));
-   else if(id==='cut-tilt-y-inc'||id==='cut-tilt-y-dec')this.cutTilt[1]=Math.max(-90,Math.min(90,this.cutTilt[1]+(id.endsWith('inc')?15:-15)));
-   else if(id==='cut-apply'){const layers=this.tools.port.layers(),normal=new Vector3(this.cutAxis==='x'?1:0,this.cutAxis==='y'?1:0,this.cutAxis==='z'?1:0).applyEuler(new Euler(this.cutTilt[0]*Math.PI/180,this.cutTilt[1]*Math.PI/180,0,'XYZ')).normalize(),plane={normal:normal.toArray() as [number,number,number],point:normal.clone().multiplyScalar(this.cutOffset).toArray() as [number,number,number]},abort=new AbortController();this.cutAbort=abort;void layers.cutByPlane(plane,abort.signal,stage=>{this.feedback=stage;},this.cutScope).then(()=>{if(this.cutAbort!==abort)return;this.cutAbort=null;this.feedback=this.cutScope==='active'?'Cut complete · second piece is a new layer':'All editable layers cut · changes share one Undo action';this.tools.port.shape.sync(layers.project.layerStack);this.tools.port.changed();}).catch(error=>{if(this.cutAbort!==abort)return;this.cutAbort=null;this.feedback=error instanceof Error?error.message:'Cut cancelled; source kept';this.tools.port.changed();});}
-   else if(id==='tools'){this.page='tool-wheel';this.optionPage=0;}
-   else if(id==='next')this.optionPage++;else if(id==='prev')this.optionPage--;
-   else if(id==='new-layer')this.tools.createLayer();
-   else if(action==='select')this.tools.selectLayer(value);
-   else if(action==='visible'||action==='locked')this.tools.toggleLayer(value,action);
-   else if(action==='inc'||action==='dec')this.tools.adjust(value,action==='inc'?1:-1);
-   this.feedback='';this.hover=null;
-  }catch(error){this.feedback=error instanceof Error?error.message:'Action unavailable';}
- }
+  hit(x: number, y: number, content = this.content()): string | null {
+    if (
+      !this.request ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      x < 0 ||
+      y < 0 ||
+      x > MENU_SIZE ||
+      y > MENU_SIZE
+    )
+      return null;
+    for (const b of content.buttons)
+      if (
+        (!b.clip || (y >= b.clip.y && y <= b.clip.y + b.clip.height)) &&
+        b.rect &&
+        x >= b.rect.x &&
+        x <= b.rect.x + b.rect.width &&
+        y >= b.rect.y &&
+        y <= b.rect.y + b.rect.height
+      )
+        return b.id;
+    if (this.page === "tool-wheel") {
+      const dx = x - WHEEL.x,
+        dy = y - WHEEL.y,
+        r = Math.hypot(dx, dy);
+      if (r < WHEEL.inner || r > WHEEL.outer) return null;
+      const angle =
+          (((Math.atan2(dy, dx) + Math.PI / 2 + Math.PI / VR_WHEEL_TOOLS.length) % (2 * Math.PI)) +
+            2 * Math.PI) %
+          (2 * Math.PI),
+        sector = Math.floor(angle / ((2 * Math.PI) / VR_WHEEL_TOOLS.length));
+      return content.buttons.find((b) => b.sector === sector)?.id ?? null;
+    }
+    return null;
+  }
+  setSlider(id: string, ratio: number): void {
+    if (!this.request) return;
+    const option = this.tools.options().find((o) => `slider:${o.id}` === id);
+    if (!option?.slider || option.disabled) return;
+    this.tools.setValue(
+      option.id,
+      option.slider.min + Math.max(0, Math.min(1, ratio)) * (option.slider.max - option.slider.min),
+    );
+  }
+  activate(id: string, rendered?: MenuContent): void {
+    if (!this.request) return;
+    const button = (rendered ?? this.content()).buttons.find((b) => b.id === id);
+    if (!button || button.disabled) {
+      this.feedback = "Unavailable";
+      return;
+    }
+    try {
+      const separator = id.indexOf(":"),
+        action = separator < 0 ? id : id.slice(0, separator),
+        value = id.slice(separator + 1);
+      if (this.palette.activate(id)) {
+      } else if (id === "project") {
+        this.page = "world";
+        this.world.section = "project";
+      } else if (id === "world") {
+        this.page = "world";
+        this.world.section = "home";
+      } else if (this.page === "world" && this.world.activate(id)) {
+      } else if (id === "ui-scale" || id === "world-ui-scale") {
+        const l = this.tools.port.layers();
+        l.display.vrUiScale = l.display.vrUiScale === "large" ? "normal" : "large";
+        this.tools.port.changed();
+      } else if (action === "paint-swatch") {
+        this.tools.setPaintColour(value);
+      } else if (id === "paint-clear") this.tools.paintAction();
+      else if (id.startsWith("mask-")) this.tools.maskAction(id);
+      else if (id.startsWith("tube-")) {
+        void this.tools.splineAction(id).catch((error) => {
+          this.feedback = error instanceof Error ? error.message : "Spline action failed";
+        });
+      } else if (id === "snap-toggle") this.tools.adjust("global-snap", 1);
+      else if (id === "merge-layers") {
+        const l = this.tools.port.layers();
+        this.merge = { project: l.project, id: l.project.activeLayerId, resolution: 128 };
+      } else if (action === "merge-target" && this.merge) this.merge.other = value;
+      else if (id === "merge-resolution" && this.merge)
+        this.merge.resolution =
+          this.merge.resolution === 64 ? 128 : this.merge.resolution === 128 ? 192 : 64;
+      else if (id === "cancel-merge") {
+        this.mergeAbort?.abort();
+        this.mergeAbort = null;
+        this.merge = null;
+      } else if (id === "confirm-merge" && this.merge?.other) {
+        const state = this.merge,
+          l = this.tools.port.layers(),
+          abort = new AbortController();
+        this.mergeAbort = abort;
+        void l
+          .bake(
+            {
+              name: "Merged sculpture",
+              resolution: state.resolution,
+              hideSources: true,
+              sourceIds: [state.id, state.other!],
+            },
+            abort.signal,
+            (p) => {
+              this.feedback = `${p.stage} ${p.completed}/${p.total}`;
+            },
+          )
+          .then(() => {
+            if (this.mergeAbort !== abort) return;
+            this.mergeAbort = null;
+            this.merge = null;
+            this.feedback = "Merged · originals hidden · Undo restores";
+            this.tools.port.shape.sync(l.project.layerStack);
+            this.tools.port.changed();
+          })
+          .catch((error) => {
+            if (this.mergeAbort !== abort) return;
+            this.mergeAbort = null;
+            this.feedback = error instanceof Error ? error.message : "Merge failed; sources kept";
+          });
+      } else if (id === "reset-stamp-offset") this.tools.resetStampOffset();
+      else if (id === "reset-layer") {
+        const l = this.tools.port.layers();
+        this.resetTarget = { project: l.project, id: l.transformNode.id };
+      } else if (id === "cancel-reset") this.resetTarget = null;
+      else if (id === "confirm-reset") {
+        const target = this.resetTarget;
+        this.resetTarget = null;
+        if (target && this.tools.port.layers().project === target.project)
+          this.tools.resetLayerTransform(target.id);
+      } else if (id === "move-variants") {
+        this.moveVariants = true;
+      } else if (id === "variant-settings") {
+        this.moveVariants = false;
+        this.optionPage = 0;
+      } else if (action === "move-variant") {
+        this.tools.selectMoveVariant(value as MoveVariant);
+        this.moveVariants = false;
+        this.optionPage = 0;
+      } else if (action === "tool") {
+        if (value === "cut") {
+          this.page = "cut";
+          this.cutOffset = 0;
+          this.cutTilt = [0, 0];
+        } else {
+          if (value === "move") this.tools.selectMoveGroup();
+          else this.tools.select(value as EditorTool);
+          this.moveVariants = value === "move";
+          this.page = "tool-options";
+          this.optionPage = 0;
+        }
+      } else if (id === "options") {
+        this.page = "tool-options";
+        this.optionPage = 0;
+      } else if (id === "cut-cancel") {
+        if (this.cutAbort) this.cutAbort.abort();
+        else this.page = "tool-wheel";
+      } else if (id === "cut-back") this.page = "cut";
+      else if (id === "cut-preview") this.page = "cut-confirm";
+      else if (id === "cut-scope")
+        this.cutScope = this.cutScope === "active" ? "all-editable" : "active";
+      else if (action === "cut-axis") {
+        this.cutAxis = value as "x" | "y" | "z";
+      } else if (id === "cut-offset-inc" || id === "cut-offset-dec")
+        this.cutOffset = Math.max(
+          -1.4,
+          Math.min(1.4, this.cutOffset + (id.endsWith("inc") ? 0.1 : -0.1)),
+        );
+      else if (id === "cut-tilt-x-inc" || id === "cut-tilt-x-dec")
+        this.cutTilt[0] = Math.max(
+          -90,
+          Math.min(90, this.cutTilt[0] + (id.endsWith("inc") ? 15 : -15)),
+        );
+      else if (id === "cut-tilt-y-inc" || id === "cut-tilt-y-dec")
+        this.cutTilt[1] = Math.max(
+          -90,
+          Math.min(90, this.cutTilt[1] + (id.endsWith("inc") ? 15 : -15)),
+        );
+      else if (id === "cut-apply") {
+        const layers = this.tools.port.layers(),
+          normal = new Vector3(
+            this.cutAxis === "x" ? 1 : 0,
+            this.cutAxis === "y" ? 1 : 0,
+            this.cutAxis === "z" ? 1 : 0,
+          )
+            .applyEuler(
+              new Euler(
+                (this.cutTilt[0] * Math.PI) / 180,
+                (this.cutTilt[1] * Math.PI) / 180,
+                0,
+                "XYZ",
+              ),
+            )
+            .normalize(),
+          plane = {
+            normal: normal.toArray() as [number, number, number],
+            point: normal.clone().multiplyScalar(this.cutOffset).toArray() as [
+              number,
+              number,
+              number,
+            ],
+          },
+          abort = new AbortController();
+        this.cutAbort = abort;
+        void layers
+          .cutByPlane(
+            plane,
+            abort.signal,
+            (stage) => {
+              this.feedback = stage;
+            },
+            this.cutScope,
+          )
+          .then(() => {
+            if (this.cutAbort !== abort) return;
+            this.cutAbort = null;
+            this.feedback =
+              this.cutScope === "active"
+                ? "Cut complete · second piece is a new layer"
+                : "All editable layers cut · changes share one Undo action";
+            this.tools.port.shape.sync(layers.project.layerStack);
+            this.tools.port.changed();
+          })
+          .catch((error) => {
+            if (this.cutAbort !== abort) return;
+            this.cutAbort = null;
+            this.feedback = error instanceof Error ? error.message : "Cut cancelled; source kept";
+            this.tools.port.changed();
+          });
+      } else if (id === "tools") {
+        this.page = "tool-wheel";
+        this.optionPage = 0;
+      } else if (id === "next") this.optionPage++;
+      else if (id === "prev") this.optionPage--;
+      else if (id === "new-layer") this.tools.createLayer();
+      else if (action === "select") this.tools.selectLayer(value);
+      else if (action === "visible" || action === "locked") this.tools.toggleLayer(value, action);
+      else if (action === "inc" || action === "dec")
+        this.tools.adjust(value, action === "inc" ? 1 : -1);
+      this.feedback = "";
+      this.hover = null;
+    } catch (error) {
+      this.feedback = error instanceof Error ? error.message : "Action unavailable";
+    }
+  }
 }

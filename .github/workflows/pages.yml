@@ -25,6 +25,8 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
       - run: npm ci
+      - name: Validate source, build and tests
+        run: npm run check
       - name: Build static site
         run: npm run build -- --base "${{ steps.pages.outputs.base_path }}/"
       - uses: actions/upload-pages-artifact@v3

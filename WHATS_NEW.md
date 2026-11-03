@@ -1,3 +1,9 @@
+### Phase 6.0.1 — Cleaner code and faster test feedback (2026-11-03)
+
+- Added consistent Biome formatting and lint checks for project code.
+- Added quick, focused, changed-file and full test commands, with bounded parallel runs and TAP/JUnit reports.
+- `npm run check` now verifies formatting, lint, strict TypeScript, production build and every test.
+
 ### Phase 6.0 — Cut, project previews and clearer snapping (2026-11-03)
 
 - Find Cut directly on the VR tool ring, with its own split-plane icon, or open it from the desktop controls. Adjust the plane, review its position and cut the sculpture into two editable layers. One Undo restores the original.

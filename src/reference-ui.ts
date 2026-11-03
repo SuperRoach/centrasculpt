@@ -1,41 +1,422 @@
-import type {ReferenceEditorPort,ReferenceEditMode} from './reference-transform';
-import {createReference,createMeshReference,validateReferences,validateReferenceFileName,REFERENCE_LIMITS} from './reference-images';
-import type {LayerDisplayPreferences} from './display-preferences';
-import type {ReferenceView} from './reference-view';
+import type { LayerDisplayPreferences } from "./display-preferences";
+import {
+  createMeshReference,
+  createReference,
+  REFERENCE_LIMITS,
+  validateReferenceFileName,
+  validateReferences,
+} from "./reference-images";
+import type { ReferenceEditMode, ReferenceEditorPort } from "./reference-transform";
+import type { ReferenceView } from "./reference-view";
 /** Desktop picker and precise controls; import staging never modifies the active project on failure. */
-export function referenceUI(display:()=>LayerDisplayPreferences,view:ReferenceView,parent:Element,blocked:()=>boolean,editor?:ReferenceEditorPort):{import:()=>void;sync:()=>void}{
- const details=document.createElement('details');details.className='precision-settings';details.id='reference-panel';details.innerHTML='<summary>REFERENCES · IMAGES / STL</summary><p>PNG/JPEG/STL · six assets · STL up to 100,000 triangles/file, 200,000 total · 6 MiB/file · 12 MiB total · 8.8 megapixels. Workspace anchors follow navigation, sculpture anchors also turn with the sculpture.</p>';
- const picker=document.createElement('input');picker.type='file';picker.accept='image/png,image/jpeg,.stl';picker.multiple=true;picker.hidden=true;
- const add=document.createElement('button');add.textContent='Import image or STL reference…';const status=document.createElement('p');status.setAttribute('role','status');const alert=document.createElement('div');alert.className='reference-import-error';alert.hidden=true;alert.setAttribute('role','alert');const errorText=document.createElement('p'),dismiss=document.createElement('button');dismiss.type='button';dismiss.textContent='Dismiss error';alert.append(errorText,dismiss);dismiss.onclick=()=>{alert.hidden=true;};const showError=(text:string)=>{errorText.textContent=text;alert.hidden=false;details.open=true;alert.scrollIntoView({block:'nearest'});};let lastViewError='';const list=document.createElement('div');details.append(add,picker,alert,status,list);parent.append(details);let pending=false,key='',lastDOM=-Infinity;const preciseOpen=new Set<string>(),moreOpen=new Set<string>();
- const fileSizeForError=(bytes:number)=>`${(bytes/1048576).toFixed(2)} MiB`;
- const open=()=>{if(blocked()){status.textContent='Exit XR and import with the desktop file picker, then re-enter.';details.open=true;return;}picker.click();};add.onclick=open;
- picker.onchange=()=>void(async()=>{if(pending||blocked())return;pending=true;add.disabled=true;const target=display(),incoming=[...picker.files??[]];if(!incoming.length){pending=false;add.disabled=false;return;}status.textContent='Validating and decoding references…';let importingFile:File|undefined;try{
-  if(target.references.length+incoming.length>REFERENCE_LIMITS.count)throw new Error('At most six references.');
-  for(const file of incoming)validateReferenceFileName(file.name);
-  const fileSize=(bytes:number)=>`${(bytes/1048576).toFixed(2)} MiB (${bytes.toLocaleString()} bytes)`;
-  const oversized=incoming.filter(file=>file.size>REFERENCE_LIMITS.fileBytes);
-  if(oversized.length)throw new Error(`Image too large: ${oversized.map(file=>`“${file.name}” is ${fileSize(file.size)}`).join('; ')}. Limit: ${fileSize(REFERENCE_LIMITS.fileBytes)} per image.`);
-  const existingBytes=target.references.reduce((n,r)=>n+r.bytes.length,0),incomingBytes=incoming.reduce((n,file)=>n+file.size,0);
-  if(existingBytes+incomingBytes>REFERENCE_LIMITS.totalBytes)throw new Error(`Reference storage limit exceeded: selected images ${fileSize(incomingBytes)} + existing references ${fileSize(existingBytes)} = ${fileSize(existingBytes+incomingBytes)}. Total limit: ${fileSize(REFERENCE_LIMITS.totalBytes)}.`);
-  const staged=[];for(const file of incoming){importingFile=file;const bytes=new Uint8Array(await file.arrayBuffer()),record=(/\.stl$/i.test(file.name)?createMeshReference:createReference)(bytes,file.name,crypto.randomUUID());validateReferenceFileName(file.name,record.mime);/* Transfer-provided File.type can be generic or stale; validated magic supplies Blob MIME. */if(record.mime!=='model/stl'){const bitmap=await createImageBitmap(new Blob([bytes],{type:record.mime}),{imageOrientation:'none'});const valid=bitmap.width===record.width&&bitmap.height===record.height;bitmap.close();if(!valid)throw new Error('Decoded dimensions differ from the image header.');}record.position=([[1,0,0],[-1,0,0],[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0]][target.references.length+staged.length] as [number,number,number]);staged.push(record);}
-  validateReferences([...target.references,...staged]);if(target!==display()||blocked())throw new Error('Import cancelled because project/session changed.');view.error='';lastViewError='';alert.hidden=true;target.references.push(...staged);view.selected=staged.at(-1)?.id??view.selected;status.textContent='References imported. Select an image and choose Move to place it on desktop, or use References in VR.';
- }catch(e){status.textContent='Import failed. Your current references are unchanged.';showError(`${importingFile?`“${importingFile.name}” (${fileSizeForError(importingFile.size)}): `:''}${e instanceof Error?e.message:String(e)}`);}finally{pending=false;add.disabled=false;picker.value='';key='';sync();}})();
- const sync=()=>{view.sync();if(view.error&&view.error!==lastViewError){lastViewError=view.error;showError(view.error);}if(blocked()&&performance.now()-lastDOM<250)return;lastDOM=performance.now();const records=display().references;for(const set of [preciseOpen,moreOpen])for(const id of set)if(!records.some(r=>r.id===id))set.delete(id);const next=JSON.stringify([records.map(({bytes,...r})=>r),view.selected,view.editing,editor?.mode,blocked()]);if(next===key)return;key=next;list.replaceChildren();const estimate=document.createElement('p');estimate.textContent=`${records.length}/6 · ${(records.reduce((n,r)=>n+r.bytes.length,0)/1048576).toFixed(2)} MiB compressed · ${(records.reduce((n,r)=>n+(r.mime==='model/stl'?0:r.width*r.height*4*4/3),0)/1048576).toFixed(1)} MiB estimated GPU textures`;list.append(estimate);
-  for(const record of records){
-   const selected=view.selected===record.id,row=document.createElement('fieldset');row.className=`reference-card${selected?' is-selected':''}`;row.disabled=blocked();
-   const header=document.createElement('div');header.className='reference-card-header';const title=document.createElement('button');title.type='button';title.textContent=record.name;title.className='reference-select';title.setAttribute('aria-pressed',String(selected));title.onclick=()=>{editor?.setMode(null);view.selected=record.id;key='';sync();};header.append(title);row.append(header);
-   const info=document.createElement('p');info.className='reference-meta';info.textContent=`${record.width} × ${record.height} · ${record.locked?'Locked':'Unlocked'} · ${record.visible?'Visible':'Hidden'}`;row.append(info);
-   if(!selected){list.append(row);continue;}
-   const actions=document.createElement('div');actions.className='reference-actions';row.append(actions);
-   const button=(parent:Element,label:string,action:()=>void,disabled=false,pressed?:boolean)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=disabled;if(pressed!==undefined)b.setAttribute('aria-pressed',String(pressed));b.onclick=()=>{action();key='';sync();};parent.append(b);return b;};
-   if(editor){const toolbar=document.createElement('div');toolbar.className='reference-edit-toolbar';row.append(toolbar);for(const [mode,label]of [['translate','Move'],['rotate','Rotate'],['scale','Size']] as [ReferenceEditMode,string][])button(toolbar,label,()=>{record.locked=false;record.visible=true;view.selected=record.id;editor.setMode(mode);status.textContent=`${label} reference · drag the handles in the viewport. Image unlocked; Done returns to sculpting.`;},false,editor.mode===mode);button(toolbar,'Done',()=>editor.setMode(null),!editor.mode);const hint=document.createElement('p');hint.className='reference-hint';hint.textContent=editor.mode?'Drag viewport handles · orbit between drags · Done to sculpt':'Choose Move, Rotate or Size to edit on desktop.';row.append(hint);}
-   button(actions,record.visible?'Hide':'Show',()=>{editor?.setMode(null);record.visible=!record.visible;});button(actions,record.locked?'Unlock':'Lock',()=>{editor?.setMode(null);record.locked=!record.locked;view.cancel();});if(record.mime==='model/stl')button(actions,record.wireframe?'Wireframe · switch to solid':'Solid · switch to wireframe',()=>record.wireframe=!record.wireframe);else button(actions,'Flip X',()=>{record.flipX=!record.flipX;},false,!!record.flipX);
-   const anchorLabel=document.createElement('label');anchorLabel.textContent='Anchor';const anchor=document.createElement('select');for(const [value,text]of [['workspace','Workspace · fixed outside turntable'],['sculpture','Sculpture · follows turntable']]){const o=document.createElement('option');o.value=value;o.textContent=text;anchor.append(o);}anchor.value=record.space;anchor.onchange=()=>{editor?.setMode(null);if(anchor.value!==record.space)view.switchSpace(record);key='';sync();};anchorLabel.append(anchor);row.append(anchorLabel);
-   const numeric=(parent:Element,label:string,value:number,min:number,max:number,step:number,action:(n:number)=>void,accessibleLabel=label)=>{const l=document.createElement('label');l.textContent=label;const field=document.createElement('input');field.type='number';field.setAttribute('aria-label',accessibleLabel);field.value=String(Number(value.toFixed(4)));field.min=String(min);field.max=String(max);field.step=String(step);field.disabled=record.locked;field.onchange=()=>{const n=Number(field.value);if(Number.isFinite(n)&&n>=min&&n<=max){editor?.setMode(null);action(n);}key='';sync();};l.append(field);parent.append(l);};
-   const appearance=document.createElement('div');appearance.className='reference-numbers';numeric(appearance,'Size',record.size,.05,10,.05,n=>record.size=n);numeric(appearance,'Opacity %',record.opacity*100,5,100,5,n=>record.opacity=n/100);row.append(appearance);
-   const precise=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Precise placement';precise.open=preciseOpen.has(record.id);precise.ontoggle=()=>{if(precise.open)preciseOpen.add(record.id);else preciseOpen.delete(record.id);};precise.append(summary);for(const [heading,values]of [['Position',record.position],['Rotation °',record.rotation]] as const){const title=document.createElement('p');title.textContent=heading;const grid=document.createElement('div');grid.className='reference-xyz';for(let i=0;i<3;i++)numeric(grid,'XYZ'[i],heading==='Position'?values[i]:values[i]*180/Math.PI,heading==='Position'?-1000:-360,heading==='Position'?1000:360,heading==='Position'?.05:5,n=>{values[i]=heading==='Position'?n:n*Math.PI/180;},`${heading} ${'XYZ'[i]}`);precise.append(title,grid);}row.append(precise);
-   const more=document.createElement('details'),moreSummary=document.createElement('summary');moreSummary.textContent='More image settings';more.open=moreOpen.has(record.id);more.ontoggle=()=>{if(more.open)moreOpen.add(record.id);else moreOpen.delete(record.id);};more.append(moreSummary);button(more,record.twoSided?'Two-sided · On':'Two-sided · Off',()=>record.twoSided=!record.twoSided);button(more,'Reset placement',()=>{editor?.setMode(null);record.position=[1,0,0];record.rotation=[0,0,0];record.size=1;},record.locked);button(more,'Delete image…',()=>{if(confirm(`Delete reference “${record.name}”?`)){editor?.setMode(null);display().references=records.filter(r=>r!==record);view.cancel();}});row.append(more);list.append(row);
-  }
-
- };sync();return {import:open,sync};
+export function referenceUI(
+  display: () => LayerDisplayPreferences,
+  view: ReferenceView,
+  parent: Element,
+  blocked: () => boolean,
+  editor?: ReferenceEditorPort,
+): { import: () => void; sync: () => void } {
+  const details = document.createElement("details");
+  details.className = "precision-settings";
+  details.id = "reference-panel";
+  details.innerHTML =
+    "<summary>REFERENCES · IMAGES / STL</summary><p>PNG/JPEG/STL · six assets · STL up to 100,000 triangles/file, 200,000 total · 6 MiB/file · 12 MiB total · 8.8 megapixels. Workspace anchors follow navigation, sculpture anchors also turn with the sculpture.</p>";
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = "image/png,image/jpeg,.stl";
+  picker.multiple = true;
+  picker.hidden = true;
+  const add = document.createElement("button");
+  add.textContent = "Import image or STL reference…";
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  const alert = document.createElement("div");
+  alert.className = "reference-import-error";
+  alert.hidden = true;
+  alert.setAttribute("role", "alert");
+  const errorText = document.createElement("p"),
+    dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.textContent = "Dismiss error";
+  alert.append(errorText, dismiss);
+  dismiss.onclick = () => {
+    alert.hidden = true;
+  };
+  const showError = (text: string) => {
+    errorText.textContent = text;
+    alert.hidden = false;
+    details.open = true;
+    alert.scrollIntoView({ block: "nearest" });
+  };
+  let lastViewError = "";
+  const list = document.createElement("div");
+  details.append(add, picker, alert, status, list);
+  parent.append(details);
+  let pending = false,
+    key = "",
+    lastDOM = -Infinity;
+  const preciseOpen = new Set<string>(),
+    moreOpen = new Set<string>();
+  const fileSizeForError = (bytes: number) => `${(bytes / 1048576).toFixed(2)} MiB`;
+  const open = () => {
+    if (blocked()) {
+      status.textContent = "Exit XR and import with the desktop file picker, then re-enter.";
+      details.open = true;
+      return;
+    }
+    picker.click();
+  };
+  add.onclick = open;
+  picker.onchange = () =>
+    void (async () => {
+      if (pending || blocked()) return;
+      pending = true;
+      add.disabled = true;
+      const target = display(),
+        incoming = [...(picker.files ?? [])];
+      if (!incoming.length) {
+        pending = false;
+        add.disabled = false;
+        return;
+      }
+      status.textContent = "Validating and decoding references…";
+      let importingFile: File | undefined;
+      try {
+        if (target.references.length + incoming.length > REFERENCE_LIMITS.count)
+          throw new Error("At most six references.");
+        for (const file of incoming) validateReferenceFileName(file.name);
+        const fileSize = (bytes: number) =>
+          `${(bytes / 1048576).toFixed(2)} MiB (${bytes.toLocaleString()} bytes)`;
+        const oversized = incoming.filter((file) => file.size > REFERENCE_LIMITS.fileBytes);
+        if (oversized.length)
+          throw new Error(
+            `Image too large: ${oversized.map((file) => `“${file.name}” is ${fileSize(file.size)}`).join("; ")}. Limit: ${fileSize(REFERENCE_LIMITS.fileBytes)} per image.`,
+          );
+        const existingBytes = target.references.reduce((n, r) => n + r.bytes.length, 0),
+          incomingBytes = incoming.reduce((n, file) => n + file.size, 0);
+        if (existingBytes + incomingBytes > REFERENCE_LIMITS.totalBytes)
+          throw new Error(
+            `Reference storage limit exceeded: selected images ${fileSize(incomingBytes)} + existing references ${fileSize(existingBytes)} = ${fileSize(existingBytes + incomingBytes)}. Total limit: ${fileSize(REFERENCE_LIMITS.totalBytes)}.`,
+          );
+        const staged = [];
+        for (const file of incoming) {
+          importingFile = file;
+          const bytes = new Uint8Array(await file.arrayBuffer()),
+            record = (/\.stl$/i.test(file.name) ? createMeshReference : createReference)(
+              bytes,
+              file.name,
+              crypto.randomUUID(),
+            );
+          validateReferenceFileName(
+            file.name,
+            record.mime,
+          ); /* Transfer-provided File.type can be generic or stale; validated magic supplies Blob MIME. */
+          if (record.mime !== "model/stl") {
+            const bitmap = await createImageBitmap(new Blob([bytes], { type: record.mime }), {
+              imageOrientation: "none",
+            });
+            const valid = bitmap.width === record.width && bitmap.height === record.height;
+            bitmap.close();
+            if (!valid) throw new Error("Decoded dimensions differ from the image header.");
+          }
+          record.position = [
+            [1, 0, 0],
+            [-1, 0, 0],
+            [1, 1, 0],
+            [-1, 1, 0],
+            [1, -1, 0],
+            [-1, -1, 0],
+          ][target.references.length + staged.length] as [number, number, number];
+          staged.push(record);
+        }
+        validateReferences([...target.references, ...staged]);
+        if (target !== display() || blocked())
+          throw new Error("Import cancelled because project/session changed.");
+        view.error = "";
+        lastViewError = "";
+        alert.hidden = true;
+        target.references.push(...staged);
+        view.selected = staged.at(-1)?.id ?? view.selected;
+        status.textContent =
+          "References imported. Select an image and choose Move to place it on desktop, or use References in VR.";
+      } catch (e) {
+        status.textContent = "Import failed. Your current references are unchanged.";
+        showError(
+          `${importingFile ? `“${importingFile.name}” (${fileSizeForError(importingFile.size)}): ` : ""}${e instanceof Error ? e.message : String(e)}`,
+        );
+      } finally {
+        pending = false;
+        add.disabled = false;
+        picker.value = "";
+        key = "";
+        sync();
+      }
+    })();
+  const sync = () => {
+    view.sync();
+    if (view.error && view.error !== lastViewError) {
+      lastViewError = view.error;
+      showError(view.error);
+    }
+    if (blocked() && performance.now() - lastDOM < 250) return;
+    lastDOM = performance.now();
+    const records = display().references;
+    for (const set of [preciseOpen, moreOpen])
+      for (const id of set) if (!records.some((r) => r.id === id)) set.delete(id);
+    const next = JSON.stringify([
+      records.map(({ bytes, ...r }) => r),
+      view.selected,
+      view.editing,
+      editor?.mode,
+      blocked(),
+    ]);
+    if (next === key) return;
+    key = next;
+    list.replaceChildren();
+    const estimate = document.createElement("p");
+    estimate.textContent = `${records.length}/6 · ${(records.reduce((n, r) => n + r.bytes.length, 0) / 1048576).toFixed(2)} MiB compressed · ${(records.reduce((n, r) => n + (r.mime === "model/stl" ? 0 : (r.width * r.height * 4 * 4) / 3), 0) / 1048576).toFixed(1)} MiB estimated GPU textures`;
+    list.append(estimate);
+    for (const record of records) {
+      const selected = view.selected === record.id,
+        row = document.createElement("fieldset");
+      row.className = `reference-card${selected ? " is-selected" : ""}`;
+      row.disabled = blocked();
+      const header = document.createElement("div");
+      header.className = "reference-card-header";
+      const title = document.createElement("button");
+      title.type = "button";
+      title.textContent = record.name;
+      title.className = "reference-select";
+      title.setAttribute("aria-pressed", String(selected));
+      title.onclick = () => {
+        editor?.setMode(null);
+        view.selected = record.id;
+        key = "";
+        sync();
+      };
+      header.append(title);
+      row.append(header);
+      const info = document.createElement("p");
+      info.className = "reference-meta";
+      info.textContent = `${record.width} × ${record.height} · ${record.locked ? "Locked" : "Unlocked"} · ${record.visible ? "Visible" : "Hidden"}`;
+      row.append(info);
+      if (!selected) {
+        list.append(row);
+        continue;
+      }
+      const actions = document.createElement("div");
+      actions.className = "reference-actions";
+      row.append(actions);
+      const button = (
+        parent: Element,
+        label: string,
+        action: () => void,
+        disabled = false,
+        pressed?: boolean,
+      ) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.disabled = disabled;
+        if (pressed !== undefined) b.setAttribute("aria-pressed", String(pressed));
+        b.onclick = () => {
+          action();
+          key = "";
+          sync();
+        };
+        parent.append(b);
+        return b;
+      };
+      if (editor) {
+        const toolbar = document.createElement("div");
+        toolbar.className = "reference-edit-toolbar";
+        row.append(toolbar);
+        for (const [mode, label] of [
+          ["translate", "Move"],
+          ["rotate", "Rotate"],
+          ["scale", "Size"],
+        ] as [ReferenceEditMode, string][])
+          button(
+            toolbar,
+            label,
+            () => {
+              record.locked = false;
+              record.visible = true;
+              view.selected = record.id;
+              editor.setMode(mode);
+              status.textContent = `${label} reference · drag the handles in the viewport. Image unlocked; Done returns to sculpting.`;
+            },
+            false,
+            editor.mode === mode,
+          );
+        button(toolbar, "Done", () => editor.setMode(null), !editor.mode);
+        const hint = document.createElement("p");
+        hint.className = "reference-hint";
+        hint.textContent = editor.mode
+          ? "Drag viewport handles · orbit between drags · Done to sculpt"
+          : "Choose Move, Rotate or Size to edit on desktop.";
+        row.append(hint);
+      }
+      button(actions, record.visible ? "Hide" : "Show", () => {
+        editor?.setMode(null);
+        record.visible = !record.visible;
+      });
+      button(actions, record.locked ? "Unlock" : "Lock", () => {
+        editor?.setMode(null);
+        record.locked = !record.locked;
+        view.cancel();
+      });
+      if (record.mime === "model/stl")
+        button(
+          actions,
+          record.wireframe ? "Wireframe · switch to solid" : "Solid · switch to wireframe",
+          () => (record.wireframe = !record.wireframe),
+        );
+      else
+        button(
+          actions,
+          "Flip X",
+          () => {
+            record.flipX = !record.flipX;
+          },
+          false,
+          !!record.flipX,
+        );
+      const anchorLabel = document.createElement("label");
+      anchorLabel.textContent = "Anchor";
+      const anchor = document.createElement("select");
+      for (const [value, text] of [
+        ["workspace", "Workspace · fixed outside turntable"],
+        ["sculpture", "Sculpture · follows turntable"],
+      ]) {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        anchor.append(o);
+      }
+      anchor.value = record.space;
+      anchor.onchange = () => {
+        editor?.setMode(null);
+        if (anchor.value !== record.space) view.switchSpace(record);
+        key = "";
+        sync();
+      };
+      anchorLabel.append(anchor);
+      row.append(anchorLabel);
+      const numeric = (
+        parent: Element,
+        label: string,
+        value: number,
+        min: number,
+        max: number,
+        step: number,
+        action: (n: number) => void,
+        accessibleLabel = label,
+      ) => {
+        const l = document.createElement("label");
+        l.textContent = label;
+        const field = document.createElement("input");
+        field.type = "number";
+        field.setAttribute("aria-label", accessibleLabel);
+        field.value = String(Number(value.toFixed(4)));
+        field.min = String(min);
+        field.max = String(max);
+        field.step = String(step);
+        field.disabled = record.locked;
+        field.onchange = () => {
+          const n = Number(field.value);
+          if (Number.isFinite(n) && n >= min && n <= max) {
+            editor?.setMode(null);
+            action(n);
+          }
+          key = "";
+          sync();
+        };
+        l.append(field);
+        parent.append(l);
+      };
+      const appearance = document.createElement("div");
+      appearance.className = "reference-numbers";
+      numeric(appearance, "Size", record.size, 0.05, 10, 0.05, (n) => (record.size = n));
+      numeric(
+        appearance,
+        "Opacity %",
+        record.opacity * 100,
+        5,
+        100,
+        5,
+        (n) => (record.opacity = n / 100),
+      );
+      row.append(appearance);
+      const precise = document.createElement("details"),
+        summary = document.createElement("summary");
+      summary.textContent = "Precise placement";
+      precise.open = preciseOpen.has(record.id);
+      precise.ontoggle = () => {
+        if (precise.open) preciseOpen.add(record.id);
+        else preciseOpen.delete(record.id);
+      };
+      precise.append(summary);
+      for (const [heading, values] of [
+        ["Position", record.position],
+        ["Rotation °", record.rotation],
+      ] as const) {
+        const title = document.createElement("p");
+        title.textContent = heading;
+        const grid = document.createElement("div");
+        grid.className = "reference-xyz";
+        for (let i = 0; i < 3; i++)
+          numeric(
+            grid,
+            "XYZ"[i],
+            heading === "Position" ? values[i] : (values[i] * 180) / Math.PI,
+            heading === "Position" ? -1000 : -360,
+            heading === "Position" ? 1000 : 360,
+            heading === "Position" ? 0.05 : 5,
+            (n) => {
+              values[i] = heading === "Position" ? n : (n * Math.PI) / 180;
+            },
+            `${heading} ${"XYZ"[i]}`,
+          );
+        precise.append(title, grid);
+      }
+      row.append(precise);
+      const more = document.createElement("details"),
+        moreSummary = document.createElement("summary");
+      moreSummary.textContent = "More image settings";
+      more.open = moreOpen.has(record.id);
+      more.ontoggle = () => {
+        if (more.open) moreOpen.add(record.id);
+        else moreOpen.delete(record.id);
+      };
+      more.append(moreSummary);
+      button(
+        more,
+        record.twoSided ? "Two-sided · On" : "Two-sided · Off",
+        () => (record.twoSided = !record.twoSided),
+      );
+      button(
+        more,
+        "Reset placement",
+        () => {
+          editor?.setMode(null);
+          record.position = [1, 0, 0];
+          record.rotation = [0, 0, 0];
+          record.size = 1;
+        },
+        record.locked,
+      );
+      button(more, "Delete image…", () => {
+        if (confirm(`Delete reference “${record.name}”?`)) {
+          editor?.setMode(null);
+          display().references = records.filter((r) => r !== record);
+          view.cancel();
+        }
+      });
+      row.append(more);
+      list.append(row);
+    }
+  };
+  sync();
+  return { import: open, sync };
 }

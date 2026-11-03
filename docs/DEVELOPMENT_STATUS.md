@@ -1,5 +1,43 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 6.0.1 handover
+
+Updated 2026-11-03. Code cleanliness and agent test workflow are complete. Phase 6.0 host implementation is complete; physical Quest 3 acceptance remains pending.
+
+### 1. What changed
+
+Pinned Biome 2.6.4 and added scoped formatting/linting. Formatted handwritten TS/JS/JSON in `src/`, `scripts/`, `tests/` and root tooling config; generated builds, assets, vendor code, `outputs/`, recovery data and snapshots are excluded. Import ordering was applied in a separate pass. Added quick, focused, changed-file, worker and full test commands, bounded default concurrency, TAP/JUnit output, a combined `npm run check`, and [AGENTS.md](../AGENTS.md). A Git pre-commit hook now runs Biome checks; `npm install`/`npm ci` enables it for the repository. `WHATS_NEW.md` has the dated entry.
+
+### 2. Architectural decisions
+
+Kept Node's built-in `node:test` runner and existing TypeScript content-cache pipeline. Native ESM, worker_threads fixtures, WebXR mocks, changed-file selection and TAP/JUnit already fit. Vitest adds another transform layer; Jest needs more ESM/TS adaptation. Neither has measured evidence of faster end-to-end runs here. Details are in [testing guide](TESTING.md).
+
+### 3. Build and test results
+
+Final `npm run check` passed: format check, lint, strict TypeScript, production build and **1,320/1,320 tests**, zero failures/skips/cancellations across 82 files. Check wall time was **48.24 s**; suite wall time was **42.16 s**. Build retains the existing Vite large-bundle advisory. Biome checked 286 scoped files. Lint exits successfully with **542 warnings and 94 informational findings**; remaining findings are recorded in §5.
+
+Baseline strict TypeScript passed in **1.62 s**, build in **3.79 s**, and full suite passed **1,316/1,316** in **33.36 s** wall time, with Node's runner default concurrency. After changes, the full run at the explicit concurrency cap of four took **42.16 s** and passed **1,320/1,320**. These timings are not directly comparable: the concurrency setting and test count changed. The small `test:quick` set ran 21 checks in about **0.65 s**.
+
+### 4. Benchmarks and regressions
+
+JUnit per-test durations summed by file show the slowest aggregate execution: `rotation-integration` 14.02 s, `turntable` 10.24 s, `vr-stress` 9.83 s, `bake` 9.02 s, `advanced-brush` 8.43 s and `sculpt-masks` 7.05 s. These per-test sums overlap across concurrent processes and are not file wall times. Full-run wall time rose versus the baseline, so no full-suite speedup is claimed. Focused and quick runs provide faster edit feedback. The historical Move preparation timeout under high concurrency is noted in the Phase 6.0/Phase 5.4 entries; the final concurrency-4 suite had no timeout.
+
+Top-five runtime follow-up: the focused command `npm run --silent test:junit -- rotation-integration turntable vr-stress bake advanced-brush` ran 88 cases at concurrency 4 in 17.73 s before and 17.98 s after the experiment. Post-run JUnit duration sums were 13.62 s, 10.24 s, 8.93 s, 9.13 s and 8.79 s respectively; per-file sums overlap and are load-sensitive. Changing only the focused batch cap measured 26.53 s at concurrency 2, 17.98 s at 4, then 15.09 s and 14.27 s across two runs at 5; all 88 cases passed in each run. For this focused subset, `npm test -- rotation-integration turntable vr-stress bake advanced-brush --test-concurrency=5` is a measured faster command on this host. This does not justify raising the full-suite default, where historical Move-worker timeouts under contention motivate the existing cap of four. A one-file bake run measured 8.52 s before and 8.36 s after precomputing bake coordinates, but the batch showed no corresponding gain, so that production-code change was reverted. Reusing vectors in the rotation integration scan also produced no measurable runtime improvement and was reverted. The expensive cases are the intended 192³ workloads: rotation/twist scan dense surfaces and verify seam normals/history/reload; VR stress exercises repeated brush, stamp, cancellation and persistence paths; turntable verifies 192³ edits/exports; bake samples the full field; advanced-brush checks large-grid exactness. No assertions, resolutions, iteration counts, or timeouts were reduced. Runtime gains came from focused selection and this local cap-5 experiment, not a weakening or rewrite of coverage.
+
+### 5. Known limitations and blockers
+
+Lint has 542 warnings and 94 infos. **489 are `noNonNullAssertion` warnings**; others include 19 unused parameters, 17 unused variables and 9 optional-chain suggestions. Informational findings are mostly 88 template-string suggestions. No lint errors remain, and these rules remain enabled. Scoped exceptions are documented in `biome.json`: inline fake-clock increments in the specific tests/benchmarks; intentional cache assignment and control-character filename regexes have local reasoned suppressions. A test worker fixture has one local constructor-return suppression. One duplicate benchmark property was removed. No broad blanket rule disables are in place.
+
+Node watch mode is available upstream but is not wrapped because the project runner must compile TypeScript imports before launching tests. Physical Quest validation is unchanged and still pending for Phase 6.0 app work.
+
+### 6. Next recommendations
+
+Use `npm run test:quick` during edits, focused/changed selection where safe, and `npm run check` for handoff. Lower concurrency with `TEST_CONCURRENCY=2` on memory-constrained hosts. Tackle non-null assertions incrementally by module, keeping the recommended rule enabled; consider a runner watch command only with a compilation-aware implementation. Do not commit, push or merge without explicit authorization.
+
+---
+
+## Previous phase handover: Phase 6.0
+
 Updated 2026-11-03. **Phase 6.0 host implementation complete; physical Quest 3 acceptance remains pending.**
 
 ## 1. What changed
