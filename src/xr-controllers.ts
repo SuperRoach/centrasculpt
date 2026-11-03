@@ -35,8 +35,10 @@ import { XRControllerInput } from "./xr-input";
 import { XRLayerGrab } from "./xr-layer-grab";
 import type { XRLayerSelection } from "./xr-layer-selection";
 import type { XRMenuInteraction } from "./xr-menu-view";
+import type { XRSupportGuide } from "./xr-support-guide";
 import type { XRShortcutOptions } from "./xr-support-shortcuts";
 import { XRSupportShortcuts } from "./xr-support-shortcuts";
+import { VR_UI_SCALES } from "./xr-ui-style";
 
 type RayGroup = ReturnType<WebXRManager["getController"]>;
 type GripGroup = ReturnType<WebXRManager["getControllerGrip"]>;
@@ -63,6 +65,11 @@ export class XRControllers {
   }
   readonly input: XRControllerInput;
   readonly shortcuts: XRSupportShortcuts;
+  readonly supportGuide?: XRSupportGuide;
+  private viewer: { x: number; y: number; z: number } | null = null;
+  setGuideViewer(viewer: { x: number; y: number; z: number } | null): void {
+    this.viewer = viewer;
+  }
   readonly grab?: WorkspaceNavigation;
   readonly layerGrab?: XRLayerGrab;
   private lastTool: EditorTool = "clay";
@@ -131,6 +138,7 @@ export class XRControllers {
     this.grab?.cancel();
     this.layerGrab?.cancel();
     this.haptics.clearIssues();
+    this.supportGuide?.hide();
     this.root.visible = false;
   }
   private readonly ended = () => this.stop();
@@ -143,6 +151,7 @@ export class XRControllers {
     private readonly panel?: XRDiagnostics,
     private readonly changed: () => void = () => {},
     private readonly options: {
+      supportGuide?: XRSupportGuide;
       lighting?: LightRig;
       references?: ReferenceView;
       alternate?: XRAlternateTool;
@@ -162,6 +171,8 @@ export class XRControllers {
   ) {
     this.input = new XRControllerInput(roles);
     this.shortcuts = new XRSupportShortcuts(options.shortcuts);
+    this.supportGuide = options.supportGuide;
+    if (this.supportGuide) root.add(this.supportGuide.mesh);
     if (options.layers)
       this.layerGrab = new XRLayerGrab(options.layers, (event) => this.reportToolIssue(event));
     if (options.workspace) this.grab = new WorkspaceNavigation(options.workspace);
@@ -230,6 +241,7 @@ export class XRControllers {
             this.grab.cancel();
           this.options.models?.disconnect(index);
           this.input.disconnect(index);
+          this.supportGuide?.hide();
           rayVisual.visible = gripVisual.visible = false;
           this.panel?.invalidate();
         };
@@ -290,6 +302,7 @@ export class XRControllers {
   setDominant(hand: unknown): void {
     this.options.lighting?.cancel();
     this.roles.setDominant(hand);
+    this.supportGuide?.hide();
     this.shortcuts.reset();
     this.options.menus?.close();
     this.options.stroke?.cancel();
@@ -399,6 +412,15 @@ export class XRControllers {
       this.options.alternate.cancel();
       this.input.suspend();
     }
+    const supportGrip = supportState ? this.slots[supportState.slot].grip : undefined;
+    this.supportGuide?.update(
+      supportState,
+      supportGrip?.matrix,
+      this.viewer,
+      time,
+      !!active && (this.options.layers?.().display.supportGuide ?? true),
+      VR_UI_SCALES[this.options.layers?.().display.vrUiScale ?? "normal"],
+    );
     const selectedBefore = this.options.layers?.().project.activeLayerId;
     const mode = this.options.toolMode?.() ?? "clay",
       menuOwnsInput = !!this.shortcuts.menu || !!this.options.menus?.active;
@@ -841,10 +863,12 @@ export class XRControllers {
     this.menuGripBlocked = false;
     this.resetNoticeUntil = 0;
     this.unbind();
+    this.viewer = null;
     this.grab?.cancel();
     this.layerGrab?.cancel();
     this.options.models?.stop();
     this.input.reset();
+    this.supportGuide?.hide();
     this.root.visible = false;
     this.panel?.stop();
     for (const slot of this.slots) {
@@ -876,5 +900,6 @@ export class XRControllers {
     for (const resource of this.resources) resource.dispose();
     this.panel?.dispose();
     this.options.models?.dispose();
+    this.supportGuide?.dispose();
   }
 }

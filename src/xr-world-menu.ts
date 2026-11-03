@@ -743,6 +743,13 @@ export class XRWorldMenu {
         !!this.port?.performance(),
         busy || !this.port,
       );
+      add(
+        "world-support-guide",
+        `Support shortcut guide · ${layers.display.supportGuide ? "On" : "Off"}`,
+        694,
+        "Controller-attached hints · saved with project",
+        layers.display.supportGuide,
+      );
     }
     if (this.port?.references?.error && this.section.startsWith("reference"))
       subtitle = this.port.references.error;
@@ -955,6 +962,8 @@ export class XRWorldMenu {
           Math.round((layers.symmetry.offset + (id.endsWith("plus") ? 0.05 : -0.05)) * 100) / 100,
         ),
       );
+    else if (id === "world-support-guide")
+      layers.display.supportGuide = !layers.display.supportGuide;
     else if (id === "world-diagnostics") this.port?.toggleDiagnostics();
     else if (id === "world-performance") this.port?.togglePerformance();
     else return false;

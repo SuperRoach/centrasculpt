@@ -25,6 +25,7 @@ import type { XRSceneRig } from "./xr-scene";
 import { XRFrameStats, XRSessionController } from "./xr-session";
 import { XRShapeStamp, XRToolInteraction } from "./xr-shape-stamp";
 import { XRShortcutView } from "./xr-shortcut-view";
+import { XRSupportGuide } from "./xr-support-guide";
 import { XRTubeTool } from "./xr-tube-tool";
 import { VR_UI_SCALES, validateVRUIScale } from "./xr-ui-style";
 export type XRExperienceHooks = {
@@ -63,6 +64,7 @@ export class XRExperience {
   readonly sizing?: XRBrushSizing;
   readonly alternate?: XRAlternateTool;
   readonly selection?: XRLayerSelection;
+  readonly supportGuide = new XRSupportGuide();
   readonly shortcutView = new XRShortcutView();
   readonly performancePanel = new XRPerformancePanel();
   private sculpture: XRSculptureInfo = {
@@ -197,6 +199,7 @@ export class XRExperience {
       this.diagnostics,
       () => this.syncDebugControls(),
       {
+        supportGuide: this.supportGuide,
         lighting: hooks.lighting,
         references: hooks.references,
         alternate: this.alternate,
@@ -472,6 +475,7 @@ export class XRExperience {
       this.menus?.place(pose.transform.position, pose.transform.orientation);
       this.framesWithPose++;
     }
+    this.controllers.setGuideViewer(pose?.transform.position ?? null);
     this.controllers.update(time);
     const feedback =
       this.hooks.tools?.active === "move" && this.move?.notifying

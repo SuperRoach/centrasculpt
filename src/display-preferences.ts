@@ -23,6 +23,7 @@ export type ProjectDisplayPreferences = {
   colours: Record<string, string>;
   renderStyle?: RenderStyle;
   vrUiScale?: VRUIScale;
+  supportGuide?: boolean;
   world?: WorldDisplayPreferences;
   lighting?: LightingSettings;
   references?: ReferenceImage[];
@@ -47,6 +48,8 @@ export function validateProjectDisplay(
     )
   )
     throw new Error("Invalid project layer colour or target layer.");
+  if (data.supportGuide !== undefined && typeof data.supportGuide !== "boolean")
+    throw new Error("Invalid support guide preference.");
   const renderStyle =
     data.renderStyle === undefined
       ? undefined
@@ -54,6 +57,7 @@ export function validateProjectDisplay(
   const vrUiScale = data.vrUiScale === undefined ? undefined : validateVRUIScale(data.vrUiScale);
   const world = data.world === undefined ? undefined : validateWorldSettings(data.world);
   return {
+    ...(data.supportGuide === undefined ? {} : { supportGuide: data.supportGuide as boolean }),
     ...(data.lighting === undefined ? {} : { lighting: validateLighting(data.lighting) }),
     ...(data.references === undefined ? {} : { references: validateReferences(data.references) }),
     ...(world === undefined ? {} : { world }),
@@ -71,6 +75,7 @@ export class LayerDisplayPreferences {
   references: ReferenceImage[] = [];
   world = defaultWorldSettings();
   vrUiScale: VRUIScale = "normal";
+  supportGuide = true;
   mode: ViewportMode = "layer-colours";
   renderStyle: RenderStyle = "normal";
   private readonly colours = new Map<string, string>();
@@ -101,6 +106,7 @@ export class LayerDisplayPreferences {
     layers: readonly { id: string; order: number }[],
   ): ProjectDisplayPreferences {
     return {
+      ...(!this.supportGuide ? { supportGuide: false } : {}),
       ...(this.lighting ? { lighting: structuredClone(this.lighting) } : {}),
       ...(this.references.length ? { references: this.references } : {}),
       ...(this.world.studioBackground === "neutral-grey" &&
@@ -133,6 +139,7 @@ export class LayerDisplayPreferences {
     this.references = validated?.references ?? [];
     this.world = validated?.world ?? defaultWorldSettings();
     this.vrUiScale = validated?.vrUiScale ?? "normal";
+    this.supportGuide = validated?.supportGuide ?? true;
     this.mode = validated?.mode ?? "layer-colours";
     this.renderStyle = validated?.renderStyle ?? "normal";
     for (const layer of layers) this.remove(projectId, layer.id);

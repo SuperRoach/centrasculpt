@@ -1,3 +1,9 @@
+### Phase 6.0.3 — Support hand shortcuts at a glance (2026-11-04)
+
+- Four small arrow tabs sit over the centre of your Support controller, with Undo, Redo, Tool Wheel and Layers icons drawn directly on them. Faint neutral arrows have no outlines, words or floating panel, and follow the measured angle of the Quest controller top, sitting below its surface with a finely adjusted controller-relative alignment. Shortcut icons sit farther out to clear the controller, with shorter triangle tips, clear transparent gaps separating the four tabs, and a circular inner edge tucked beneath the rounded controller face. Hold Up or Down to use menus; shortcuts still pause during sculpting and grabs.
+- The guide follows your Support Hand when you swap dominance, turns with your wrist, and uses your VR UI Size in Studio and Passthrough. It hides when tracking is lost or it gets too close to your face.
+- Prefer a clear controller view? Switch **World Settings → Preferences → Support shortcut guide** Off. The choice saves with your project; new and older projects start with the guide On.
+
 ### Phase 6.0.2 — Easier desktop layer rotation (2026-11-03)
 
 - Select and rotate a layer directly from its visible surface without picking a gizmo handle. Rotation defaults to free view-space movement; hold **R**, **F** or **V** during the drag to constrain it to X, Y or Z. Existing rotation handles remain available.

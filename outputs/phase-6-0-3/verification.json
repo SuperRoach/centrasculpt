@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-04",
+  "baselineCommit": "d28c399",
+  "baseline": {
+    "command": "npm run check",
+    "passed": true,
+    "tests": 1331,
+    "files": 82,
+    "testWallSeconds": 43.2,
+    "biomeWarnings": 547,
+    "biomeInfos": 95
+  },
+  "final": {
+    "command": "npm run check",
+    "passed": true,
+    "tests": 1342,
+    "files": 83,
+    "testWallSeconds": 43.7,
+    "biomeWarnings": 547,
+    "biomeInfos": 95
+  },
+  "focused": {
+    "command": "npm test -- xr-support-guide",
+    "tests": 11,
+    "passed": true,
+    "testWallSeconds": 0.22
+  },
+  "quick": {
+    "command": "npm run test:quick",
+    "tests": 21,
+    "passed": true,
+    "testWallSeconds": 0.65
+  },
+  "visualQA": "Guide moved another 2mm down along face normal and 2mm controller-local right. Total ~9mm inset and 5mm right; offset (0.005, -0.0043, -0.0207) metres. 32px transparent separators and texture/design unchanged. Both-hand tests updated; user accepted final placement and appearance.",
+  "hardwareAcceptance": "User accepted final controller-guide positioning and appearance after headset screenshot iteration on 2026-11-04. Remaining both-hand/environment, lifecycle, interaction-clearance and GPU/performance checklist checks are pending.",
+  "logs": [
+    "/tmp/centra-guide-baseline.log",
+    "/tmp/centra-guide-final-offset-check.log",
+    "/tmp/centra-guide-final-offset-focused.log",
+    "/tmp/centra-guide-final-offset-quick.log"
+  ],
+  "geometryEvidence": "tests/fixtures/quest-touch-plus-face.json"
+}
