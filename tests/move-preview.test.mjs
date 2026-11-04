@@ -51,6 +51,9 @@ function fixture(n = 33) {
       tools,
       root,
       (e) => events.push(e),
+      undefined,
+      undefined,
+      Number.POSITIVE_INFINITY,
     ),
     s = {
       slot: 0,

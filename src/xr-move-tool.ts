@@ -17,7 +17,7 @@ import {
 import type { EditorToolState } from "./editor-tool-state";
 import type { IndependentLayers, LayerRuntime } from "./independent-layers";
 import { MoveGesture } from "./move-gesture";
-import { MoveMeshPreview } from "./move-mesh-preview";
+import { MOVE_PREPARATION_BUDGET_MS, MoveMeshPreview } from "./move-mesh-preview";
 import { uniformScale } from "./transform";
 import type { VolumeStore } from "./volume-store";
 import { XRBrushPreview } from "./xr-brush-preview";
@@ -96,6 +96,7 @@ export class XRMoveTool implements XRStrokeInteraction {
     private readonly pulse: (event: "grab" | "release") => void = () => {},
     private readonly committed: () => void = () => {},
     private readonly issue: (event: "cancel" | "error") => void = () => {},
+    private readonly previewPreparationBudgetMs = MOVE_PREPARATION_BUDGET_MS,
   ) {
     this.snapGuide = new XRSnapGuide(root);
     this.influence = new XRBrushPreview(root);
@@ -429,7 +430,7 @@ export class XRMoveTool implements XRStrokeInteraction {
       radius,
       this.capture.falloff,
       this.capture.strength,
-      undefined,
+      this.previewPreparationBudgetMs,
       runtime.surface.spatial,
       this.capture.mode === "elastic" ? "elastic" : "non-elastic",
       this.capture.stiffness,

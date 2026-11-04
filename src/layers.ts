@@ -1,5 +1,6 @@
 import type { ProjectDisplayPreferences } from "./display-preferences";
 import { LayerHierarchy } from "./layer-hierarchy";
+import { type BooleanModifier, validateBooleanGraph, validateModifiers } from "./live-boolean";
 import { type PrimitiveSource, validatePrimitive } from "./parametric-primitive";
 import { type TubeSource, validateTube } from "./procedural-tube";
 import type { ProjectSettings } from "./project";
@@ -9,6 +10,7 @@ import { identityTransform, validateTransform } from "./transform";
 import type { VolumeStore } from "./volume-store";
 export type LayerOperation = "union" | "difference" | "intersect";
 export type LayerMetadata = {
+  booleanModifiers?: BooleanModifier[];
   id: string;
   name: string;
   transform: VolumeTransform;
@@ -58,6 +60,9 @@ export function validateLayerMetadata(value: unknown): LayerMetadata {
   )
     throw new Error("Original primitive parameters must match the source type.");
   return {
+    ...(m.booleanModifiers === undefined
+      ? {}
+      : { booleanModifiers: validateModifiers(m.booleanModifiers) }),
     primitiveOriginal:
       m.primitive === undefined ? undefined : validatePrimitive(m.primitiveOriginal ?? m.primitive),
     primitive: m.primitive === undefined ? undefined : validatePrimitive(m.primitive),
@@ -72,6 +77,7 @@ export function validateLayerMetadata(value: unknown): LayerMetadata {
   };
 }
 export class SdfLayer {
+  booleanModifiers?: BooleanModifier[];
   primitiveOriginal?: PrimitiveSource;
   primitive?: PrimitiveSource;
   procedural?: TubeSource;
@@ -130,6 +136,7 @@ export class SdfLayer {
     });
     if (m.primitive && m.procedural)
       throw new Error("A layer cannot contain two procedural sources.");
+    this.booleanModifiers = m.booleanModifiers;
     this.primitiveOriginal = m.primitiveOriginal;
     this.primitive = m.primitive;
     this.procedural = m.procedural;
@@ -156,6 +163,7 @@ export class SdfLayer {
   }
   metadata(): LayerMetadata {
     return validateLayerMetadata({
+      ...(this.booleanModifiers === undefined ? {} : { booleanModifiers: this.booleanModifiers }),
       primitiveOriginal: this.primitiveOriginal,
       primitive: this.primitive,
       procedural: this.procedural,
@@ -199,6 +207,7 @@ export class LayerStack {
     )
       throw new Error("Layer IDs and ordering must be unique; a project needs at least one layer.");
     assertIndependentLayerVolumes(layers);
+    validateBooleanGraph(layers);
     layers.forEach((l) => {
       l.metadata();
     });

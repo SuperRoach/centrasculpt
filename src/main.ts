@@ -358,6 +358,7 @@ transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () 
     controls.enabled = enabled;
   },
   changed: syncTransformUI,
+  status: (text) => ui.status(text),
   error: (text) => ui.projectMessage(text, true),
   hitLayer: (event) => {
     updatePointer(event);
@@ -530,7 +531,13 @@ function chooseLayerMode(mode: EditorMode, fromXR = false): void {
       ? `Rotate · ${layers.transformNode.name} · drag the surface; hold R/F/V for X/Y/Z`
       : mode === "translate"
         ? `Move · ${layers.transformNode.name} · drag the surface; hold E/D/C for X/Y/Z`
-        : `${mode} · ${layers.transformNode.name}`,
+        : mode === "scale" && !layers.selectedGroupId && layers.active.layer.primitive
+          ? layers.active.layer.primitive.kind === "box"
+            ? "Size Box · local X width · Y height · Z depth · centre scales all"
+            : layers.active.layer.primitive.kind === "cylinder"
+              ? "Size Cylinder · local Y height · X/Z diameter · centre scales all"
+              : "Size Sphere · drag any axis to change diameter"
+          : `${mode} · ${layers.transformNode.name}`,
   );
 }
 viewportTools = createViewportTools(ui.viewport, chooseWorkspace, chooseLayerMode, {
@@ -677,6 +684,11 @@ window.addEventListener("keydown", (event) => {
     document.getElementById("save-project")!.click();
     return;
   }
+  if (event.key === "Escape" && (layers.transforming || transformTools?.resizing)) {
+    transformTools?.cancel();
+    ui.status("Transform cancelled");
+    return;
+  }
   if (event.key === "Escape" && (precision?.active || precision?.primitives.placing)) {
     precision.start(0);
     ui.status("Measurement off");
@@ -784,7 +796,13 @@ window.addEventListener("keydown", (event) => {
           ? `Rotate · ${layers.transformNode.name} · drag the surface; hold R/F/V for X/Y/Z`
           : mode === "translate"
             ? `Move · ${layers.transformNode.name} · drag the surface; hold E/D/C for X/Y/Z`
-            : `${mode} · ${layers.transformNode.name}`,
+            : mode === "scale" && !layers.selectedGroupId && layers.active.layer.primitive
+              ? layers.active.layer.primitive.kind === "box"
+                ? "Size Box · local X width · Y height · Z depth · centre scales all"
+                : layers.active.layer.primitive.kind === "cylinder"
+                  ? "Size Cylinder · local Y height · X/Z diameter · centre scales all"
+                  : "Size Sphere · drag any axis to change diameter"
+              : `${mode} · ${layers.transformNode.name}`,
       );
       return;
     }
@@ -883,7 +901,8 @@ ui.onTransformAction((action) => {
       layers.setActiveTransform(next);
     }
     cursor.visible = false;
-    ui.status(`${layers.transformNode.name} · ${input.mode} · transforms use metadata only`);
+    if (action.type !== "mode")
+      ui.status(`${layers.transformNode.name} · ${input.mode} · transforms use metadata only`);
   } catch (error) {
     ui.projectMessage(message(error), true);
   }
@@ -1333,7 +1352,7 @@ function exportEstimate(): void {
     note = message(error);
   }
   document.getElementById("export-estimate")!.textContent =
-    `Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;
+    `${layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length) ? "Visible Boolean result" : "Visible source"}: ${(layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length) ? (layers.composite.stats?.triangles ?? 0) : count).toLocaleString()} triangles before optimisation. ${note}`;
 }
 document.getElementById("export-quality")!.addEventListener("change", exportEstimate);
 
@@ -1373,7 +1392,15 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     if (signal.aborted) throw new Error("Export cancelled.");
     await paint();
     let sources: ExportSource[];
-    if (scope === "composite") {
+    if (
+      scope === "selected" &&
+      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)
+    )
+      throw new Error("Choose visible Boolean result export for scenes with live modifiers.");
+    if (
+      scope === "composite" ||
+      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)
+    ) {
       exportMessage("Evaluating Boolean result at the existing quality cap…");
       // Abort the export wait; the shared preview scheduler may finish its own cache.
       let release = () => {};
@@ -2070,7 +2097,13 @@ const projectBrowser = new ProjectBrowser(
         manualSaving = false;
       }
     },
-    thumbnail: () => captureProjectThumbnail(renderer, layers.group),
+    thumbnail: async () => {
+      if (layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) {
+        await layers.composite.flush();
+        return captureProjectThumbnail(renderer, layers.composite.group);
+      }
+      return captureProjectThumbnail(renderer, layers.group);
+    },
     open: (data, name) => openProjectFile(new File([], `${name}.form`), data, undefined, true),
     create: async (resolution, contents) =>
       (
@@ -2619,6 +2652,7 @@ function interruptSession(_reason: string): void {
   xrExperience?.controllers.suspend();
   desktopStroke.cancel();
   layers.cancelStroke();
+  transformTools?.cancel();
   layers.cancelTransform();
   stop();
   cursor.visible = false;
@@ -2670,7 +2704,8 @@ let previous = performance.now();
 function pollComposite(now: number): void {
   if (
     booleanPreview &&
-    !layers.transforming &&
+    (!layers.transforming ||
+      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) &&
     !loadingProject &&
     !ui.modalOpen &&
     now - lastCompositePoll > 100

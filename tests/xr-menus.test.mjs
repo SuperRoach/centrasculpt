@@ -1502,3 +1502,56 @@ test("scroll viewport hides paging controls and clips hit targets; no overflow h
     restore();
   }
 });
+
+for (const hand of ["left", "right"])
+  test(`${hand} controller ray activates live Boolean creation, source editing, toggle/remove and tracking cancellation`, async () => {
+    const h = bridgeFixture(hand);
+    try {
+      const target = await h.layers.regeneratePrimitive({
+        kind: "box",
+        width: 0.4,
+        height: 0.3,
+        depth: 0.1,
+      });
+      const source = await h.layers.regeneratePrimitive({ kind: "sphere", diameter: 0.03 });
+      h.layers.select(target.id);
+      h.model.setRequest("layers");
+      h.model.palette.context = target.id;
+      h.model.palette.view = "live";
+      h.model.palette.liveSource = 1;
+      const click = (id) => {
+        h.point(id);
+        h.press(h.tool, 0, false);
+        h.press(h.tool, 0, true);
+        h.press(h.tool, 0, false);
+      };
+      // The support stick owns the Layers panel; model context remains available while held.
+      h.stick(0, 1);
+      h.model.palette.context = target.id;
+      h.model.palette.view = "live";
+      h.model.palette.liveSource = 1;
+      h.update();
+      click("hier:live-add:difference");
+      assert.equal(target.booleanModifiers?.length, 1);
+      assert.equal(target.booleanModifiers[0].sourceId, source.id);
+      click("hier:live-toggle");
+      assert.equal(target.booleanModifiers[0].enabled, false);
+      click("hier:live-toggle");
+      assert.equal(target.booleanModifiers[0].enabled, true);
+      const job = h.layers.composite.rebuild();
+      h.rays[0].visible = false;
+      h.update();
+      assert.equal(await job, false);
+      assert.equal(h.layers.composite.tick(), null);
+      h.rays[0].visible = true;
+      h.update();
+      click("hier:live-remove");
+      assert.equal(target.booleanModifiers.length, 0);
+      h.layers.undo();
+      for (let i = 0; i < 10; i++) h.update();
+      click("hier:live-select");
+      assert.equal(h.layers.project.activeLayerId, source.id);
+    } finally {
+      h.dispose();
+    }
+  });

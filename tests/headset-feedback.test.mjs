@@ -266,7 +266,15 @@ test("red mirror plane handle drags only its offset; release persists, cancellat
 
 test("Elastic captured grab changes only edge softness; CPU/GPU falloff agree and cancellation leaves exact SDF", () => {
   const f = fixture(),
-    move = new XRMoveTool(() => f.layers, f.tools, f.root),
+    move = new XRMoveTool(
+      () => f.layers,
+      f.tools,
+      f.root,
+      undefined,
+      undefined,
+      undefined,
+      Number.POSITIVE_INFINITY,
+    ),
     tool = state(),
     sizing = new XRBrushSizing(f.tools),
     pose = new Matrix4().makeTranslation(0, 0, 1.5);

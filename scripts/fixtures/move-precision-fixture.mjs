@@ -40,7 +40,15 @@ export function fixture(n = 33) {
       busy: () => false,
       changed() {},
     });
-  const move = new XRMoveTool(() => l, tools, root),
+  const move = new XRMoveTool(
+      () => l,
+      tools,
+      root,
+      undefined,
+      undefined,
+      undefined,
+      Number.POSITIVE_INFINITY,
+    ),
     s = {
       slot: 0,
       role: "tool",

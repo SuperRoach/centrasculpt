@@ -37,3 +37,25 @@ The UI still owns its controls, selection and notifications. This adapter calls 
 A future Phase 7 host can own adapter lifetime, map tool schemas to the typed discriminated commands, supply admission policy and cancellation, and serialize structured results. It must independently implement transport authentication/authorization, user approval policy and audit logging if external access is introduced. None exists in this milestone.
 
 Deferred: multi-command atomic batches, dry-run/planning, progress subscriptions, persistent revisions, external schemas/transports, agent-driven selection/visibility/lock/grouping commands, partial parameter patches and source type conversion. Rename and transform are distinct transactions. Primitive cache/history bounds, polygonal curves, sampled Bake accuracy, eight-layer/resource limits and pending physical Quest acceptance remain Phase 6.2 limitations. No new rendering/input feature requires headset acceptance in this adapter milestone.
+
+
+## Phase 6.3 — live Boolean commands
+
+All commands require the existing `expectedRevision` and use `IndependentLayers.setBooleanModifiers` / explicit Bake. IDs in commands identify the target layer; modifier IDs are returned by `boolean.get` / `boolean.list` and retained by updates. No multi-command transaction is added.
+
+```ts
+await api.execute({ type: "boolean.create", id: boxId, sourceId: cylinderId, operation: "difference" }, { expectedRevision: api.revision });
+const stack = api.query({ type: "boolean.get", id: boxId });
+// Query value is a detached BooleanModifier[]: { id, sourceId, operation, enabled }.
+if (stack.ok) {
+  await api.execute({ type: "boolean.update", id: boxId, modifiers: stack.value.map(m => ({ ...m, enabled: false })) }, { expectedRevision: stack.revision });
+  // Reordering this complete array changes ordered left-to-right evaluation atomically.
+}
+await api.execute({ type: "boolean.remove", id: boxId, modifierId }, { expectedRevision: api.revision });
+await api.execute({ type: "boolean.bake", id: boxId }, { expectedRevision: api.revision, signal });
+const all = api.query({ type: "boolean.list" }); // { id: targetId, modifiers }[]
+```
+
+Operations are `union`, `difference`, `intersect`. Each source keeps its own world/parent transform; primitive dimensions and `object.transform` retain explicit physical units. `object.get` includes detached `booleanModifiers` and `consumedBy` target IDs; its dimensions still describe the source object, not a mesh-derived CSG bounding box. The target's own field is the initial operand, followed by the array in order. Referenced sources can contain stacks; validation rejects cycles, missing refs, invalid stacks and unsupported non-uniform inherited scale. Errors use the existing structured result; backend graph/resource failures are `operation_failed` with a reason. Graph queries never evaluate a mesh.
+
+A hidden source can remain an explicitly referenced operand; its eye controls independent output. Source/ancestor locks prevent stack mutation. Successful commands select their target. Target Bake uses a separate 128³ sculpt layer, hides its retained source subgraph, checks resolution/memory/locks and is cancelable. Entire visible-result Bake remains available in the UI/backend. Disabled stacks still retain their references for validation and native persistence. See [Phase 6.3 semantics, exports and limitations](PHASE_6_3_LIVE_BOOLEANS.md).

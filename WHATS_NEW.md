@@ -1,3 +1,10 @@
+### Phase 6.3 — Cuts that stay editable (2026-11-05)
+
+- Keep editable source shapes visible while moving or resizing a live Boolean. Use desktop **Scale (R)** to change Box width/height/depth, Cylinder diameter/height or Sphere diameter with local-axis handles; the centre handle changes all dimensions together.
+- Add, subtract or intersect primitive shapes and sculpt layers with **Live Boolean Shapes**, now directly inside the selected layer’s desktop Layers card, or in the VR Layers menu. Move, rotate or resize a cutter later to change the result without rebuilding your original shapes.
+- Inspect and edit source shapes, change or reorder operations, toggle them on/off and undo changes. Choose **Bake** when you want a separate sculptable result; the existing plane Cut tool still splits layers independently.
+- Live operations stay editable through saves and recovery. Result exports leave cutters out, and reject previews that are still rebuilding or too coarse for the chosen detail.
+
 ### Phase 6.2.1 — Foundations for assisted modelling (2026-11-04)
 
 - Prepared core modelling actions for future assisted editing, with stale-scene protection, cancellation and undoable object deletion. This milestone adds no AI service or agent control panel.

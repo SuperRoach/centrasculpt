@@ -647,3 +647,234 @@ test("physical desktop snapping quantizes model metadata under navigation withou
     c.dispose();
   }
 });
+
+for (const spec of [
+  {
+    source: { kind: "box", width: 0.4, height: 0.3, depth: 0.2 },
+    axis: "X",
+    scale: [1.5, 1, 1],
+    expected: { kind: "box", width: 0.6, height: 0.3, depth: 0.2 },
+  },
+  {
+    source: { kind: "box", width: 0.4, height: 0.3, depth: 0.2 },
+    axis: "Y",
+    scale: [1, 1.5, 1],
+    expected: { kind: "box", width: 0.4, height: 0.45, depth: 0.2 },
+  },
+  {
+    source: { kind: "box", width: 0.4, height: 0.3, depth: 0.2 },
+    axis: "Z",
+    scale: [1, 1, 2],
+    expected: { kind: "box", width: 0.4, height: 0.3, depth: 0.4 },
+  },
+  {
+    source: { kind: "cylinder", diameter: 0.2, height: 0.3 },
+    axis: "X",
+    scale: [1.5, 1, 1],
+    expected: { kind: "cylinder", diameter: 0.3, height: 0.3 },
+  },
+  {
+    source: { kind: "cylinder", diameter: 0.2, height: 0.3 },
+    axis: "Y",
+    scale: [1, 2, 1],
+    expected: { kind: "cylinder", diameter: 0.2, height: 0.6 },
+  },
+  {
+    source: { kind: "cylinder", diameter: 0.2, height: 0.3 },
+    axis: "Z",
+    scale: [1, 1, 1.5],
+    expected: { kind: "cylinder", diameter: 0.3, height: 0.3 },
+  },
+  {
+    source: { kind: "sphere", diameter: 0.2 },
+    axis: "Y",
+    scale: [1, 2, 1],
+    expected: { kind: "sphere", diameter: 0.4 },
+  },
+  {
+    source: { kind: "box", width: 0.4, height: 0.3, depth: 0.2 },
+    axis: "XYZ",
+    scale: [2, 2, 2],
+    expected: { kind: "box", width: 0.8, height: 0.6, depth: 0.4 },
+  },
+])
+  test(`desktop ${spec.source.kind} ${spec.axis} handle previews dimensions and commits once without changing pose`, async () => {
+    const c = create(),
+      scene = new Scene(),
+      input = new InputOwnership(),
+      canvas = new FakeCanvas();
+    const p = await c.regeneratePrimitive(spec.source);
+    const group = c.groupNode(p.id, "Parent");
+    c.selectGroup(group);
+    c.setActiveTransform({ position: [0.3, 0.2, 0], rotation: [0.2, 0.4, 0.6], scale: [2, 2, 2] });
+    c.select(p.id);
+    scene.add(c.group);
+    const errors = [],
+      tools = new LayerTransformTools(
+        new PerspectiveCamera(38, 1, 0.01, 100),
+        canvas,
+        scene,
+        () => c,
+        input,
+        {
+          beforeDrag: () => {},
+          camera: () => {},
+          changed: () => {},
+          busy: () => false,
+          error: (m) => errors.push(m),
+        },
+      );
+    try {
+      const pose = structuredClone(p.transform),
+        before = c.undoCount,
+        values = p.volume.getDenseView().slice();
+      tools.setMode("scale");
+      assert.equal(tools.controls.space, "local");
+      assert(tools.controls.parametricScale);
+      tools.controls.axis = spec.axis;
+      tools.controls.dragging = true;
+      tools.controls.dispatchEvent({ type: "mouseDown", mode: "scale" });
+      tools.controls.object.scale.set(...spec.scale.map((v, i) => v * pose.scale[i]));
+      tools.controls.dispatchEvent({ type: "objectChange" });
+      assert.deepEqual(p.primitive, spec.source);
+      assert.deepEqual(p.transform, pose);
+      assert.deepEqual(p.volume.getDenseView(), values);
+      assert.equal(c.undoCount, before);
+      tools.controls.pointerUp(null);
+      await tools.settled;
+      assert.deepEqual(errors, []);
+      for (const [key, value] of Object.entries(spec.expected))
+        if (key !== "kind") assert(Math.abs(p.primitive[key] - value) < 1e-10);
+      assert.deepEqual(p.transform, pose);
+      assert.equal(c.undoCount, before + 1);
+      assert(!c.transforming);
+      assert(!c.generatingTube);
+      c.undo();
+      assert.deepEqual(p.primitive, spec.source);
+      c.undo(true);
+      for (const [key, value] of Object.entries(spec.expected))
+        if (key !== "kind") assert(Math.abs(p.primitive[key] - value) < 1e-10);
+    } finally {
+      tools.dispose();
+      c.dispose();
+    }
+  });
+test("primitive size cancellation, invalid dimensions, and interrupted async preparation retain fields/redo", async () => {
+  const c = create(),
+    p = await c.regeneratePrimitive({ kind: "box", width: 0.4, height: 0.3, depth: 0.2 }),
+    input = new InputOwnership();
+  const errors = [],
+    tools = new LayerTransformTools(
+      new PerspectiveCamera(38, 1, 0.01, 100),
+      new FakeCanvas(),
+      new Scene(),
+      () => c,
+      input,
+      {
+        beforeDrag: () => {},
+        camera: () => {},
+        changed: () => {},
+        busy: () => false,
+        error: (m) => errors.push(m),
+      },
+    );
+  const original = structuredClone(p.primitive),
+    values = p.volume.getDenseView().slice(),
+    before = c.undoCount;
+  const begin = (factor) => {
+    tools.setMode("scale");
+    tools.controls.axis = "X";
+    tools.controls.dragging = true;
+    tools.controls.dispatchEvent({ type: "mouseDown", mode: "scale" });
+    tools.controls.object.scale.set(factor, 1, 1);
+    tools.controls.dispatchEvent({ type: "objectChange" });
+  };
+  try {
+    begin(1.5);
+    tools.cancel();
+    assert.deepEqual(p.primitive, original);
+    assert.equal(c.undoCount, before);
+    assert.deepEqual(tools.controls.object.scale.toArray(), [1, 1, 1]);
+    begin(100);
+    assert(errors.length);
+    assert(!c.transforming);
+    assert.equal(c.undoCount, before);
+    begin(1.5);
+    tools.controls.pointerUp(null);
+    tools.cancel();
+    await tools.settled;
+    assert.deepEqual(p.primitive, original);
+    assert.deepEqual(p.volume.getDenseView(), values);
+    assert.equal(c.undoCount, before);
+  } finally {
+    tools.dispose();
+    c.dispose();
+  }
+});
+
+test("primitive Scale changes a live cutter outcome after release and keeps source fields untouched during preview", async () => {
+  const { prepareComposite } = await import("../work/test-build/compositor.mjs");
+  const { TransformPreview } = await import("../work/test-build/transform-preview.mjs");
+  const c = create(),
+    target = await c.regeneratePrimitive({ kind: "box", width: 0.4, height: 0.3, depth: 0.2 }),
+    cutter = await c.regeneratePrimitive({ kind: "sphere", diameter: 0.05 });
+  c.setFlag(c.project.layerStack.layers[0].id, "visible", false);
+  c.setBooleanModifiers(target.id, [
+    { id: "resize-hole", sourceId: cutter.id, operation: "difference", enabled: true },
+  ]);
+  const input = new InputOwnership(),
+    scene = new Scene(),
+    preview = new TransformPreview();
+  scene.add(c.group);
+  const tools = new LayerTransformTools(
+    new PerspectiveCamera(38, 1, 0.01, 100),
+    new FakeCanvas(),
+    scene,
+    () => c,
+    input,
+    {
+      beforeDrag: () => {},
+      camera: () => {},
+      changed: () => {},
+      busy: () => false,
+      error: (m) => assert.fail(m),
+    },
+  );
+  try {
+    await c.composite.flush();
+    preview.sync(c);
+    assert(c.composite.group.visible);
+    const before = cutter.volume.getDenseView().slice(),
+      count = c.undoCount;
+    tools.setMode("scale");
+    tools.controls.axis = "X";
+    tools.controls.dragging = true;
+    tools.controls.dispatchEvent({ type: "mouseDown", mode: "scale" });
+    tools.controls.object.scale.set(2, 1, 1);
+    tools.controls.dispatchEvent({ type: "objectChange" });
+    preview.sync(c);
+    assert(c.group.visible);
+    assert(!c.composite.group.visible);
+    assert.deepEqual(cutter.volume.getDenseView(), before);
+    assert.equal(cutter.primitive.diameter, 0.05);
+    assert(prepareComposite(c.project.layerStack.compositionLayers)(0.04, 0, 0) < 0);
+    tools.controls.pointerUp(null);
+    await tools.settled;
+    assert.equal(c.undoCount, count + 1);
+    assert.equal(cutter.primitive.diameter, 0.1);
+    assert(prepareComposite(c.project.layerStack.compositionLayers)(0.04, 0, 0) > 0);
+    assert.deepEqual(cutter.transform.scale, [1, 1, 1]);
+    preview.sync(c);
+    assert(c.group.visible);
+    await c.composite.flush();
+    preview.sync(c);
+    assert(c.composite.group.visible);
+    c.undo();
+    assert.equal(cutter.primitive.diameter, 0.05);
+    c.undo(true);
+    assert.equal(cutter.primitive.diameter, 0.1);
+  } finally {
+    tools.dispose();
+    c.dispose();
+  }
+});

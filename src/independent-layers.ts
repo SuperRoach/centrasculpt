@@ -13,7 +13,14 @@ import {
   Vector3,
 } from "three";
 import type { BakeOptions, BakeProgress, BakeStats, SurfaceView } from "./bake";
-import { checkBakeCancelled, planBake, sampleBake, validateBakeOptions, yieldBake } from "./bake";
+import {
+  bakeSources,
+  checkBakeCancelled,
+  planBake,
+  sampleBake,
+  validateBakeOptions,
+  yieldBake,
+} from "./bake";
 import { BooleanComposite, prepareCompositeColour } from "./compositor";
 import type { MoveProgress } from "./deformation-reconstruction";
 import { copyMoveVolume, MoveWork } from "./deformation-reconstruction";
@@ -25,6 +32,7 @@ import { SculptHistory } from "./history";
 import { type HierarchyState, LayerGroup } from "./layer-hierarchy";
 import type { LayerOperation, SculptProject } from "./layers";
 import { assertIndependentLayerVolumes, newId, SdfLayer, validateName } from "./layers";
+import { type BooleanModifier, validateBooleanGraph, validateModifiers } from "./live-boolean";
 import { MaskOverlay } from "./mask-overlay";
 import { IncrementalMesher } from "./mesh";
 import { RadialMoveField } from "./move-field";
@@ -234,6 +242,12 @@ type HierarchyEntry = {
 };
 type PaintEntry = { kind: "paint"; layerId: string; before: PaintSnapshot; after: PaintSnapshot };
 type TimelineEntry =
+  | {
+      kind: "boolean";
+      layerId: string;
+      before: BooleanModifier[] | undefined;
+      after: BooleanModifier[];
+    }
   | { kind: "name"; layerId: string; before: string; after: string }
   | PaintEntry
   | HierarchyEntry
@@ -640,6 +654,9 @@ export class IndependentLayers {
     deferMesh = false,
   ) {
     this.composite = new BooleanComposite(project, this.compositeMaterial, 192, this.neutral);
+    this.composite.availableBytes = () => 256 * 1024 ** 2 - this.trackedBytes;
+    if (project.layerStack.layers.some((l) => l.booleanModifiers?.length))
+      this.viewMode = "boolean";
     this.assertCapacity();
     assertIndependentLayerVolumes(project.layerStack.layers);
     if (project.displayPreferences)
@@ -1008,7 +1025,7 @@ export class IndependentLayers {
     return true;
   }
   private assertSculptable(layer: SdfLayer): void {
-    if (layer.procedural || layer.primitive)
+    if (layer.procedural || layer.primitive || layer.booleanModifiers?.length)
       throw new Error("Bake the parametric source to a sculpt layer before brushing.");
   }
   select(id: string): void {
@@ -1396,6 +1413,7 @@ export class IndependentLayers {
     group.rotation.set(...t.rotation, "XYZ");
     group.scale.fromArray(t.scale);
     group.updateWorldMatrix(true, true);
+    this.composite.syncMetadata();
   }
   undo(redo = false): string | null {
     this.assertAvailable();
@@ -1492,7 +1510,11 @@ export class IndependentLayers {
         if (e.kind === "bake" && e.layerId === layer.id) e.runtime = next;
       this.composite.invalidate();
     } else if (entry.kind === "order") this.restoreOrder(redo ? entry.after : entry.before);
-    else if (entry.kind === "operation") {
+    else if (entry.kind === "boolean") {
+      layer.assertEditable();
+      layer.booleanModifiers = structuredClone(redo ? entry.after : entry.before);
+      this.composite.invalidate();
+    } else if (entry.kind === "operation") {
       if (layer.locked) throw new Error("Unlock the layer to change its operation.");
       layer.operation = redo ? entry.after : entry.before;
     } else {
@@ -1770,6 +1792,7 @@ export class IndependentLayers {
     if (this.selectedGroupId) throw new Error("Select a sculpt layer before cutting.");
     const original = this.editableRuntime(this.project.activeLayerId);
     this.assertSculptable(original.layer);
+    this.assertBooleanUnreferenced(original.layer.id);
     if (!(original.volume instanceof SDFVolume))
       throw new Error("Plane Cut needs a dense SDF layer.");
     if (original.layer.operation === "intersect")
@@ -1978,6 +2001,7 @@ export class IndependentLayers {
       void unused;
       const layer = new SdfLayer(volume, {
         ...copy,
+        booleanModifiers: source.booleanModifiers?.map((m) => ({ ...m, id: newId() })),
         name: this.uniqueName(`${source.name.slice(0, 123)} copy`),
       });
       candidate = new LayerRuntime(layer, this.neutral, volume, true);
@@ -2070,6 +2094,7 @@ export class IndependentLayers {
     void unused;
     const layer = new SdfLayer(volume, {
         ...metadata,
+        booleanModifiers: source.booleanModifiers?.map((m) => ({ ...m, id: newId() })),
         name: this.uniqueName(`${source.name.slice(0, 123)} copy`),
       }),
       runtime = new LayerRuntime(layer, this.neutral);
@@ -2110,6 +2135,7 @@ export class IndependentLayers {
   }
   /** Undoable leaf deletion using the same retained-runtime hierarchy history as groups. */
   deleteObject(id: string): void {
+    this.assertBooleanUnreferenced(id);
     const stack = this.project.layerStack,
       h = stack.hierarchy,
       node = h.get(id);
@@ -2141,6 +2167,7 @@ export class IndependentLayers {
     this.recordHierarchy(before, active, selected, [runtime]);
   }
   remove(id: string): void {
+    this.assertBooleanUnreferenced(id);
     this.assertAvailable();
     this.finishStroke();
     this.finishTransform();
@@ -2201,16 +2228,20 @@ export class IndependentLayers {
       stack.move(id, index);
     });
   }
-  private recordMetadata(entry: Extract<TimelineEntry, { kind: "operation" | "order" }>): void {
+  private recordMetadata(
+    entry: Extract<TimelineEntry, { kind: "operation" | "order" | "boolean" }>,
+  ): void {
     this.discardFuture();
     this.past.push(entry);
     let excess =
       this.past.filter(
-        (e) => (e.kind === "operation" || e.kind === "order") && e.layerId === entry.layerId,
+        (e) =>
+          (e.kind === "operation" || e.kind === "order" || e.kind === "boolean") &&
+          e.layerId === entry.layerId,
       ).length - 100;
     this.past = this.past.filter((e) => {
       if (
-        (e.kind === "operation" || e.kind === "order") &&
+        (e.kind === "operation" || e.kind === "order" || e.kind === "boolean") &&
         e.layerId === entry.layerId &&
         excess > 0
       ) {
@@ -2219,6 +2250,46 @@ export class IndependentLayers {
       }
       return true;
     });
+  }
+  /** Atomically replace a validated modifier stack; fields and source transforms are borrowed read-only. */
+  setBooleanModifiers(id: string, value: unknown): void {
+    this.assertAvailable();
+    this.finishStroke();
+    this.finishTransform();
+    const layer = this.project.layerStack.get(id);
+    layer.assertEditable();
+    const original = layer.booleanModifiers;
+    const after = validateModifiers(value),
+      before = structuredClone(layer.booleanModifiers ?? []);
+    for (const m of [...before, ...after])
+      if (this.project.layerStack.get(m.sourceId).locked)
+        throw new Error(
+          "Boolean source or its parent is locked. Unlock it before editing its operation.",
+        );
+    layer.booleanModifiers = after;
+    try {
+      validateBooleanGraph(this.project.layerStack.layers);
+    } catch (error) {
+      layer.booleanModifiers = original;
+      throw error;
+    }
+    this.discardFuture();
+    this.recordMetadata({
+      kind: "boolean",
+      layerId: id,
+      before: original === undefined ? undefined : before,
+      after: structuredClone(after),
+    });
+    this.committedRevision++;
+    this.viewMode = "boolean";
+    this.composite.invalidate();
+    this.syncPresentation();
+  }
+  private assertBooleanUnreferenced(id: string): void {
+    if (
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.some((m) => m.sourceId === id))
+    )
+      throw new Error("Remove Boolean references before deleting or cutting this source.");
   }
   setOperation(id: string, operation: LayerOperation): void {
     this.assertAvailable();
@@ -2299,7 +2370,9 @@ export class IndependentLayers {
       selectedGroup: this.selectedGroupId,
       ids: this.project.layerStack.layers.map((l) => l.id),
       orders: Object.fromEntries(this.project.layerStack.layers.map((l) => [l.id, l.order])),
-      visibility: Object.fromEntries(this.project.layerStack.layers.map((l) => [l.id, l.visible])),
+      visibility: Object.fromEntries(
+        this.project.layerStack.layers.map((l) => [l.id, l.localVisible]),
+      ),
       activeId: this.project.activeLayerId,
       view: this.viewMode,
     };
@@ -2378,6 +2451,13 @@ export class IndependentLayers {
   ): Promise<SdfLayer> {
     if (
       options.sourceIds?.length === 1 &&
+      this.project.layerStack.get(options.sourceIds[0]).booleanModifiers?.length &&
+      ![64, 128, 192].includes(options.resolution)
+    )
+      options = { ...options, resolution: 128 };
+    if (
+      options.sourceIds?.length === 1 &&
+      !this.project.layerStack.get(options.sourceIds[0]).booleanModifiers?.length &&
       (this.project.layerStack.get(options.sourceIds[0]).procedural ||
         this.project.layerStack.get(options.sourceIds[0]).primitive)
     )
@@ -2385,6 +2465,18 @@ export class IndependentLayers {
     this.assertAvailable();
     const validated = validateBakeOptions(options),
       plan = this.bakePlan(validated.resolution, validated.sourceIds);
+    if (
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length) &&
+      plan.detailLimited
+    )
+      throw new Error(
+        "Live Boolean Bake exceeds the selected resolution; reduce bounds or choose higher resolution.",
+      );
+    if (
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length) &&
+      plan.sourceIds.some((id) => this.project.layerStack.get(id).locked)
+    )
+      throw new Error("Unlock Boolean sources before baking and changing their visibility.");
     this.finishStroke();
     this.finishTransform();
     const triangleBudget =
@@ -2415,17 +2507,7 @@ export class IndependentLayers {
       });
       const paintSources = plan.sourceIds.map((id) => this.project.layerStack.get(id));
       if (paintSources.some((l) => !sculptPaint(l.volume).empty)) {
-        const sources = plan.merge
-          ? paintSources.map(
-              (l) =>
-                new SdfLayer(l.volume, {
-                  ...l.metadata(),
-                  visible: true,
-                  operation: "union",
-                  transform: l.transform,
-                }),
-            )
-          : paintSources;
+        const sources = bakeSources(this.project, plan.requestedSourceIds);
         const sample = prepareCompositeColour(sources, (l) => this.runtime(l.id).paintSurface.base),
           paint = sculptPaint(volume),
           point = new Vector3(),
@@ -3043,6 +3125,18 @@ export class IndependentLayers {
   /** Borrow committed SDF-derived chunk buffers, never display/GPU deformation helpers.
    * Snapshotting owns copies; guards reject edits/replacement while those copies are made. */
   exportSources(scope: "visible" | "selected" = "visible", includePaint = true): ExportSource[] {
+    if (this.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) {
+      if (scope === "selected")
+        throw new Error("Export the visible Boolean result for scenes with live modifiers.");
+      this.composite.syncMetadata();
+      return this.composite
+        .exportSources()
+        .map((s) =>
+          includePaint
+            ? s
+            : { ...s, chunks: s.chunks.map(({ positions, normals }) => ({ positions, normals })) },
+        );
+    }
     if (
       this.tubePending ||
       this.drawing ||

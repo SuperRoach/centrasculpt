@@ -24,6 +24,7 @@ export type BakePlan = {
   projectGridBytes: number;
   detailLimited: boolean;
   merge?: boolean;
+  requestedSourceIds?: string[];
 };
 export type BakeProgress = { stage: "sampling" | "meshing"; completed: number; total: number };
 export type BakeStats = {
@@ -35,8 +36,28 @@ export type BakeStats = {
   worldStep: number;
   gridBytes: number;
 };
-function bakeSources(project: SculptProject, ids?: readonly string[]) {
+export function bakeSources(project: SculptProject, ids?: readonly string[]) {
   if (!ids) return project.layerStack.compositionLayers;
+  if (ids.length === 1 && project.layerStack.get(ids[0]).booleanModifiers?.length) {
+    const needed = new Set<string>();
+    const visit = (id: string) => {
+      if (needed.has(id)) return;
+      needed.add(id);
+      for (const m of project.layerStack.get(id).booleanModifiers ?? []) visit(m.sourceId);
+    };
+    visit(ids[0]);
+    return project.layerStack.compositionLayers
+      .filter((l) => needed.has(l.id))
+      .map(
+        (l) =>
+          new SdfLayer(l.volume, {
+            ...l.metadata(),
+            transform: l.transform,
+            visible: l.id === ids[0],
+            operation: "union",
+          }),
+      );
+  }
   if (ids.length !== 2 || new Set(ids).size !== 2 || ids.some((id) => typeof id !== "string"))
     throw new Error("Choose two different layers to merge.");
   return ids.map((id) => {
@@ -85,7 +106,7 @@ export function planBake(
       "Bake bounds exceed supported transform limits. Move/scale sources closer together before baking.",
     );
   return {
-    ...(sourceIds ? { merge: true } : {}),
+    ...(sourceIds ? { merge: sourceIds.length === 2, requestedSourceIds: [...sourceIds] } : {}),
     resolution,
     center: layout.center,
     extent: layout.extent,
@@ -93,7 +114,12 @@ export function planBake(
     min: layout.center.map((v) => v - layout.extent) as Vec3,
     max: layout.center.map((v) => v + layout.extent) as Vec3,
     worldStep: (2 * layout.extent) / (resolution - 1),
-    sourceIds: visible.map((l) => l.id),
+    sourceIds: sources
+      .filter(
+        (l) =>
+          l.visible || sources.some((s) => s.booleanModifiers?.some((m) => m.sourceId === l.id)),
+      )
+      .map((l) => l.id),
     gridBytes: resolution ** 3 * 8,
     projectGridBytes: count * 8,
     detailLimited: (2 * layout.extent) / (resolution - 1) > layout.desiredStep * 1.001,
@@ -124,7 +150,7 @@ export async function sampleBake(
 ): Promise<{ volume: SDFVolume; samplingMs: number }> {
   checkBakeCancelled(signal);
   const volume = new SDFVolume(plan.resolution, 1.6, false),
-    sample = prepareComposite(bakeSources(project, plan.merge ? plan.sourceIds : undefined)),
+    sample = prepareComposite(bakeSources(project, plan.requestedSourceIds)),
     n = plan.resolution;
   let samplingMs = 0,
     negative = false;

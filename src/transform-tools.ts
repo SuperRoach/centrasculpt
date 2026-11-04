@@ -1,13 +1,49 @@
-import type { Camera, Scene } from "three";
+import type { Camera, Object3D, Scene } from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { IndependentLayers } from "./independent-layers";
 import type { EditorMode, InputOwnership, TransformSpace } from "./interaction";
-import { snappedTransform } from "./physical-units";
+import {
+  type PrimitiveSource,
+  primitiveDimensions,
+  validatePrimitive,
+} from "./parametric-primitive";
+import { snappedTransform, toDisplay } from "./physical-units";
 import type { VolumeTransform } from "./transform";
 import { uniformScale } from "./transform";
 
-/** Every built-in scale handle uses TransformControls' isotropic XYZ path. */
+/** Source dimension handles are local; ordinary layers retain isotropic XYZ scaling. */
+export function scaledPrimitive(
+  source: PrimitiveSource,
+  ratios: readonly number[],
+  axis: string,
+): PrimitiveSource {
+  const axes = ["X", "Y", "Z"].filter((a) => axis.includes(a));
+  if (!axes.length || ratios.length !== 3 || ratios.some((v) => !Number.isFinite(v) || v <= 0))
+    throw new Error("Primitive size must be positive and finite.");
+  const factor = (a: string) => ratios[["X", "Y", "Z"].indexOf(a)];
+  if (source.kind === "box")
+    return validatePrimitive({
+      kind: "box",
+      width: source.width * ratios[0],
+      height: source.height * ratios[1],
+      depth: source.depth * ratios[2],
+    });
+  if (source.kind === "sphere")
+    return validatePrimitive({
+      kind: "sphere",
+      diameter: source.diameter * axes.reduce((v, a) => v * factor(a), 1) ** (1 / axes.length),
+    });
+  const radial = axes.filter((a) => a !== "Y");
+  return validatePrimitive({
+    kind: "cylinder",
+    diameter:
+      source.diameter *
+      (radial.length ? radial.reduce((v, a) => v * factor(a), 1) ** (1 / radial.length) : 1),
+    height: source.height * ratios[1],
+  });
+}
 export class UniformTransformControls extends TransformControls {
+  parametricScale = false;
   rotateAxisConstraint: "X" | "Y" | "Z" | null = null;
   translateAxisConstraint: "X" | "Y" | "Z" | null = null;
   pointerDownBaseAxis: UniformTransformControls["axis"] = null;
@@ -26,7 +62,7 @@ export class UniformTransformControls extends TransformControls {
       this.axis = this.translateAxisConstraint;
       this.getHelper().updateMatrixWorld(true);
     }
-    if (this.mode === "scale" && this.axis !== null) {
+    if (this.mode === "scale" && this.axis !== null && !this.parametricScale) {
       this.axis = "XYZ";
       this.getHelper().updateMatrixWorld(true);
     }
@@ -39,6 +75,7 @@ export type TransformToolCallbacks = {
   changed: () => void;
   error: (message: string) => void;
   busy: () => boolean;
+  status?: (message: string) => void;
   hitLayer?: (event: PointerEvent) => string | null;
   selectionChanged?: () => void;
 };
@@ -60,6 +97,24 @@ export function translateAxisForShortcut(code: string): "X" | "Y" | "Z" | null {
 }
 export class LayerTransformTools {
   readonly controls: UniformTransformControls;
+  private resize?: {
+    editor: IndependentLayers;
+    id: string;
+    source: PrimitiveSource;
+    next: PrimitiveSource;
+    pose: VolumeTransform;
+    object: Object3D;
+  };
+  private resizeAbort?: AbortController;
+  private resizeWork: Promise<void> = Promise.resolve();
+  private disposed = false;
+  get resizing(): boolean {
+    return !!this.resize || !!this.resizeAbort;
+  }
+  get settled(): Promise<void> {
+    return this.resizeWork;
+  }
+  private readonly onPointerCancel = () => this.cancel();
   private readonly heldRotateAxisKeys: string[] = [];
   private readonly heldTranslateAxisKeys: string[] = [];
   private baseRotateAxis: UniformTransformControls["axis"] = "XYZE";
@@ -90,6 +145,7 @@ export class LayerTransformTools {
       maxZ: 1000,
     });
     canvas.addEventListener("pointerdown", this.onCanvasPointerDown, true);
+    canvas.addEventListener("pointercancel", this.onPointerCancel, true);
     this.controls.addEventListener("mouseDown", () => {
       if (this.controls.mode === "rotate")
         this.baseRotateAxis = this.startingSurfaceRotate
@@ -104,6 +160,19 @@ export class LayerTransformTools {
         if (!input.beginTransform(this.layers().transformNode.editable, callbacks.busy()))
           throw new Error("This layer cannot be transformed now.");
         this.layers().beginTransform();
+        const editor = this.layers(),
+          layer = editor.active.layer;
+        if (this.controls.mode === "scale" && !editor.selectedGroupId && layer.primitive) {
+          const source = validatePrimitive(layer.primitive);
+          this.resize = {
+            editor,
+            id: layer.id,
+            source,
+            next: source,
+            pose: structuredClone(layer.transform),
+            object: this.controls.object!,
+          };
+        }
         callbacks.camera(false);
       } catch (error) {
         input.end("transform");
@@ -119,7 +188,7 @@ export class LayerTransformTools {
         rotation: [object.rotation.x, object.rotation.y, object.rotation.z],
         scale: [object.scale.x, object.scale.y, object.scale.z],
       };
-      if (this.controls.mode === "scale") {
+      if (this.controls.mode === "scale" && !this.resize) {
         const previous = this.layers().transformNode.transform.scale[0],
           value = Number.isNaN(next.scale[0])
             ? previous
@@ -127,6 +196,23 @@ export class LayerTransformTools {
         next.scale = [value, value, value];
       }
       try {
+        if (this.resize) {
+          const r = this.resize;
+          r.next = scaledPrimitive(
+            r.source,
+            next.scale.map((v, i) => v / r.pose.scale[i]),
+            this.controls.axis ?? "XYZ",
+          );
+          this.applyResizePreview(r);
+          const values = primitiveDimensions(r.next).map((v) =>
+            toDisplay(v, r.editor.display.precision).toFixed(2),
+          );
+          callbacks.status?.(
+            `${r.next.kind} size · ${values.join(" × ")} ${r.editor.display.precision.unit} · release to apply · Esc to cancel`,
+          );
+          callbacks.changed();
+          return;
+        }
         // Quantize saved model coordinates, independent of the renderer parent's navigation pose.
         const settings = this.layers().display.precision;
         if (this.controls.mode === "translate" && settings.translationSnapMM)
@@ -136,19 +222,80 @@ export class LayerTransformTools {
         this.layers().updateTransform(next);
         callbacks.changed();
       } catch (error) {
-        this.layers().cancelTransform();
-        this.controls.pointerUp(null);
+        this.cancel();
         callbacks.error(error instanceof Error ? error.message : "Invalid transform.");
       }
     });
     this.controls.addEventListener("dragging-changed", (event) => {
       if (event.value) return;
-      this.layers().finishTransform();
+      if (this.resize) this.completeResize();
+      else this.layers().finishTransform();
       input.end("transform");
       callbacks.camera(input.cameraEnabled);
-      callbacks.changed();
+      this.sync();
+      if (!this.disposed) callbacks.changed();
     });
     this.sync();
+  }
+  private applyResizePreview(r: NonNullable<LayerTransformTools["resize"]>): void {
+    const before = primitiveDimensions(r.source),
+      after = primitiveDimensions(r.next);
+    r.object.scale.set(
+      ...(after.map((v, i) => (r.pose.scale[i] * v) / before[i]) as [number, number, number]),
+    );
+    r.object.updateWorldMatrix(true, true);
+  }
+  private completeResize(): void {
+    const r = this.resize;
+    this.resize = undefined;
+    if (!r) return;
+    const owned =
+      r.editor === this.layers() &&
+      r.editor.transforming &&
+      r.editor.project.activeLayerId === r.id;
+    if (owned) r.editor.finishTransform();
+    if (!owned || JSON.stringify(r.source) === JSON.stringify(r.next)) return;
+    this.applyResizePreview(r);
+    const abort = new AbortController();
+    this.resizeAbort = abort;
+    this.resizeWork = r.editor
+      .regeneratePrimitive(r.next, r.id, abort.signal)
+      .then(() => {
+        if (!this.disposed && r.editor === this.layers())
+          this.callbacks.status?.("Primitive dimensions applied · Undo available");
+      })
+      .catch((error) => {
+        if (!abort.signal.aborted && !this.disposed)
+          this.callbacks.error(
+            error instanceof Error ? error.message : "Unable to resize primitive.",
+          );
+      })
+      .finally(() => {
+        // Restore only the borrowed preview object. Successful publication owns a new runtime.
+        r.object.scale.fromArray(r.pose.scale);
+        r.object.updateWorldMatrix(true, true);
+        if (this.resizeAbort === abort) this.resizeAbort = undefined;
+        if (!this.disposed && this.layers().recoveryReady) {
+          this.sync();
+          this.callbacks.changed();
+          this.callbacks.selectionChanged?.();
+        }
+      });
+  }
+  cancel(): void {
+    const r = this.resize;
+    this.resize = undefined;
+    this.resizeAbort?.abort();
+    if (r) r.editor.finishTransform();
+    else this.layers().cancelTransform();
+    if (r) {
+      r.object.scale.fromArray(r.pose.scale);
+      r.object.updateWorldMatrix(true, true);
+    }
+    this.controls.pointerUp(null);
+    this.input.end("transform");
+    this.callbacks.camera(this.input.cameraEnabled);
+    if (!this.disposed) this.callbacks.changed();
   }
   holdRotateAxis(code: string): boolean {
     if (this.input.mode !== "rotate" || !rotateAxisForShortcut(code)) return false;
@@ -269,8 +416,17 @@ export class LayerTransformTools {
     this.sync();
   }
   sync(): void {
+    if (this.disposed || (!this.layers().recoveryReady && !this.layers().transforming)) {
+      this.controls.enabled = false;
+      this.controls.detach();
+      return;
+    }
     const layer = this.layers().transformNode;
-    let allowed = this.input.mode !== "sculpt" && layer.editable && !this.callbacks.busy();
+    let allowed =
+      this.input.mode !== "sculpt" &&
+      layer.editable &&
+      !this.callbacks.busy() &&
+      !this.layers().generatingTube;
     if (allowed && this.input.mode === "scale") {
       try {
         uniformScale(layer.transform);
@@ -285,7 +441,11 @@ export class LayerTransformTools {
       return;
     }
     this.controls.setMode(this.input.mode === "sculpt" ? "translate" : this.input.mode);
-    this.controls.setSpace(this.input.space);
+    this.controls.parametricScale =
+      !this.layers().selectedGroupId && !!this.layers().active.layer.primitive;
+    this.controls.setSpace(
+      this.input.mode === "scale" && this.controls.parametricScale ? "local" : this.input.space,
+    );
     const object = this.layers().transformObject;
     if (this.controls.object !== object) this.controls.attach(object);
   }
@@ -300,9 +460,11 @@ export class LayerTransformTools {
     this.callbacks.camera(this.input.cameraEnabled);
   }
   dispose(): void {
-    this.finish();
+    this.disposed = true;
+    this.cancel();
     this.clearAxisConstraints();
     this.canvas.removeEventListener("pointerdown", this.onCanvasPointerDown, true);
+    this.canvas.removeEventListener("pointercancel", this.onPointerCancel, true);
     this.controls.dispose();
     this.controls.getHelper().removeFromParent();
   }

@@ -1,6 +1,8 @@
+import { booleanUI } from "./boolean-ui";
 import type { EditorToolState } from "./editor-tool-state";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerGroup, validateHierarchy } from "./layer-hierarchy";
+import { newId } from "./layers";
 import type { MenuButton, MenuContent } from "./xr-menu-model";
 
 const PAGE = 4;
@@ -10,7 +12,10 @@ export class LayerPaletteModel {
   private resample: { id: string; from: number; to: number } | null = null;
   page = 0;
   context: string | null = null;
-  view: "list" | "node" | "parents" | "rename" | "delete" | "boolean" | "resolution" = "list";
+  view: "list" | "node" | "parents" | "rename" | "delete" | "boolean" | "resolution" | "live" =
+    "list";
+  private liveSource = 0;
+  private liveModifier = 0;
   name = "";
   keyPage = 0;
   shift = false;
@@ -255,6 +260,68 @@ export class LayerPaletteModel {
         footer: this.feedback || "Children are kept unless explicitly deleted above",
       };
     }
+    if (this.view === "live" && this.context) {
+      const target = l.project.layerStack.get(this.context),
+        sources = l.project.layerStack.layers.filter((s) => s.id !== target.id),
+        modifiers = target.booleanModifiers ?? [];
+      const source = sources[this.liveSource % Math.max(1, sources.length)],
+        m = modifiers[this.liveModifier % Math.max(1, modifiers.length)];
+      nav();
+      add(
+        "hier:live-source",
+        `Source: ${source?.name ?? "Create another shape"} ›`,
+        40,
+        240,
+        1072,
+        100,
+        busy || !source,
+      );
+      for (const [i, op] of (["union", "difference", "intersect"] as const).entries())
+        add(
+          `hier:live-add:${op}`,
+          op === "union" ? "Add" : op === "difference" ? "Subtract" : "Intersect",
+          40 + i * 362,
+          356,
+          348,
+          100,
+          busy || !source || !target.editable,
+        );
+      add(
+        "hier:live-modifier",
+        m
+          ? `Modifier ${(this.liveModifier % modifiers.length) + 1}: ${m.operation} ${l.project.layerStack.get(m.sourceId).name} ›`
+          : "No modifiers",
+        40,
+        476,
+        1072,
+        100,
+        busy || !m,
+      );
+      add("hier:live-select", "Edit source", 40, 594, 342, 100, busy || !m);
+      add("hier:live-toggle", m?.enabled ? "Disable" : "Enable", 404, 594, 342, 100, busy || !m);
+      add("hier:live-remove", "Remove", 768, 594, 344, 100, busy || !m);
+      add(
+        "hier:live-earlier",
+        "Move earlier",
+        40,
+        714,
+        342,
+        100,
+        busy || !m || this.liveModifier % modifiers.length === 0,
+      );
+      add("hier:live-operation", "Operation ›", 404, 714, 342, 100, busy || !m);
+      add("hier:live-bake", "Bake visible result", 768, 714, 344, 100, busy);
+      add("hier:node-back", "Back to layer actions", 40, 844, 1072, 110, false);
+      return {
+        title: "LIVE BOOLEAN SHAPES",
+        subtitle: target.name,
+        buttons,
+        labels,
+        footer:
+          this.feedback ||
+          "Top to bottom · enabled sources appear only in result · editable until explicit Bake",
+      };
+    }
     if (this.view === "boolean" && this.context) {
       const n = h.get(this.context),
         index = h.compositionOrder.indexOf(n.id);
@@ -277,6 +344,7 @@ export class LayerPaletteModel {
         150,
         busy || index === h.compositionOrder.length - 1 || n.locked,
       );
+      add("hier:live", "Live Boolean Shapes…", 40, 724, 1072, 100, busy);
       add("hier:node-back", "Back to layer actions", 40, 844, 1072, 136, false);
       return {
         title: "BOOLEAN SEQUENCE",
@@ -536,7 +604,57 @@ export class LayerPaletteModel {
     else if (action === "key-clear") this.name = "";
     else if (this.context) {
       const n = h.get(this.context);
-      if (action === "boolean") this.view = "boolean";
+      if (action === "live") {
+        this.view = "live";
+        this.liveSource = 0;
+        this.liveModifier = 0;
+      } else if (action.startsWith("live-")) {
+        const target = l.project.layerStack.get(n.id),
+          ms = structuredClone(target.booleanModifiers ?? []),
+          index = this.liveModifier % Math.max(1, ms.length),
+          m = ms[index],
+          sources = l.project.layerStack.layers.filter((s) => s.id !== target.id);
+        if (action === "live-source") this.liveSource++;
+        else if (action === "live-modifier") this.liveModifier++;
+        else if (action === "live-add")
+          l.setBooleanModifiers(target.id, [
+            ...ms,
+            {
+              id: newId(),
+              sourceId: sources[this.liveSource % sources.length].id,
+              operation: value,
+              enabled: true,
+            },
+          ]);
+        else if (action === "live-select" && m) {
+          l.select(m.sourceId);
+          this.context = m.sourceId;
+          this.view = "node";
+        } else if (action === "live-toggle" && m) {
+          m.enabled = !m.enabled;
+          l.setBooleanModifiers(target.id, ms);
+        } else if (action === "live-remove" && m)
+          l.setBooleanModifiers(
+            target.id,
+            ms.filter((s) => s.id !== m.id),
+          );
+        else if (action === "live-operation" && m) {
+          m.operation =
+            m.operation === "union"
+              ? "difference"
+              : m.operation === "difference"
+                ? "intersect"
+                : "union";
+          l.setBooleanModifiers(target.id, ms);
+        } else if (action === "live-earlier" && m && index > 0) {
+          [ms[index - 1], ms[index]] = [ms[index], ms[index - 1]];
+          l.setBooleanModifiers(target.id, ms);
+          this.liveModifier = index - 1;
+        } else if (action === "live-bake")
+          void l.bake({ name: "Boolean baked", resolution: 128, hideSources: true }).catch((e) => {
+            this.feedback = String(e);
+          });
+      } else if (action === "boolean") this.view = "boolean";
       else if (action === "boolean-up" || action === "boolean-down")
         l.moveBoolean(n.id, action === "boolean-up" ? -1 : 1);
       else if (action === "transform") {
@@ -616,6 +734,7 @@ export class LayerPaletteModel {
 }
 /** Desktop companion: native inputs for names/parents, shared atomic layer commands. */
 export class DesktopLayerPalette {
+  private readonly booleans: ReturnType<typeof booleanUI>;
   private readonly host = document.createElement("div");
   private dragged: string | null = null;
   private resample: { id: string; from: number; to: number } | null = null;
@@ -633,8 +752,10 @@ export class DesktopLayerPalette {
     legacy.before(this.host);
     this.host.className = "hierarchy-palette";
     legacy.hidden = true;
+    this.booleans = booleanUI(this.layers, document.createElement("div"), this.busy, this.changed);
   }
   render(): void {
+    this.booleans.sync();
     const l = this.layers(),
       h = l.project.layerStack.hierarchy,
       key = JSON.stringify([
@@ -642,6 +763,7 @@ export class DesktopLayerPalette {
         l.project.layerStack.layers.map((layer) =>
           l.display.colour(l.project.id, layer.id, layer.order),
         ),
+        l.project.layerStack.layers.map((layer) => layer.booleanModifiers),
         l.selectedGroupId,
         l.project.activeLayerId,
         [...l.collapsedGroups],
@@ -753,6 +875,20 @@ export class DesktopLayerPalette {
         swatch.style.backgroundColor = l.display.colour(l.project.id, n.id, layer.order);
       }
       title.prepend(swatch);
+      if (!row.group) {
+        const modifiers = l.project.layerStack.get(n.id).booleanModifiers ?? [],
+          consumers = l.project.layerStack.layers.filter((layer) =>
+            layer.booleanModifiers?.some((m) => m.enabled && m.sourceId === n.id),
+          );
+        if (modifiers.length || consumers.length) {
+          const info = document.createElement("small");
+          info.textContent = modifiers.length ? `Live CSG · ${modifiers.length}` : "CSG source";
+          info.title = modifiers.length
+            ? "Editable modifiers in Live Boolean Shapes"
+            : `Used by ${consumers.map((l) => l.name).join(", ")}; excluded from independent Boolean output`;
+          header.append(info);
+        }
+      }
       const visibility = button(
         header,
         "",
@@ -817,6 +953,7 @@ export class DesktopLayerPalette {
         }
       });
       card.append(name);
+      if (!row.group) card.append(this.booleans.element);
 
       const parentActions = document.createElement("details"),
         parentSummary = document.createElement("summary");

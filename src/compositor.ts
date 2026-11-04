@@ -2,8 +2,13 @@ import type { Material } from "three";
 import { BufferAttribute, Color, Group, MeshStandardMaterial, Vector3 } from "three";
 import type { ExportSource } from "./export-mesh";
 import type { LayerOperation, SculptProject, SdfLayer } from "./layers";
+import { booleanRoots, validateBooleanGraph } from "./live-boolean";
 import { IncrementalMesher } from "./mesh";
-import { primitiveDistance, validatePrimitive } from "./parametric-primitive";
+import {
+  primitiveDistance,
+  primitiveWorldDimensions,
+  validatePrimitive,
+} from "./parametric-primitive";
 import { sculptPaint } from "./sculpt-paint";
 import type { Bounds, Point3 } from "./sdf";
 import { SDFVolume } from "./sdf";
@@ -71,9 +76,32 @@ export function prepareComposite(
   const ordered = ordering
     ? [...layers].sort((a, b) => ordering.indexOf(a.id) - ordering.indexOf(b.id))
     : layers;
-  const sources = ordered
-    .filter((l) => l.visible)
-    .map((layer) => ({ sample: prepareLayerSampler(layer), operation: layer.operation }));
+  validateBooleanGraph(layers);
+  const all = layers;
+  const samplers = new Map<string, (x: number, y: number, z: number) => number>();
+  const prepare = (layer: SdfLayer): ((x: number, y: number, z: number) => number) => {
+    const cached = samplers.get(layer.id);
+    if (cached) return cached;
+    const own = prepareLayerSampler(layer);
+    const modifiers = (layer.booleanModifiers ?? [])
+      .filter((m) => m.enabled)
+      .map((m) => {
+        const source = all.find((l) => l.id === m.sourceId);
+        if (!source) throw new Error("Boolean source does not exist.");
+        return { sample: prepare(source), operation: m.operation };
+      });
+    const sample = (x: number, y: number, z: number) => {
+      let d = own(x, y, z);
+      for (const m of modifiers) d = combineSdf(d, m.sample(x, y, z), m.operation);
+      return d;
+    };
+    samplers.set(layer.id, sample);
+    return sample;
+  };
+  const sources = booleanRoots(ordered).map((layer) => ({
+    sample: prepare(layer),
+    operation: layer.operation,
+  }));
   return (x, y, z) => {
     if (!sources.length) return 1;
     let result = sources[0].sample(x, y, z);
@@ -87,30 +115,44 @@ export function prepareCompositeColour(
   layers: readonly SdfLayer[],
   base: (l: SdfLayer) => Color = () => new Color("#afbd94"),
 ): (p: Vector3, out: Color) => Color {
-  const sources = layers
-      .filter((l) => l.visible)
-      .map((l) => ({
+  validateBooleanGraph(layers);
+  const source = new Map(
+    layers.map((l) => [
+      l.id,
+      {
         layer: l,
         sample: prepareLayerSampler(l),
         inverse: transformMatrix(l.transform).invert(),
         base: base(l).clone(),
-      })),
+      },
+    ]),
+  );
+  type Owner = NonNullable<ReturnType<typeof source.get>>;
+  const evaluate = (layer: SdfLayer, p: Vector3): { owner: Owner; distance: number } => {
+    const own = source.get(layer.id)!;
+    let result = { owner: own, distance: own.sample(p.x, p.y, p.z) };
+    for (const m of layer.booleanModifiers ?? []) {
+      if (!m.enabled) continue;
+      const next = evaluate(source.get(m.sourceId)!.layer, p),
+        d = m.operation === "difference" ? -next.distance : next.distance;
+      if (m.operation === "union" ? d < result.distance : d > result.distance)
+        result = { owner: next.owner, distance: d };
+    }
+    return result;
+  };
+  const roots = booleanRoots(layers),
     local = new Vector3();
   return (p, out) => {
-    if (!sources.length) return out.set("#afbd94");
-    let owner = sources[0],
-      distance = owner.sample(p.x, p.y, p.z);
-    for (let i = 1; i < sources.length; i++) {
-      const s = sources[i],
-        d = s.sample(p.x, p.y, p.z),
-        value = s.layer.operation === "difference" ? -d : d;
-      if (s.layer.operation === "union" ? value < distance : value > distance) {
-        owner = s;
-        distance = value;
-      }
+    if (!roots.length) return out.set("#afbd94");
+    let result = evaluate(roots[0], p);
+    for (const layer of roots.slice(1)) {
+      const next = evaluate(layer, p),
+        d = layer.operation === "difference" ? -next.distance : next.distance;
+      if (layer.operation === "union" ? d < result.distance : d > result.distance)
+        result = { owner: next.owner, distance: d };
     }
-    local.copy(p).applyMatrix4(owner.inverse);
-    return sculptPaint(owner.layer.volume).sample(local, owner.base, out);
+    local.copy(p).applyMatrix4(result.owner.inverse);
+    return sculptPaint(result.owner.layer.volume).sample(local, result.owner.base, out);
   };
 }
 export function evaluateComposite(layers: readonly SdfLayer[], point: Point3): number {
@@ -128,14 +170,50 @@ export type CompositeLayout = {
 export function compositeLayout(layers: readonly SdfLayer[], cap = 192): CompositeLayout {
   if (!Number.isInteger(cap) || cap < 8 || cap > 192)
     throw new Error("Composite resolution cap must be 8–192.");
-  const visible = layers.filter((l) => l.visible),
+  const live = layers.some((l) => l.booleanModifiers?.length);
+  const reachable = new Set<string>();
+  const visit = (l: SdfLayer) => {
+    if (reachable.has(l.id)) return;
+    reachable.add(l.id);
+    for (const m of l.booleanModifiers ?? [])
+      if (m.enabled) {
+        const source = layers.find((s) => s.id === m.sourceId);
+        if (!source) throw new Error("Boolean source does not exist.");
+        visit(source);
+      }
+  };
+  if (live) booleanRoots(layers).forEach(visit);
+  const visible = layers.filter((l) =>
+      live
+        ? reachable.has(l.id) &&
+          (l.primitive ||
+            l.procedural ||
+            !l.volume.getDenseView() ||
+            l.volume.getDenseView()!.some((v) => v < 0))
+        : l.visible,
+    ),
     min = [Infinity, Infinity, Infinity],
     max = [-Infinity, -Infinity, -Infinity];
   let desiredStep = Infinity;
   for (const layer of visible) {
     const scale = uniformScale(layer.transform),
-      bounds = layer.volume.worldBounds(layer.transform);
+      dimensions =
+        live && layer.primitive
+          ? primitiveWorldDimensions(layer.primitive, layer.transform)
+          : undefined,
+      bounds = dimensions
+        ? {
+            min: dimensions.map((d, i) => layer.transform.position[i] - d / 2),
+            max: dimensions.map((d, i) => layer.transform.position[i] + d / 2),
+          }
+        : layer.volume.worldBounds(layer.transform);
     desiredStep = Math.min(desiredStep, layer.volume.step * scale);
+    if (live && layer.primitive) {
+      const dimensions = Object.values(layer.primitive).filter(
+        (v): v is number => typeof v === "number",
+      );
+      desiredStep = Math.min(desiredStep, (Math.min(...dimensions) * scale) / 8);
+    }
     for (let i = 0; i < 3; i++) {
       min[i] = Math.min(min[i], bounds.min[i]);
       max[i] = Math.max(max[i], bounds.max[i]);
@@ -153,6 +231,8 @@ export function compositeLayout(layers: readonly SdfLayer[], cap = 192): Composi
 }
 export type CompositeStats = {
   samplingMs: number;
+  maxSamplingSliceMs: number;
+  maxMeshingSliceMs: number;
   meshingMs: number;
   elapsedMs: number;
   samples: number;
@@ -168,6 +248,7 @@ const yieldUI = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 /** Disposable rendering cache, never part of native serialization or source history. */
 export class BooleanComposite {
   readonly group = new Group();
+  availableBytes: () => number = () => 256 * 1024 ** 2;
   paintBase: (l: SdfLayer) => Color = () => new Color("#afbd94");
   private readonly paintedExport = new MeshStandardMaterial({
     color: 0xffffff,
@@ -176,7 +257,11 @@ export class BooleanComposite {
     metalness: 0.03,
   });
   private paintAttributes(geometry: import("three").BufferGeometry): Float32Array | undefined {
-    if (!this.project.layerStack.layers.some((l) => l.visible && !sculptPaint(l.volume).empty))
+    if (
+      !this.project.layerStack.layers.some(
+        (l) => l.booleanModifiers?.length || !sculptPaint(l.volume).empty,
+      )
+    )
       return;
     const sample = prepareCompositeColour(
         this.project.layerStack.compositionLayers,
@@ -192,6 +277,40 @@ export class BooleanComposite {
     }
     return out;
   }
+  /** Colour work follows the same cooperative deadline as field sampling. */
+  private async cooperativeColours(
+    geometry: import("three").BufferGeometry,
+    version: number,
+  ): Promise<{ colours?: Float32Array; maxSliceMs: number } | null> {
+    if (
+      !this.project.layerStack.layers.some(
+        (l) => l.booleanModifiers?.length || !sculptPaint(l.volume).empty,
+      )
+    )
+      return { maxSliceMs: 0 };
+    const sample = prepareCompositeColour(
+        this.project.layerStack.compositionLayers,
+        this.paintBase,
+      ),
+      p = geometry.getAttribute("position"),
+      colours = new Float32Array(p.count * 3),
+      point = new Vector3(),
+      colour = new Color();
+    let batch = performance.now(),
+      maxSliceMs = 0;
+    for (let i = 0; i < p.count; i++) {
+      point.fromBufferAttribute(p, i).add(this.group.position);
+      sample(point, colour).toArray(colours, i * 3);
+      if (i % 128 === 127 && performance.now() - batch >= 3) {
+        maxSliceMs = Math.max(maxSliceMs, performance.now() - batch);
+        await yieldUI();
+        this.syncMetadata();
+        if (this.disposed || version !== this.version) return null;
+        batch = performance.now();
+      }
+    }
+    return { colours, maxSliceMs: Math.max(maxSliceMs, performance.now() - batch) };
+  }
   private surface: ChunkSurface | null = null;
   private mesher: IncrementalMesher | null = null;
   private volume: SDFVolume | null = null;
@@ -201,6 +320,12 @@ export class BooleanComposite {
   private regions: Bounds[] = [];
   private version = 0;
   private disposed = false;
+  private suspended = false;
+  setSuspended(value: boolean): void {
+    if (this.suspended === value) return;
+    this.suspended = value;
+    this.invalidate();
+  }
   private running: Promise<boolean> | null = null;
   private lastEdit = 0;
   private failedVersion = -1;
@@ -230,6 +355,7 @@ export class BooleanComposite {
         l.order,
         l.transform,
         l.primitive,
+        l.booleanModifiers,
         l.volume.resolution,
         l.volume.extent,
         l.volume.dimensions,
@@ -328,6 +454,7 @@ export class BooleanComposite {
     this.syncMetadata();
     if (
       this.disposed ||
+      this.suspended ||
       this.running ||
       this.failedVersion === this.version ||
       !this.pending ||
@@ -337,12 +464,23 @@ export class BooleanComposite {
     return this.rebuild();
   }
   rebuild(): Promise<boolean> {
-    if (this.disposed) return Promise.resolve(false);
+    if (this.disposed || this.suspended) return Promise.resolve(false);
     this.syncMetadata();
     if (this.running) return this.running;
     this.running = this.build()
       .catch((error) => {
         this.failedVersion = this.version;
+        if (this.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) {
+          this.mesher?.dispose();
+          this.surface?.clear();
+          this.group.clear();
+          this.mesher = null;
+          this.surface = null;
+          this.volume = null;
+          this.layout = null;
+          this.stats = null;
+          this.full = true;
+        }
         throw error;
       })
       .finally(() => {
@@ -351,8 +489,12 @@ export class BooleanComposite {
     return this.running;
   }
   async flush(): Promise<void> {
+    if (this.suspended)
+      throw new Error("Boolean evaluation paused while controller tracking is unavailable.");
     this.syncMetadata();
     while (!this.disposed && (this.running || this.pending)) {
+      if (this.suspended)
+        throw new Error("Boolean evaluation paused while controller tracking is unavailable.");
       await (this.running ?? this.rebuild());
       this.syncMetadata();
     }
@@ -365,6 +507,8 @@ export class BooleanComposite {
       key = JSON.stringify(layout),
       layoutChanged = key !== JSON.stringify(this.layout);
     const full = this.full || layoutChanged || !this.volume;
+    if (layout.resolution ** 3 * 8 > this.availableBytes())
+      throw new Error("Boolean preview exceeds the 256 MiB memory budget.");
     if (layoutChanged || !this.volume) {
       this.mesher?.dispose();
       this.surface?.clear();
@@ -382,23 +526,40 @@ export class BooleanComposite {
       regions = full
         ? [{ min: [0, 0, 0], max: [n - 1, n - 1, n - 1] } as Bounds]
         : this.regions.map((r) => ({ min: [...r.min], max: [...r.max] }) as Bounds);
+    let maxSamplingSliceMs = 0,
+      maxMeshingSliceMs = 0;
     let samplingMs = 0,
       samples = 0;
     for (const region of regions)
       for (let z = region.min[2]; z <= region.max[2]; z++) {
-        const batch = performance.now(),
-          wz = volume.coordinate(z) + layout.center[2];
+        let batch = performance.now();
+        const wz = volume.coordinate(z) + layout.center[2];
         for (let y = region.min[1]; y <= region.max[1]; y++) {
           const wy = volume.coordinate(y) + layout.center[1];
           for (let x = region.min[0]; x <= region.max[0]; x++) {
             const value = evaluate(volume.coordinate(x) + layout.center[0], wy, wz);
             volume.values[volume.index(x, y, z)] = value;
             samples++;
+            if (samples % 128 === 0 && performance.now() - batch >= 3) {
+              const duration = performance.now() - batch;
+              samplingMs += duration;
+              maxSamplingSliceMs = Math.max(maxSamplingSliceMs, duration);
+              await yieldUI();
+              this.syncMetadata();
+              if (this.disposed || version !== this.version) {
+                this.full = true;
+                return false;
+              }
+              batch = performance.now();
+            }
           }
         }
-        samplingMs += performance.now() - batch;
+        const duration = performance.now() - batch;
+        samplingMs += duration;
+        maxSamplingSliceMs = Math.max(maxSamplingSliceMs, duration);
         if (z % 4 === 0) {
           await yieldUI();
+          this.syncMetadata();
           if (this.disposed || version !== this.version) {
             this.full = true;
             return false;
@@ -415,15 +576,23 @@ export class BooleanComposite {
       totalChunks = 0,
       triangles = 0;
     for (;;) {
-      const update = this.mesher!.rebuildChunks(8, 3);
+      const sliceStart = performance.now();
+      const update = this.mesher!.rebuildChunks(2, 3);
       if (!update) break;
+      maxMeshingSliceMs = Math.max(maxMeshingSliceMs, performance.now() - sliceStart);
       for (const u of update.updates) {
-        const colours = this.paintAttributes(u.geometry);
-        if (colours) u.geometry.setAttribute("color", new BufferAttribute(colours, 3));
+        const result = await this.cooperativeColours(u.geometry, version);
+        if (!result || this.disposed || version !== this.version) {
+          this.full = true;
+          return false;
+        }
+        maxMeshingSliceMs = Math.max(maxMeshingSliceMs, result.maxSliceMs);
+        if (result.colours)
+          u.geometry.setAttribute("color", new BufferAttribute(result.colours, 3));
       }
       if (this.material instanceof MeshStandardMaterial) {
         const enabled = this.project.layerStack.layers.some(
-          (l) => l.visible && !sculptPaint(l.volume).empty,
+          (l) => !!l.booleanModifiers?.length || !sculptPaint(l.volume).empty,
         );
         if (enabled !== this.material.vertexColors) {
           this.material.vertexColors = enabled;
@@ -436,6 +605,8 @@ export class BooleanComposite {
       chunks += update.stats.chunks;
       totalChunks = update.stats.totalChunks;
       triangles = update.triangles;
+      if (this.trackedBytes > this.availableBytes())
+        throw new Error("Boolean preview exceeds the 256 MiB memory budget.");
       if (triangles > 1_000_000) {
         this.group.visible = false;
         throw new Error(
@@ -443,6 +614,7 @@ export class BooleanComposite {
         );
       }
       await yieldUI();
+      this.syncMetadata();
       if (this.disposed || version !== this.version) {
         this.full = true;
         return false;
@@ -453,6 +625,8 @@ export class BooleanComposite {
     this.group.updateWorldMatrix(true, true);
     this.stats = {
       samplingMs,
+      maxSamplingSliceMs,
+      maxMeshingSliceMs,
       meshingMs,
       elapsedMs: performance.now() - start,
       samples,
@@ -467,6 +641,14 @@ export class BooleanComposite {
     return true;
   }
   exportSources(): ExportSource[] {
+    this.syncMetadata();
+    if (
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length) &&
+      this.stats?.capped
+    )
+      throw new Error(
+        "Live Boolean export exceeds the quality cap; reduce bounds or increase feature size.",
+      );
     if (this.pending || !this.mesher || !this.volume || this.running)
       throw new Error("Wait for the Boolean result to finish rebuilding.");
     const mesher = this.mesher,

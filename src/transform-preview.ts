@@ -8,8 +8,14 @@ export class TransformPreview {
       this.owner = layers;
       this.separate = false;
     }
+    const live = layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length);
     if (layers.viewMode !== "boolean") this.separate = false;
-    else if (layers.transforming) this.separate = true;
+    else if (
+      layers.transforming ||
+      layers.generatingTube ||
+      (live && (layers.composite.pending || layers.composite.busy || layers.composite.failed))
+    )
+      this.separate = true;
     else if (this.separate) {
       layers.composite.syncMetadata();
       if (!layers.composite.pending && !layers.composite.busy && !layers.composite.failed)

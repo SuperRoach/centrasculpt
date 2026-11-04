@@ -1,5 +1,7 @@
 import type { IndependentLayers } from "./independent-layers";
 import { LayerGroup } from "./layer-hierarchy";
+import { newId } from "./layers";
+import { type BooleanModifier, validateModifiers } from "./live-boolean";
 import { objectDimensions } from "./object-dimensions";
 import {
   type PrimitiveSource,
@@ -12,6 +14,15 @@ import { type Vec3, type VolumeTransform, validateTransform } from "./transform"
 /** Dimensions are local, translations are sculpture-world coordinates, rotations XYZ radians.
  * Scale is dimensionless. Workspace navigation is deliberately excluded. */
 export type ModellingCommand =
+  | {
+      type: "boolean.create";
+      id: string;
+      sourceId: string;
+      operation: BooleanModifier["operation"];
+    }
+  | { type: "boolean.update"; id: string; modifiers: BooleanModifier[] }
+  | { type: "boolean.remove"; id: string; modifierId: string }
+  | { type: "boolean.bake"; id: string }
   | { type: "primitive.create"; unit: PhysicalUnit; source: PrimitiveSource }
   | { type: "primitive.update"; id: string; unit: PhysicalUnit; source: PrimitiveSource }
   | { type: "object.transform"; id: string; unit: PhysicalUnit; transform: VolumeTransform }
@@ -19,6 +30,8 @@ export type ModellingCommand =
   | { type: "primitive.bake"; id: string }
   | { type: "object.delete"; id: string };
 export type ModellingQuery =
+  | { type: "boolean.list" }
+  | { type: "boolean.get"; id: string }
   | { type: "scene.summary" }
   | { type: "object.list" }
   | { type: "object.get"; id: string };
@@ -45,7 +58,11 @@ export type QueryValue<Q extends ModellingQuery> = Q extends { type: "scene.summ
   ? SceneSummary
   : Q extends { type: "object.list" }
     ? ObjectMetadata[]
-    : ObjectMetadata;
+    : Q extends { type: "boolean.list" }
+      ? { id: string; modifiers: BooleanModifier[] }[]
+      : Q extends { type: "boolean.get" }
+        ? BooleanModifier[]
+        : ObjectMetadata;
 class CommandError extends Error {
   constructor(
     readonly code: ErrorCode,
@@ -87,6 +104,10 @@ export class ModellingAPI {
     const layer = group ? undefined : this.layers.runtime(id).layer;
     return {
       id,
+      booleanModifiers: structuredClone(layer?.booleanModifiers ?? []),
+      consumedBy: this.layers.project.layerStack.layers
+        .filter((l) => l.booleanModifiers?.some((m) => m.enabled && m.sourceId === id))
+        .map((l) => l.id),
       name: n.name,
       parentId: this.layers.project.layerStack.hierarchy.parent(id),
       children: this.layers.project.layerStack.hierarchy.children(id),
@@ -131,6 +152,17 @@ export class ModellingAPI {
     try {
       let value: unknown;
       switch (query.type) {
+        case "boolean.list":
+          value = this.layers.project.layerStack.layers
+            .filter((l) => l.booleanModifiers?.length)
+            .map((l) => ({ id: l.id, modifiers: structuredClone(l.booleanModifiers) }));
+          break;
+        case "boolean.get":
+          this.node(query.id);
+          value = structuredClone(
+            this.layers.project.layerStack.get(query.id).booleanModifiers ?? [],
+          );
+          break;
         case "scene.summary":
           value = {
             projectId: this.layers.project.id,
@@ -183,6 +215,10 @@ export class ModellingAPI {
       if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
       if (
         ![
+          "boolean.create",
+          "boolean.update",
+          "boolean.remove",
+          "boolean.bake",
           "primitive.create",
           "primitive.update",
           "object.transform",
@@ -239,6 +275,41 @@ export class ModellingAPI {
         else this.layers.select(command.id);
       }
       switch (command.type) {
+        case "boolean.create": {
+          const modifiers = this.layers.project.layerStack.get(id).booleanModifiers ?? [];
+          this.layers.setBooleanModifiers(id, [
+            ...modifiers,
+            {
+              id: newId(),
+              sourceId: command.sourceId,
+              operation: command.operation,
+              enabled: true,
+            },
+          ]);
+          break;
+        }
+        case "boolean.update":
+          this.layers.setBooleanModifiers(id, validateModifiers(command.modifiers));
+          break;
+        case "boolean.remove": {
+          const modifiers = this.layers.project.layerStack.get(id).booleanModifiers ?? [];
+          if (!modifiers.some((m) => m.id === command.modifierId))
+            this.fail("not_found", "Boolean modifier does not exist.");
+          this.layers.setBooleanModifiers(
+            id,
+            modifiers.filter((m) => m.id !== command.modifierId),
+          );
+          break;
+        }
+        case "boolean.bake":
+          if (!this.layers.project.layerStack.get(id).booleanModifiers?.length)
+            this.fail("unsupported", "Object has no live Boolean modifiers.");
+          await this.layers.bake(
+            { name: "Boolean baked", resolution: 128, hideSources: true, sourceIds: [id] },
+            options.signal,
+          );
+          id = this.layers.project.activeLayerId;
+          break;
         case "primitive.create":
           id = (
             await this.layers.regeneratePrimitive(

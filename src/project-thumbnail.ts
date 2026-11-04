@@ -21,6 +21,7 @@ export async function captureProjectThumbnail(
   let target: WebGLRenderTarget | undefined;
   try {
     const sculpture = source.clone(true);
+    sculpture.visible = true;
     const pruneHidden = (parent: Group) => {
       for (const child of [...parent.children]) {
         if (!child.visible) {

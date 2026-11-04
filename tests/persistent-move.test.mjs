@@ -333,6 +333,8 @@ for (const deformationMode of ["non-elastic", "elastic"]) {
         root,
         () => {},
         () => notifications.commits++,
+        undefined,
+        Number.POSITIVE_INFINITY,
       ),
       tool = {
         role: "tool",

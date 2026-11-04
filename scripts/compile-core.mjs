@@ -16,6 +16,8 @@ const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 
 for (const name of [
   "modelling-api",
+  "live-boolean",
+  "boolean-ui",
   "object-dimensions",
   "physical-units",
   "precision-tools",

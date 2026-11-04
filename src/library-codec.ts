@@ -27,6 +27,10 @@ export function renameNative(data: ArrayBuffer, name: string, duplicate = false)
     metadata.activeLayerId = ids.get(metadata.activeLayerId);
     for (const l of metadata.layers) {
       l.id = ids.get(l.id);
+      for (const m of l.booleanModifiers ?? []) {
+        m.id = newId();
+        m.sourceId = ids.get(m.sourceId);
+      }
       for (const point of l.procedural?.points ?? []) point.id = newId();
     }
     if (metadata.hierarchy) {

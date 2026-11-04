@@ -67,3 +67,46 @@ test("cancel, explicit Layers choice and project replacement clear temporary pre
     other.dispose();
   }
 });
+
+test("live CSG source stays visible while moving and refining; fresh result replaces sources", async () => {
+  const l = make(),
+    preview = new TransformPreview();
+  try {
+    const target = await l.regeneratePrimitive({
+      kind: "box",
+      width: 0.4,
+      height: 0.3,
+      depth: 0.1,
+    });
+    const cutter = await l.regeneratePrimitive({ kind: "sphere", diameter: 0.05 });
+    l.setBooleanModifiers(target.id, [
+      { id: "hole", sourceId: cutter.id, operation: "difference", enabled: true },
+    ]);
+    preview.sync(l);
+    assert(l.group.visible);
+    assert(!l.composite.group.visible);
+    await l.composite.flush();
+    preview.sync(l);
+    assert(l.composite.group.visible);
+    l.beginTransform();
+    preview.sync(l);
+    assert(l.group.visible);
+    assert(l.runtime(cutter.id).surface.group.visible);
+    l.updateTransform({ position: [0.1, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+    l.finishTransform();
+    preview.sync(l);
+    assert(l.group.visible);
+    assert(!l.composite.group.visible);
+    await l.composite.flush();
+    preview.sync(l);
+    assert(!l.group.visible);
+    assert(l.composite.group.visible);
+    l.beginTransform();
+    preview.sync(l);
+    l.cancelTransform();
+    preview.sync(l);
+    assert(l.composite.group.visible);
+  } finally {
+    l.dispose();
+  }
+});

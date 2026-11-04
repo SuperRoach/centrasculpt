@@ -126,7 +126,13 @@ export class XRControllers {
   private readonly visibility = () => {
     if (this.session?.visibilityState !== "visible") this.suspend();
   };
+  private suspendBoolean(value: boolean): void {
+    const layers = this.options.layers?.();
+    if (layers?.project.layerStack.layers.some((l) => l.booleanModifiers?.length))
+      layers.composite.setSuspended(value);
+  }
   suspend(): void {
+    this.suspendBoolean(true);
     this.options.lighting?.cancel();
     this.restoreMenuModels();
     this.shortcuts.reset();
@@ -227,6 +233,7 @@ export class XRControllers {
           if (this.session) this.options.models?.connect(index, event.data, grip);
         },
         disconnected = () => {
+          this.suspendBoolean(true);
           this.options.lighting?.cancel();
           this.restoreMenuModels();
           this.shortcuts.reset();
@@ -393,6 +400,10 @@ export class XRControllers {
       );
     }
     this.input.update(!!active);
+    if (this.session)
+      this.suspendBoolean(
+        !active || this.input.states.some((s) => s.connected && (!s.tracked || !s.gripTracked)),
+      );
     this.root.visible = !!active;
     const hapticTool = this.input.byHand(this.roles.dominant);
     if (
@@ -871,6 +882,7 @@ export class XRControllers {
     this.inputMs = performance.now() - start;
   }
   stop(): void {
+    this.suspendBoolean(false);
     this.options.lighting?.stop();
     this.options.references?.cancel();
     this.restoreMenuModels();
