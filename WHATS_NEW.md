@@ -1,3 +1,8 @@
+### Studio sky and horizon (2026-11-04)
+
+- **World Settings → Studio Background → Skybox** now starts On with a neutral-grey sky and lower background. The horizon stays level as you look around: look up for sky, or down for the lower colour. Available in VR Studio and the desktop preview; your On/Off choice saves with the project.
+- With Skybox Off, your chosen background colour fills the desktop and VR Studio view. With it On, the colour tints the lower half. The ground grid stays independent, and Passthrough always keeps your real room visible.
+
 ### Phase 6.0.3 — Support hand shortcuts at a glance (2026-11-04)
 
 - Four small arrow tabs sit over the centre of your Support controller, with Undo, Redo, Tool Wheel and Layers icons drawn directly on them. Faint neutral arrows have no outlines, words or floating panel, and follow the measured angle of the Quest controller top, sitting below its surface with a finely adjusted controller-relative alignment. Shortcut icons sit farther out to clear the controller, with shorter triangle tips, clear transparent gaps separating the four tabs, and a circular inner edge tucked beneath the rounded controller face. Hold Up or Down to use menus; shortcuts still pause during sculpting and grabs.

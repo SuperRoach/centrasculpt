@@ -13,6 +13,7 @@ export type WorldDisplayPreferences = {
   version: 1;
   studioBackground: StudioBackground;
   groundGrid: boolean;
+  skybox?: boolean;
   mirrorGuide?: { mode: "grid" | "outline" | "hidden"; spacing: number; opacity: number };
   turntable?: TurntablePreferences;
 };
@@ -20,6 +21,7 @@ export const defaultWorldSettings = (): WorldDisplayPreferences => ({
   version: 1,
   studioBackground: "neutral-grey",
   groundGrid: false,
+  skybox: true,
 });
 export const studioBackgroundColour = (id: StudioBackground): string =>
   STUDIO_BACKGROUNDS.find((p) => p.id === id)!.colour;
@@ -33,10 +35,13 @@ export function validateWorldSettings(value: unknown): WorldDisplayPreferences {
     typeof data.groundGrid !== "boolean"
   )
     throw new Error("Invalid world display preferences version, background or grid.");
+  if (data.skybox !== undefined && typeof data.skybox !== "boolean")
+    throw new Error("Invalid Studio skybox preference.");
   const result: WorldDisplayPreferences = {
     version: 1,
     studioBackground: data.studioBackground as StudioBackground,
     groundGrid: data.groundGrid,
+    skybox: data.skybox ?? true,
   };
   if (data.mirrorGuide !== undefined) {
     const m = data.mirrorGuide as NonNullable<WorldDisplayPreferences["mirrorGuide"]>;

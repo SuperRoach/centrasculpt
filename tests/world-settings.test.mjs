@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Color, Matrix4, PerspectiveCamera, Quaternion, Raycaster, Scene, Vector3 } from "three";
+import { WebGLBackground } from "../node_modules/three/src/renderers/webgl/WebGLBackground.js";
 import { canvasContext } from "../scripts/fixtures/canvas-context.mjs";
 import { installFileReader, readGlb } from "../scripts/fixtures/export-node.mjs";
 import { RecoveryBrowserWorker } from "../scripts/fixtures/node-recovery-worker.mjs";
@@ -16,11 +17,13 @@ import { openSculptProject, saveSculptProject } from "../work/test-build/project
 import { encodeRecovery } from "../work/test-build/recovery-client.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
+import { encodeSTL } from "../work/test-build/stl-export.mjs";
 import {
   defaultWorldSettings,
   STUDIO_BACKGROUNDS,
   validateWorldSettings,
 } from "../work/test-build/world-settings.mjs";
+import { worldSettingsUI } from "../work/test-build/world-settings-ui.mjs";
 import { MENU_SIZE, XRMenuModel } from "../work/test-build/xr-menu-model.mjs";
 import { XRMenuView } from "../work/test-build/xr-menu-view.mjs";
 import { XRSceneRig } from "../work/test-build/xr-scene.mjs";
@@ -116,6 +119,7 @@ test("six exact presets, neutral defaults and strict versioned display extension
     { ...defaultWorldSettings(), version: 2 },
     { ...defaultWorldSettings(), studioBackground: "custom" },
     { ...defaultWorldSettings(), groundGrid: 1 },
+    { ...defaultWorldSettings(), skybox: "true" },
   ])
     assert.throws(() => validateWorldSettings(world));
   assert.throws(() =>
@@ -147,6 +151,7 @@ test("every swatch and grid survive native and actual recovery encoding with no 
     for (const p of STUDIO_BACKGROUNDS) {
       f.model.activate(`background:${p.id}`);
       if (!f.layers.display.world.groundGrid) f.model.activate("ground-grid");
+      f.model.activate("skybox");
       const display = f.layers.display.snapshot(
           f.layers.project.id,
           f.layers.project.layerStack.layers,
@@ -178,7 +183,7 @@ test("every swatch and grid survive native and actual recovery encoding with no 
     f.dispose();
   }
 });
-test("Studio updates immediately, passthrough always stays transparent and desktop background restores exactly", () => {
+test("Studio updates immediately, passthrough stays transparent and desktop retains the latest preset", () => {
   const scene = new Scene(),
     desktop = new Color("#abcdef");
   scene.background = desktop;
@@ -191,7 +196,7 @@ test("Studio updates immediately, passthrough always stays transparent and deskt
       assert(rig.groundGrid.visible);
     }
     rig.exit();
-    assert.equal(scene.background, desktop);
+    assert.equal(scene.background.getHexString(), "87998a");
     assert(!rig.groundGrid.visible);
     rig.enter([], "passthrough");
     for (const p of STUDIO_BACKGROUNDS) {
@@ -207,6 +212,55 @@ test("Studio updates immediately, passthrough always stays transparent and deskt
     rig.dispose();
   }
 });
+test("desktop presets fill the background with Skybox Off and survive VR/AR round trips", () => {
+  const scene = new Scene(),
+    rig = new XRSceneRig(scene, new PerspectiveCamera());
+  try {
+    let background;
+    for (const preset of STUDIO_BACKGROUNDS) {
+      const world = { ...defaultWorldSettings(), studioBackground: preset.id, skybox: false };
+      rig.applyWorldSettings(world);
+      assert.equal(scene.background.getHexString(), preset.colour.slice(1).toLowerCase());
+      assert.equal(rig.skybox.mesh.visible, false);
+      if (background) assert.equal(scene.background, background);
+      background = scene.background;
+      rig.enter([], "studio");
+      assert.equal(scene.background, background);
+      assert.equal(rig.skybox.mesh.visible, false);
+      rig.exit();
+      assert.equal(scene.background, background);
+      rig.enter([], "passthrough");
+      rig.applyWorldSettings(world);
+      assert.equal(scene.background, null);
+      assert.equal(rig.skybox.mesh.visible, false);
+      rig.exit();
+      assert.equal(scene.background, background);
+      rig.applyWorldSettings({ ...world, skybox: true });
+      assert.equal(scene.background, background);
+      assert(rig.skybox.mesh.visible);
+      rig.applyWorldSettings(world);
+      assert.equal(rig.skybox.mesh.visible, false);
+    }
+    // A setting changed during XR must also be visible immediately after exit.
+    rig.enter([], "studio");
+    rig.applyWorldSettings({
+      ...defaultWorldSettings(),
+      studioBackground: "warm-studio",
+      skybox: false,
+    });
+    rig.exit();
+    assert.equal(scene.background.getHexString(), "b7a08a");
+    rig.enter([], "passthrough");
+    rig.applyWorldSettings({ ...defaultWorldSettings(), studioBackground: "black", skybox: false });
+    assert.equal(scene.background, null);
+    rig.exit();
+    assert.equal(scene.background.getHexString(), "101114");
+  } finally {
+    rig.exit();
+    rig.dispose();
+  }
+});
+
 test("grid belongs to workspace, follows navigation, ignores rays and never affects framing or export sources", () => {
   const f = fixture(),
     scene = new Scene(),
@@ -242,20 +296,28 @@ test("grid belongs to workspace, follows navigation, ignores rays and never affe
     f.dispose();
   }
 });
-test("GLB geometry and mesh inventory stay identical after world changes and visible guide", async () => {
+test("GLB/STL geometry and mesh inventory stay identical with visible skybox and grid", async () => {
   installFileReader();
   const f = fixture(),
     rig = new XRSceneRig(new Scene(), new PerspectiveCamera());
   try {
     rig.sculptureRoot.add(f.layers.group);
     const before = await encodeExport(f.layers.exportSources(), "fast", 256 * 1024 ** 2);
-    rig.applyWorldSettings({ version: 1, studioBackground: "warm-studio", groundGrid: true });
+    const stlBefore = await encodeSTL(f.layers.exportSources(), "fast", 256 * 1024 ** 2, 100);
+    rig.applyWorldSettings({
+      version: 1,
+      studioBackground: "warm-studio",
+      groundGrid: true,
+      skybox: true,
+    });
     rig.enter();
     f.model.activate("world:background");
     f.model.activate("background:black");
     f.model.activate("ground-grid");
     const after = await encodeExport(f.layers.exportSources(), "fast", 256 * 1024 ** 2);
     assert.deepEqual(after.data, before.data);
+    const stlAfter = await encodeSTL(f.layers.exportSources(), "fast", 256 * 1024 ** 2, 100);
+    assert.deepEqual(stlAfter.data, stlBefore.data);
     const loaded = await readGlb(after.data);
     loaded.scene.traverse((o) => {
       assert(!o.isLineSegments);
@@ -391,7 +453,12 @@ test("environment menu uses existing exit path and requires fresh Enter; selecte
     });
   try {
     await h.controller.check(true, h.xr);
-    h.rig.applyWorldSettings({ version: 1, studioBackground: "soft-blue", groundGrid: true });
+    h.rig.applyWorldSettings({
+      version: 1,
+      studioBackground: "soft-blue",
+      groundGrid: true,
+      skybox: true,
+    });
     await h.controller.enter();
     f.model.activate("world:environment");
     assert(f.model.content().buttons.find((b) => b.id === "environment:studio").selected);
@@ -401,13 +468,21 @@ test("environment menu uses existing exit path and requires fresh Enter; selecte
     assert.deepEqual(h.requests, ["immersive-vr"]);
     await h.controller.enter();
     assert.equal(h.scene.background, null);
-    h.rig.applyWorldSettings({ version: 1, studioBackground: "soft-blue", groundGrid: true });
+    assert.equal(h.rig.skybox.mesh.visible, false);
+    h.rig.applyWorldSettings({
+      version: 1,
+      studioBackground: "soft-blue",
+      groundGrid: true,
+      skybox: true,
+    });
     assert.equal(h.scene.background, null);
+    assert.equal(h.rig.skybox.mesh.visible, false);
     await h.controller.select("studio");
     assert.deepEqual(h.requests, ["immersive-vr", "immersive-ar"]);
     await h.controller.enter();
     assert.equal(h.scene.background.getHexString(), "536d8c");
     assert(h.rig.groundGrid.visible);
+    assert(h.rig.skybox.mesh.visible);
   } finally {
     await h.controller.dispose();
     h.rig.dispose();
@@ -479,10 +554,10 @@ test("Default is midway between former Normal and Large; retired Small files mig
       });
       if (size === "small") {
         const bytes = new Uint8Array(legacy),
-          needle = new TextEncoder().encode('\"vrUiScale\":\"large\"'),
+          needle = new TextEncoder().encode('"vrUiScale":"large"'),
           offset = Buffer.from(bytes).indexOf(needle);
         assert(offset >= 0);
-        bytes.set(new TextEncoder().encode('\"vrUiScale\":\"small\"'), offset);
+        bytes.set(new TextEncoder().encode('"vrUiScale":"small"'), offset);
       }
       const opened = openSculptProject(legacy),
         restored = new LayerDisplayPreferences();
@@ -517,4 +592,269 @@ test("World Large UI toggle is selected only when on, toggles back to Default, a
   } finally {
     f.dispose();
   }
+});
+
+test("Skybox XR toggle starts On, is ray hittable and busy guarded without history", () => {
+  const f = fixture();
+  try {
+    f.model.activate("world:background");
+    let button = f.model.content().buttons.find((b) => b.id === "skybox");
+    assert.equal(button.label, "Skybox · On");
+    assert.equal(button.selected, true);
+    assert.equal(f.model.hit(...centre(button)), "skybox");
+    f.model.activate("skybox");
+    button = f.model.content().buttons.find((b) => b.id === "skybox");
+    assert.equal(button.selected, false);
+    assert.equal(button.label, "Skybox · Off");
+    f.setBusy(true);
+    f.model.activate("skybox");
+    assert.equal(f.layers.display.world.skybox, false);
+    f.setBusy(false);
+    f.model.activate("skybox");
+    assert.equal(f.layers.display.world.skybox, true);
+    // Missing legacy field must display On and switch Off on the first click.
+    delete f.layers.display.world.skybox;
+    assert(f.model.content().buttons.find((b) => b.id === "skybox").selected);
+    f.model.activate("skybox");
+    assert.equal(f.layers.display.world.skybox, false);
+    assert.equal(f.layers.undoCount, 0);
+    assert.equal(f.layers.redoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("desktop Skybox defaults On with grey preset, persists Off and syncs external changes", () => {
+  const previous = globalThis.document;
+  const elements = [];
+  globalThis.document = {
+    createElement(tag) {
+      const element = {
+        tag,
+        children: [],
+        append(...children) {
+          this.children.push(...children);
+        },
+        setAttribute(k, v) {
+          this[k] = v;
+        },
+      };
+      elements.push(element);
+      return element;
+    },
+  };
+  let display = new LayerDisplayPreferences(),
+    busy = false;
+  try {
+    const ui = worldSettingsUI(
+      () => display,
+      { append() {} },
+      () => busy,
+    );
+    const toggle = elements.find((e) => e["aria-label"] === "Skybox");
+    const preset = elements.find((e) => e["aria-label"] === "Studio background");
+    assert.equal(toggle.checked, true);
+    assert.equal(preset.value, "neutral-grey");
+    toggle.checked = false;
+    toggle.onchange();
+    assert.equal(display.snapshot("p", []).world.skybox, false);
+    busy = true;
+    ui.sync();
+    assert(toggle.disabled);
+    toggle.checked = true;
+    toggle.onchange();
+    assert.equal(display.world.skybox, false);
+    busy = false;
+    display = new LayerDisplayPreferences();
+    ui.sync();
+    assert.equal(toggle.checked, true);
+    assert.equal(toggle.disabled, false);
+  } finally {
+    globalThis.document = previous;
+  }
+});
+
+test("skybox On/Off survives native/recovery; legacy defaults On with no native version bump", async () => {
+  const f = fixture(),
+    oldWorker = globalThis.Worker;
+  globalThis.Worker = RecoveryBrowserWorker;
+  try {
+    const baseline = saveSculptProject(f.layers.project);
+    const restored = new LayerDisplayPreferences();
+    for (const on of [false, true]) {
+      f.layers.display.world.skybox = on;
+      const display = f.layers.display.snapshot(
+        f.layers.project.id,
+        f.layers.project.layerStack.layers,
+      );
+      const saved = saveSculptProject(f.layers.project, display);
+      if (on) assert.equal(display.world, undefined);
+      else assert.equal(display.world.skybox, false);
+      assert.equal(
+        new DataView(saved).getUint32(8, true),
+        new DataView(baseline).getUint32(8, true),
+      );
+      const recovery = await encodeRecovery(
+        f.layers,
+        settings,
+        display,
+        undefined,
+        new AbortController().signal,
+        () => true,
+      );
+      const opened = openSculptProject(recovery.data);
+      restored.restore(opened.id, opened.layerStack.layers, opened.displayPreferences);
+      assert.equal(restored.world.skybox, on);
+    }
+    for (const legacy of [
+      undefined,
+      {
+        mode: "clay",
+        colours: {},
+        world: { version: 1, studioBackground: "neutral-grey", groundGrid: false },
+      },
+    ]) {
+      restored.world.skybox = false;
+      restored.restore("legacy", [], legacy);
+      assert.equal(restored.world.skybox, true);
+      assert.equal(restored.world.studioBackground, "neutral-grey");
+    }
+    assert.deepEqual(saveSculptProject(f.layers.project), baseline);
+  } finally {
+    globalThis.Worker = oldWorker;
+    f.dispose();
+  }
+});
+
+test("skybox horizon uses per-eye world directions through yaw/pitch/roll, ignores translations/workspace and clipping", () => {
+  const scene = new Scene(),
+    camera = new PerspectiveCamera(70, 1, 0.01, 2),
+    rig = new XRSceneRig(scene, camera);
+  try {
+    const sky = rig.skybox;
+    rig.applyWorldSettings({ ...defaultWorldSettings(), skybox: true });
+    assert(sky.mesh.visible); // desktop preview
+    for (const name of ["ground", "zenith", "haze"]) {
+      const colour = sky.material.uniforms[name].value;
+      assert.equal(colour.r, colour.g);
+      assert.equal(colour.g, colour.b);
+    }
+    assert.equal(sky.mesh.parent, scene);
+    assert.equal(sky.mesh.frustumCulled, false);
+    assert.equal(sky.material.depthTest, false);
+    assert.equal(sky.material.depthWrite, false);
+    assert.equal(sky.material.toneMapped, false);
+    assert.match(sky.material.vertexShader, /mat3\(viewToWorld\)/);
+    assert.match(sky.material.fragmentShader, /normalize\(worldRay\).y/);
+    assert.match(sky.material.vertexShader, /gl_Position = vec4\(position.xy, 1.0, 1.0\)/);
+    for (const rotation of [
+      [0, 0, 0],
+      [0.6, 1.4, 0.8],
+      [-1.1, -2.8, -0.9],
+    ]) {
+      camera.rotation.set(...rotation);
+      camera.position.set(40, 70, -30);
+      camera.updateMatrixWorld(true);
+      rig.workspaceRoot.rotation.set(1, 2, 3);
+      rig.workspaceRoot.scale.setScalar(0.01);
+      sky.mesh.onBeforeRender(null, scene, camera);
+      const inverse = sky.material.uniforms.inverseProjection.value;
+      const viewToWorld = sky.material.uniforms.viewToWorld.value;
+      for (const elevation of [-0.5, 0, 0.5]) {
+        const world = new Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        world.y = 0;
+        world.normalize();
+        world.y = elevation;
+        world.normalize();
+        const view = world.clone().applyQuaternion(camera.quaternion.clone().invert());
+        // Reconstruct the exact shader ray from its projected coordinates.
+        const projected = view.clone().applyMatrix4(camera.projectionMatrix);
+        const ray = new Vector3(projected.x, projected.y, 1)
+          .applyMatrix4(inverse)
+          .transformDirection(viewToWorld);
+        assert(view.z < 0);
+        assert(Math.abs(ray.y - world.y) < 1e-10);
+      }
+    }
+    assert.deepEqual(new Raycaster().intersectObject(sky.mesh), []);
+    assert.equal(rig.visibleBounds().isEmpty(), true);
+  } finally {
+    rig.dispose();
+  }
+});
+
+test("all presets/grid combinations retain model depth and AR alpha; repeated sessions reuse one disposable skybox", () => {
+  const scene = new Scene(),
+    rig = new XRSceneRig(scene, new PerspectiveCamera());
+  const sky = rig.skybox,
+    geometry = sky.geometry,
+    material = sky.material,
+    uniforms = material.uniforms;
+  const disposals = [];
+  geometry.addEventListener("dispose", () => disposals.push("geometry"));
+  material.addEventListener("dispose", () => disposals.push("material"));
+  let blend = "opaque";
+  const clears = [],
+    noop = () => {};
+  const renderer = {
+    getRenderTarget: () => null,
+    outputColorSpace: "srgb",
+    xr: { getEnvironmentBlendMode: () => blend },
+    autoClear: true,
+    clear: noop,
+  };
+  const background = WebGLBackground(
+    renderer,
+    {},
+    {},
+    {
+      buffers: {
+        color: { setClear: (...args) => clears.push(args), setMask: noop },
+        depth: { setTest: noop, setMask: noop },
+      },
+    },
+    {},
+    true,
+    true,
+  );
+  try {
+    for (const preset of STUDIO_BACKGROUNDS)
+      for (const grid of [false, true])
+        for (const on of [false, true]) {
+          const world = { version: 1, studioBackground: preset.id, groundGrid: grid, skybox: on };
+          rig.applyWorldSettings(world);
+          rig.enter([], "studio");
+          assert.equal(sky.mesh.visible, on);
+          assert.equal(rig.groundGrid.visible, grid);
+          assert.equal(
+            material.uniforms.ground.value.getHexString(),
+            preset.colour.slice(1).toLowerCase(),
+          );
+          assert.equal(scene.background.getHexString(), preset.colour.slice(1).toLowerCase());
+          blend = "opaque";
+          background.render(scene);
+          assert.equal(clears.at(-1)[3], 1);
+          rig.exit();
+          rig.enter([], "passthrough");
+          rig.applyWorldSettings(world);
+          assert.equal(sky.mesh.visible, false);
+          assert.equal(scene.background, null);
+          assert.equal(rig.groundGrid.visible, false);
+          blend = "alpha-blend";
+          background.render(scene);
+          assert.equal(clears.at(-1)[3], 0);
+          rig.exit();
+          assert.equal(sky.mesh.visible, on);
+          assert.equal(sky.geometry, geometry);
+          assert.equal(sky.material, material);
+          assert.equal(sky.material.uniforms, uniforms);
+          assert.equal(scene.children.filter((o) => o === sky.mesh).length, 1);
+        }
+    assert.deepEqual(disposals, []);
+  } finally {
+    background.dispose();
+    rig.dispose();
+  }
+  assert.deepEqual(disposals, ["geometry", "material"]);
+  assert.equal(sky.mesh.parent, null);
 });

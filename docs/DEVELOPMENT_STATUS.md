@@ -1,5 +1,49 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Studio Skybox and Horizon handover
+
+Updated 2026-11-04. Active repository `/Users/brettjames/development/vrappPOC`, baseline `5a067e6`; working tree was clean before this task. Read the latest handover and world/display persistence, renderer/session compositing, desktop/XR controls, ground grid, lighting, turntable, references and thumbnail paths before implementation. No commit, push or merge authorized or performed. Quest 3 support-guide profile/calibration and its fixtures are untouched.
+
+### 1. What changed
+
+Added **World Settings → Studio Background → Skybox** in XR and a matching desktop disclosure with Skybox and preset controls. Following the user’s default refinement, it defaults On with Neutral Grey, saves with the project and recovers through the existing display snapshot path. On gives Studio a subdued neutral-grey upper sky hemisphere, a readable level horizon with narrow haze, and a lower hemisphere tinted by the selected background preset. The horizon is world-horizontal, not a fixed division of screen pixels: looking down can put it above the viewport. Off fills both desktop and VR Studio with the selected background preset. `WHATS_NEW.md` has a concise dated entry.
+
+### 2. Architectural decisions
+
+`StudioSkybox` owns one clip-space triangle and an unlit procedural shader, attached directly to the scene, outside tracking/workspace/sculpture/turntable roots. Each eye's `onBeforeRender` copies its inverse projection and world matrix into reused uniforms. Only the rotation part maps viewing rays to world directions; elevation uses world Y. Head pitch/roll/yaw change which part of the sky is seen, never its gravity orientation; viewer translations, workspace grabs and turntable rotation do not move the horizon. Clip-space placement, disabled culling/depth tests/depth writes, opaque-first render order and sRGB output conversion keep it behind models, references, grids and menus regardless of near/far distances. No enclosing sphere, finite floor disk, seam around the azimuth, textures, environment lighting or shadow changes.
+
+Preset colours apply immediately to both desktop and VR Studio with Skybox Off. A reusable scene background colour replaces the earlier XR-only update guard, which had left the desktop picker ineffective without the sky shader. The latest preset also returns immediately after XR exit, including changes made during Studio or Passthrough. With it On, the preset supplies the lower colour; a small haze blend near the horizon joins it continuously to the fixed subtle upper gradient. The XR ground-grid toggle remains independent and retains its existing workspace-local placement, spacing, opacity and navigation behavior. Desktop retains its existing grid. Neither grid is replaced by a floor surface. The model and existing guides provide scale; the infinite horizon supplies orientation.
+
+`XRSceneRig` suppresses the mesh on entry to Passthrough and on every settings update during that session, including saved-On projects; background stays null and the existing Three alpha-blend clear path is unchanged. Desktop preview resumes after XR exit. Session entry/exit reuses the same GPU resources; `rig.dispose()` disposes/removes them. Scene/model replacement does not reconstruct the rig. Thumbnail capture still creates its own scene from layer surfaces only. References remain separately imported display assets, with no sky capture/baking. Bounds, raycasts, SDF, Boolean meshing, export sources, lighting, tool preferences and sculpt history receive no sky objects or state.
+
+The optional boolean `world.skybox` extends existing world version 1 display metadata, with absent meaning true. New projects explicitly start On; legacy missing fields normalize to On while retaining any saved background preset. A wholly default On world remains omitted; an explicit Off always serializes world metadata and survives both native save and recovery. Malformed present values are rejected. No native version bump: older native metadata remains readable; older readers that ignore unknown world fields retain the sculpture and existing display fields but can drop the skybox choice on resave.
+
+### 3. Build and test results
+
+`npm run check` passed: Biome formatting/lint (**546 warnings / 95 infos**, zero errors), strict TypeScript, production build and **1,354/1,354 tests across 83 files**, zero failures/skips/cancellations. Full test command wall time **29.92 s**; production Vite build **1.59 s**. Existing bundle-size advisory remains. Focused World Settings tests passed **19/19**, including updated On defaults, neutral-grey colours, first-click toggle behavior with a missing legacy field, explicit Off persistence and legacy fallback. Quick tests previously passed **21/21**; all final tests are included in the full passing check. `git diff --check` passed.
+
+Five new World Settings tests cover desktop and XR toggle behavior/busy state, both default On and explicit Off native/recovery serialization, legacy On reset and unchanged native version, world-ray reconstruction through yaw/pitch/roll and translation, all six presets with grid and skybox On/Off, real installed Three clear-alpha behavior, repeated Studio/Passthrough transitions, resource identity and disposal. Existing persistence/export/session tests were extended with Skybox On, including byte-identical GLB and STL output, unchanged SDF/native source/history and layout hit targets. A sixth new test verifies visible skybox exclusion from thumbnail rendering. A seventh regression covers all six desktop presets with Skybox Off, reused background colour identity, On/Off changes, Studio/AR round trips and preset changes during XR reflected immediately on exit. Focused World Settings plus WebXR suites pass **40/40**. Existing calibrated Quest guide, lighting, turntable, reference and staged remeshing regression suites pass.
+
+Browser inspection on isolated localhost ports verified the desktop toggle, a level side-view horizon, neutral-grey and black lower colours, visible model/grid and no warning/error logs. A fresh preview after the refinement confirmed Skybox checked On, Neutral Grey selected, a grey upper gradient and sky-only background when looking upward. Preview evidence: `work/studio-skybox/desktop-on.png`; full validation log: `work/studio-skybox/check.log`. These are local ignored artifacts, not committed assets.
+
+### 4. Benchmarks and regressions
+
+One additional triangle/draw per rendered eye when On; no sky draw when Off or in Passthrough. No sky textures, texture repaint, frame resource allocation or SDF/remeshing work. Two preallocated matrices are copied per eye; ground colour updates only when the preset changes. Tests exercise 24 preference combinations through 48 Studio/AR entries, confirming the same mesh/geometry/material/uniforms, a single scene attachment and exactly one geometry/material disposal. This is host lifecycle evidence, not physical GPU leak or Quest frame-time measurement. No workload, mesh quality, scheduling or timeout was reduced.
+
+### 5. Known limitations and blockers
+
+Physical Quest acceptance and GPU/frame-time measurements remain pending. The desktop solid-colour follow-up is covered by host regressions; its fresh browser recheck is pending because the local preview server could not bind its port (`EPERM`). Automated tests validate camera-ray math, visibility, clear alpha and lifecycle; browser visual inspection is desktop, not a stereo headset acceptance claim. The horizon is infinitely distant and intentionally provides no parallax or metric floor. Upper-sky colours are fixed; presets tint only the lower hemisphere. The existing XR workspace grid can rotate with workspace navigation; the sky horizon stays gravity-level independently. No implementation blocker remains.
+
+### 6. Next recommendations
+
+- [ ] On Quest 3, compare Skybox Off/On in all six Studio presets; look up/down, pitch, roll and turn fully around. Confirm a comfortable world-level horizon without clipping, stereo mismatch, bright glare or visible azimuth seam.
+- [ ] Toggle ground grid independently; sculpt, paint, inspect references/lights and run/rotate the turntable. Grab/rotate/scale/reset the workspace and check stable horizon, model/grid contrast, menus and calibrated Support guide clearance.
+- [ ] Save/reopen/recover with Skybox On; switch Studio → Passthrough → Studio, exit/re-enter repeatedly, lose/regain tracking and hide/resume the session. Verify no sky or opaque pixels in Passthrough and the saved choice returns in Studio.
+- [ ] Compare representative large-scene frame timing and GPU resource counts Off/On and through repeated session transitions. Record headset/browser versions and captures before claiming hardware acceptance.
+
+---
+
+
 ## Controller guide profiles handover
 
 Updated 2026-11-04. Small presentation-only refactor, based on latest commit `5dfd219`. Inspected Git status, guide/bridge/input code and this handover before editing; the active repository `/Users/brettjames/development/vrappPOC` was clean. No reset or normalization of the accepted calibration. User authorized committing and pushing this refactor on 2026-11-04.

@@ -111,6 +111,7 @@ export class LayerDisplayPreferences {
       ...(this.references.length ? { references: this.references } : {}),
       ...(this.world.studioBackground === "neutral-grey" &&
       !this.world.groundGrid &&
+      this.world.skybox !== false &&
       !this.world.mirrorGuide &&
       !this.world.turntable
         ? {}

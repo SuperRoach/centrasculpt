@@ -61,6 +61,7 @@ import {
 import { createUI } from "./ui";
 import { createViewportTools, type WorkspaceTool } from "./viewport-tools";
 import { volumeLabel } from "./volume-store";
+import { worldSettingsUI } from "./world-settings-ui";
 import { XRBrushPreview } from "./xr-brush-preview";
 import { XRExperience } from "./xr-experience";
 import { XRMirrorPlane } from "./xr-mirror-plane";
@@ -1770,6 +1771,11 @@ const lighting = new LightRig(
       .applyMatrix4(xrRig.turntable.group.matrix);
   },
 );
+const worldUI = worldSettingsUI(
+  () => display,
+  precisionPanel.parentElement!,
+  () => loadingProject || ui.modalOpen || xrBlocked(),
+);
 const lightUI = lightingUI(
   () => display,
   lighting,
@@ -2592,6 +2598,7 @@ renderer.setAnimationLoop((now, frame) => {
   const cpuStart = performance.now();
   lighting.sync(now, document.visibilityState !== "hidden");
   lightUI.sync();
+  worldUI.sync();
   referenceEditor?.sync();
   referencesUI.sync();
   renderEmulatorFrame?.(now);

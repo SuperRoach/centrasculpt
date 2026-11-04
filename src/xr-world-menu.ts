@@ -138,7 +138,7 @@ export class XRWorldMenu {
         rect: { x: 300, y: 140, width: 440, height: 74 },
       });
       add("world:environment", "Environment", 244, "Studio or Passthrough");
-      add("world:background", "Studio Background", 394, "Colour swatches · ground grid");
+      add("world:background", "Studio Background", 394, "Skybox · colour swatches · ground grid");
       add("world:guides", "Guides and Constraints", 544, "Mirror symmetry · angle snap");
       buttons.push(
         {
@@ -564,6 +564,13 @@ export class XRWorldMenu {
         "Studio only · workspace guide · 0.2 unit spacing",
         world.groundGrid,
       );
+      add(
+        "skybox",
+        `Skybox · ${(world.skybox ?? true) ? "On" : "Off"}`,
+        864,
+        "Studio only · level horizon · preset colours below · grid independent",
+        world.skybox ?? true,
+      );
     } else if (this.section === "guides") {
       subtitle = "Guides and Constraints · existing layer-local mirror";
       const symmetry = layers.symmetry,
@@ -945,7 +952,9 @@ export class XRWorldMenu {
         -1000,
         Math.min(1000, Math.round((p.pivot[i] + (id.endsWith("plus") ? 0.05 : -0.05)) * 100) / 100),
       );
-    } else if (id === "ground-grid")
+    } else if (id === "skybox")
+      layers.display.world.skybox = !(layers.display.world.skybox ?? true);
+    else if (id === "ground-grid")
       layers.display.world.groundGrid = !layers.display.world.groundGrid;
     else if (id.startsWith("environment:")) {
       void this.port?.session().select(id.slice(12) as "studio" | "passthrough");

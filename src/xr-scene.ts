@@ -11,6 +11,7 @@ import {
   type Scene,
   Vector3,
 } from "three";
+import { StudioSkybox } from "./studio-skybox";
 import { Turntable } from "./turntable";
 import { studioBackgroundColour, type WorldDisplayPreferences } from "./world-settings";
 
@@ -39,6 +40,9 @@ export class XRSceneRig {
   readonly workspaceRoot = new Group();
   readonly sculptureRoot = new Group();
   readonly turntable = new Turntable();
+  readonly skybox = new StudioSkybox();
+  private skyboxEnabled = true;
+  private studioColour: Color | null = null;
   readonly groundGrid = new GridHelper(4, 20, "#b5c4c9", "#b5c4c9");
   private environment: "studio" | "passthrough" | null = null;
   private gridEnabled = false;
@@ -79,24 +83,25 @@ export class XRSceneRig {
     this.trackingOrigin.add(camera, this.controllerTracking);
     this.workspaceRoot.add(this.turntable.group);
     this.turntable.group.add(this.sculptureRoot);
-    scene.add(this.trackingOrigin, this.workspaceRoot);
+    scene.add(this.trackingOrigin, this.workspaceRoot, this.skybox.mesh);
   }
-  /** Presentation-only: a single shared colour and fixed line geometry; no sculpture traversal per frame. */
+  /** Presentation-only background and guides; no sculpture traversal or GPU allocation per frame. */
   applyWorldSettings(settings: WorldDisplayPreferences): void {
     const colour = studioBackgroundColour(settings.studioBackground);
     this.preferences.background = colour;
     this.gridEnabled = settings.groundGrid;
-    if (this.active) {
-      if (this.environment === "passthrough") this.scene.background = null;
-      else if (
-        !(this.scene.background instanceof Color) ||
-        this.scene.background.getHexString().toLowerCase() !== colour.slice(1).toLowerCase()
-      )
-        this.scene.background = new Color(colour);
-    }
+    this.skyboxEnabled = settings.skybox ?? true;
+    this.skybox.setGround(colour);
+    this.skybox.mesh.visible = this.environment !== "passthrough" && this.skyboxEnabled;
+    // One shared preset colour for desktop and XR; AR always keeps a transparent background.
+    if (!this.studioColour) this.studioColour = new Color(colour);
+    else if (this.studioColour.getHexString() !== colour.slice(1).toLowerCase())
+      this.studioColour.set(colour);
+    this.scene.background = this.environment === "passthrough" ? null : this.studioColour;
     this.groundGrid.visible = this.active && this.environment === "studio" && this.gridEnabled;
   }
   dispose(): void {
+    this.skybox.dispose();
     this.groundGrid.removeFromParent();
     this.groundGrid.geometry.dispose();
     this.groundGrid.material.dispose();
@@ -139,9 +144,12 @@ export class XRSceneRig {
       visibility: hidden.map((object) => ({ object, visible: object.visible })),
     };
     this.environment = environment;
+    this.skybox.mesh.visible = environment === "studio" && this.skyboxEnabled;
     this.groundGrid.visible = environment === "studio" && this.gridEnabled;
     this.scene.background =
-      environment === "passthrough" ? null : new Color(this.preferences.background);
+      environment === "passthrough"
+        ? null
+        : (this.studioColour ?? new Color(this.preferences.background));
     const bounds = this.visibleBounds();
     if (bounds.isEmpty()) bounds.set(new Vector3(-0.5, -0.5, -0.5), new Vector3(0.5, 0.5, 0.5));
     bounds.getCenter(this.center);
@@ -209,10 +217,11 @@ export class XRSceneRig {
     if (!s) return;
     this.snapshot = null;
     this.environment = null;
+    this.skybox.mesh.visible = this.skyboxEnabled;
     this.groundGrid.visible = false;
     this.pendingPlacement = false;
     this.hasHome = false;
-    this.scene.background = s.background;
+    this.scene.background = this.studioColour ?? s.background;
     for (const value of s.transforms) restore(value);
     Object.assign(this.camera, {
       fov: s.fov,

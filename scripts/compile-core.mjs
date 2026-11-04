@@ -15,6 +15,8 @@ const nextCache = {};
 const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
 
 for (const name of [
+  "studio-skybox",
+  "world-settings-ui",
   "xr-snap-guide",
   "xr-support-guide",
   "xr-support-guide-profiles",

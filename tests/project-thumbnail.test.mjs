@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BoxGeometry, Color, Group, Mesh, MeshBasicMaterial } from "three";
+import {
+  BoxGeometry,
+  Color,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Scene,
+} from "three";
 import { captureProjectThumbnail } from "../work/test-build/project-thumbnail.mjs";
+import { defaultWorldSettings } from "../work/test-build/world-settings.mjs";
+import { XRSceneRig } from "../work/test-build/xr-scene.mjs";
 
 function fixture({ xr = false, readFailure = false, encodedSize = 80 } = {}) {
   const previous = globalThis.document,
@@ -138,6 +148,35 @@ test("thumbnail capture failure falls back without disturbing renderer state and
     assert.equal(f.renderer.xr.enabled, true);
     assert.equal(f.source.children.length, 2);
   } finally {
+    f.restore();
+  }
+});
+
+test("Studio skybox stays outside thumbnail capture and survives it unchanged", async () => {
+  const f = fixture(),
+    scene = new Scene(),
+    rig = new XRSceneRig(scene, new PerspectiveCamera());
+  try {
+    rig.sculptureRoot.add(f.source);
+    rig.applyWorldSettings({ ...defaultWorldSettings(), skybox: true });
+    rig.enter();
+    const material = rig.skybox.material;
+    const render = f.renderer.render;
+    f.renderer.render = (thumbnailScene, camera) => {
+      thumbnailScene.traverse((object) => {
+        assert.notEqual(object, rig.skybox.mesh);
+        assert.notEqual(object.material, material);
+        assert(!object.name.includes("skybox"));
+      });
+      render(thumbnailScene, camera);
+    };
+    assert(await captureProjectThumbnail(f.renderer, f.source));
+    assert(rig.skybox.mesh.visible);
+    assert.equal(rig.skybox.mesh.parent, scene);
+    assert.equal(rig.skybox.material, material);
+  } finally {
+    rig.exit();
+    rig.dispose();
     f.restore();
   }
 });
