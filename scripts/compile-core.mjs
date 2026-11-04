@@ -15,8 +15,13 @@ const nextCache = {};
 const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
 
 for (const name of [
+  "modelling-api",
+  "object-dimensions",
   "physical-units",
   "precision-tools",
+  "primitive-tools",
+  "primitive-ui",
+  "parametric-primitive",
   "studio-skybox",
   "world-settings-ui",
   "xr-snap-guide",

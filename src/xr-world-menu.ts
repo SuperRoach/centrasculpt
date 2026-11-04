@@ -54,6 +54,9 @@ export class XRWorldMenu {
     private readonly tools: EditorToolState,
     private readonly port?: XRWorldMenuPort,
   ) {}
+  stopPrecision(): void {
+    this.port?.precision?.start(0);
+  }
   content(): MenuContent {
     if (this.section === "precision" && this.port?.precision) return this.port.precision.content();
     const layers = this.tools.port.layers(),
@@ -154,7 +157,7 @@ export class XRWorldMenu {
         {
           id: "world:precision",
           label: "Measure & Precision",
-          detail: "Physical size · exact transforms",
+          detail: "Primitives · physical size · exact transforms",
           disabled: busy,
           rect: { x: 588, y: 544, width: 524, height: 136 },
         },

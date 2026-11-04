@@ -340,7 +340,7 @@ export class LayerPaletteModel {
           steps = [64, 128, 192],
           up = steps.find((v) => v > resolution),
           down = [...steps].reverse().find((v) => v < resolution),
-          blocked = busy || !n.editable || !!n.procedural;
+          blocked = busy || !n.editable || !!(n.procedural || n.primitive);
         add(
           "hier:upres",
           "Increase Res",
@@ -427,6 +427,7 @@ export class LayerPaletteModel {
       entry.layerInfo = {
         resolution: row.group ? undefined : l.project.layerStack.get(n.id).volume.resolution,
         operation: row.group ? undefined : l.project.layerStack.get(n.id).operation,
+        primitive: row.group ? undefined : l.project.layerStack.get(n.id).primitive?.kind,
         tube: !row.group && !!l.project.layerStack.get(n.id).procedural,
         children,
         collapsed: l.collapsedGroups.has(n.id),
@@ -542,7 +543,7 @@ export class LayerPaletteModel {
         n instanceof LayerGroup ? l.selectGroup(n.id) : l.select(n.id);
         this.tools.select("transform");
       } else if (action === "upres" || action === "downres") {
-        if (n instanceof LayerGroup || !n.editable || n.procedural)
+        if (n instanceof LayerGroup || !n.editable || n.procedural || n.primitive)
           throw new Error("Select an editable sculpt layer.");
         const steps = action === "upres" ? [64, 128, 192] : [192, 128, 64],
           to = steps.find((v) =>

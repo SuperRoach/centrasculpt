@@ -500,7 +500,7 @@ export class EditorToolState {
       twist: "Twist",
     };
     const detail = names[operation];
-    return `${this.contextLabel}${detail ? " · " + detail : ""}${this.busy ? " · Working…" : l.selectedGroupId && this.active !== "transform" ? " · Select a source layer" : !l.active.layer.editable ? " · Layer hidden or locked" : l.active.layer.procedural && ["paint", "mask"].includes(this.active) ? " · Bake tube first" : ""}`;
+    return `${this.contextLabel}${detail ? " · " + detail : ""}${this.busy ? " · Working…" : l.selectedGroupId && this.active !== "transform" ? " · Select a source layer" : !l.active.layer.editable ? " · Layer hidden or locked" : (l.active.layer.procedural || l.active.layer.primitive) && !["transform", "tube", "edit-spline"].includes(this.active) ? " · Bake source first" : ""}`;
   }
   /** Wheel recall preserves the exact deformation settings, including legacy Preview only. */
   selectMoveGroup(): void {
@@ -642,7 +642,8 @@ export class EditorToolState {
           label: "Reset to layer base colour",
           read: () => "One Undo action",
           action: "paint-clear",
-          disabled: !l.active.layer.editable || !!l.active.layer.procedural,
+          disabled:
+            !l.active.layer.editable || !!(l.active.layer.procedural || l.active.layer.primitive),
         },
       );
     if (active === "mask")
@@ -656,7 +657,8 @@ export class EditorToolState {
           label,
           read: () => "One Undo action",
           action: `mask-${action}`,
-          disabled: !l.active.layer.editable || !!l.active.layer.procedural,
+          disabled:
+            !l.active.layer.editable || !!(l.active.layer.procedural || l.active.layer.primitive),
         });
     const brush = (
       id: "radius" | "strength" | "hardness",
@@ -854,8 +856,8 @@ export class EditorToolState {
         id: "mask-source",
         label: "Target",
         read: () =>
-          l.active.layer.procedural
-            ? "Explicitly Bake this tube before painting"
+          l.active.layer.procedural || l.active.layer.primitive
+            ? "Explicitly Bake this source before painting"
             : "Selected editable sculpt layer · geometry stays separate",
         disabled: true,
       });

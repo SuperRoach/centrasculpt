@@ -277,7 +277,7 @@ export class SDFVolume implements VolumeStore {
             Math.min(
               this.extent * 4,
               Math.hypot(this.coordinate(x, 0), this.coordinate(y, 1), this.coordinate(z, 2)) -
-                0.85,
+                Math.min(0.85, this.extent * 0.55),
             ),
           );
           if (next !== this.values[i]) record?.(i, this.values[i], next);

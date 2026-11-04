@@ -307,3 +307,24 @@ button.viewport-label:hover{background:#fff}
   .hierarchy-row .hierarchy-row-header .layer-visibility,
   .hierarchy-row .hierarchy-row-header .layer-lock { padding: 4px; }
 }
+
+/* Parametric creation and selected-source editing share the studio's compact controls. */
+.primitive-panel{margin:18px 0;border-top:1px solid #dce2d5;padding-top:14px}
+.primitive-body{padding-top:14px}.primitive-body [hidden]{display:none!important}
+.primitive-modes{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#e8eddf;border-radius:8px;margin-bottom:14px}
+.primitive-body .primitive-modes button{margin:0;padding:7px 4px;border:0;background:transparent;border-radius:6px;font-size:11px}
+.primitive-body .primitive-modes button[aria-pressed=true]{background:#fff;box-shadow:0 1px 3px #26382118;color:#344b2b;font-weight:600}
+.primitive-shapes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:16px}
+.primitive-body .primitive-shapes button{display:flex;flex-direction:column;align-items:center;gap:7px;margin:0;padding:12px 3px;font-size:11px;border:1px solid #d7dfcf;border-radius:8px;background:#fafbf7}
+.primitive-shapes svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.primitive-body .primitive-shapes button[aria-pressed=true]{border-color:#7f956a;background:#edf3e5;color:#405c2d;box-shadow:inset 0 0 0 1px #7f956a}
+.primitive-heading{display:flex;align-items:center;gap:8px;justify-content:space-between}.primitive-heading strong{font-size:12px;overflow-wrap:anywhere}
+.primitive-body .primitive-units{margin:0;padding:4px 9px;min-width:38px;border-radius:5px;font-size:10px;background:#edf1e7}
+.primitive-body .numeric-transform{margin:12px 0;gap:8px}.primitive-body .numeric-transform legend{font-size:10px;color:#727e68}.primitive-body .numeric-transform label{font-size:10px;text-transform:none;letter-spacing:0}.primitive-body .numeric-transform input{font-size:12px;padding:8px 6px;margin:5px 0 0;background:#fff;border-color:#cfd8c5}
+.primitive-body .primitive-bounds{font-size:10px;line-height:1.5;color:#6c7960;margin:4px 0 14px;font-variant-numeric:tabular-nums}
+.primitive-body .primitive-primary{width:100%;margin:0;padding:10px;background:#526e3f;border-color:#526e3f;color:#fff;font-size:12px;font-weight:600;border-radius:7px}
+.primitive-transform{border-top:1px solid #dce2d5;padding-top:12px;margin-top:14px}.primitive-transform summary{font-size:11px;font-weight:500;letter-spacing:0}
+.primitive-source-actions{margin-top:14px;border-top:1px solid #dce2d5;padding-top:12px}.primitive-body .primitive-restore{display:block;border:0;background:none;padding:0;margin:0 0 12px;color:#637556;font-size:10px;text-decoration:underline;text-underline-offset:3px}
+.primitive-body .primitive-bake{width:100%;margin:0;padding:9px;font-size:11px;border-radius:7px;background:#f1f4eb}
+.primitive-body .primitive-note{font-size:10px;color:#78816e;line-height:1.5;margin:9px 0 0}.primitive-body .primitive-status{font-size:11px;line-height:1.5;padding:9px;border-radius:6px;background:#f0f3e9;margin:12px 0 0}
+.primitive-body button:focus-visible,.primitive-body input:focus-visible{outline:2px solid #80966d;outline-offset:2px}

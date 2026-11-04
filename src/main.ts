@@ -1,9 +1,10 @@
 import whatsNew from "../WHATS_NEW.md?raw";
 import { exportFilename } from "./export-filename";
 import { questCapture } from "./performance-capture";
-import { physicalExportLongestMM } from "./physical-units";
+import { physicalExportLongestMM, physicalGLBSources } from "./physical-units";
 import { PrecisionTools, selectionDimensions } from "./precision-tools";
 import { precisionUI } from "./precision-ui";
+import { primitiveUI } from "./primitive-ui";
 import { TransformPreview } from "./transform-preview";
 import { mountWhatsNew } from "./whats-new";
 
@@ -106,6 +107,7 @@ let recovery: RecoveryController | undefined;
 const stabilityMetrics = new StabilityMetrics();
 let stabilityText = "";
 let precision: PrecisionTools | undefined;
+let primitivesUI: { sync: () => void } | undefined;
 let measurementUI: { sync: () => void } | undefined;
 let xrExperience: XRExperience | undefined;
 const xrBlocked = () => xrExperience?.blocking ?? false;
@@ -308,6 +310,7 @@ function refresh() {
   );
   desktopLayers?.render();
   measurementUI?.sync();
+  primitivesUI?.sync();
   ui.resolution(layers.active.layer.volume.resolution);
   syncRenderStyle();
   ui.viewportMode(display.mode);
@@ -548,6 +551,7 @@ renderer.domElement.addEventListener("pointerleave", () => {
   cursor.visible = false;
 });
 renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (precision?.primitives.placing) return;
   if (precision?.active) {
     if (!loadingProject && !ui.modalOpen && !xrBlocked() && e.button === 0) {
       updatePointer(e);
@@ -673,7 +677,7 @@ window.addEventListener("keydown", (event) => {
     document.getElementById("save-project")!.click();
     return;
   }
-  if (event.key === "Escape" && precision?.active) {
+  if (event.key === "Escape" && (precision?.active || precision?.primitives.placing)) {
     precision.start(0);
     ui.status("Measurement off");
     return;
@@ -1404,6 +1408,8 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
         printSize.value = String(stlMM);
       }
     }
+    if (stlMM === undefined)
+      sources = physicalGLBSources(sources, display.precision.millimetresPerUnit);
     const quality = document.querySelector<HTMLSelectElement>("#export-quality")!
       .value as ExportQuality;
     const result = await exportGlbAsync(sources, quality, {
@@ -1823,6 +1829,7 @@ const desktopTube = new DesktopTubeTool(
     !xrBlocked() &&
     !input.referenceEditing &&
     !precision?.active &&
+    !precision?.primitives.placing &&
     input.mode === "sculpt",
   () => refresh(),
 );
@@ -1868,6 +1875,12 @@ precision = new PrecisionTools(
   },
 );
 precision.sync();
+primitivesUI = primitiveUI(
+  precision.primitives,
+  precisionPanel.parentElement!,
+  () => loadingProject || ui.modalOpen || xrBlocked(),
+  precision,
+);
 measurementUI = precisionUI(
   precision,
   precisionPanel.parentElement!,
@@ -2729,6 +2742,7 @@ renderer.setAnimationLoop((now, frame) => {
   if (
     pointerInside &&
     !precision?.active &&
+    !precision?.primitives.placing &&
     editorTools?.active !== "tube" &&
     editorTools?.active !== "edit-spline" &&
     input.canSculpt(

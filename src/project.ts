@@ -11,6 +11,7 @@ import {
   validateLayerMetadata,
   validateName,
 } from "./layers";
+import { validatePrimitiveCache } from "./parametric-primitive";
 import { REFERENCE_LIMITS } from "./reference-images";
 import { MAX_RESOLUTION } from "./resolution";
 import { sculptMask } from "./sculpt-mask";
@@ -255,8 +256,9 @@ export function saveSculptProject(
     const metadata = layer.metadata(),
       volume = layer.volume,
       n = volume.resolution;
-    if (n < 3 || n > MAX_PROJECT_RESOLUTION || volume.extent <= 0.85 || volume.extent > 10)
+    if (n < 3 || n > MAX_PROJECT_RESOLUTION || volume.extent <= 0 || volume.extent > 10)
       throw new Error("Project grid exceeds supported limits.");
+    if (layer.primitive) validatePrimitiveCache(layer.primitive, volume);
     const count = volumeSampleCount(volume);
     if (offset + count > MAX_PROJECT_VOXELS)
       throw new Error("Aggregate project voxel budget exceeded.");
@@ -356,25 +358,27 @@ export function saveSculptProject(
   bytes.set(MAGIC);
   view.setUint32(
     8,
-    [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
-      project.layerStack.layers.some(
-        (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
-      ),
-    )
-      ? 10
-      : assets.some((a) => a.mime === "model/stl")
-        ? 9
-        : hasPaint
-          ? 8
-          : project.layerStack.hierarchy.enabled
-            ? 7
-            : hasMasks
-              ? 6
-              : assets.length
-                ? 5
-                : layers.every((l) => isLegacyCubicGrid(l.volume))
-                  ? 3
-                  : 4,
+    layers.some((l) => l.primitive || l.volume.extent <= 0.85)
+      ? 11
+      : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
+            project.layerStack.layers.some(
+              (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
+            ),
+          )
+        ? 10
+        : assets.some((a) => a.mime === "model/stl")
+          ? 9
+          : hasPaint
+            ? 8
+            : project.layerStack.hierarchy.enabled
+              ? 7
+              : hasMasks
+                ? 6
+                : assets.length
+                  ? 5
+                  : layers.every((l) => isLegacyCubicGrid(l.volume))
+                    ? 3
+                    : 4,
     true,
   );
   view.setUint32(12, metadata.length, true);
@@ -426,9 +430,10 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     version !== 7 &&
     version !== 8 &&
     version !== 9 &&
-    version !== 10
+    version !== 10 &&
+    version !== 11
   )
-    throw new Error("Unsupported project version. This app supports versions 1–10.");
+    throw new Error("Unsupported project version. This app supports versions 1–11.");
   const length = view.getUint32(12, true);
   if (length < 2 || length > 65536 || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
@@ -483,7 +488,12 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
       !latticeMin.every((v, a) => v <= 0 && v + dims[a] >= n)
     )
       throw new Error("Invalid layer lattice origin.");
-    if (typeof extent !== "number" || !Number.isFinite(extent) || extent <= 0.85 || extent > 10)
+    if (
+      typeof extent !== "number" ||
+      !Number.isFinite(extent) ||
+      extent <= (version >= 11 ? 0 : 0.85) ||
+      extent > 10
+    )
       throw new Error("Invalid layer volume extent.");
     const spacing = (2 * extent) / (n - 1);
     if (
@@ -514,6 +524,10 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
       latticeMin: latticeMin as [number, number, number],
     });
     volume.values.set(values);
+    if (layer.primitive) {
+      if (version < 11) throw new Error("Primitives require project version 11.");
+      validatePrimitiveCache(layer.primitive, volume);
+    }
     return new SdfLayer(volume, layer);
   });
   let assetStart = 16 + length + expectedOffset * 4;

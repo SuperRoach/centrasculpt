@@ -481,11 +481,13 @@ export class XRExperience {
     }
     this.controllers.setGuideViewer(pose?.transform.position ?? null);
     this.controllers.update(time);
-    const feedback = this.hooks.precision?.active
-      ? this.hooks.precision.feedback
-      : this.hooks.tools?.active === "move" && this.move?.notifying
-        ? this.move.feedback
-        : this.sizing?.feedback || this.alternate?.feedback || this.interaction?.feedback;
+    const feedback = this.hooks.precision?.primitives.placing
+      ? this.hooks.precision.primitives.feedback
+      : this.hooks.precision?.active
+        ? this.hooks.precision.feedback
+        : this.hooks.tools?.active === "move" && this.move?.notifying
+          ? this.move.feedback
+          : this.sizing?.feedback || this.alternate?.feedback || this.interaction?.feedback;
     this.shortcutView.paint(
       this.controllers.shortcuts,
       time,

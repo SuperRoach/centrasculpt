@@ -26,6 +26,7 @@ export type MenuButton = {
     resolution?: number;
     operation?: string;
     tube: boolean;
+    primitive?: string;
     children: number;
     collapsed: boolean;
   };
@@ -782,6 +783,7 @@ export class XRMenuModel {
         this.moveVariants = false;
         this.optionPage = 0;
       } else if (action === "tool") {
+        this.world.stopPrecision();
         if (value === "cut") {
           this.page = "cut";
           this.cutOffset = 0;

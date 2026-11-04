@@ -3,6 +3,7 @@ import { BufferAttribute, Color, Group, MeshStandardMaterial, Vector3 } from "th
 import type { ExportSource } from "./export-mesh";
 import type { LayerOperation, SculptProject, SdfLayer } from "./layers";
 import { IncrementalMesher } from "./mesh";
+import { primitiveDistance, validatePrimitive } from "./parametric-primitive";
 import { sculptPaint } from "./sculpt-paint";
 import type { Bounds, Point3 } from "./sdf";
 import { SDFVolume } from "./sdf";
@@ -18,6 +19,16 @@ export function combineSdf(a: number, b: number, operation: LayerOperation): num
 export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: number) => number {
   const m = transformMatrix(layer.transform).invert().elements,
     scale = uniformScale(layer.transform);
+  if (layer.primitive) {
+    const source = validatePrimitive(layer.primitive);
+    return (wx, wy, wz) =>
+      primitiveDistance(
+        source,
+        m[0] * wx + m[4] * wy + m[8] * wz + m[12],
+        m[1] * wx + m[5] * wy + m[9] * wz + m[13],
+        m[2] * wx + m[6] * wy + m[10] * wz + m[14],
+      ) * scale;
+  }
   const v = layer.volume,
     [nx, ny, nz] = v.dimensions,
     bounds = v.bounds,
@@ -218,6 +229,7 @@ export class BooleanComposite {
         l.operation,
         l.order,
         l.transform,
+        l.primitive,
         l.volume.resolution,
         l.volume.extent,
         l.volume.dimensions,

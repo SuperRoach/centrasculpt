@@ -133,3 +133,19 @@ export function physicalExportLongestMM(
     throw new Error("No physical dimensions available for this export scope.");
   return longest * millimetresPerUnit;
 }
+/** glTF coordinates are metres. Apply project calibration once, including translated origins. */
+export function physicalGLBSources(
+  sources: readonly import("./export-mesh").ExportSource[],
+  millimetresPerUnit: number,
+): import("./export-mesh").ExportSource[] {
+  finitePositive(millimetresPerUnit);
+  const factor = millimetresPerUnit / 1000;
+  return sources.map((source) => ({
+    ...source,
+    transform: {
+      ...copyTransform(source.transform),
+      position: source.transform.position.map((v) => v * factor) as Vec3,
+      scale: source.transform.scale.map((v) => v * factor) as Vec3,
+    },
+  }));
+}

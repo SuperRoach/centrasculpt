@@ -1,0 +1,73 @@
+{
+  "host": "v26.8.1",
+  "scope": "Host Node CPU wall times only; excludes browser GPU and physical Quest performance",
+  "editSamples": 9,
+  "results": [
+    {
+      "hostResolution": 64,
+      "kind": "box",
+      "cacheResolution": 63,
+      "creationMs": 148.45858300000003,
+      "editMedianMs": 120.03475000000003,
+      "editP95Ms": 123.97387500000013,
+      "bakeMs": 131.30895899999996,
+      "trackedBytes": 35768240,
+      "sourceTriangles": 12
+    },
+    {
+      "hostResolution": 64,
+      "kind": "cylinder",
+      "cacheResolution": 63,
+      "creationMs": 118.01083300000005,
+      "editMedianMs": 126.8477499999999,
+      "editP95Ms": 135.32262500000024,
+      "bakeMs": 139.09666700000025,
+      "trackedBytes": 36441008,
+      "sourceTriangles": 384
+    },
+    {
+      "hostResolution": 64,
+      "kind": "sphere",
+      "cacheResolution": 63,
+      "creationMs": 115.23591699999997,
+      "editMedianMs": 118.2183329999998,
+      "editP95Ms": 124.43008400000008,
+      "bakeMs": 125.73733400000037,
+      "trackedBytes": 34103600,
+      "sourceTriangles": 12096
+    },
+    {
+      "hostResolution": 128,
+      "kind": "box",
+      "cacheResolution": 63,
+      "creationMs": 113.88408299999992,
+      "editMedianMs": 110.26191699999981,
+      "editP95Ms": 124.91866699999991,
+      "bakeMs": 130.80262500000026,
+      "trackedBytes": 50448304,
+      "sourceTriangles": 12
+    },
+    {
+      "hostResolution": 128,
+      "kind": "cylinder",
+      "cacheResolution": 63,
+      "creationMs": 111.87304200000017,
+      "editMedianMs": 122.65412500000002,
+      "editP95Ms": 126.2603339999996,
+      "bakeMs": 133.14970799999992,
+      "trackedBytes": 51121072,
+      "sourceTriangles": 384
+    },
+    {
+      "hostResolution": 128,
+      "kind": "sphere",
+      "cacheResolution": 63,
+      "creationMs": 112.92183299999942,
+      "editMedianMs": 112.00400000000081,
+      "editP95Ms": 117.89937499999996,
+      "bakeMs": 126.31929200000013,
+      "trackedBytes": 48783664,
+      "sourceTriangles": 12096
+    }
+  ]
+}

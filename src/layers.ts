@@ -1,5 +1,6 @@
 import type { ProjectDisplayPreferences } from "./display-preferences";
 import { LayerHierarchy } from "./layer-hierarchy";
+import { type PrimitiveSource, validatePrimitive } from "./parametric-primitive";
 import { type TubeSource, validateTube } from "./procedural-tube";
 import type { ProjectSettings } from "./project";
 import type { ToolPreferences } from "./tool-preferences";
@@ -15,6 +16,8 @@ export type LayerMetadata = {
   locked: boolean;
   operation: LayerOperation;
   order: number;
+  primitiveOriginal?: PrimitiveSource;
+  primitive?: PrimitiveSource;
   procedural?: TubeSource;
 };
 /** randomUUID requires a secure context; getRandomValues also works on HTTP LAN origins. */
@@ -48,7 +51,16 @@ export function validateLayerMetadata(value: unknown): LayerMetadata {
     throw new Error("Invalid layer Boolean operation.");
   if (!Number.isInteger(m.order) || (m.order as number) < 0)
     throw new Error("Invalid layer order.");
+  if (
+    m.primitiveOriginal !== undefined &&
+    (!m.primitive ||
+      validatePrimitive(m.primitiveOriginal).kind !== validatePrimitive(m.primitive).kind)
+  )
+    throw new Error("Original primitive parameters must match the source type.");
   return {
+    primitiveOriginal:
+      m.primitive === undefined ? undefined : validatePrimitive(m.primitiveOriginal ?? m.primitive),
+    primitive: m.primitive === undefined ? undefined : validatePrimitive(m.primitive),
     procedural: m.procedural === undefined ? undefined : validateTube(m.procedural),
     id: validateId(m.id),
     name: validateName(m.name),
@@ -60,6 +72,8 @@ export function validateLayerMetadata(value: unknown): LayerMetadata {
   };
 }
 export class SdfLayer {
+  primitiveOriginal?: PrimitiveSource;
+  primitive?: PrimitiveSource;
   procedural?: TubeSource;
   readonly id: string;
   name: string;
@@ -114,6 +128,10 @@ export class SdfLayer {
       order: 0,
       ...metadata,
     });
+    if (m.primitive && m.procedural)
+      throw new Error("A layer cannot contain two procedural sources.");
+    this.primitiveOriginal = m.primitiveOriginal;
+    this.primitive = m.primitive;
     this.procedural = m.procedural;
     this.id = m.id;
     this.name = m.name;
@@ -138,6 +156,8 @@ export class SdfLayer {
   }
   metadata(): LayerMetadata {
     return validateLayerMetadata({
+      primitiveOriginal: this.primitiveOriginal,
+      primitive: this.primitive,
       procedural: this.procedural,
       id: this.id,
       name: this.name,

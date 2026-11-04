@@ -1,11 +1,15 @@
 import {
+  BoxGeometry,
   BufferAttribute,
+  type BufferGeometry,
   Color,
+  CylinderGeometry,
   Euler,
   Group,
   type Mesh,
   MeshStandardMaterial,
   Quaternion,
+  SphereGeometry,
   Vector3,
 } from "three";
 import type { BakeOptions, BakeProgress, BakeStats, SurfaceView } from "./bake";
@@ -20,12 +24,13 @@ import type { ExportSource } from "./export-mesh";
 import { SculptHistory } from "./history";
 import { type HierarchyState, LayerGroup } from "./layer-hierarchy";
 import type { LayerOperation, SculptProject } from "./layers";
-import { assertIndependentLayerVolumes, SdfLayer, validateName } from "./layers";
+import { assertIndependentLayerVolumes, newId, SdfLayer, validateName } from "./layers";
 import { MaskOverlay } from "./mask-overlay";
 import { IncrementalMesher } from "./mesh";
 import { RadialMoveField } from "./move-field";
 import { reconstructMoveAsync } from "./move-worker-client";
 import { PaintSurface, paintColours } from "./paint-surface";
+import { evaluatePrimitive, type PrimitiveSource, validatePrimitive } from "./parametric-primitive";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
 import { evaluateTube, type TubeSource, validateTube } from "./procedural-tube";
 import { MAX_PROJECT_LAYERS, MAX_PROJECT_TRIANGLES, MAX_PROJECT_VOXELS } from "./project";
@@ -71,6 +76,7 @@ export class LayerRuntime {
   readonly material: MeshStandardMaterial;
   readonly maskOverlay = new MaskOverlay();
   readonly paintSurface = new PaintSurface();
+  private primitiveGeometry?: BufferGeometry;
   metrics?: SculptMetrics;
   expansions = 0;
   lastExpansionMs = 0;
@@ -86,6 +92,7 @@ export class LayerRuntime {
     neutral: MeshStandardMaterial,
     public volume = layer.volume,
     deferMesh = false,
+    readonly primitiveSource = layer.primitive,
   ) {
     this.material = neutral.clone();
     this.maskOverlay.bind(this.material);
@@ -97,6 +104,7 @@ export class LayerRuntime {
     try {
       if (!deferMesh) this.rebuild();
     } catch (error) {
+      this.primitiveGeometry?.dispose();
       this.mesher.dispose();
       this.material.dispose();
       throw error;
@@ -112,10 +120,45 @@ export class LayerRuntime {
     this.lastMeshMs = update.stats.milliseconds;
     this.lastChanged = update.stats.chunks;
     this.totalChunks = update.stats.totalChunks;
+    if (!this.mesher.pendingChunks && this.primitiveSource) {
+      if (!this.primitiveGeometry) {
+        const s = this.primitiveSource;
+        const indexed =
+          s.kind === "box"
+            ? new BoxGeometry(s.width, s.height, s.depth)
+            : s.kind === "cylinder"
+              ? new CylinderGeometry(s.diameter / 2, s.diameter / 2, s.height, 96)
+              : new SphereGeometry(s.diameter / 2, 96, 64);
+        this.primitiveGeometry = indexed.toNonIndexed();
+        indexed.dispose();
+        const positions = this.primitiveGeometry.getAttribute("position");
+        for (let i = 0; i < positions.array.length; i++)
+          if (Math.abs(positions.array[i]) < this.volume.extent * 1e-7) positions.array[i] = 0;
+      }
+      this.surface.clear();
+      this.surface.update([
+        { id: 0, bounds: { min: [0, 0, 0], max: [1, 1, 1] }, geometry: this.primitiveGeometry },
+      ]);
+      this.triangles = this.primitiveGeometry.getAttribute("position").count / 3;
+    }
     if (measured) this.metrics!.record("remesh", performance.now() - start);
     return true;
   }
+  get sourceGeometryBytes(): number {
+    return this.primitiveGeometry
+      ? Object.values(this.primitiveGeometry.attributes).reduce(
+          (bytes, attribute) => bytes + attribute.array.byteLength,
+          0,
+        )
+      : 0;
+  }
+  exportUpdates() {
+    return this.primitiveGeometry
+      ? [{ geometry: this.primitiveGeometry }]
+      : this.mesher.snapshotUpdates();
+  }
   dispose(): void {
+    this.primitiveGeometry?.dispose();
     this.mesher.dispose();
     this.material.dispose();
     this.surface.clear();
@@ -173,8 +216,8 @@ type CutBatchEntry = { kind: "cut-batch"; layerId: string; entries: CutEntry[] }
 type TubeEntry = {
   kind: "tube";
   layerId: string;
-  before: { source: TubeSource; volume: VolumeStore };
-  after: { source: TubeSource; volume: VolumeStore };
+  before: { source: TubeSource | PrimitiveSource; volume: VolumeStore };
+  after: { source: TubeSource | PrimitiveSource; volume: VolumeStore };
 };
 type MaskEntry = { kind: "mask"; layerId: string; before: MaskSnapshot; after: MaskSnapshot };
 type HierarchyEntry = {
@@ -626,6 +669,22 @@ export class IndependentLayers {
       !this.pendingChunks
     );
   }
+  private readonly commandScope = newId();
+  private commandKey = "";
+  private commandRevision = 0;
+  /** Compact editor-lifetime token observing the same identity as recovery, including UI edits. */
+  get modellingRevision(): string {
+    const key = JSON.stringify([
+      this.recoveryKey(),
+      this.selectedGroupId,
+      this.display.precision.millimetresPerUnit,
+    ]);
+    if (key !== this.commandKey) {
+      this.commandKey = key;
+      this.commandRevision++;
+    }
+    return `${this.commandScope}:${this.commandRevision}`;
+  }
   recoveryKey(): string {
     return JSON.stringify([
       this.project.id,
@@ -729,6 +788,7 @@ export class IndependentLayers {
     for (const r of held) {
       bytes +=
         volumeSampleCount(r.volume) * 8 +
+        (r.primitiveSource ? r.mesher.ownedGeometryBytes : 0) +
         r.history.memoryBytes +
         sculptMask(r.volume).memoryBytes +
         sculptPaint(r.volume).memoryBytes;
@@ -948,8 +1008,8 @@ export class IndependentLayers {
     return true;
   }
   private assertSculptable(layer: SdfLayer): void {
-    if (layer.procedural)
-      throw new Error("Bake the procedural tube to a sculpt layer before brushing.");
+    if (layer.procedural || layer.primitive)
+      throw new Error("Bake the parametric source to a sculpt layer before brushing.");
   }
   select(id: string): void {
     this.assertAvailable();
@@ -1415,9 +1475,16 @@ export class IndependentLayers {
       layer.assertEditable();
       const state = redo ? entry.after : entry.before,
         old = this.runtime(layer.id),
-        next = new LayerRuntime(layer, this.neutral, state.volume);
+        next = new LayerRuntime(
+          layer,
+          this.neutral,
+          state.volume,
+          false,
+          state.source.kind === "tube" ? undefined : state.source,
+        );
       layer.volume = state.volume;
-      layer.procedural = validateTube(state.source);
+      layer.procedural = state.source.kind === "tube" ? validateTube(state.source) : undefined;
+      layer.primitive = state.source.kind !== "tube" ? validatePrimitive(state.source) : undefined;
       this.group.remove(old.surface.group);
       old.dispose();
       this.install(next);
@@ -1645,7 +1712,13 @@ export class IndependentLayers {
     this.finishTransform();
     if (this.selectedGroupId) throw new Error("Select a sculpt layer before cutting.");
     const ids = this.project.layerStack.layers
-      .filter((layer) => layer.editable && !layer.procedural && layer.volume instanceof SDFVolume)
+      .filter(
+        (layer) =>
+          layer.editable &&
+          !layer.procedural &&
+          !layer.primitive &&
+          layer.volume instanceof SDFVolume,
+      )
       .map((layer) => layer.id);
     if (!ids.length) throw new Error("There are no visible, unlocked SDF layers to cut.");
     const activeBefore = this.project.activeLayerId,
@@ -2028,12 +2101,44 @@ export class IndependentLayers {
   }
   isEmpty(id: string): boolean {
     const runtime = this.runtime(id);
-    if (runtime.layer.procedural) return false;
+    if (runtime.layer.procedural || runtime.layer.primitive) return false;
     const values = runtime.volume.getDenseView(),
       count = volumeSampleCount(runtime.volume);
     for (let i = 0; i < count; i++)
       if (!((values ? values[i] : runtime.volume.readVoxel(i)) > 0)) return false;
     return true;
+  }
+  /** Undoable leaf deletion using the same retained-runtime hierarchy history as groups. */
+  deleteObject(id: string): void {
+    const stack = this.project.layerStack,
+      h = stack.hierarchy,
+      node = h.get(id);
+    if (node instanceof LayerGroup) {
+      this.deleteGroup(id, "keep");
+      return;
+    }
+    this.assertAvailable();
+    node.assertEditable();
+    if (stack.layers.length <= 1) throw new Error("Keep at least one sculpt layer.");
+    const runtime = this.runtime(id),
+      before = h.snapshot(),
+      active = this.project.activeLayerId,
+      selected = this.selectedGroupId;
+    try {
+      for (const child of h.children(id)) h.reparent(child, h.parent(id));
+      stack.remove(id);
+      this.runtimes.delete(id);
+      this.group.remove(runtime.surface.group);
+      this.selectedGroupId = null;
+    } catch (error) {
+      if (!stack.layers.some((layer) => layer.id === id)) stack.insert(runtime.layer);
+      if (!this.runtimes.has(id)) this.install(runtime);
+      h.restore(before);
+      stack.select(active);
+      this.selectedGroupId = selected;
+      throw error;
+    }
+    this.recordHierarchy(before, active, selected, [runtime]);
   }
   remove(id: string): void {
     this.assertAvailable();
@@ -2273,7 +2378,8 @@ export class IndependentLayers {
   ): Promise<SdfLayer> {
     if (
       options.sourceIds?.length === 1 &&
-      this.project.layerStack.get(options.sourceIds[0]).procedural
+      (this.project.layerStack.get(options.sourceIds[0]).procedural ||
+        this.project.layerStack.get(options.sourceIds[0]).primitive)
     )
       return this.bakeTube(options, signal);
     this.assertAvailable();
@@ -2409,6 +2515,7 @@ export class IndependentLayers {
     this.assertAvailable();
     const validated = validateBakeOptions(options),
       source = this.project.layerStack.get(validated.sourceIds![0]);
+    if (source.primitive) source.assertEditable();
     if (validated.resolution !== source.volume.resolution)
       throw new Error("Tube Bake preserves source resolution.");
     this.assertCapacity(volumeSampleCount(source.volume), undefined, 1);
@@ -2438,9 +2545,17 @@ export class IndependentLayers {
         await yieldBake();
       }
       const samplingMs = performance.now() - start,
-        { id: unused, procedural: unusedSource, ...metadataCopy } = source.metadata();
+        {
+          id: unused,
+          procedural: unusedSource,
+          primitive: unusedPrimitive,
+          primitiveOriginal: unusedOriginalPrimitive,
+          ...metadataCopy
+        } = source.metadata();
       void unused;
       void unusedSource;
+      void unusedPrimitive;
+      void unusedOriginalPrimitive;
       const layer = new SdfLayer(volume, {
         ...metadataCopy,
         transform: copyTransform(source.transform),
@@ -2497,14 +2612,31 @@ export class IndependentLayers {
   /** Source-first atomic regeneration. No source/cache publication before all slices
    * and chunks succeed. One in-flight candidate, cancelled on ownership changes. */
   async regenerateTube(value: TubeSource, id?: string, signal?: AbortSignal): Promise<SdfLayer> {
+    return this.regenerateSource(value, id, signal);
+  }
+  async regeneratePrimitive(
+    value: PrimitiveSource,
+    id?: string,
+    signal?: AbortSignal,
+    placement?: VolumeTransform,
+  ): Promise<SdfLayer> {
+    return this.regenerateSource(value, id, signal, placement);
+  }
+  private async regenerateSource(
+    value: TubeSource | PrimitiveSource,
+    id?: string,
+    signal?: AbortSignal,
+    placement?: VolumeTransform,
+  ): Promise<SdfLayer> {
     this.assertAvailable();
     if (this.selectedGroupId) throw new Error("Select a child layer for procedural editing.");
     if (this.drawing || this.transforming) throw new Error("Finish the current edit first.");
-    const source = validateTube(value),
+    const source = value.kind === "tube" ? validateTube(value) : validatePrimitive(value),
       old = id ? this.runtime(id) : undefined;
     if (old) {
       old.layer.assertEditable();
-      if (!old.layer.procedural) throw new Error("Select a procedural tube.");
+      if (source.kind === "tube" ? !old.layer.procedural : !old.layer.primitive)
+        throw new Error("Select a matching parametric source.");
     }
     const activeId = this.project.activeLayerId,
       metadata = old ? JSON.stringify(old.layer.metadata()) : "",
@@ -2534,9 +2666,13 @@ export class IndependentLayers {
         MAX_PROJECT_VOXELS - otherSamples,
         Math.floor((256 * 1024 ** 2 - baseTracked) / 8),
       );
-      const work = evaluateTube(source, n, extent, maxSamples, (samples) => {
+      const allocate = (samples: number) => {
         this.tubeStagingBytes = samples * 8;
-      });
+      };
+      const work =
+        source.kind === "tube"
+          ? evaluateTube(source, n, extent, maxSamples, allocate)
+          : evaluatePrimitive(source, n, maxSamples, allocate);
       let result = work.next(),
         deadline = performance.now() + 3;
       while (!result.done) {
@@ -2555,21 +2691,38 @@ export class IndependentLayers {
       const layer = new SdfLayer(
         volume,
         old
-          ? { ...old.layer.metadata(), procedural: source }
+          ? {
+              ...old.layer.metadata(),
+              procedural: source.kind === "tube" ? source : undefined,
+              primitive: source.kind !== "tube" ? source : undefined,
+            }
           : {
-              name: this.uniqueName("Procedural Tube"),
+              ...(placement ? { transform: validateTransformEdit(placement, placement) } : {}),
+              name: this.uniqueName(
+                source.kind === "tube" ? "Procedural Tube" : `Parametric ${source.kind}`,
+              ),
               order: this.project.layerStack.layers.length,
-              procedural: source,
+              procedural: source.kind === "tube" ? source : undefined,
+              primitive: source.kind !== "tube" ? source : undefined,
             },
       );
-      candidate = new LayerRuntime(old?.layer ?? layer, this.neutral, volume, true);
+      candidate = new LayerRuntime(
+        old?.layer ?? layer,
+        this.neutral,
+        volume,
+        true,
+        source.kind === "tube" ? undefined : source,
+      );
       const triangleBudget =
         MAX_PROJECT_TRIANGLES -
         [...this.runtimes.values()].reduce((n, r) => n + (r === old ? 0 : r.triangles), 0);
       while (candidate.mesher.pendingChunks) {
         check();
         candidate.rebuild(2, 3);
-        this.tubeStagingBytes = volumeSampleCount(volume) * 8 + candidate.mesher.ownedGeometryBytes;
+        this.tubeStagingBytes =
+          volumeSampleCount(volume) * 8 +
+          candidate.mesher.ownedGeometryBytes +
+          candidate.sourceGeometryBytes;
         if (this.trackedBytes > 256 * 1024 ** 2)
           throw new Error("Tube staged mesh exceeds the memory budget.");
         if (candidate.triangles > triangleBudget)
@@ -2579,12 +2732,18 @@ export class IndependentLayers {
       check();
       this.discardFuture();
       if (old) {
-        const previous = { source: validateTube(old.layer.procedural), volume: old.volume };
+        const previous = {
+          source: old.layer.primitive
+            ? validatePrimitive(old.layer.primitive)
+            : validateTube(old.layer.procedural),
+          volume: old.volume,
+        };
         this.group.remove(old.surface.group);
         this.runtimes.delete(id!);
         // Retain stable layer identity used by selection and transform tools.
         old.layer.volume = volume;
-        old.layer.procedural = source;
+        old.layer.procedural = source.kind === "tube" ? source : undefined;
+        old.layer.primitive = source.kind !== "tube" ? source : undefined;
         this.install(candidate);
         old.dispose();
         for (const e of this.past)
@@ -2921,8 +3080,8 @@ export class IndependentLayers {
         layerId: layer.id,
         step: volume.step,
         transform: copyTransform(layer.transform),
-        chunks: runtime.mesher
-          .snapshotUpdates()
+        chunks: runtime
+          .exportUpdates()
           .filter((u) => u.geometry.getAttribute("position").count)
           .map((u) => ({
             positions: u.geometry.getAttribute("position").array as Float32Array,

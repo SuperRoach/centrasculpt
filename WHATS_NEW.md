@@ -1,3 +1,15 @@
+### Phase 6.2.1 — Foundations for assisted modelling (2026-11-04)
+
+- Prepared core modelling actions for future assisted editing, with stale-scene protection, cancellation and undoable object deletion. This milestone adds no AI service or agent control panel.
+
+### Phase 6.2 — Editable primitives (2026-11-04)
+
+- Create precisely sized **Box, Cylinder and Sphere** objects in **Primitives** on desktop or **World Settings → Measure & Precision → Primitives** in VR. Position a preview with your Tool hand, adjust its size with the Tool stick, then tap the Tool trigger to place it. Cancel from the Support-hand menu.
+- Desktop **Primitives** has visual shape cards, separate Create/Edit views, compact dimensions and a unit switch. Position and rotation controls tuck away, with Restore and Bake shown when editing a selected primitive.
+- Edit dimensions in millimetres, centimetres or inches, enter exact transforms, duplicate and parent primitives using Layers, and restore their initial dimensions later. Parameters stay editable through saving and recovery.
+- Choose **Bake to Sculpt Layer** when you want to use sculpting, Cut, Mask or Paint. Baking keeps the editable source and supports Undo/Redo. Cut keeps its full Tool Wheel button.
+- GLB exports now use project calibration in metres. STL keeps its explicit target-size override and optional project-scale sizing. Projects containing primitives require this version or newer to reopen.
+
 ### Phase 6.1 — Measure and place precisely (2026-11-04)
 
 - Open **World Settings → Measure & Precision** in VR, or **Measure & precision** on desktop, to measure surface distances and three-point angles in millimetres, centimetres or inches. Keep, reposition or remove annotations on sculpts and STL references.

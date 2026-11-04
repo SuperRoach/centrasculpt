@@ -1,5 +1,4 @@
 import {
-  Box3,
   BufferGeometry,
   CanvasTexture,
   Group,
@@ -17,6 +16,7 @@ import {
   Vector3,
 } from "three";
 import type { IndependentLayers } from "./independent-layers";
+import { objectDimensions } from "./object-dimensions";
 import {
   finitePositive,
   fromDisplay,
@@ -24,8 +24,9 @@ import {
   toDisplay,
   validatePrecision,
 } from "./physical-units";
+import { PrimitiveTools } from "./primitive-tools";
 import type { ReferenceView } from "./reference-view";
-import { copyTransform, transformMatrix, type Vec3 } from "./transform";
+import { copyTransform, type Vec3 } from "./transform";
 import type { XRControllerState } from "./xr-input";
 import type { MenuContent } from "./xr-menu-model";
 
@@ -62,26 +63,7 @@ export function measurementHit(
   return modelRoot.worldToLocal(hit.point.clone()).toArray() as Vec3;
 }
 export function selectionDimensions(layers: IndependentLayers): Vec3 {
-  if (!layers.recoveryReady)
-    throw new Error("Wait for completed geometry before measuring dimensions.");
-  const hierarchy = layers.project.layerStack.hierarchy;
-  const id = layers.transformNode.id;
-  const ids = new Set([id, ...hierarchy.descendants(id)]);
-  const bounds = new Box3(),
-    point = new Vector3();
-  for (const layer of layers.project.layerStack.layers) {
-    if (!ids.has(layer.id)) continue;
-    const matrix = transformMatrix(layer.transform);
-    layers.runtime(layer.id).surface.group.traverse((object) => {
-      if (!(object instanceof Mesh)) return;
-      const positions = object.geometry.getAttribute("position");
-      if (!positions) return;
-      for (let i = 0; i < positions.count; i++)
-        bounds.expandByPoint(point.fromBufferAttribute(positions, i).applyMatrix4(matrix));
-    });
-  }
-  if (bounds.isEmpty()) return [0, 0, 0];
-  return bounds.getSize(point).toArray() as Vec3;
+  return objectDimensions(layers, layers.transformNode.id);
 }
 export type PrecisionField =
   | "px"
@@ -111,18 +93,22 @@ export class PrecisionTools {
   private owner = 0;
   private field: PrecisionField | null = null;
   private entry = "";
-  private page: "home" | "transform" | "annotations" = "home";
+  private page: "home" | "transform" | "annotations" | "primitives" = "home";
+  readonly primitives: PrimitiveTools;
   constructor(
     readonly layers: () => IndependentLayers,
     private readonly references?: ReferenceView,
     private readonly changed: () => void = () => {},
-  ) {}
+  ) {
+    this.primitives = new PrimitiveTools(layers, changed);
+  }
   get settings() {
     return this.layers().display.precision;
   }
   sync(): void {
     const layers = this.layers();
     if (this.project !== layers.project || this.saved !== this.settings) {
+      this.primitives.cancel();
       this.active = 0;
       this.pending = [];
       this.replacing = null;
@@ -141,6 +127,7 @@ export class PrecisionTools {
     }
   }
   start(count: 0 | 2 | 3): void {
+    this.primitives.cancel();
     this.active = count;
     this.pending = [];
     this.replacing = null;
@@ -196,6 +183,7 @@ export class PrecisionTools {
     return true;
   }
   step(tool: XRControllerState | undefined, pose: Matrix4 | undefined, enabled: boolean): boolean {
+    if (this.primitives.step(tool, pose, enabled)) return true;
     if (!this.active) {
       this.armed = false;
       return false;
@@ -326,10 +314,12 @@ export class PrecisionTools {
     }
   }
   dispose(): void {
+    this.primitives.dispose();
     this.clear();
     this.group.removeFromParent();
   }
   content(): MenuContent {
+    if (this.page === "primitives") return this.primitives.content();
     const buttons: MenuContent["buttons"] = [
       {
         id: "world:home",
@@ -425,6 +415,7 @@ export class PrecisionTools {
       add("field:angle", `Angle snap · ${s.angleSnapDegrees || "Off"}°`, 7);
       add("annotations", `Annotations · ${s.measurements.length}`, 8);
       add("field:calibration", `Calibration · ${s.millimetresPerUnit} mm/unit`, 9);
+      add("primitives", "Primitives…", 10, "Editable Box · Cylinder · Sphere");
     }
     return {
       title: "MEASURE & PRECISION",
@@ -450,6 +441,12 @@ export class PrecisionTools {
     ).toString();
   }
   activate(id: string): boolean {
+    if (id === "primitive:place") this.start(0);
+    if (id === "primitive:transform") {
+      this.page = "transform";
+      return true;
+    }
+    if (this.primitives.activate(id)) return true;
     if (!id.startsWith("precision:")) return false;
     if (!this.layers().recoveryReady) return true;
     const action = id.slice(10);
@@ -495,7 +492,12 @@ export class PrecisionTools {
           ];
         if (m) this.reposition(m.id, Number(action.slice(8)));
       } else if (action === "next") this.annotationIndex++;
-      else if (action === "transform" || action === "home" || action === "annotations")
+      else if (
+        action === "transform" ||
+        action === "home" ||
+        action === "annotations" ||
+        action === "primitives"
+      )
         this.page = action;
     } catch (error) {
       this.feedback = error instanceof Error ? error.message : "Invalid precision value";

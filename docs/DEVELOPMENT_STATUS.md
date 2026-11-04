@@ -1,5 +1,118 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 6.2.1 handover — Agent-Ready Modelling Commands
+
+Updated 2026-11-04. Active Git repository `/Users/brettjames/development/vrappPOC`; Documents workspace is not a Git checkout. Read current status/latest Phase 6.2 handover, agent workflow, testing infrastructure and authoritative primitive/transform/hierarchy/Bake operations. Baseline already contained uncommitted Phase 6.2 source, tests, docs and outputs; preserved them. Calibrated Quest 3 controller-guide profiles/offsets and Studio Skybox settings/code were not edited. No commits, pushes or merges performed.
+
+### 1. What changed
+
+Added a typed local `ModellingAPI` for `primitive.create`, `primitive.update`, `object.transform`, `primitive.bake`, `object.delete` and `object.rename`, plus `scene.summary`, `object.list`, `object.get`. Commands run without DOM events, pointer simulation or XR. Results contain stable authoritative IDs/names, an opaque scene revision and structured success/errors. All physical inputs require mm/cm/in; metadata uses mm with explicit radian rotation and dimensionless scale. Queries copy hierarchy, transforms, flags, primitive parameters and compact geometry/runtime metadata, never voxel/mask/paint buffers or mutable editor objects.
+
+### 2. Architectural decisions
+
+`src/modelling-api.ts` adapts existing `IndependentLayers` operations; it owns no modelling engine, SDF evaluator, persistence or transport. Source generation/Bake retain staged atomic publication, async cancellation and normal Undo/Redo. Transforms reuse existing transaction rollback. `deleteObject` adds retained-runtime leaf deletion using the existing hierarchy transaction/replay machinery and restores hierarchy on preparation failure; legacy destructive `remove` remains unchanged. Groups keep children/world poses when deleted. Existing precision dimension reading was extracted to UI-independent `object-dimensions.ts` and reused by both callers. UI tools remain intact; parity tests exercise their shared backend.
+
+Mandatory revision guards use a compact editor-scoped token backed by the existing recovery identity plus physical calibration. Multiple adapters on one editor share it; a reopened editor gets a fresh scope. UI metadata/history/selection and calibration changes invalidate stale requests. Admission checks host policy, inherited visibility/locks and editor readiness; asynchronous work is serialized by the existing backend. No MCP server, browser listener, AI provider, external permission surface or global browser API was added. API contract/examples and Phase 7 extension points: `docs/MODELLING_COMMANDS.md`.
+
+### 3. Build and test results
+
+Baseline `npm run check` passed actual Biome formatting/lint (**548 warnings / 94 infos, zero errors**), strict TS, production build (**1.74 s**) and **1,400/1,400 tests**, test-command wall time **33.07 s**. Baseline log: `work/phase-6-2-1/baseline.log`. Quick tests passed **21/21**, **0.64 s**. Focused command suite passed **13/13**, **0.60 s**. Final `npm run check` passed formatting, Biome lint (**548 warnings / 94 infos, zero errors**), strict TS, production build (**1.75 s**) and **1,413/1,413 tests across 86 files**, zero failures/skips/cancellations; test-command wall time **34.04 s**. Final log: `work/phase-6-2-1/final-check.log`. `git diff --check` passed. Existing Vite >500 kB bundle advisory remains.
+
+New deterministic tests cover detached JSON round trips and query read-only behavior, all three shape dimensions/units/calibration, rotated/nested local/world transforms, rename/edit/delete and stable IDs, Bake/source retention, inherited hidden/locked state and policy denial, Undo/Redo, failed transform/delete rollback with retained redo, stale/UI/calibration/editor-lifetime revisions, busy requests, cancelled creation/update/Bake, editor disposal during async preparation and UI/backend equivalence. Existing full tests continue to cover masks/paint, native saves/recovery, STL/GLB/exporter, primitives/SDF, calibrated controller guides and Skybox. An intermediate lint failure in a new test callback was fixed; a shape-switch test identified the existing same-type source requirement, now rejected explicitly as unsupported. No failing checks are hidden.
+
+### 4. Benchmarks and regressions
+
+Single host Node **v26.8.1** observation, empty 17³ base and 33³ fitted Box cache: create **44.28 ms**, update **28.06 ms**, Bake **32.63 ms**; 1,000 primitive `object.get` plus JSON serializations averaged **0.00935 ms**, result **635 bytes**. Each modelling operation had one sample, so no p95/scaling claim is made. JSON: `work/phase-6-2-1/benchmark.json`. Timings include cooperative CPU work, exclude browser/GPU rendering; no process/GPU peak-memory or Quest timing was measured. Primitive bounds are analytical; sculpt/tube/group queries scan committed mesh vertices and should not be polled per frame. Physical scale/STL overrides, native codecs, sculpt fields, input guides and rendering paths retain the Phase 6.2 semantics.
+
+### 5. Known limitations and blockers
+
+Atomicity is per command, not a multi-command batch. Primitive update supplies a complete same-type definition; patches/type conversion and custom creation names are deferred (rename is separate). Revision tokens are editor-lifetime optimistic guards, not saved project versions. Successful commands select their target; selection ownership changes also invalidate tokens. The optional policy callback is local admission logic, not authentication. Geometry bounds are null for nonprimitive objects while busy, zero for empty meshes; runtime status is editor-wide. Source limits/resource failures remain existing backend limits, reported as structured `operation_failed`. No progress stream, agent UI, network protocol or external integration is claimed. Phase 6.2 physical Quest acceptance remains pending; host correctness/perf does not establish headset release readiness.
+
+### 6. Next recommendations — Phase 7 integration
+
+- Bind adapter lifetime to the active editor; map future tool schemas to exported command/query types and carry exact revisions and AbortSignals through the host.
+- Design external authentication, authorization, consent and audit logging only when adding an actual transport; keep that separate from the modelling backend.
+- Add progress subscriptions, dry-run/planning and genuinely atomic batches only with their own transaction design/tests. Do not emulate batch rollback by repeated Undo.
+- Migrate UI callers incrementally if useful, retaining command/UI parity. Do not bypass locked/hidden/admission checks or introduce a second engine.
+- Complete the existing Phase 6.2 Quest 3 acceptance checklist before claiming hardware readiness.
+
+---
+
+
+## Phase 6.2 handover — Editable Parametric Primitives
+
+Updated 2026-11-04. Repository `/Users/brettjames/development/vrappPOC`; the supplied Documents workspace was empty. Working tree was clean before editing. Read the complete existing status and verified Phase 6.1 physical-unit conversion, measurement picking, precision transactions, native/recovery persistence and STL override; reviewed tube regeneration/Bake, independent volumes, hierarchy, compositor, exports, thumbnail capture and XR trigger ownership. Quest 3 calibrated controller-guide profiles/offsets and Studio Skybox code are untouched. No commit, push or merge authorized or performed.
+
+### 1. What changed
+
+Added editable Box (width/height/depth), Cylinder (diameter/height) and Sphere (diameter). Desktop **Primitives** provides type selection, new/selected dimensions, origin creation, position, XYZ rotation, uniform scale, initial-dimension restoration and explicit Bake. Fields apply on change/Tab/Enter and cancel typing with Escape; invalid input reports an error. Existing precision controls select mm/cm/in. Dimension fields are layer-local; resulting analytic physical bounds include the saved inherited transform. Workspace zoom/navigation never enter these calculations.
+
+UI refinement (2026-11-04): the desktop panel now starts in Create new with three SVG shape cards, a primary Create button, compact dimension fields and unit switch. Edit selected shows the layer name, physical bounds, a collapsed grouped transform disclosure, secondary Restore and explicit Bake. Source-only controls stay out of creation; pending edits disable controls and show updating feedback, while errors remain visible. Styling follows the existing sage studio palette and keyboard focus treatment. Browser verified creating a 35 × 50 mm cylinder, automatic transition to Edit selected, changing height to 60 mm and the resulting 35 × 60 × 35 mm bounds; no console warnings/errors. Existing recovery checkpoints were left untouched. Screenshot: `outputs/phase-6-2/primitives-ui-polished.png`. Engine/persistence/XR behavior is unchanged by this UI refinement.
+
+VR: **Tool Wheel → World Settings → Measure & Precision → Primitives**. Choose a type, enter initial dimensions if desired, choose Place preview, release the Support menu, position the wireframe 25 cm along the Tool ray, adjust proportional size with the Tool stick and release/tap Tool trigger to confirm. Reopen the Support menu and choose Cancel placement to cancel. The preview hides and disarms during menu ownership, grip interactions, tracking/connection loss and pending work. Trigger release rearms it; the bridge chooses the configured logical Tool hand for either handedness. Exact dimensions use a numeric keypad; Edit selected primitive returns to the selected source, and Exact position / rotation / scale opens the Phase 6.1 keypad. Cut's ten-sector wheel layout/button/hit targets are unchanged.
+
+Layers retain stable IDs, names, local transforms, inherited visibility/locks, ordering, grouping/parenting and independent duplication. Source dimensions and a separate immutable copy of initial dimensions persist. Restore initial dimensions is another undoable parameter edit even after the bounded edit history has discarded early caches. Selecting, transforming, grouping or exporting never implicitly bakes.
+
+**Bake to Sculpt Layer** creates a separate authoritative sculpt volume at the source cache resolution, preserves model/world pose including parent transforms, hides the source, selects the new layer and records one Undo action. Undo removes the result and restores source visibility/selection; Redo reinstates it. Source parameters remain available. Clay, Smooth, Flatten, Inflate, Scrape, Pinch, Crease, Move deformation, stamping, Cut, Mask and Paint require this explicit conversion. Transform and layer metadata operations remain available directly. Small baked grids also support Reset sphere without writing a sphere outside their boundary.
+
+### 2. Architectural decisions
+
+`parametric-primitive.ts` validates bounded discriminated source definitions, evaluates exact Euclidean SDFs and computes analytic affine bounds. Primitive identity is the owning layer ID. `SdfLayer.primitive` is separate from the existing tube source; a layer cannot own both. The existing compositor prepares an analytical primitive sampler with the saved inverse model transform and distance scale. This integrates operands into the existing ordered preview only: it does **not** implement Phase 6.3 live parametric Boolean editing.
+
+`LayerRuntime` renders/exports mathematical tessellation (12 Box, 384 Cylinder, 12,096 Sphere triangles), with exact cardinal extents up to Float32 precision. Pole/seam coordinates near zero are canonicalized to avoid open edges in exact-coordinate print checks. Material ownership, transform/raycast IDs, surface spatial indexing, thumbnail cloning and ordinary source exports reuse existing paths. Display-only placement geometry is a sibling of the source root so Boolean source hiding cannot hide it; it is excluded from source exports, Boolean sampling and project thumbnails. Disposed/replaced runtimes release analytical geometry as well as mesher/material resources.
+
+The existing chunk mesher, native codec and explicit Bake require lattice storage. Consequently each primitive retains a **disposable fitted SDF cache**, not a resampled project-sized authoritative sculpt volume: odd cubic resolutions 33–63 (capped independently of a 128³/192³ project), extent 0.6 × longest local dimension. Odd grids include the shape centre and cardinal sample lines. Regeneration samples analytically in batches of 128, yields after about 3 ms and uses the existing two-chunk/3 ms cooperative remeshing path. Publication is atomic after validation/meshing/admission; cancellation, selection/metadata revisions and disposal reject stale candidates. Eight parameter-cache history entries are retained; initial dimensions remain stored separately. Existing project/triangle/256 MiB staging limits still apply; memory estimates include source geometry and retained caches. Dense reconstruction is confined to this per-object cache; transforms only update metadata/pose.
+
+Native **version 11** is written for primitives or small fitted sculpt grids; versions 1–10 remain readable and unchanged legacy projects keep their prior output version. Earlier app versions reject v11 rather than silently discard editable definitions. Validated current/initial parameters flow through native bytes, browser library, Save As, ID-remapped duplication, portable native import/export, immutable snapshots and the actual recovery worker. Import/save validate that a primitive cache's layout and every sample match its source. Unsupported types/parameters, invalid originals, nonfinite/negative/out-of-range dimensions and source/cache mismatches reject. Existing annotations, references, paint/masks and display metadata continue through the same codecs.
+
+Physical parameters use Phase 6.1 model calibration (default 100 mm/model unit); units only convert entry/display. GLB's metre convention now receives a single calibration factor on source translation and scale for every exported scope, including Boolean, so mixed parts stay aligned. This intentionally changes the previous uncalibrated GLB sizing. STL retains its 100 mm default longest-size override; only **Use project physical scale** opts into calibrated size. A target override never modifies project calibration or primitive parameters. Existing export optimization and final STL printability validation remain active.
+
+### 3. Build and test results
+
+Baseline `npm run check` passed Biome formatting/lint, strict TypeScript, production build and **1,372/1,372 tests**, test-command wall time **32.26 s**. Final `npm run check` passed formatting, Biome lint (**548 warnings / 94 infos, zero errors**), strict TypeScript, production build (**1.93 s**) and **1,400/1,400 tests across 85 files**, zero failures/skips/cancellations; test-command wall time **35.28 s**. Quick checks passed **21/21**. `git diff --check` passed; the existing Vite bundle-size advisory remains (main bundle about 1.404 MB / 396 kB gzip). Logs: `work/phase-6-2/baseline.log` and `work/phase-6-2/check.log`.
+
+UI refinement validation: `npm run check` passed Biome, strict TypeScript, production build (**1.82 s**) and **1,400/1,400 tests**, full test-command wall time **34.98 s**. `git diff --check` passed. Log: `work/phase-6-2/ui-check.log`.
+
+Added **28 deterministic primitive tests** covering the three analytical SDFs, physical/affine bounds and units, numeric rejection, source editing/history, independent duplication, initial parameters beyond history trimming, names/order/parenting/groups/inherited locks/visibility, explicit Bake and source preservation, absence of implicit Bake, native v11/legacy/Save As/project duplication and real worker recovery, malformed cache rejection, GLB calibration and encoding, STL encoding and closed one-component/nondegenerate fixtures, logical hands and actual Touch Plus controller bridges, trigger release ownership, Boolean-visible placement, cancellation/stale revisions and disposal. Existing suites continue to exercise tubes, Cut, mirror/turntable, references, painting/masks, Skybox, measurements, thumbnails, portable projects and controller calibration.
+
+Desktop browser inspection on isolated localhost port 5192 verified a 60 × 50 × 50 mm Box, editing width to 80 mm and X position to 100 mm, retained parametric selection and three undoable creation/transform/dimension actions. Test-origin autosave completed; no pre-existing recovery record was restored or discarded. Screenshot: `outputs/phase-6-2/desktop-primitives.png`. Physical hardware acceptance is pending.
+
+### 4. Benchmarks and regressions
+
+Reproduce with `node scripts/benchmark-primitives.mjs`; JSON: `outputs/phase-6-2/benchmark.json`. Single Mac Node v26.8.1 run, an empty independent base at each resolution, nine parameter updates per shape plus one creation and one Bake. All caches were 63³. CPU wall times include cooperative yielding/meshing and exclude browser/GPU rendering:
+
+| Host base | Shape | Create ms | Edit median / p95 ms | Bake ms |
+| --- | --- | --- | --- | --- |
+| 64³ | Box | 148.46 | 120.03 / 123.97 | 131.31 |
+| 64³ | Cylinder | 118.01 | 126.85 / 135.32 | 139.10 |
+| 64³ | Sphere | 115.24 | 118.22 / 124.43 | 125.74 |
+| 128³ | Box | 113.88 | 110.26 / 124.92 | 130.80 |
+| 128³ | Cylinder | 111.87 | 122.65 / 126.26 | 133.15 |
+| 128³ | Sphere | 112.92 | 112.00 / 117.90 | 126.32 |
+
+Tracked memory after the edits and Bake was about 34.1–51.1 MB including retained history/base/result; this is an application estimate, not measured process/GPU peak memory. p95 with nine samples is descriptive. No comparison establishes scaling or headset performance; no Quest CPU/GPU/frame-time or sustained-session benchmark has been made. The project's existing remeshing scheduler and calibrated controller-guide/Skybox paths remain intact.
+
+### 5. Known limitations and blockers
+
+Physical Quest 3/Touch Plus/Quest Browser acceptance is **pending**, so hardware release readiness is unverified. Rounded Box, Cone and Torus are deferred. Current source dimensions admit 0.001–16 model units and at most 8:1 aspect ratio, with existing eight-layer/triangle/memory limits; the aspect limit prevents sub-voxel Bake parts. Cylinder/Sphere use diameter rather than a separate radius field. No bevels or parametric constraints/Boolean tree editor. Existing Boolean preview quality caps still apply; separate source exports preserve the mathematical tessellations.
+
+Rendered/exported curved surfaces are polygonal approximations with exact cardinal sizes, not CAD B-reps. Rotated triangle bounds can differ slightly from analytic curve bounds. Bake is a sampled SDF approximation at the fitted cache spacing; it retains intended units/pose and cardinal sizing, but corners/curvature retain normal voxel discretization error. Sources remain available for later parameter edits/rebaking. Parent linkage is not copied to the baked root layer; its inherited world pose is preserved. Restoring initial dimensions does not reset transforms. Parameter Undo retains eight cache edits, separately from persistent initial dimensions.
+
+Desktop creates at model origin before exact/gizmo placement; VR previews currently place axis-aligned in model space, then existing transforms rotate/scale them after placement. Preview cancellation is available from its Support menu; no new face-button cancellation binding is claimed. Changes to calibration reinterpret the whole project just as in Phase 6.1. GLB now uses metres from calibration; STL still requires the project-scale checkbox to bypass its target override. Print checks do not prove wall thickness, self-intersection freedom or universal slicer suitability.
+
+### 6. Next recommendations — physical Quest 3 acceptance, all pending
+
+- [ ] **Pending:** Record Quest OS, Quest Browser and app revision. In Studio and Passthrough, use both dominance settings to open Tool Wheel → World Settings → Measure & Precision → Primitives. Confirm discoverability, readable keypad/units and the unchanged full-size Cut sector.
+- [ ] **Pending:** Create a 50 × 30 × 20 mm Box, a 30 mm diameter × 60 mm Cylinder and a 25.4 mm Sphere. Position naturally, size with Tool stick, confirm after trigger release and cancel with the Support menu. Verify no Clay/Paint/Mask stroke; test tracking loss, reconnect, menus, grips, session re-entry and cancellation during generation.
+- [ ] **Pending:** Select sources in Layers, edit exact mm/cm/in dimensions/positions/rotations/scales, rename, duplicate, reorder, parent/group, hide/show and lock/unlock (including inherited locks). Confirm initial-dimension restoration and Undo/Redo without implicit Bake. Navigate/zoom/rotate workspace and run turntable; intended physical size must stay unchanged.
+- [ ] **Pending:** Bake a nested transformed primitive, compare size/placement, confirm hidden editable source and one-step Undo/Redo. Exercise Clay, Smooth, Move, Cut, Mask, Paint, mirror and turntable on the baked layer without changes to unrelated layers/tubes. Save and reopen.
+- [ ] **Pending:** Save/Save As, duplicate in Project Browser, portable export/import, autosave and recovery with source parameters, initial dimensions, groups, annotations, references and thumbnails. Confirm preserved controller-guide clearance and Studio Skybox in repeated Studio/Passthrough sessions.
+- [ ] **Pending:** Export known-size parts as calibrated GLB and project-scale STL; compare slicer dimensions and print reports, then repeat STL with explicit target override. Verify absence of wireframes/handles/annotations and check intended printer limitations.
+- [ ] **Pending:** Record frame timing, input responsiveness, memory/GPU/resource behavior during repeated edits/Bakes/deletes and a sustained session. Host wall times above are not headset acceptance evidence.
+
+---
+
+
 ## Phase 6.1 handover — Measurement & Precision Transforms
 
 Updated 2026-11-04. Active repository `/Users/brettjames/development/vrappPOC`. Reviewed this status, Phase 6.0 Cut/thumbnail handover, controller-guide profiles, Studio Skybox and `docs/TESTING.md` before changes. Initial HEAD was `5a067e6` with existing uncommitted Skybox work; that work became commit `126312a` during this task and was preserved. Implementation and validation were initially left uncommitted. The user subsequently authorized committing and pushing Phase 6.1 on 2026-11-04. No merge or reset was performed. Quest 3 calibrated controller-guide profiles/offsets and Studio Skybox implementation are untouched.

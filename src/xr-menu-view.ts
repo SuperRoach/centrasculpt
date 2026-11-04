@@ -524,7 +524,7 @@ export class XRMenuView implements XRMenuInteraction {
         : this.model.hover?.startsWith("hier:drag:")
           ? "Hold Tool trigger, then drag onto a layer or empty space"
           : info
-            ? `${info.resolution ? `${info.resolution}³ · ` : ""}${info.operation === "difference" ? "Subtracts from earlier layers" : info.operation === "intersect" ? "Keeps overlapping volume" : info.operation === "union" ? "Adds to the combined volume" : "Layer group"}${info.tube ? " · Procedural Tube" : ""}${info.children ? ` · ${info.children} nested items` : ""}`
+            ? `${info.resolution ? `${info.resolution}³ · ` : ""}${info.operation === "difference" ? "Subtracts from earlier layers" : info.operation === "intersect" ? "Keeps overlapping volume" : info.operation === "union" ? "Adds to the combined volume" : "Layer group"}${info.tube ? " · Procedural Tube" : info.primitive ? ` · Parametric ${info.primitive}` : ""}${info.children ? ` · ${info.children} nested items` : ""}`
             : content.footer;
     if (!wheel)
       drawVRText(
@@ -661,7 +661,7 @@ export class XRMenuView implements XRMenuInteraction {
       const badges = [
         info.resolution ? `${info.resolution}³` : "Group",
         info.operation === "difference" ? "−" : info.operation === "intersect" ? "∩" : "+",
-        ...(info.tube ? ["Tube"] : []),
+        ...(info.tube ? ["Tube"] : info.primitive ? [info.primitive] : []),
         ...(info.children && info.collapsed ? [`${info.children} children`] : []),
       ];
       const badgeText = badges.join("  ·  "),
@@ -705,44 +705,42 @@ export class XRMenuView implements XRMenuInteraction {
     if (b.id.startsWith("visible:") || b.id.startsWith("locked:")) {
       const x = r.x + r.width / 2,
         y = r.y + r.height / 2;
-      {
-        ctx.save();
-        ctx.strokeStyle = style.text;
-        ctx.lineWidth = 4;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        if (b.id.startsWith("visible:")) {
-          ctx.moveTo(x - 27, y);
-          ctx.quadraticCurveTo(x, y - 31, x + 27, y);
-          ctx.quadraticCurveTo(x, y + 31, x - 27, y);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(x, y, 8, 0, Math.PI * 2);
-          if (b.label === "Hidden") {
-            ctx.moveTo(x - 26, y - 24);
-            ctx.lineTo(x + 26, y + 24);
-          }
-        } else {
-          roundedVRRect(ctx, x - 21, y - 4, 42, 34, 6);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(x - 13, y - 4);
-          ctx.lineTo(x - 13, y - 18);
-          if (b.detail === "Locked" || b.label === "Unlock" || b.label === "Locked") {
-            ctx.quadraticCurveTo(x - 13, y - 34, x, y - 34);
-            ctx.quadraticCurveTo(x + 13, y - 34, x + 13, y - 18);
-            ctx.lineTo(x + 13, y - 4);
-          } else {
-            ctx.quadraticCurveTo(x - 13, y - 34, x + 4, y - 34);
-            ctx.quadraticCurveTo(x + 23, y - 34, x + 23, y - 18);
-          }
-          ctx.moveTo(x, y + 9);
-          ctx.lineTo(x, y + 18);
-        }
+      ctx.save();
+      ctx.strokeStyle = style.text;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      if (b.id.startsWith("visible:")) {
+        ctx.moveTo(x - 27, y);
+        ctx.quadraticCurveTo(x, y - 31, x + 27, y);
+        ctx.quadraticCurveTo(x, y + 31, x - 27, y);
         ctx.stroke();
-        ctx.restore();
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        if (b.label === "Hidden") {
+          ctx.moveTo(x - 26, y - 24);
+          ctx.lineTo(x + 26, y + 24);
+        }
+      } else {
+        roundedVRRect(ctx, x - 21, y - 4, 42, 34, 6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - 13, y - 4);
+        ctx.lineTo(x - 13, y - 18);
+        if (b.detail === "Locked" || b.label === "Unlock" || b.label === "Locked") {
+          ctx.quadraticCurveTo(x - 13, y - 34, x, y - 34);
+          ctx.quadraticCurveTo(x + 13, y - 34, x + 13, y - 18);
+          ctx.lineTo(x + 13, y - 4);
+        } else {
+          ctx.quadraticCurveTo(x - 13, y - 34, x + 4, y - 34);
+          ctx.quadraticCurveTo(x + 23, y - 34, x + 23, y - 18);
+        }
+        ctx.moveTo(x, y + 9);
+        ctx.lineTo(x, y + 18);
       }
+      ctx.stroke();
+      ctx.restore();
       return;
     }
     if (b.id === "hier:transform" && r.height >= 200) {
