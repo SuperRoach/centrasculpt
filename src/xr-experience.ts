@@ -5,6 +5,7 @@ import type { EditorToolState } from "./editor-tool-state";
 import type { IndependentLayers } from "./independent-layers";
 import type { LightRig } from "./light-rig";
 import { questCapture } from "./performance-capture";
+import type { PrecisionTools } from "./precision-tools";
 import type { ReferenceView } from "./reference-view";
 import { turntableSettings } from "./world-settings";
 import { XRAlternateTool } from "./xr-alternate-tool";
@@ -29,6 +30,7 @@ import { XRSupportGuide } from "./xr-support-guide";
 import { XRTubeTool } from "./xr-tube-tool";
 import { VR_UI_SCALES, validateVRUIScale } from "./xr-ui-style";
 export type XRExperienceHooks = {
+  precision?: PrecisionTools;
   projectBrowser?: import("./project-browser").ProjectBrowser;
   projectAction?: (action: import("./xr-world-menu").ProjectAction) => Promise<void>;
   projectStatus?: () => string;
@@ -102,6 +104,7 @@ export class XRExperience {
     if (hooks.tools)
       this.menus = new XRMenuView(
         new XRMenuModel(hooks.tools, {
+          precision: hooks.precision,
           projectBrowser: hooks.projectBrowser,
           projectAction: hooks.projectAction,
           projectStatus: hooks.projectStatus,
@@ -199,6 +202,7 @@ export class XRExperience {
       this.diagnostics,
       () => this.syncDebugControls(),
       {
+        precision: hooks.precision,
         supportGuide: this.supportGuide,
         lighting: hooks.lighting,
         references: hooks.references,
@@ -477,8 +481,9 @@ export class XRExperience {
     }
     this.controllers.setGuideViewer(pose?.transform.position ?? null);
     this.controllers.update(time);
-    const feedback =
-      this.hooks.tools?.active === "move" && this.move?.notifying
+    const feedback = this.hooks.precision?.active
+      ? this.hooks.precision.feedback
+      : this.hooks.tools?.active === "move" && this.move?.notifying
         ? this.move.feedback
         : this.sizing?.feedback || this.alternate?.feedback || this.interaction?.feedback;
     this.shortcutView.paint(

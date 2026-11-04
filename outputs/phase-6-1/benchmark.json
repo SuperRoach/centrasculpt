@@ -1,0 +1,56 @@
+{
+  "scope": "Single host Node run; committed sphere surfaces. Event-triggered raycast, full bounds traversal and annotation rebuild. Annotation run accumulates 32 records without canvas/GPU labels. Unchanged sync measures identity/reparent guard only. No Quest CPU/GPU/frame-time claim.",
+  "node": "v26.8.1",
+  "rows": [
+    {
+      "resolution": 64,
+      "raycast": {
+        "iterations": 50,
+        "medianMs": 0.24875000000000114,
+        "p95Ms": 1.0093750000000057
+      },
+      "dimensions": {
+        "iterations": 50,
+        "medianMs": 0.6421669999999722,
+        "p95Ms": 1.1584589999999935
+      },
+      "annotations": {
+        "iterations": 32,
+        "medianMs": 0.55337499999996,
+        "p95Ms": 1.2724999999999795
+      },
+      "unchangedSync": {
+        "iterations": 10000,
+        "medianMs": 0.00004200000000764703,
+        "p95Ms": 0.00012500000002546585
+      },
+      "annotationsRetained": 32,
+      "historyDelta": 0
+    },
+    {
+      "resolution": 128,
+      "raycast": {
+        "iterations": 50,
+        "medianMs": 0.1275410000000079,
+        "p95Ms": 0.23562499999997044
+      },
+      "dimensions": {
+        "iterations": 50,
+        "medianMs": 2.6907079999999723,
+        "p95Ms": 3.7370839999999816
+      },
+      "annotations": {
+        "iterations": 32,
+        "medianMs": 0.4058340000000271,
+        "p95Ms": 0.7312919999999394
+      },
+      "unchangedSync": {
+        "iterations": 10000,
+        "medianMs": 0.000041999999893960194,
+        "p95Ms": 0.00004200000000764703
+      },
+      "annotationsRetained": 32,
+      "historyDelta": 0
+    }
+  ]
+}

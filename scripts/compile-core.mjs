@@ -15,6 +15,8 @@ const nextCache = {};
 const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
 
 for (const name of [
+  "physical-units",
+  "precision-tools",
   "studio-skybox",
   "world-settings-ui",
   "xr-snap-guide",

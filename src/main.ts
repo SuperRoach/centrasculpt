@@ -1,6 +1,9 @@
 import whatsNew from "../WHATS_NEW.md?raw";
 import { exportFilename } from "./export-filename";
 import { questCapture } from "./performance-capture";
+import { physicalExportLongestMM } from "./physical-units";
+import { PrecisionTools, selectionDimensions } from "./precision-tools";
+import { precisionUI } from "./precision-ui";
 import { TransformPreview } from "./transform-preview";
 import { mountWhatsNew } from "./whats-new";
 
@@ -102,6 +105,8 @@ let loadingProject = false;
 let recovery: RecoveryController | undefined;
 const stabilityMetrics = new StabilityMetrics();
 let stabilityText = "";
+let precision: PrecisionTools | undefined;
+let measurementUI: { sync: () => void } | undefined;
 let xrExperience: XRExperience | undefined;
 const xrBlocked = () => xrExperience?.blocking ?? false;
 const input = new InputOwnership();
@@ -302,6 +307,7 @@ function refresh() {
     display.colour(layers.project.id, layer.id, layer.order),
   );
   desktopLayers?.render();
+  measurementUI?.sync();
   ui.resolution(layers.active.layer.volume.resolution);
   syncRenderStyle();
   ui.viewportMode(display.mode);
@@ -487,6 +493,7 @@ function syncViewportTools(): void {
 }
 function chooseWorkspace(tool: WorkspaceTool, fromXR = false): void {
   if (loadingProject || ui.modalOpen || (xrBlocked() && !fromXR)) return;
+  precision?.start(0);
   editorTools?.clearMoveSelection();
   stop();
   shapeLibraryUI.setOpen(tool === "boolean", fromXR);
@@ -508,6 +515,7 @@ function chooseWorkspace(tool: WorkspaceTool, fromXR = false): void {
 }
 function chooseLayerMode(mode: EditorMode, fromXR = false): void {
   if (loadingProject || ui.modalOpen || (xrBlocked() && !fromXR)) return;
+  precision?.start(0);
   editorTools?.clearMoveSelection();
   stop();
   shapeLibraryUI.setOpen(false, fromXR);
@@ -540,6 +548,15 @@ renderer.domElement.addEventListener("pointerleave", () => {
   cursor.visible = false;
 });
 renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (precision?.active) {
+    if (!loadingProject && !ui.modalOpen && !xrBlocked() && e.button === 0) {
+      updatePointer(e);
+      raycaster.setFromCamera(pointer, camera);
+      precision.pick(raycaster);
+      ui.status(precision.feedback);
+    }
+    return;
+  }
   if (input.referenceEditing) return;
   if (shapeGhost.model.enabled) {
     if (shapeGhost.model.manipulating) {
@@ -654,6 +671,11 @@ window.addEventListener("keydown", (event) => {
   ) {
     event.preventDefault();
     document.getElementById("save-project")!.click();
+    return;
+  }
+  if (event.key === "Escape" && precision?.active) {
+    precision.start(0);
+    ui.status("Measurement off");
     return;
   }
   if (event.key === "Escape" && shapeGhost.model.enabled && !loadingProject) {
@@ -1179,6 +1201,7 @@ async function openProjectFile(
     return false;
   recovery?.cancelJob();
   xrExperience?.controllers.suspend();
+  precision?.start(0);
   editorTools?.clearMoveSelection();
   stop();
   loadingProject = true;
@@ -1316,7 +1339,8 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     exportMessage("Choose STL or GLB.", true);
     return;
   }
-  const stlMM = format === "stl" ? Number(printSize.value) : undefined;
+  let stlMM = format === "stl" ? Number(printSize.value) : undefined;
+  let calibratedLongestMM = 0;
   if (loadingProject || xrBlocked()) return;
   stop();
   clearPreparedExport();
@@ -1373,6 +1397,13 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
         ...source,
         chunks: source.chunks.map(({ positions, normals }) => ({ positions, normals })),
       }));
+    if (stlMM !== undefined) {
+      calibratedLongestMM = physicalExportLongestMM(sources, display.precision.millimetresPerUnit);
+      if (printUsePhysical.checked) {
+        stlMM = calibratedLongestMM;
+        printSize.value = String(stlMM);
+      }
+    }
     const quality = document.querySelector<HTMLSelectElement>("#export-quality")!
       .value as ExportQuality;
     const result = await exportGlbAsync(sources, quality, {
@@ -1398,6 +1429,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     if (stlMM !== undefined) {
       const report = result.report!;
       printReport.textContent = [
+        `${printUsePhysical.checked ? "Project physical scale" : "Target size override"} · calibrated scope longest ${calibratedLongestMM.toFixed(3)} mm · export ${(stlMM / calibratedLongestMM).toFixed(6)}× project scale`,
         `Physical size: ${report.dimensions.map((n) => n.toFixed(3)).join(" × ")} mm`,
         `${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`,
         `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,
@@ -1462,11 +1494,50 @@ printSize.min = "0.1";
 printSize.max = "10000";
 printSize.value = "100";
 printSize.step = "0.1";
+const printUsePhysical = document.createElement("input");
+printUsePhysical.type = "checkbox";
+printUsePhysical.id = "print-use-physical-scale";
+const printPhysicalLabel = document.createElement("label");
+printPhysicalLabel.append(
+  printUsePhysical,
+  document.createTextNode("Use project physical scale for this export scope"),
+);
 const printLabel = document.createElement("label");
 printLabel.textContent = "Target longest dimension (mm)";
 printLabel.append(printSize);
-printLabel.append(document.createTextNode(" · aspect ratio locked"));
-document.getElementById("export-selected")!.before(printLabel);
+printLabel.append(
+  document.createTextNode(" · aspect ratio locked · overrides project physical calibration"),
+);
+const projectPrintSize = document.createElement("button");
+projectPrintSize.textContent = "Use selected physical size";
+projectPrintSize.onclick = () => {
+  try {
+    if (loadingProject || ui.modalOpen || xrBlocked()) return;
+    if (layers.selectedGroupId)
+      throw new Error(
+        "Select an individual layer for this shortcut, or use project physical scale with Export all layers.",
+      );
+    printSize.value = String(
+      Math.max(...selectionDimensions(layers)) * display.precision.millimetresPerUnit,
+    );
+    exportMessage(
+      "Selected physical longest dimension copied. Export Selected to retain this scale.",
+    );
+  } catch (error) {
+    exportMessage(message(error), true);
+  }
+};
+printLabel.append(projectPrintSize);
+printUsePhysical.onchange = () => {
+  printSize.disabled = printUsePhysical.checked;
+  projectPrintSize.disabled = printUsePhysical.checked;
+  exportMessage(
+    printUsePhysical.checked
+      ? "Export uses this scope’s calibrated physical dimensions. Target sizing is disabled."
+      : "Export uses the target longest dimension, overriding project physical scale.",
+  );
+};
+document.getElementById("export-selected")!.before(printPhysicalLabel, printLabel);
 const exportResult = document.createElement("div");
 exportResult.id = "export-result";
 const exportStatus = document.createElement("p");
@@ -1524,6 +1595,7 @@ document.getElementById("export-boolean")!.parentElement!.append(printPanel);
 mountWhatsNew(printPanel, whatsNew);
 function syncExportFormat() {
   printLabel.hidden = exportFormat.value !== "stl";
+  printPhysicalLabel.hidden = exportFormat.value !== "stl";
   printPanel.hidden = exportFormat.value !== "stl";
   clearPreparedExport();
 }
@@ -1750,6 +1822,7 @@ const desktopTube = new DesktopTubeTool(
     !ui.modalOpen &&
     !xrBlocked() &&
     !input.referenceEditing &&
+    !precision?.active &&
     input.mode === "sculpt",
   () => refresh(),
 );
@@ -1787,7 +1860,28 @@ const references = new ReferenceView(
   xrRig.workspaceRoot,
   xrRig.turntable.group,
 );
-window.addEventListener("pagehide", () => references.clear());
+precision = new PrecisionTools(
+  () => layers,
+  references,
+  () => {
+    refresh();
+  },
+);
+precision.sync();
+measurementUI = precisionUI(
+  precision,
+  precisionPanel.parentElement!,
+  () => loadingProject || ui.modalOpen || xrBlocked(),
+  () => {
+    stop();
+    chooseLayerMode("sculpt");
+    shapeGhost.model.enabled = false;
+  },
+);
+window.addEventListener("pagehide", () => {
+  references.clear();
+  precision?.dispose();
+});
 referenceEditor = new ReferenceTransformTool(
   camera,
   renderer.domElement,
@@ -2023,6 +2117,7 @@ xrExperience = new XRExperience(
   renderer,
   xrRig,
   {
+    precision,
     projectBrowser,
     projectStatus: () =>
       `${layers.project.layerStack.layers.length} layers · ${manualSaving ? "Saving…" : document.getElementById("header-save")!.dataset.state === "saved" ? "Manual save current" : "Save changes before replacing"}`,
@@ -2595,6 +2690,7 @@ function pollComposite(now: number): void {
   }
 }
 renderer.setAnimationLoop((now, frame) => {
+  precision?.sync();
   const cpuStart = performance.now();
   lighting.sync(now, document.visibilityState !== "hidden");
   lightUI.sync();
@@ -2632,6 +2728,7 @@ renderer.setAnimationLoop((now, frame) => {
     }
   if (
     pointerInside &&
+    !precision?.active &&
     editorTools?.active !== "tube" &&
     editorTools?.active !== "edit-spline" &&
     input.canSculpt(

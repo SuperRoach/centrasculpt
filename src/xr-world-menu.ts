@@ -1,6 +1,7 @@
 import type { EditorToolState } from "./editor-tool-state";
 import type { LightRig } from "./light-rig";
 import { defaultLighting, LIGHT_COLOURS, LIGHT_IDS, type LightId } from "./lighting";
+import type { PrecisionTools } from "./precision-tools";
 import type { ReferenceView } from "./reference-view";
 import type { Turntable } from "./turntable";
 import { mirrorGuideSettings, STUDIO_BACKGROUNDS, turntableSettings } from "./world-settings";
@@ -8,6 +9,7 @@ import type { MenuButton, MenuContent } from "./xr-menu-model";
 import type { XRSessionController } from "./xr-session";
 export type ProjectAction = "new" | "open" | "save" | "export" | "print" | "recover";
 export type WorldSection =
+  | "precision"
   | "project"
   | "lighting"
   | "light"
@@ -28,6 +30,7 @@ export type WorldSection =
   | "reference-delete"
   | "reference-more";
 export interface XRWorldMenuPort {
+  precision?: PrecisionTools;
   projectBrowser?: import("./project-browser").ProjectBrowser;
   projectAction?: (action: ProjectAction) => Promise<void>;
   projectStatus?: () => string;
@@ -52,6 +55,7 @@ export class XRWorldMenu {
     private readonly port?: XRWorldMenuPort,
   ) {}
   content(): MenuContent {
+    if (this.section === "precision" && this.port?.precision) return this.port.precision.content();
     const layers = this.tools.port.layers(),
       world = layers.display.world,
       busy = this.tools.busy;
@@ -139,7 +143,22 @@ export class XRWorldMenu {
       });
       add("world:environment", "Environment", 244, "Studio or Passthrough");
       add("world:background", "Studio Background", 394, "Skybox · colour swatches · ground grid");
-      add("world:guides", "Guides and Constraints", 544, "Mirror symmetry · angle snap");
+      buttons.push(
+        {
+          id: "world:guides",
+          label: "Guides and Constraints",
+          detail: "Mirror symmetry · angle snap",
+          disabled: busy,
+          rect: { x: 40, y: 544, width: 524, height: 136 },
+        },
+        {
+          id: "world:precision",
+          label: "Measure & Precision",
+          detail: "Physical size · exact transforms",
+          disabled: busy,
+          rect: { x: 588, y: 544, width: 524, height: 136 },
+        },
+      );
       buttons.push(
         {
           id: "world:preferences",
@@ -776,6 +795,10 @@ export class XRWorldMenu {
     };
   }
   activate(id: string): boolean {
+    if (this.port?.precision?.activate(id)) {
+      this.tools.port.changed();
+      return true;
+    }
     if (id.startsWith("library:") && this.port?.projectBrowser) {
       void this.port.projectBrowser.activate(id);
       return true;

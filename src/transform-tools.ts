@@ -2,6 +2,7 @@ import type { Camera, Scene } from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { IndependentLayers } from "./independent-layers";
 import type { EditorMode, InputOwnership, TransformSpace } from "./interaction";
+import { snappedTransform } from "./physical-units";
 import type { VolumeTransform } from "./transform";
 import { uniformScale } from "./transform";
 
@@ -126,6 +127,12 @@ export class LayerTransformTools {
         next.scale = [value, value, value];
       }
       try {
+        // Quantize saved model coordinates, independent of the renderer parent's navigation pose.
+        const settings = this.layers().display.precision;
+        if (this.controls.mode === "translate" && settings.translationSnapMM)
+          next.position = snappedTransform(next, settings).position;
+        if (this.controls.mode === "rotate" && settings.angleSnapDegrees)
+          next.rotation = snappedTransform(next, settings).rotation;
         this.layers().updateTransform(next);
         callbacks.changed();
       } catch (error) {

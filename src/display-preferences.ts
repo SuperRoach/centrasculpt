@@ -1,4 +1,5 @@
 import { type LightingSettings, validateLighting } from "./lighting";
+import { defaultPrecision, type PrecisionSettings, validatePrecision } from "./physical-units";
 import { type ReferenceImage, validateReferences } from "./reference-images";
 import { type RenderStyle, validateRenderStyle } from "./render-style";
 import {
@@ -19,6 +20,7 @@ const palette = [
   "#929fc9",
 ];
 export type ProjectDisplayPreferences = {
+  precision?: PrecisionSettings;
   mode: ViewportMode;
   colours: Record<string, string>;
   renderStyle?: RenderStyle;
@@ -57,6 +59,7 @@ export function validateProjectDisplay(
   const vrUiScale = data.vrUiScale === undefined ? undefined : validateVRUIScale(data.vrUiScale);
   const world = data.world === undefined ? undefined : validateWorldSettings(data.world);
   return {
+    ...(data.precision === undefined ? {} : { precision: validatePrecision(data.precision) }),
     ...(data.supportGuide === undefined ? {} : { supportGuide: data.supportGuide as boolean }),
     ...(data.lighting === undefined ? {} : { lighting: validateLighting(data.lighting) }),
     ...(data.references === undefined ? {} : { references: validateReferences(data.references) }),
@@ -71,6 +74,7 @@ export function validateProjectDisplay(
 }
 /** Runtime display preferences with an explicit native-project snapshot boundary. */
 export class LayerDisplayPreferences {
+  precision = defaultPrecision();
   lighting?: LightingSettings;
   references: ReferenceImage[] = [];
   world = defaultWorldSettings();
@@ -106,6 +110,7 @@ export class LayerDisplayPreferences {
     layers: readonly { id: string; order: number }[],
   ): ProjectDisplayPreferences {
     return {
+      precision: structuredClone(this.precision),
       ...(!this.supportGuide ? { supportGuide: false } : {}),
       ...(this.lighting ? { lighting: structuredClone(this.lighting) } : {}),
       ...(this.references.length ? { references: this.references } : {}),
@@ -136,6 +141,7 @@ export class LayerDisplayPreferences {
             saved,
             layers.map((layer) => layer.id),
           );
+    this.precision = validated?.precision ?? defaultPrecision();
     this.lighting = validated?.lighting;
     this.references = validated?.references ?? [];
     this.world = validated?.world ?? defaultWorldSettings();

@@ -1,3 +1,9 @@
+### Phase 6.1 — Measure and place precisely (2026-11-04)
+
+- Open **World Settings → Measure & Precision** in VR, or **Measure & precision** on desktop, to measure surface distances and three-point angles in millimetres, centimetres or inches. Keep, reposition or remove annotations on sculpts and STL references.
+- Enter exact positions, rotations and proportional target dimensions for layers and groups. Optional 0.1, 1 or 5 mm movement snapping and adjustable angle steps help with placement; transforms support Undo/Redo.
+- Save physical calibration and measurements with your project. STL export can use the project’s physical scale, or your existing target longest dimension; its report explains the applied sizing.
+
 ### Studio sky and horizon (2026-11-04)
 
 - **World Settings → Studio Background → Skybox** now starts On with a neutral-grey sky and lower background. The horizon stays level as you look around: look up for sky, or down for the lower colour. Available in VR Studio and the desktop preview; your On/Off choice saves with the project.

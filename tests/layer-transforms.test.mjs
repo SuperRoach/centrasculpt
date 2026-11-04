@@ -602,3 +602,48 @@ for (const booleanPreview of [false, true])
       else globalThis.document = previousDocument;
     }
   });
+test("physical desktop snapping quantizes model metadata under navigation without resnapping unaffected rotation/position", () => {
+  const c = create(),
+    scene = new Scene(),
+    navigation = new Group(),
+    input = new InputOwnership(),
+    camera = new PerspectiveCamera(38, 1, 0.01, 100);
+  scene.add(navigation);
+  navigation.add(c.group);
+  c.display.precision.translationSnapMM = 1;
+  c.display.precision.angleSnapDegrees = 10;
+  const tools = new LayerTransformTools(camera, new FakeCanvas(), scene, () => c, input, {
+    beforeDrag() {},
+    camera() {},
+    changed() {},
+    error: assert.fail,
+    busy: () => false,
+  });
+  try {
+    for (const scale of [0.05, 1, 3]) {
+      navigation.position.set(3.4567, -2.013, 1.28);
+      navigation.rotation.set(0.4, 0.7, 0.1);
+      navigation.scale.setScalar(scale);
+      scene.updateMatrixWorld(true);
+      tools.setMode("translate");
+      c.beginTransform();
+      c.transformObject.position.set(0.1234, -0.0567, 0.004);
+      c.transformObject.rotation.set(0.14, 0.23, 0.01);
+      tools.controls.dispatchEvent({ type: "objectChange" });
+      assert.deepEqual(c.transformNode.transform.position, [0.12, -0.06, 0]);
+      assert.deepEqual(c.transformNode.transform.rotation, [0.14, 0.23, 0.01]);
+      c.finishTransform();
+    }
+    tools.setMode("rotate");
+    c.beginTransform();
+    c.transformObject.position.set(0.1234, 0, 0);
+    c.transformObject.rotation.set(0.2, 0, 0);
+    tools.controls.dispatchEvent({ type: "objectChange" });
+    assert.equal(c.transformNode.transform.position[0], 0.1234);
+    assert(Math.abs(c.transformNode.transform.rotation[0] - Math.PI / 18) < 1e-10);
+    c.finishTransform();
+  } finally {
+    tools.dispose();
+    c.dispose();
+  }
+});

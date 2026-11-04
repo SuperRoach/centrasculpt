@@ -20,6 +20,7 @@ import type { EditorTool } from "./editor-tool-state";
 import { toolAllowsLayerGrab } from "./editor-tool-state";
 import type { IndependentLayers } from "./independent-layers";
 import type { LightRig } from "./light-rig";
+import type { PrecisionTools } from "./precision-tools";
 import type { ReferenceView } from "./reference-view";
 import { WorkspaceNavigation } from "./workspace-navigation";
 import { validateHintMode } from "./xr-actions";
@@ -151,6 +152,7 @@ export class XRControllers {
     private readonly panel?: XRDiagnostics,
     private readonly changed: () => void = () => {},
     private readonly options: {
+      precision?: PrecisionTools;
       supportGuide?: XRSupportGuide;
       lighting?: LightRig;
       references?: ReferenceView;
@@ -675,11 +677,25 @@ export class XRControllers {
       this.slots[strokeTool.slot].ray.updateWorldMatrix(true, false);
       this.slots[strokeTool.slot].grip.updateWorldMatrix(true, false);
     }
+    const measurementOwned =
+      this.options.precision?.step(
+        strokeTool,
+        strokeTool ? this.slots[strokeTool.slot].ray.matrixWorld : undefined,
+        !!active &&
+          !menuWasOpen &&
+          !this.shortcuts.menu &&
+          !diagnosticOwned &&
+          !anyGrip &&
+          !this.options.stroke?.active &&
+          !this.grab?.active &&
+          !this.layerGrab?.active,
+      ) ?? false;
     const lightOwned =
       this.options.lighting?.step(
         strokeTool,
         strokeTool ? this.slots[strokeTool.slot].ray.matrixWorld : undefined,
         !!active &&
+          !measurementOwned &&
           !menuWasOpen &&
           !this.shortcuts.menu &&
           !diagnosticOwned &&
@@ -694,6 +710,7 @@ export class XRControllers {
         strokeTool,
         strokeTool ? this.slots[strokeTool.slot].ray.matrixWorld : undefined,
         !!active &&
+          !measurementOwned &&
           !lightOwned &&
           !menuWasOpen &&
           !this.shortcuts.menu &&
@@ -709,6 +726,7 @@ export class XRControllers {
       this.input.byHand(this.roles.support),
       strokeTool,
       !!active &&
+        !measurementOwned &&
         !lightOwned &&
         !referenceOwned &&
         !menuWasOpen &&
@@ -725,6 +743,7 @@ export class XRControllers {
       this.input.states,
       time,
       !!active &&
+        !measurementOwned &&
         !lightOwned &&
         !referenceOwned &&
         !menuWasOpen &&
@@ -744,13 +763,14 @@ export class XRControllers {
         !!this.grab?.active ||
         !!this.layerGrab?.active ||
         !!this.shortcuts.menu,
-      !!active && !!strokeTool?.tracked && !!strokeTool.gripTracked,
+      !!active && !measurementOwned && !!strokeTool?.tracked && !!strokeTool.gripTracked,
     );
     this.options.stroke?.update(
       strokeTool,
       strokeTool ? this.slots[strokeTool.slot].ray.matrixWorld : undefined,
       time,
       !!active &&
+        !measurementOwned &&
         !lightOwned &&
         !referenceOwned &&
         !menuWasOpen &&
@@ -791,6 +811,7 @@ export class XRControllers {
         strokeTool ? this.slots[strokeTool.slot].ray.matrixWorld : undefined,
         time,
         !!active &&
+          !measurementOwned &&
           !lightOwned &&
           !referenceOwned &&
           ((layersMenu && menuDistance === null) || (!menuWasOpen && !this.shortcuts.menu)) &&
@@ -805,7 +826,7 @@ export class XRControllers {
     if (selectedBefore !== this.options.layers?.().project.activeLayerId)
       this.haptics.pulse(strokeTool, "selection", time);
     if (
-      (mode === "transform" || layersMenu) &&
+      (mode === "transform" || layersMenu || measurementOwned) &&
       strokeTool &&
       ((layersMenu && menuDistance === null) || (!menuWasOpen && !this.shortcuts.menu)) &&
       !diagnosticOwned &&
@@ -817,7 +838,9 @@ export class XRControllers {
       const slot = this.slots[strokeTool.slot];
       slot.rayVisual.visible = true;
       slot.line.scale.z = (selectionDistance ?? 1.5) / 1.5;
-      slot.line.material.color.set(selectionDistance !== null ? "#b4d1ef" : "#79cde5");
+      slot.line.material.color.set(
+        measurementOwned ? "#ffe293" : selectionDistance !== null ? "#b4d1ef" : "#79cde5",
+      );
     }
     if (this.panel) {
       this.panel.feedback =

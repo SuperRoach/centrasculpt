@@ -1,5 +1,62 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 6.1 handover — Measurement & Precision Transforms
+
+Updated 2026-11-04. Active repository `/Users/brettjames/development/vrappPOC`. Reviewed this status, Phase 6.0 Cut/thumbnail handover, controller-guide profiles, Studio Skybox and `docs/TESTING.md` before changes. Initial HEAD was `5a067e6` with existing uncommitted Skybox work; that work became commit `126312a` during this task and was preserved. Implementation and validation were initially left uncommitted. The user subsequently authorized committing and pushing Phase 6.1 on 2026-11-04. No merge or reset was performed. Quest 3 calibrated controller-guide profiles/offsets and Studio Skybox implementation are untouched.
+
+### 1. What changed
+
+Added **World Settings → Measure & Precision**, alongside Guides on the existing readable VR menu, plus a compact desktop disclosure. Cut remains the tenth radial Tool Wheel entry; no wheel sector or footer was repurposed. Tool-trigger surface taps place two-point distances or three-point angles (point 2 is the vertex). Desktop clicks use the same picker. Lines, endpoint markers and camera-facing unit labels are display-only. Pick visible sculpt meshes, the visible Boolean result, or placed STL references, including locked references; image panels do not intercept measurement. Review/remove annotations, choose another annotation in VR, or reposition an individual endpoint. Stop measuring or choose another tool to return trigger ownership to sculpting. Desktop Escape stops measuring.
+
+Numeric controls edit selected layers/groups: model-space XYZ position in the selected physical units, Euler XYZ rotation in degrees, uniform scale, or proportional target width/height/depth. Desktop fields support Enter, Tab/change and Escape; VR uses an in-menu numeric keypad with backspace, Apply and Cancel. Selected dimensions are model-axis-aligned rendered bounds, including descendants for groups. Optional position grid steps are Off (default), 0.1, 1 and 5 mm; angle increments accept 0–180 degrees, with zero Off. Numeric entries remain exact and are not rounded to the movement grid.
+
+STL retains the existing default 100 mm target-longest-dimension workflow. An explicit **Use project physical scale for this export scope** checkbox opts into calibration-based sizing for current-layer, visible-layers or Boolean exports. Target entry is disabled while opted in. A selected-layer shortcut copies its physical longest dimension into the traditional target box. The print report states calibrated scope size, sizing mode, applied ratio and final physical dimensions. Exported geometry/report validation and print warnings remain in force.
+
+### 2. Architectural decisions
+
+`physical-units.ts` defines calibration as millimetres per model coordinate unit, separate from tracking, workspace, viewing and turntable matrices. New projects and legacy projects without precision metadata use **100 mm/model unit**, millimetre display and free movement. This assigns an explicit physical interpretation without rescaling any legacy geometry, transforms, references, lattice data or STL defaults. Changing calibration changes interpretation only. Centimetres and inches use factors 10 and 25.4 mm. Annotations store up to 64 bounded, finite two/three-point records with unique IDs in model coordinates.
+
+`PrecisionTools` owns measurement state and resources. Picking occurs only on an endpoint tap, not every frame. It removes the complete model-root world matrix from hit coordinates, including workspace navigation and turntable pose. STL reference picking deliberately invokes standard Mesh raycasting on the existing normalized/placed mesh without enabling its editing picker. Annotation graphics are siblings of the source root so Boolean preview cannot hide them; their local pose follows that root. They are excluded from source surfaces, Boolean composition, thumbnails, STL and GLB. Unchanged frame sync performs identity/parent checks and pose copies, without raycasts, bounds scans, geometry/texture rebuilds or SDF work. Editing annotations rebuilds and disposes their display resources.
+
+Numeric edits use existing `setActiveTransform` transactions and hierarchy world-to-parent conversion. Group parenting, inherited locks, positive uniform scale validation, cancellation and sculpt Undo/Redo stay authoritative. Gizmo world/local controls retain their movement semantics; physical grid quantization applies to saved model-axis coordinates, without including workspace translations/scales. Desktop translation and rotation snapping leave the other component unchanged. XR grip transforms can snap both components. Calibration/unit/snap settings and annotation edits use display metadata and never add SDF history entries. Annotation removal itself does not enter sculpt Undo/Redo.
+
+Optional `display.precision` goes through strict display validation, native save/load, immutable snapshots and the actual recovery worker. No native-version bump or geometry migration. Invalid units, nonfinite/range-invalid numbers, duplicate IDs, malformed points and excessive annotation counts reject. Older readers may drop unknown precision metadata on resave. STL input bounds are measured from the chosen source scope and saved source transforms, never renderer navigation matrices; the existing STL encoder still sizes to an explicit target.
+
+### 3. Build and test results
+
+Baseline `npm run check` passed formatting, Biome lint (546 warnings / 95 infos, zero errors), strict TypeScript, production build and **1,354/1,354 tests**, test wall time **32.31 s**. Final `npm run check` passed: Biome format/lint (**547 warnings / 95 infos**, zero errors), strict TypeScript, production build (**1.77 s**) and **1,372/1,372 tests across 84 files**, zero failures/skips/cancellations. Full test-command wall time **33.94 s**. The existing Vite bundle-size advisory remains (main bundle about 1.386 MB, 391 kB gzip). `git diff --check` passed. Final log: `work/phase-6-1/check.log`; baseline log: `work/phase-6-1/baseline.log`. Focused measurement/transform validation passed **38/38** before the final full run.
+
+Added 17 measurement/precision tests plus one desktop-snapping regression. They cover numerical conversions, finite validation, distance/angle math, hidden surfaces, full navigation removal, disabled STL-reference raycasts, annotation edits without geometry/history changes, nested groups, exact numeric placement/rotation, dimensions, locking, metadata Undo/Redo, snap calculations, worker recovery/native/legacy persistence, calibrated and override STL sizing, both logical hands and both actual controller bridge layouts, trigger ownership/rearming, aiming-ray visibility, bounded/disjoint keypad targets and Boolean-preview annotation visibility/resource reuse. The existing turntable test now checks runtime-angle exclusion specifically in turntable metadata; precision legitimately persists an angle increment.
+
+Desktop browser inspection verified 50 mm and 100 mm proportional sizing via keyboard, a visible 42.897 mm annotation on a 100 mm sphere, retained model/grid/Cut controls, and no warning/error console logs. Calibrated STL export reported **100.000 × 100.000 × 100.000 mm**, **1.000000×** project scale, 31,536 triangles, one connected surface and zero open/non-manifold/winding/degenerate/inward counts on that fixture. Existing unsupported print checks remain explicit. Screenshot: `work/phase-6-1/desktop-measurement.jpg`. Browser checks used isolated localhost port 5189; existing recovery was neither restored nor discarded. Physical Quest acceptance is pending.
+
+### 4. Benchmarks and regressions
+
+Reproducible host command: `node scripts/benchmark-precision.mjs`; results: `outputs/phase-6-1/benchmark.json`. Single Mac Node v26.8.1 run, 50 event-triggered picks/bounds scans per sphere, 32 accumulating annotation-pair placements and 10,000 unchanged sync calls:
+
+| Host fixture | Raycast median / p95 | Bounds median / p95 | Annotation pair median / p95 |
+| --- | --- | --- | --- |
+| 64³ | 0.249 / 1.009 ms | 0.642 / 1.158 ms | 0.553 / 1.272 ms |
+| 128³ | 0.128 / 0.236 ms | 2.691 / 3.737 ms | 0.406 / 0.731 ms |
+
+Both fixtures retained 32 annotations with **zero sculpt-history change**. Unchanged sync median was approximately 0.000042 ms; timer resolution/JIT/load make these micro-timings descriptive only. Annotation timings exclude browser canvas labels/GPU rendering. Smaller 128³ raycast times are an observation, not a scaling/performance claim. Annotation resources are bounded (one line and label per annotation, one shared endpoint point cloud); unchanged frames reuse them. Dense SDF storage, incremental meshing, worker scheduling and remeshing budgets are unchanged. No Quest CPU/GPU/frame-time or sustained-session measurement has been made.
+
+### 5. Known limitations and blockers
+
+Physical Quest 3/Touch Plus/Quest Browser usability, stereo label legibility and frame-time acceptance remain pending. Measurements use displayed triangle surfaces, not sub-voxel analytic SDF intersections. They are fixed model-space annotations, not associative constraints: later sculpt/layer/reference transforms do not move stored endpoints. Reposition explicitly after changing the model. Three-point angles reject coincident arms with visible undefined-angle feedback; there is no automatic edge/face inference.
+
+Dimensions are model-axis-aligned bounds; resizing one dimension changes all axes proportionally. Group bounds include all descendant geometry; export scope continues to determine the actual visible/current/Boolean source set. Calibration starts at an explicit 100 mm/unit convention; it does not infer historical intended print size or an STL reference’s original source-file units (references already normalize on import). Live movement grid snapping uses model axes; face/surface snapping is deferred. The existing 0.1–10,000 mm STL target admission limit still applies to calibration-based exports. No physical acceptance claim or implementation blocker remains.
+
+### 6. Next recommendations
+
+- [ ] On Quest 3 in both handedness settings, open World Settings → Measure & Precision, release the menu, place distance and angle points on sculpt/Boolean/STL-reference surfaces, then reposition/remove annotations. Confirm a visible aiming ray, readable labels and no accidental Clay/Paint/Mask strokes.
+- [ ] Enter numeric position/rotation/scale and target dimensions on nested groups/layers; verify inherited locks and Undo/Redo. Compare Off/0.1/1/5 mm and custom angle steps while moving and rotating. Navigate/scale/rotate the workspace and run the turntable; verify physical values remain unchanged.
+- [ ] Save, reopen and recover measurements/calibration; repeat in Studio/Passthrough, through tracking loss, hand swaps and session re-entry. Verify calibrated support-guide clearance and existing Cut, Paint, Mask, references, Skybox and Tool Wheel behavior.
+- [ ] Export a known-size part with project physical scale and with an explicit target override; compare the printed report and slicer dimensions. Record Quest/browser versions, stereo readability, frame timing and a sustained session before release acceptance.
+
+---
+
+
 ## Studio Skybox and Horizon handover
 
 Updated 2026-11-04. Active repository `/Users/brettjames/development/vrappPOC`, baseline `5a067e6`; working tree was clean before this task. Read the latest handover and world/display persistence, renderer/session compositing, desktop/XR controls, ground grid, lighting, turntable, references and thumbnail paths before implementation. No commit, push or merge authorized or performed. Quest 3 support-guide profile/calibration and its fixtures are untouched.

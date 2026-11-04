@@ -1,5 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from "three";
 import type { IndependentLayers } from "./independent-layers";
+import { snappedTransform } from "./physical-units";
 import { uniformScale } from "./transform";
 import type { XRControllerState } from "./xr-input";
 /** Layer metadata transaction. Controller anchors live in sculpture coordinates,
@@ -97,11 +98,16 @@ export class XRLayerGrab {
     this.result.decompose(this.position, this.rotation, this.size);
     this.euler.setFromQuaternion(this.rotation, "XYZ");
     try {
-      layers.updateTransform({
-        position: this.position.toArray(),
-        rotation: [this.euler.x, this.euler.y, this.euler.z],
-        scale: [this.startScale, this.startScale, this.startScale],
-      });
+      layers.updateTransform(
+        snappedTransform(
+          {
+            position: this.position.toArray(),
+            rotation: [this.euler.x, this.euler.y, this.euler.z],
+            scale: [this.startScale, this.startScale, this.startScale],
+          },
+          layers.display.precision,
+        ),
+      );
     } catch {
       this.cancel();
       this.issue("error");

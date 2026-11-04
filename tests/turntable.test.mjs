@@ -477,7 +477,7 @@ test("appearance and turntable preferences native/recovery roundtrip; runtime an
     restore.restore(opened.id, opened.layerStack.layers, opened.displayPreferences);
     assert.deepEqual(restore.world, f.layers.display.world);
     assert(!JSON.stringify(display).includes("enabled"));
-    assert(!JSON.stringify(display).includes("angle"));
+    assert(!JSON.stringify(display.world?.turntable).includes("angle"));
     const recovery = await encodeRecovery(
       f.layers,
       settings,
