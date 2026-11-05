@@ -84,7 +84,7 @@ export class ReferenceView {
           new LineBasicMaterial({ color: "#b1e6cd", depthWrite: false }),
         );
         mesh.add(border);
-        mesh.raycast = () => {};
+        if (record.mime !== "model/stl") mesh.raycast = () => {};
         p = { record, mesh, border, dead: false };
         this.panels.set(record.id, p);
         if (record.mime !== "model/stl") void this.load(p);

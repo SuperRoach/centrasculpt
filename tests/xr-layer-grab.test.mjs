@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, Matrix4 } from "three";
+import { Group, Matrix4, Vector3 } from "three";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { createBaseProject } from "../work/test-build/layers.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
@@ -170,6 +170,44 @@ test("stationary layer grab is a history no-op and does not consume redo", () =>
   grab.step(tool, pose(0), 32);
   assert.equal(layers.undoCount, 0);
   assert.equal(layers.redoCount, 1);
+  layers.dispose();
+});
+
+test("Tool ray pose can snap an XR layer preview before the single transform commit", () => {
+  const layers = new IndependentLayers(createBaseProject(new SDFVolume(17), settings)),
+    rayPose = pose(1.25),
+    tool = {
+      role: "tool",
+      connected: true,
+      gripTracked: true,
+      connectionId: 5,
+      buttons: { grip: { pressed: true, justPressed: true } },
+      stick: { available: true, y: 0 },
+    },
+    seen = [],
+    grab = new XRLayerGrab(
+      () => layers,
+      () => {},
+      (ray, transform) => {
+        seen.push(new Vector3().setFromMatrixPosition(ray).x);
+        return {
+          ...transform,
+          position: [transform.position[0] + 0.1, ...transform.position.slice(1)],
+        };
+      },
+    );
+  grab.step(tool, pose(0), 0, true, rayPose);
+  assert.equal(grab.active, true);
+  tool.buttons.grip.justPressed = false;
+  const interrupted = grab.step(tool, pose(0.2), 16, true, rayPose);
+  assert.equal(interrupted, false);
+  assert.deepEqual(seen, [1.25]);
+  assert(Math.abs(layers.active.layer.transform.position[0] - 0.3) < 1e-8);
+  tool.buttons.grip.pressed = false;
+  grab.step(tool, pose(0.2), 32, true, rayPose);
+  assert.equal(layers.undoCount, 1);
+  layers.undo();
+  assert.deepEqual(layers.active.layer.transform.position, [0, 0, 0]);
   layers.dispose();
 });
 

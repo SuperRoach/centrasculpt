@@ -78,6 +78,8 @@ export type TransformToolCallbacks = {
   status?: (message: string) => void;
   hitLayer?: (event: PointerEvent) => string | null;
   selectionChanged?: () => void;
+  surfaceSnap?: (transform: VolumeTransform) => VolumeTransform;
+  clearSurfaceSnap?: () => void;
 };
 const ROTATE_AXIS_KEYS: Record<string, "X" | "Y" | "Z"> = {
   KeyR: "X",
@@ -183,7 +185,7 @@ export class LayerTransformTools {
     this.controls.addEventListener("objectChange", () => {
       if (!this.layers().transforming) return;
       const object = this.controls.object!;
-      const next: VolumeTransform = {
+      let next: VolumeTransform = {
         position: [object.position.x, object.position.y, object.position.z],
         rotation: [object.rotation.x, object.rotation.y, object.rotation.z],
         scale: [object.scale.x, object.scale.y, object.scale.z],
@@ -219,6 +221,7 @@ export class LayerTransformTools {
           next.position = snappedTransform(next, settings).position;
         if (this.controls.mode === "rotate" && settings.angleSnapDegrees)
           next.rotation = snappedTransform(next, settings).rotation;
+        if (this.callbacks.surfaceSnap) next = this.callbacks.surfaceSnap(next);
         this.layers().updateTransform(next);
         callbacks.changed();
       } catch (error) {
@@ -230,6 +233,7 @@ export class LayerTransformTools {
       if (event.value) return;
       if (this.resize) this.completeResize();
       else this.layers().finishTransform();
+      this.callbacks.clearSurfaceSnap?.();
       input.end("transform");
       callbacks.camera(input.cameraEnabled);
       this.sync();
@@ -283,6 +287,7 @@ export class LayerTransformTools {
       });
   }
   cancel(): void {
+    this.callbacks.clearSurfaceSnap?.();
     const r = this.resize;
     this.resize = undefined;
     this.resizeAbort?.abort();
@@ -450,6 +455,7 @@ export class LayerTransformTools {
     if (this.controls.object !== object) this.controls.attach(object);
   }
   finish(): void {
+    this.callbacks.clearSurfaceSnap?.();
     if (this.controls.dragging) {
       this.controls.pointerUp(null);
       this.controls.disconnect();

@@ -117,6 +117,7 @@ for (const name of [
   "independent-layers",
   "interaction",
   "transform-tools",
+  "surface-snapping",
   "compositor",
   "bake",
   "shape-library",

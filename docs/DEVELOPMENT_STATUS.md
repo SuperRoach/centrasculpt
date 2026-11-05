@@ -1,5 +1,43 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 6.4 handover — Surface Snapping and Alignment
+
+Updated 2026-11-05. Active checkout `/Users/brettjames/development/vrappPOC`; baseline `git status` was clean on `main` at `a5f7ce5`. Read this status, `PHASE_6_3_LIVE_BOOLEANS.md`, `MODELLING_COMMANDS.md`, current transform/reference/controller source and the referenced VR sculpting research handover before editing. Existing user work was therefore preserved. No commit, push or merge performed.
+
+### 1. What changed
+
+Added opt-in **Surface snap** controls to Transform options with freehand default, position-only or position-plus-orientation, local X/Y/Z axis, signed millimetre offset, normal flip and rotation about normal. Desktop pointer movement and the idle VR Tool ray preview candidates before a transform; active desktop gizmo drags and Tool-grip layer moves update the candidate point and normal with a mint arrow. Choose surface hits, scene axes/centre, or bounding-box faces/centre with a physical-millimetre target radius. Visible sculpt layers, eligible evaluated Boolean display meshes and visible STL reference meshes can be targets. Image references cannot. Existing Tool Wheel Cut remains first-class.
+
+Snap settings use backward-compatible tool preferences and native/recovery snapshots; old saves default to Off. Transform release uses existing metadata history as one undo action. Geometry, dimensions, masks, paint, Boolean definitions and reference bytes/pose stay unchanged. Cancellation clears the transient candidate and uses normal transform rollback. See [Phase 6.4 semantics and physical checklist](PHASE_6_4_SURFACE_SNAPPING.md).
+
+### 2. Architectural decisions
+
+The reusable headless helper in `src/surface-snapping.ts` raycasts existing render meshes; it creates no SDF evaluator or second modelling engine. It interpolates vertex normals by triangle barycentrics, maps normals with inverse-transpose matrices and corrects mirrored triangle winding. Minimal-twist local-axis alignment handles near-parallel/antiparallel normals and explicit normal-axis rotation. Parent-space conversion uses the selected object’s actual scene parent matrix, so group transforms and presentation anchors are removed from saved coordinates. Position changes preserve the existing scale and primitive dimensions.
+
+Self and selected-group descendants are excluded. Hidden, locked and inherited-ineligible sculpt layers are skipped; visible STL references remain explicit read-only targets even when locked. An evaluated Boolean mesh is offered only when the selected layer is not one of its operands. Desktop hover updates on pointer motion; the idle VR ray updates at up to 20 Hz. Scene targets are position-only; bounding-box targets use transformed world-aligned mesh bounds. Existing STL aggregate limits bound source triangle counts.
+
+### 3. Build and test results
+
+Final `npm run check` passed Biome formatting/lint, strict TypeScript, production build and **1,454/1,454 tests across 88 files**; Biome reported **555 warnings / 94 infos / 0 errors**. The production build took **1.82 s** and retained the existing >500 kB Vite advisory. Focused snap geometry and XR transform suites passed **19/19**.
+
+New deterministic coverage checks indexed/non-indexed transformed and mirrored triangle hits with barycentric normals, mm offset conversion/contact-point placement, axis alignment at antiparallel cases, self/hidden filtering, target hysteresis, backwards-compatible preferences, unchanged SDF/remesh state and atomic transform Undo/Redo, plus XR Tool-ray preview and one-action release. Existing tests cover STL anchors, controller ownership/handedness, tracking cancellation, sessions and live Boolean history. Physical Quest acceptance remains pending.
+
+Final `npm run check` passed Biome formatting, Biome lint (**555 warnings / 94 infos / 0 errors**), strict TypeScript, production build (**1.82 s**) and **1,454/1,454 tests across 88 files**, zero failures/skips/cancellations; test-command wall **36.60 s**. The existing Vite >500 kB bundle advisory remains. `git diff --check` passed. The benchmark JSON is in `work/phase-6-4/`.
+
+### 4. Benchmarks and regressions
+
+Added `npm run benchmark:surface-snap`, a deterministic CPU probe over one **100,352-triangle** static STL-like mesh with eight warmups and 100 raycasts. Node **v26.8.1** measured **2.387 ms median / 2.747 ms p95 / 3.161 ms max** in the final host run. Raw output is `work/phase-6-4/surface-snap-benchmark.json`; it does not measure headset/GPU time.
+
+The integration adds no SDF or GPU resource per snap. The marker is one reusable ArrowHelper and is cleared on pointer exit, desktop completion/cancel and XR grip completion/cancel. `git diff --check` and final lint/type/build/full-suite outcomes passed as recorded above.
+
+### 5. Known limitations and blockers
+
+Physical Quest 3 use remains unverified. Bounding-box targets use transformed world-aligned bounds. The mesh ray query uses Three.js triangle raycasting without an added BVH; this host's p95 was 2.747 ms for 100,352 triangles and can scale with target triangle count. It is not a sustained 72/90 Hz Quest guarantee. Offset and target radius use the current project millimetres-per-model-unit calibration. Existing reference scale/anchor behavior is retained.
+
+### 6. Next recommendations — Phase 6.5
+
+Roadmap next: **Phase 6.5 — Radial Repetition & Arrays**, reusing the Phase 6.2.1 modelling command boundary and existing hierarchy/history transaction rules. Complete the Phase 6.4 physical checklist first: both controller hands, Studio/Passthrough, locked STL references in workspace/sculpture anchors, Boolean source/display eligibility, nested transforms, offset feel, grip/menu/tracking loss, save/recovery, and a sustained headset performance pass. No release approval is implied by host results.
+
 ## Phase 6.3 handover — Live Boolean Shapes & Cutting
 
 Publication authorization (2026-11-05): user explicitly requested commit and push of the completed working tree, including the preserved Move test-budget fixes. This supersedes the earlier no-commit restriction for this work. Physical Quest acceptance remains pending.

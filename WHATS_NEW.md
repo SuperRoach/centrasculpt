@@ -1,3 +1,10 @@
+### Phase 6.4 — Snap objects to surfaces (2026-11-05)
+
+- Turn on **Surface snap** in Transform options to place a selected object on a visible sculpt or imported STL surface while moving it. A live point-and-normal marker shows the current hit; freehand placement remains the default.
+- Preview a candidate under the desktop pointer before dragging or under the tracked VR Tool ray before gripping. Choose surface hits, scene axes/centre, or visible target bounding-box faces/centre, with a physical snap radius for alignment targets.
+- Choose position-only placement or align a local axis to the surface, adjust the offset in millimetres, flip the normal or set a rotation around it. Snapping keeps the object's size and editable source intact and records as one undoable transform.
+- Visible locked STL references can guide placement without becoming editable geometry. Boolean display surfaces stay distinct from their source shapes; self and hidden/locked sculpt targets are skipped.
+
 ### Phase 6.3 — Cuts that stay editable (2026-11-05)
 
 - Keep editable source shapes visible while moving or resizing a live Boolean. Use desktop **Scale (R)** to change Box width/height/depth, Cylinder diameter/height or Sphere diameter with local-axis handles; the centre handle changes all dimensions together.

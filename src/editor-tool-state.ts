@@ -274,6 +274,17 @@ export class EditorToolState {
     this.port.changed();
   }
   readonly stampRotation: [number, number, number] = [0, 0, 0];
+  readonly surfaceSnap = {
+    enabled: false,
+    targetMode: "surface" as "surface" | "scene" | "bounds",
+    radiusMM: 10,
+    align: "position" as "position" | "position-and-orientation",
+    localAxis: "y" as "x" | "y" | "z",
+    offsetMM: 0,
+    flipNormal: false,
+    rotateAboutNormal: 0,
+    hysteresis: 0.003,
+  };
   constructor(readonly port: EditorToolPort) {}
   snapshotPreferences(): ToolPreferences {
     return validateToolPreferences({
@@ -286,6 +297,7 @@ export class EditorToolState {
       alternateTool: this.alternateTool,
       stampAttachment: this.stampAttachment,
       stampRotation: this.stampRotation,
+      surfaceSnap: this.surfaceSnap,
     });
   }
   restorePreferences(value?: unknown): void {
@@ -300,6 +312,20 @@ export class EditorToolState {
           ? "elastic"
           : "non-elastic");
     Object.assign(this.port.layers().symmetry, p.symmetry);
+    Object.assign(
+      this.surfaceSnap,
+      p.surfaceSnap ?? {
+        enabled: false,
+        targetMode: "surface",
+        radiusMM: 10,
+        align: "position",
+        localAxis: "y",
+        offsetMM: 0,
+        flipNormal: false,
+        rotateAboutNormal: 0,
+        hysteresis: 0.003,
+      },
+    );
     this.alternateTool = p.alternateTool;
     Object.assign(
       this.stampAttachment,
@@ -1290,6 +1316,102 @@ export class EditorToolState {
                   : "Move + wrist rotate",
         disabled: true,
       });
+      options.push(
+        {
+          id: "surface-snap-target-mode",
+          label: "Snap targets",
+          read: () => this.surfaceSnap.targetMode,
+          write: (v) => {
+            this.surfaceSnap.targetMode = v as typeof this.surfaceSnap.targetMode;
+          },
+          choices: ["surface", "scene", "bounds"],
+          names: ["Surfaces", "Scene axes + centre", "Bounding box faces + centre"],
+          disabled: !this.surfaceSnap.enabled,
+        },
+        {
+          id: "surface-snap-radius",
+          label: "Target radius (mm)",
+          read: () => this.surfaceSnap.radiusMM,
+          write: (v) => {
+            this.surfaceSnap.radiusMM = Number(v);
+          },
+          min: 0.1,
+          max: 100,
+          step: 0.5,
+          disabled: !this.surfaceSnap.enabled || this.surfaceSnap.targetMode === "surface",
+        },
+        {
+          id: "surface-snap-enabled",
+          label: "Surface snap",
+          read: () => (this.surfaceSnap.enabled ? "on" : "off"),
+          write: (v) => {
+            this.surfaceSnap.enabled = v === "on";
+          },
+          choices: ["off", "on"],
+          names: ["Freehand · default", "Surface snap"],
+        },
+        {
+          id: "surface-snap-align",
+          label: "Snap placement",
+          read: () => this.surfaceSnap.align,
+          write: (v) => {
+            this.surfaceSnap.align = v as typeof this.surfaceSnap.align;
+          },
+          choices: ["position", "position-and-orientation"],
+          names: ["Position only", "Position + orientation"],
+          disabled: !this.surfaceSnap.enabled || this.surfaceSnap.targetMode === "scene",
+        },
+        {
+          id: "surface-snap-offset",
+          label: "Surface offset (mm)",
+          read: () => this.surfaceSnap.offsetMM,
+          write: (v) => {
+            this.surfaceSnap.offsetMM = Number(v);
+          },
+          min: -1000,
+          max: 1000,
+          step: 0.1,
+          disabled: !this.surfaceSnap.enabled || this.surfaceSnap.targetMode === "scene",
+        },
+        {
+          id: "surface-snap-axis",
+          label: "Local alignment axis",
+          read: () => this.surfaceSnap.localAxis,
+          write: (v) => {
+            this.surfaceSnap.localAxis = v as typeof this.surfaceSnap.localAxis;
+          },
+          choices: ["x", "y", "z"],
+          disabled:
+            !this.surfaceSnap.enabled ||
+            this.surfaceSnap.targetMode === "scene" ||
+            this.surfaceSnap.align === "position",
+        },
+        {
+          id: "surface-snap-flip",
+          label: "Flip surface normal",
+          read: () => (this.surfaceSnap.flipNormal ? "on" : "off"),
+          write: (v) => {
+            this.surfaceSnap.flipNormal = v === "on";
+          },
+          choices: ["off", "on"],
+          disabled: !this.surfaceSnap.enabled || this.surfaceSnap.targetMode === "scene",
+        },
+        {
+          id: "surface-snap-roll",
+          label: "Rotate about normal (°)",
+          read: () => (this.surfaceSnap.rotateAboutNormal * 180) / Math.PI,
+          write: (v) => {
+            this.surfaceSnap.rotateAboutNormal = (Number(v) * Math.PI) / 180;
+          },
+          min: -180,
+          max: 180,
+          step: 5,
+          disabled:
+            !this.surfaceSnap.enabled ||
+            this.surfaceSnap.targetMode === "scene" ||
+            this.surfaceSnap.align === "position",
+        },
+      );
     }
     options.push({
       id: "global-snap",

@@ -1,6 +1,7 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from "three";
 import type { IndependentLayers } from "./independent-layers";
 import { snappedTransform } from "./physical-units";
+import type { VolumeTransform } from "./transform";
 import { uniformScale } from "./transform";
 import type { XRControllerState } from "./xr-input";
 /** Layer metadata transaction. Controller anchors live in sculpture coordinates,
@@ -20,9 +21,15 @@ export class XRLayerGrab {
   constructor(
     private readonly layers: () => IndependentLayers,
     private readonly issue: (event: "cancel" | "error") => void = () => {},
+    private readonly surfaceSnap?: (
+      rayPose: Matrix4,
+      transform: VolumeTransform,
+    ) => VolumeTransform,
+    private readonly clearSurfaceSnap: () => void = () => {},
   ) {}
   finish(): void {
     if (this.active) this.layers().finishTransform();
+    this.clearSurfaceSnap();
     this.owner = 0;
     this.id = "";
   }
@@ -33,6 +40,7 @@ export class XRLayerGrab {
     return this.active && this.owner === id;
   }
   cancel(): void {
+    this.clearSurfaceSnap();
     if (this.active) this.issue("cancel");
     if (this.active) this.layers().cancelTransform();
     this.owner = 0;
@@ -43,6 +51,7 @@ export class XRLayerGrab {
     pose: Matrix4 | undefined,
     _time: number,
     enabled = true,
+    rayPose?: Matrix4,
   ): boolean {
     const layers = this.layers(),
       valid =
@@ -98,16 +107,16 @@ export class XRLayerGrab {
     this.result.decompose(this.position, this.rotation, this.size);
     this.euler.setFromQuaternion(this.rotation, "XYZ");
     try {
-      layers.updateTransform(
-        snappedTransform(
-          {
-            position: this.position.toArray(),
-            rotation: [this.euler.x, this.euler.y, this.euler.z],
-            scale: [this.startScale, this.startScale, this.startScale],
-          },
-          layers.display.precision,
-        ),
+      let next = snappedTransform(
+        {
+          position: this.position.toArray(),
+          rotation: [this.euler.x, this.euler.y, this.euler.z],
+          scale: [this.startScale, this.startScale, this.startScale],
+        },
+        layers.display.precision,
       );
+      if (rayPose && this.surfaceSnap) next = this.surfaceSnap(rayPose, next);
+      layers.updateTransform(next);
     } catch {
       this.cancel();
       this.issue("error");

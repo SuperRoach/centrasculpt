@@ -8,6 +8,17 @@ export const MOVE_VARIANTS = [
 ] as const;
 export type MoveVariant = (typeof MOVE_VARIANTS)[number];
 export type ToolPreferences = {
+  surfaceSnap?: {
+    enabled: boolean;
+    targetMode: "surface" | "scene" | "bounds";
+    radiusMM: number;
+    align: "position" | "position-and-orientation";
+    localAxis: "x" | "y" | "z";
+    offsetMM: number;
+    flipNormal: boolean;
+    rotateAboutNormal: number;
+    hysteresis: number;
+  };
   moveVariant?: MoveVariant;
   symmetry: { enabled: boolean; axis: "x" | "y" | "z"; offset: number };
   path: {
@@ -41,6 +52,17 @@ export type ToolPreferences = {
 };
 export function defaultToolPreferences(): ToolPreferences {
   return {
+    surfaceSnap: {
+      enabled: false,
+      targetMode: "surface",
+      radiusMM: 10,
+      align: "position",
+      localAxis: "y",
+      offsetMM: 0,
+      flipNormal: false,
+      rotateAboutNormal: 0,
+      hysteresis: 0.003,
+    },
     symmetry: { enabled: false, axis: "x", offset: 0 },
     path: { steady: 0, straightLine: false, axis: "free", placement: "free", snap: 0 },
     move: {
@@ -83,6 +105,7 @@ export function validateToolPreferences(value: unknown): ToolPreferences {
     s = object(d.symmetry),
     p = object(d.path),
     m = object(d.move);
+  const snap = d.surfaceSnap === undefined ? undefined : object(d.surfaceSnap);
   if (!Array.isArray(d.stampRotation) || d.stampRotation.length !== 3)
     throw new Error("Invalid stamp rotation preference.");
   const a = d.stampAttachment === undefined ? undefined : object(d.stampAttachment);
@@ -106,6 +129,21 @@ export function validateToolPreferences(value: unknown): ToolPreferences {
     };
   }
   return {
+    ...(snap
+      ? {
+          surfaceSnap: {
+            enabled: bool(snap.enabled),
+            targetMode: choice(snap.targetMode, ["surface", "scene", "bounds"] as const),
+            radiusMM: num(snap.radiusMM, 0.1, 500),
+            align: choice(snap.align, ["position", "position-and-orientation"] as const),
+            localAxis: choice(snap.localAxis, ["x", "y", "z"] as const),
+            offsetMM: num(snap.offsetMM, -1000, 1000),
+            flipNormal: bool(snap.flipNormal),
+            rotateAboutNormal: num(snap.rotateAboutNormal, -Math.PI * 2, Math.PI * 2),
+            hysteresis: num(snap.hysteresis, 0, 0.1),
+          },
+        }
+      : {}),
     ...(d.moveVariant === undefined ? {} : { moveVariant: choice(d.moveVariant, MOVE_VARIANTS) }),
     ...(attachment ? { stampAttachment: attachment } : {}),
     symmetry: {

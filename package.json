@@ -19,6 +19,7 @@
     "benchmark:bake": "node scripts/benchmark-bake.mjs",
     "benchmark:shapes": "node scripts/benchmark-shapes.mjs",
     "benchmark:stamps": "node scripts/benchmark-stamps.mjs",
+    "benchmark:surface-snap": "node scripts/benchmark-surface-snap.mjs",
     "test:changed": "node scripts/test.mjs --changed",
     "test:worker": "node scripts/test.mjs --worker persistent-move rotation-move move-worker move-precision",
     "benchmark:quality": "node scripts/benchmark-mesh-quality.mjs outputs/phase-3-quality-after.json",

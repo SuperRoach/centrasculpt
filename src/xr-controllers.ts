@@ -1,4 +1,4 @@
-import type { Intersection, Material, Object3D, WebXRManager } from "three";
+import type { Intersection, Material, Matrix4, Object3D, WebXRManager } from "three";
 import {
   BoxGeometry,
   BufferGeometry,
@@ -74,6 +74,7 @@ export class XRControllers {
   readonly grab?: WorkspaceNavigation;
   readonly layerGrab?: XRLayerGrab;
   private lastTool: EditorTool = "clay";
+  private lastSnapPreview = 0;
   private lastHapticGesture = "idle";
   private menuGripBlocked = false;
   private gesture: "idle" | "layer" | "workspace" = "idle";
@@ -172,6 +173,11 @@ export class XRControllers {
       presentationStep?: (time: number, blocked: boolean, visible: boolean) => void;
       workspace?: Object3D;
       layers?: () => IndependentLayers;
+      surfaceSnap?: (
+        rayPose: Matrix4,
+        transform: import("./transform").VolumeTransform,
+      ) => import("./transform").VolumeTransform;
+      clearSurfaceSnap?: () => void;
       models?: ControllerModels;
       resetView?: () => boolean;
       setPerformance?: (enabled: boolean) => void;
@@ -182,7 +188,12 @@ export class XRControllers {
     this.supportGuide = options.supportGuide;
     if (this.supportGuide) root.add(this.supportGuide.mesh);
     if (options.layers)
-      this.layerGrab = new XRLayerGrab(options.layers, (event) => this.reportToolIssue(event));
+      this.layerGrab = new XRLayerGrab(
+        options.layers,
+        (event) => this.reportToolIssue(event),
+        options.surfaceSnap,
+        options.clearSurfaceSnap,
+      );
     if (options.workspace) this.grab = new WorkspaceNavigation(options.workspace);
     root.visible = false;
     const bodyGeometry = new BoxGeometry(0.035, 0.075, 0.045),
@@ -502,7 +513,22 @@ export class XRControllers {
         this.grab.cancel();
       }
       const toolPose = tool ? this.slots[tool.slot].grip.matrixWorld : undefined;
+      const toolRayPose = tool ? this.slots[tool.slot].ray.matrixWorld : undefined;
       const supportPose = support ? this.slots[support.slot].grip.matrixWorld : undefined;
+      const snapLayers = this.options.layers?.();
+      if (
+        mode === "transform" &&
+        next === "idle" &&
+        active &&
+        tool?.tracked &&
+        toolRayPose &&
+        snapLayers &&
+        time - this.lastSnapPreview >= 50
+      ) {
+        this.lastSnapPreview = time;
+        this.options.surfaceSnap?.(toolRayPose, snapLayers.transformNode.transform);
+      } else if (mode !== "transform" || !active || !tool?.tracked)
+        this.options.clearSurfaceSnap?.();
       const continued = <T extends typeof tool>(state: T): T =>
         state && transition
           ? {
@@ -514,7 +540,8 @@ export class XRControllers {
       if (next === "workspace")
         interrupted = this.grab.step(continued(support), supportPose, tool, toolPose, !!active);
       else if (next === "layer")
-        interrupted = this.layerGrab?.step(continued(tool), toolPose, time, !!active) ?? false;
+        interrupted =
+          this.layerGrab?.step(continued(tool), toolPose, time, !!active, toolRayPose) ?? false;
       this.gesture = next;
       if (interrupted) {
         this.layerGrab?.cancel();

@@ -56,6 +56,15 @@ import { ShapeRotationTool } from "./shape-rotation";
 import { createShapeLibraryUI } from "./shape-ui";
 import type { ShapeDefinition } from "./shapes";
 import { StabilityMetrics } from "./stability-metrics";
+import {
+  hitInParentSpace,
+  raycastBoundsAlignment,
+  raycastSceneAlignment,
+  raycastSurface,
+  type SurfaceSnapHit,
+  type SurfaceSnapTarget,
+  snappedPose,
+} from "./surface-snapping";
 import { copyTransform, hasUniformScale, identityTransform, uniformScale } from "./transform";
 import {
   LayerTransformTools,
@@ -268,6 +277,23 @@ const raycaster = new THREE.Raycaster(),
 let pointerInside = false,
   activePointer: number | null = null,
   lastRebuild = performance.now();
+const snapArrow = new THREE.ArrowHelper(
+  new THREE.Vector3(0, 1, 0),
+  new THREE.Vector3(),
+  0.08,
+  0x29c6a5,
+);
+snapArrow.name = "Surface snap candidate · presentation only";
+snapArrow.visible = false;
+const snapArrowMaterial = (material: THREE.Material | THREE.Material[]) => {
+  for (const value of Array.isArray(material) ? material : [material]) value.depthTest = false;
+};
+snapArrowMaterial(snapArrow.line.material);
+snapArrowMaterial(snapArrow.cone.material);
+scene.add(snapArrow);
+let previousSnapHit: SurfaceSnapHit | undefined;
+const snapRaycaster = new THREE.Raycaster(),
+  snapRay = new THREE.Ray();
 const message = (error: unknown) => (error instanceof Error ? error.message : "Unknown error.");
 function syncStats() {
   const runtime = layers.active;
@@ -366,6 +392,15 @@ transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () 
     return pickEditableLayer(raycaster, layers)?.layerId ?? null;
   },
   selectionChanged: refresh,
+  surfaceSnap: (transform) => {
+    if (!pointerInside) return transform;
+    raycaster.setFromCamera(pointer, camera);
+    return applySurfaceSnap(raycaster.ray, transform, raycaster);
+  },
+  clearSurfaceSnap: () => {
+    previousSnapHit = undefined;
+    snapArrow.visible = false;
+  },
   busy: () =>
     loadingProject ||
     ui.modalOpen ||
@@ -552,10 +587,27 @@ viewportTools = createViewportTools(ui.viewport, chooseWorkspace, chooseLayerMod
 });
 syncViewportTools();
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
-renderer.domElement.addEventListener("pointermove", updatePointer);
+renderer.domElement.addEventListener("pointermove", (event) => {
+  updatePointer(event);
+  if (
+    editorTools?.active === "transform" &&
+    editorTools.surfaceSnap.enabled &&
+    !input.transforming &&
+    !input.referenceEditing &&
+    !loadingProject &&
+    !ui.modalOpen &&
+    !xrBlocked() &&
+    layers.transformNode.editable
+  ) {
+    raycaster.setFromCamera(pointer, camera);
+    applySurfaceSnap(raycaster.ray, layers.transformNode.transform, raycaster);
+  }
+});
 renderer.domElement.addEventListener("pointerleave", () => {
   pointerInside = false;
   cursor.visible = false;
+  previousSnapHit = undefined;
+  snapArrow.visible = false;
 });
 renderer.domElement.addEventListener("pointerdown", (e) => {
   if (precision?.primitives.placing) return;
@@ -1894,6 +1946,116 @@ const references = new ReferenceView(
   xrRig.workspaceRoot,
   xrRig.turntable.group,
 );
+function applySurfaceSnap(
+  ray: THREE.Ray,
+  transform: import("./transform").VolumeTransform,
+  caster = new THREE.Raycaster(),
+): import("./transform").VolumeTransform {
+  const settings = editorTools?.surfaceSnap;
+  if (!settings?.enabled) {
+    previousSnapHit = undefined;
+    snapArrow.visible = false;
+    return transform;
+  }
+  const selectedId = layers.transformNode.id,
+    excluded = new Set<string>([selectedId]);
+  if (layers.selectedGroupId)
+    for (const id of layers.project.layerStack.hierarchy.descendants(selectedId)) excluded.add(id);
+  const targets: SurfaceSnapTarget[] = [];
+  for (const layer of layers.project.layerStack.layers) {
+    if (!layer.editable || excluded.has(layer.id)) continue;
+    const root = layers.runtime(layer.id).surface.group;
+    root.updateWorldMatrix(true, true);
+    root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh && mesh.visible && mesh.geometry?.getAttribute("position"))
+        targets.push({ id: layer.id, mesh, kind: "sculpt" });
+    });
+  }
+  if (layers.viewMode === "boolean") {
+    const participants = new Set<string>();
+    for (const layer of layers.project.layerStack.layers)
+      if (layer.booleanModifiers?.length) {
+        participants.add(layer.id);
+        for (const modifier of layer.booleanModifiers) participants.add(modifier.sourceId);
+      }
+    if (!participants.has(selectedId)) {
+      layers.composite.group.updateWorldMatrix(true, true);
+      layers.composite.group.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (mesh.isMesh && mesh.visible && mesh.geometry?.getAttribute("position"))
+          targets.push({ id: "boolean-result", mesh, kind: "boolean" });
+      });
+    }
+  }
+  for (const [id, panel] of references.panels)
+    if (panel.record.mime === "model/stl" && panel.record.visible) {
+      panel.mesh.updateWorldMatrix(true, false);
+      targets.push({ id: `reference:${id}`, mesh: panel.mesh, kind: "reference" });
+    }
+  layers.group.updateWorldMatrix(true, false);
+  const anchorScale =
+      new THREE.Vector3().setFromMatrixScale(layers.group.matrixWorld).length() / Math.sqrt(3),
+    radiusWorld = (settings.radiusMM / layers.display.precision.millimetresPerUnit) * anchorScale;
+  const hit =
+    settings.targetMode === "scene"
+      ? raycastSceneAlignment(ray, layers.group.matrixWorld, radiusWorld)
+      : settings.targetMode === "bounds"
+        ? raycastBoundsAlignment(ray, targets, radiusWorld, excluded)
+        : raycastSurface(ray, targets, excluded, previousSnapHit, settings.hysteresis, caster);
+  if (!hit) {
+    previousSnapHit = undefined;
+    snapArrow.visible = false;
+    return transform;
+  }
+  previousSnapHit = hit;
+  snapArrow.position.copy(hit.point);
+  snapArrow.setDirection(hit.normal);
+  snapArrow.visible = true;
+  const object = layers.transformObject,
+    parent = object.parent;
+  if (!parent) return transform;
+  parent.updateWorldMatrix(true, false);
+  layers.group.updateWorldMatrix(true, false);
+  const mapped = hitInParentSpace(
+    hit,
+    layers.group.matrixWorld,
+    parent.matrixWorld,
+    hit.target.kind === "scene-axis" || hit.target.kind === "scene-center"
+      ? 0
+      : settings.offsetMM / layers.display.precision.millimetresPerUnit,
+    hit.target.kind !== "scene-axis" && hit.target.kind !== "scene-center" && settings.flipNormal,
+  );
+  if (!mapped) return transform;
+  const { point, normal } = mapped,
+    rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(...transform.rotation, "XYZ")),
+    result = snappedPose(
+      rotation,
+      new THREE.Vector3(...transform.scale),
+      new THREE.Vector3(),
+      { ...hit, point, normal },
+      {
+        ...settings,
+        flipNormal:
+          hit.target.kind === "scene-axis" || hit.target.kind === "scene-center"
+            ? false
+            : settings.flipNormal,
+        align:
+          hit.target.kind === "scene-axis" || hit.target.kind === "scene-center"
+            ? "position"
+            : settings.align,
+        offsetMM: 0,
+      },
+      1,
+    );
+  if (!result) return transform;
+  const euler = new THREE.Euler().setFromQuaternion(result.rotation, "XYZ");
+  return {
+    position: result.position.toArray() as [number, number, number],
+    rotation: [euler.x, euler.y, euler.z],
+    scale: transform.scale,
+  };
+}
 precision = new PrecisionTools(
   () => layers,
   references,
@@ -2224,6 +2386,15 @@ xrExperience = new XRExperience(
     },
     tools: editorTools,
     layers: () => layers,
+    surfaceSnap: (rayPose, transform) => {
+      snapRay.origin.setFromMatrixPosition(rayPose);
+      snapRay.direction.set(0, 0, -1).transformDirection(rayPose);
+      return applySurfaceSnap(snapRay, transform, snapRaycaster);
+    },
+    clearSurfaceSnap: () => {
+      previousSnapHit = undefined;
+      snapArrow.visible = false;
+    },
     stability: () => stabilityText,
     historyChanged: () => {
       cursor.visible = false;
@@ -2680,6 +2851,11 @@ const recoveryTimer = setInterval(() => {
 }, 500);
 import.meta.hot?.dispose(() => {
   clearInterval(recoveryTimer);
+  snapArrow.removeFromParent();
+  snapArrow.line.geometry.dispose();
+  snapArrow.cone.geometry.dispose();
+  for (const material of [snapArrow.line.material, snapArrow.cone.material])
+    for (const value of Array.isArray(material) ? material : [material]) value.dispose();
   lighting.dispose();
   referenceEditor?.dispose();
   references.dispose();

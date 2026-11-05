@@ -1,4 +1,4 @@
-import type { Object3D, WebGLRenderer } from "three";
+import type { Matrix4, Object3D, WebGLRenderer } from "three";
 import { FactoryControllerModelProvider } from "./controller-model-provider";
 import { ControllerModels } from "./controller-models";
 import type { EditorToolState } from "./editor-tool-state";
@@ -47,6 +47,11 @@ export type XRExperienceHooks = {
   references?: ReferenceView;
   importReferences?: () => void;
   layers?: () => IndependentLayers;
+  surfaceSnap?: (
+    rayPose: Matrix4,
+    transform: import("./transform").VolumeTransform,
+  ) => import("./transform").VolumeTransform;
+  clearSurfaceSnap?: () => void;
   historyChanged?: () => void;
   sculptureInfo?: () => XRSculptureInfo;
 };
@@ -226,6 +231,8 @@ export class XRExperience {
             : undefined,
         },
         layers: hooks.layers,
+        surfaceSnap: hooks.surfaceSnap,
+        clearSurfaceSnap: hooks.clearSurfaceSnap,
         presentationStep: (time, blocked, visible) => {
           const layers = hooks.layers?.();
           if (!layers) return;
