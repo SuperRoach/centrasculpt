@@ -361,3 +361,6 @@ button.viewport-label:hover{background:#fff}
 .assembly-fit-card p{overflow-wrap:anywhere}
 
 #bake-dialog p:empty{display:none}#bake-merge-options{margin:14px 0}#bake-merge-options summary{font-size:12px;cursor:pointer}#bake-merge-options label{margin-top:12px}#bake-dialog .dialog-actions{margin-top:20px}
+.array-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.array-actions .array-remove{flex:0 0 36px;width:36px;height:36px;padding:0;font-size:22px;line-height:1}
+.array-actions .array-toggle[aria-pressed=true]{background:#e6ecd9;border-color:#93a47b;color:#3c5629}

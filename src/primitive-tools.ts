@@ -50,6 +50,7 @@ export class PrimitiveTools {
   private arrayAxis = 2;
   private arrayAngle = 360;
   private arraySpacing = 10;
+  private arrayScale = 100;
   private arrayOrientation: "rotate" | "retain" = "retain";
   private arrayMenu = false;
   constructor(
@@ -276,6 +277,12 @@ export class PrimitiveTools {
     } else if (this.arrayMenu) {
       const active = this.layers().active.layer,
         array = active.array;
+      add(
+        "array-scale",
+        `Scale per item · ${(array?.scalePerItem ?? this.arrayScale / 100) * 100}%`,
+        13,
+        !active.editable,
+      );
       add("array-home", "‹ Primitives", 0);
       add("array-count", `Repeat count · ${array?.count ?? this.arrayCount}`, 1, !active.editable);
       add("array-kind", `Pattern · ${array?.kind ?? this.arrayKind}`, 2, !active.editable);
@@ -378,13 +385,15 @@ export class PrimitiveTools {
       existing = layer.array,
       axis: [number, number, number] =
         this.arrayAxis === 0 ? [1, 0, 0] : this.arrayAxis === 1 ? [0, 1, 0] : [0, 0, 1],
-      count = existing?.count ?? this.arrayCount;
+      count = existing?.count ?? this.arrayCount,
+      scalePerItem = existing?.scalePerItem ?? this.arrayScale / 100;
     if (this.arrayKind === "linear")
       return {
         id: existing?.id ?? "pending",
         kind: "linear",
         enabled: true,
         count,
+        scalePerItem,
         spacingModelUnits:
           existing?.kind === "linear"
             ? existing.spacingModelUnits * this.settings.millimetresPerUnit
@@ -397,6 +406,7 @@ export class PrimitiveTools {
       kind: "radial",
       enabled: true,
       count,
+      scalePerItem,
       totalAngleRadians:
         existing?.kind === "radial"
           ? existing.totalAngleRadians
@@ -445,7 +455,17 @@ export class PrimitiveTools {
       } else if (a === "assembly-open") this.assembly.open = true;
       else if (a === "array-open") this.arrayMenu = true;
       else if (a === "array-home") this.arrayMenu = false;
-      else if (a === "array-count") {
+      else if (a === "array-scale") {
+        const values = [100, 90, 80, 110, 120],
+          layer = this.layers().active.layer,
+          current = (layer.array?.scalePerItem ?? this.arrayScale / 100) * 100;
+        this.arrayScale = values[(values.indexOf(current) + 1) % values.length];
+        if (layer.array) {
+          const definition = this.arrayDefinition();
+          definition.scalePerItem = this.arrayScale / 100;
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-count") {
         const counts = [4, 6, 8, 12, 16],
           current = this.layers().active.layer.array?.count ?? this.arrayCount;
         this.arrayCount = counts[(counts.indexOf(current) + 1) % counts.length];

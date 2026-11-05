@@ -1,5 +1,21 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Progressive array scaling follow-up — 2026-11-06
+
+Added recurring Scale per item (%) to desktop linear/radial arrays and XR presets, preserving the setting through other array edits. Copy i uses factor^i around its own centre before placement; 90% produces 100/90/81/72.9%. Source geometry/pose stay unchanged. SDF distance scaling, bounds, minimum feature sampling and radial gap support account for each copy's size. Native v15 is used only for non-default progressive arrays; legacy arrays default to 100% and lower-version tagged scaled files are rejected. See [semantics and limits](PHASE_6_5_ARRAYS.md#progressive-scale-2026-11-06).
+
+Browser verified the 90% field survives Tab and creates four visibly diminishing radial boxes. Focused arrays passed 14/14, including actual sampler sizes for linear/both radial orientations and 90/100/110%, native/recovery/library/history, validation, scaled gap, binary STL proportions/topology and Bake geometry. Full `npm run check` passed formatting, lint, strict TypeScript, production build and **1,529/1,529 tests across 91 files** (82.78 s test command); quick 21/21. Logs: `work/phase-6-5/array-scale-final-check.log`, `array-scale-tests.log`; screenshot `array-progressive-scale.jpg`. Existing quality/memory/Bake limits remain. Physical Quest acceptance is pending. No commit or push for this follow-up.
+
+## Array state controls follow-up — 2026-11-06
+
+Desktop toggle now displays Array enabled/Array disabled, exposes aria-pressed, highlights enabled state and offers the opposite action in its tooltip. Corrected the toggle handler to invert the persisted enabled flag. Remove array is a compact × with tooltip/accessible name. Browser verified disable/re-enable, remove and Undo. Final `npm run check` passed format/lint, strict TypeScript, build and **1,525/1,525 tests** (84.12 s test command); quick 21/21. Evidence: `work/phase-6-5/array-state-final-check.log` and `array-state-controls.jpg`. No commit or push for this follow-up.
+
+## Radial array gap and draft editing follow-up — 2026-11-06
+
+Desktop radial arrays now expose Gap between copies (mm), using directional source bounds to adjust the existing pivot while retaining source pose, mm calibration and inherited uniform scale. Linear-only fields are hidden for radial mode. Draft array fields survive routine refresh and Tab/blur; metadata/selection changes hydrate committed values. The action is Create array or Update array according to the selected source. See [gap semantics and limits](PHASE_6_5_ARRAYS.md#desktop-spacing-follow-up-2026-11-06).
+
+Browser QA created four boxes at 5 mm gap, edited to 15 mm, tabbed away, updated and verified changed pivot/geometry plus one Undo entry. Final `npm run check` passed formatting, lint, strict TypeScript, build and **1,525/1,525 tests across 91 files** (82.63 s test command); focused arrays 10/10, quick 21/21. Logs: `work/phase-6-5/radial-spacing-final-check.log` and `radial-spacing-tests.log`; screenshot `radial-gap-update.jpg`. Physical Quest acceptance remains pending; these new gap controls are desktop-only. No commit or push for this follow-up.
+
 ## One-tap assembly export follow-up — 2026-11-06
 
 Desktop current/all part export now reserves the export operation and shows progress before awaiting recovery or geometry. Duplicate taps cannot start overlapping jobs. Requests arriving while assembly preview/connector preparation is pending await that action instead of silently returning; cancellation, disposal and project replacement discard queued work. Tests exercise both export scopes during an unfinished preview and cancellation before completion. Browser verified one click starts each scope with evaluated assembly view active. Final `npm run check` passed format/lint, strict TypeScript, build and **1,523/1,523 tests across 91 files** (85.28 s test command). Quick suite 21/21; focused queue/cancellation cases 3/3. Logs and screenshot: `work/phase-6-6/one-tap-final-check.log`, `one-tap-regressions.log`, `one-tap-export.jpg`.

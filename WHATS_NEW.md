@@ -1,3 +1,18 @@
+### Scale each repeated item (2026-11-06)
+
+- **Array / Repeat → Scale per item (%)** applies a recurring multiplier to linear or radial copies. At 90%, sizes are 100%, 90%, 81%, 72.9% and so on. Use 100% for equal sizes or more than 100% to grow each copy.
+- Scaling stays editable and supports Undo, save/recovery, export and Bake. Projects with progressive scaling require this version or newer.
+
+### Clearer array state controls (2026-11-06)
+
+- The array toggle shows **Array enabled** or **Array disabled**, with a selected appearance when enabled. Clicking it switches the actual array state.
+- Remove array is a compact **×** button with a tooltip and accessible name; removal supports Undo.
+
+### Radial array gaps and clearer actions (2026-11-06)
+
+- Radial arrays now have **Gap between copies (mm)**. It adjusts the circle centre to separate neighbouring source bounds while keeping the original object fixed. Linear arrays retain their own Spacing setting.
+- Array fields keep unfinished edits when you tab away. The action reads **Create array** for a new pattern and **Update array** for an existing one.
+
 ### Export directly from assembly preview (2026-11-06)
 
 - **Export current layer** and **Export all layers** accept the first tap while the assembly preview is finishing, then export automatically. Immediate progress feedback confirms the request; repeated taps cannot start duplicate jobs.

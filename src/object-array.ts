@@ -8,6 +8,7 @@ export type ArrayDefinition =
       kind: "radial";
       enabled: boolean;
       count: number;
+      scalePerItem?: number;
       totalAngleRadians: number;
       pivot: Vector3Tuple;
       axis: Vector3Tuple;
@@ -19,6 +20,7 @@ export type ArrayDefinition =
       kind: "linear";
       enabled: boolean;
       count: number;
+      scalePerItem?: number;
       spacingModelUnits: number;
       axis: Vector3Tuple;
       centered: boolean;
@@ -39,6 +41,18 @@ export function validateArrayDefinition(value: unknown): ArrayDefinition {
   )
     throw new Error(`Array count must be between 1 and ${ARRAY_MAX_INSTANCES}.`);
   const axis = vec(v.axis, "Array axis");
+  const factor = v.scalePerItem ?? 1;
+  if (
+    typeof factor !== "number" ||
+    !Number.isFinite(factor) ||
+    factor <= 0 ||
+    factor ** ((v.count as number) - 1) < 0.001 ||
+    factor ** ((v.count as number) - 1) > 1000
+  )
+    throw new Error(
+      "Scale per item must be positive; the final item must stay between 0.1% and 100000% of the source.",
+    );
+  const scaling = factor === 1 ? {} : { scalePerItem: factor };
   if (Math.hypot(...axis) < 1e-9) throw new Error("Array axis cannot be zero.");
   if (v.kind === "linear") {
     if (
@@ -54,6 +68,7 @@ export function validateArrayDefinition(value: unknown): ArrayDefinition {
       kind: "linear",
       enabled: v.enabled,
       count: v.count as number,
+      ...scaling,
       spacingModelUnits: v.spacingModelUnits,
       axis: norm(axis),
       centered: v.centered,
@@ -79,12 +94,17 @@ export function validateArrayDefinition(value: unknown): ArrayDefinition {
     kind: "radial",
     enabled: v.enabled,
     count: v.count as number,
+    ...scaling,
     totalAngleRadians: angle,
     pivot,
     axis: norm(axis),
     angularOffsetRadians: offset,
     orientation: v.orientation,
   };
+}
+
+export function arrayInstanceScales(array: ArrayDefinition): number[] {
+  return Array.from({ length: array.count }, (_, i) => (array.scalePerItem ?? 1) ** i);
 }
 
 function vec(value: unknown, label: string): Vector3Tuple {

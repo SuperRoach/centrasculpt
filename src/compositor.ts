@@ -4,7 +4,7 @@ import type { ExportSource } from "./export-mesh";
 import type { LayerOperation, SculptProject, SdfLayer } from "./layers";
 import { booleanRoots, validateBooleanGraph } from "./live-boolean";
 import { IncrementalMesher } from "./mesh";
-import { arrayInstanceAngles } from "./object-array";
+import { arrayInstanceAngles, arrayInstanceScales } from "./object-array";
 import {
   primitiveDistance,
   primitiveWorldDimensions,
@@ -26,7 +26,9 @@ export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: 
   const source = prepareSingleLayerSampler(layer),
     array = layer.array;
   if (!array?.enabled || array.count <= 1) return source;
-  const axis = array.axis;
+  const axis = array.axis,
+    scales = arrayInstanceScales(array),
+    [cx, cy, cz] = layer.transform.position;
   if (array.kind === "linear") {
     const count = array.count,
       ax = axis[0],
@@ -40,7 +42,15 @@ export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: 
       let result = Infinity;
       for (let i = 0; i < count; i++) {
         const offset = offsets[i];
-        result = Math.min(result, source(x - ax * offset, y - ay * offset, z - az * offset));
+        const s = scales[i];
+        result = Math.min(
+          result,
+          source(
+            cx + (x - ax * offset - cx) / s,
+            cy + (y - ay * offset - cy) / s,
+            cz + (z - az * offset - cz) / s,
+          ) * s,
+        );
       }
       return result;
     };
@@ -49,7 +59,6 @@ export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: 
     cosines = angles.map(Math.cos),
     sines = angles.map(Math.sin),
     [px, py, pz] = array.pivot,
-    [cx, cy, cz] = layer.transform.position,
     rotate = array.orientation === "rotate";
   return (x, y, z) => {
     let result = Infinity;
@@ -66,7 +75,12 @@ export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: 
           qx = px + vx * c + (axis[1] * vz - axis[2] * vy) * s + axis[0] * dot * t,
           qy = py + vy * c + (axis[2] * vx - axis[0] * vz) * s + axis[1] * dot * t,
           qz = pz + vz * c + (axis[0] * vy - axis[1] * vx) * s + axis[2] * dot * t;
-        result = Math.min(result, source(qx, qy, qz));
+        const factor = scales[i];
+        result = Math.min(
+          result,
+          source(cx + (qx - cx) / factor, cy + (qy - cy) / factor, cz + (qz - cz) / factor) *
+            factor,
+        );
       } else {
         const vx = cx - px,
           vy = cy - py,
@@ -77,7 +91,15 @@ export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: 
           dx = vx * c + (axis[1] * vz - axis[2] * vy) * s + axis[0] * dot * t - vx,
           dy = vy * c + (axis[2] * vx - axis[0] * vz) * s + axis[1] * dot * t - vy,
           dz = vz * c + (axis[0] * vy - axis[1] * vx) * s + axis[2] * dot * t - vz;
-        result = Math.min(result, source(x - dx, y - dy, z - dz));
+        const factor = scales[i];
+        result = Math.min(
+          result,
+          source(
+            cx + (x - dx - cx) / factor,
+            cy + (y - dy - cy) / factor,
+            cz + (z - dz - cz) / factor,
+          ) * factor,
+        );
       }
     }
     return result;
@@ -274,6 +296,23 @@ export function compositeLayout(
           }
         : layer.volume.worldBounds(layer.transform);
     let bounds = baseBounds;
+    const instanceScales = layer.array?.enabled ? arrayInstanceScales(layer.array) : [1],
+      largestInstance = Math.max(...instanceScales),
+      smallestInstance = Math.min(...instanceScales),
+      origin = layer.transform.position;
+    if (largestInstance > 1)
+      bounds = {
+        min: bounds.min.map((v, i) => origin[i] + (v - origin[i]) * largestInstance) as [
+          number,
+          number,
+          number,
+        ],
+        max: bounds.max.map((v, i) => origin[i] + (v - origin[i]) * largestInstance) as [
+          number,
+          number,
+          number,
+        ],
+      };
     if (layer.array?.enabled && layer.array.count > 1 && layer.array.kind === "radial") {
       const [px, py, pz] = layer.array.pivot;
       let radius = 0;
@@ -305,14 +344,14 @@ export function compositeLayout(
       };
     }
     if (!analyticPrimitives || !live || !layer.primitive)
-      desiredStep = Math.min(desiredStep, layer.volume.step * scale);
+      desiredStep = Math.min(desiredStep, layer.volume.step * scale * smallestInstance);
     if (live && layer.primitive) {
       const dimensions = Object.values(layer.primitive).filter(
         (v): v is number => typeof v === "number",
       );
       desiredStep = Math.min(
         desiredStep,
-        (Math.min(...dimensions) * scale) / (analyticPrimitives ? 10 : 8),
+        (Math.min(...dimensions) * scale * smallestInstance) / (analyticPrimitives ? 10 : 8),
       );
     }
     for (let i = 0; i < 3; i++) {

@@ -23,6 +23,7 @@ for (const name of [
   "connector-placement",
   "modelling-api",
   "object-array",
+  "array-spacing",
   "live-boolean",
   "boolean-ui",
   "object-dimensions",

@@ -1,3 +1,4 @@
+import { radialGap } from "./array-spacing";
 import type { ModellingCommand } from "./modelling-api";
 import type { ArrayDefinition } from "./object-array";
 import type { PrimitiveSource } from "./parametric-primitive";
@@ -5,6 +6,7 @@ import { PRIMITIVE_KINDS, primitiveWorldDimensions } from "./parametric-primitiv
 import { toDisplay } from "./physical-units";
 import type { PrecisionField, PrecisionTools } from "./precision-tools";
 import type { PrimitiveTools } from "./primitive-tools";
+import { uniformScale } from "./transform";
 /** Contextual creation/editing controls; refresh never replaces an input being typed. */
 export function primitiveUI(
   tools: PrimitiveTools,
@@ -222,7 +224,15 @@ export function primitiveUI(
     return input;
   };
   field("count", "Count", "4", "1");
+  field("scale", "Scale per item (%)", "100");
   field("spacing", "Spacing (mm)", "10");
+  const gapInput = field("gap", "Gap between copies (mm)", "10");
+  let gapEdited = false;
+  gapInput.oninput = () => {
+    gapEdited = true;
+  };
+  gapInput.title =
+    "Gap between projected source bounds. Adjusts the circle centre and keeps the original object fixed.";
   field("angle", "Total angle (degrees)", "360");
   field("offset", "Angular offset (degrees)", "0");
   const axis = document.createElement("select");
@@ -254,8 +264,17 @@ export function primitiveUI(
     orientation.append(option);
   }
   repeatForm.append(orientation);
+  const syncArrayKind = () => {
+    const radial = kind.value === "radial";
+    for (const key of ["angle", "offset", "pivot0", "pivot1", "pivot2", "gap"])
+      fields.get(key)!.parentElement!.hidden = !radial;
+    fields.get("spacing")!.parentElement!.hidden = radial;
+    centeredLabel.hidden = radial;
+    orientation.hidden = !radial;
+  };
+  kind.onchange = syncArrayKind;
   const repeatButtons = document.createElement("div");
-  repeatButtons.className = "primitive-source-actions";
+  repeatButtons.className = "primitive-source-actions array-actions";
   repeat.append(repeatButtons);
   const repeatAction = (label: string, action: () => Promise<void>) => {
     const b = document.createElement("button");
@@ -271,7 +290,7 @@ export function primitiveUI(
     repeatButtons.append(b);
     return b;
   };
-  const applyArray = repeatAction("Create / Update Array", async () => {
+  const applyArray = repeatAction("Create array", async () => {
     if (!runArrayCommand) throw new Error("Array commands are unavailable.");
     const layer = tools.layers().active.layer,
       count = Number(fields.get("count")!.value),
@@ -286,6 +305,7 @@ export function primitiveUI(
         kind: "linear",
         enabled: true,
         count,
+        scalePerItem: Number(fields.get("scale")!.value) / 100,
         spacingModelUnits: Number(fields.get("spacing")!.value),
         axis: axisVector,
         centered: centered.checked,
@@ -296,6 +316,7 @@ export function primitiveUI(
         kind: "radial",
         enabled: true,
         count,
+        scalePerItem: Number(fields.get("scale")!.value) / 100,
         totalAngleRadians: (Number(fields.get("angle")!.value) * Math.PI) / 180,
         pivot: [
           Number(fields.get("pivot0")!.value),
@@ -306,18 +327,36 @@ export function primitiveUI(
         angularOffsetRadians: (Number(fields.get("offset")!.value) * Math.PI) / 180,
         orientation: orientation.value as "rotate" | "retain",
       };
+    if (definition.kind === "radial" && (gapEdited || !existing) && count > 1) {
+      const mm = tools.settings.millimetresPerUnit,
+        inheritedScale =
+          uniformScale(tools.layers().project.layerStack.hierarchy.world(layer.id)) /
+          uniformScale(layer.transform),
+        local = {
+          ...definition,
+          pivot: definition.pivot.map((v) => v / mm) as [number, number, number],
+        };
+      definition.pivot = radialGap(
+        local,
+        layer.transform,
+        layer.volume.bounds,
+        layer.primitive,
+        Number(gapInput.value) / mm / inheritedScale,
+      ).pivot.map((v) => v * mm) as [number, number, number];
+    }
     if (existing) await runArrayCommand({ type: "array.update", id: layer.id, definition });
     else {
       const { id: _id, ...newDefinition } = definition;
       await runArrayCommand({ type: "array.create", id: layer.id, definition: newDefinition });
     }
   });
-  const toggleArray = repeatAction("Enable / Disable", async () => {
+  const toggleArray = repeatAction("Array enabled", async () => {
     if (!runArrayCommand) throw new Error("Array commands are unavailable.");
     const layer = tools.layers().active.layer,
       a = layer.array;
     if (!a) throw new Error("Create an array first.");
     const definition = structuredClone(a);
+    definition.enabled = !a.enabled;
     if (definition.kind === "linear")
       definition.spacingModelUnits *= tools.settings.millimetresPerUnit;
     else
@@ -328,11 +367,15 @@ export function primitiveUI(
       ];
     await runArrayCommand({ type: "array.update", id: layer.id, definition });
   });
-  const removeArray = repeatAction("Remove Array", async () => {
+  const removeArray = repeatAction("×", async () => {
     const layer = tools.layers().active.layer;
     if (!runArrayCommand) throw new Error("Array commands are unavailable.");
     await runArrayCommand({ type: "array.remove", id: layer.id });
   });
+  removeArray.className = "array-remove";
+  removeArray.title = "Remove array";
+  removeArray.setAttribute("aria-label", "Remove array");
+  toggleArray.className = "array-toggle";
   const bakeArray = repeatAction("Bake to Independent Sculpt", async () => {
     const layer = tools.layers().active.layer;
     if (!runArrayCommand) throw new Error("Array commands are unavailable.");
@@ -341,6 +384,7 @@ export function primitiveUI(
   body.append(repeat);
   host.append(panel);
   let key = "",
+    arrayKey = "",
     project = tools.layers().project;
   const sync = () => {
     if (project !== tools.layers().project) {
@@ -367,29 +411,60 @@ export function primitiveUI(
     sourceActions.hidden = !selected;
     repeat.hidden = !tools.layers().active.layer || !!tools.layers().selectedGroupId;
     const activeArray = tools.layers().active.layer.array;
-    if (activeArray) {
-      kind.value = activeArray.kind;
-      fields.get("count")!.value = String(activeArray.count);
-      fields.get("spacing")!.value =
-        activeArray.kind === "linear"
-          ? String(activeArray.spacingModelUnits * tools.settings.millimetresPerUnit)
-          : "10";
-      fields.get("angle")!.value =
-        activeArray.kind === "radial"
-          ? String((activeArray.totalAngleRadians * 180) / Math.PI)
-          : "360";
-      fields.get("offset")!.value =
-        activeArray.kind === "radial"
-          ? String((activeArray.angularOffsetRadians * 180) / Math.PI)
-          : "0";
-      axis.value = activeArray.axis[0] !== 0 ? "x" : activeArray.axis[1] !== 0 ? "y" : "z";
-      if (activeArray.kind === "radial")
-        activeArray.pivot.forEach((v, i) => {
-          fields.get(`pivot${i}`)!.value = String(v * tools.settings.millimetresPerUnit);
-        });
-      centered.checked = activeArray.kind === "linear" && activeArray.centered;
-      orientation.value = activeArray.kind === "radial" ? activeArray.orientation : "rotate";
+    const layer = tools.layers().active.layer,
+      nextArrayKey = JSON.stringify([
+        tools.layers().project.id,
+        layer.id,
+        activeArray,
+        layer.transform,
+        layer.primitive,
+        tools.settings.millimetresPerUnit,
+      ]);
+    if (nextArrayKey !== arrayKey) {
+      arrayKey = nextArrayKey;
+      gapEdited = false;
+      if (activeArray) {
+        kind.value = activeArray.kind;
+        fields.get("count")!.value = String(activeArray.count);
+        fields.get("scale")!.value = String((activeArray.scalePerItem ?? 1) * 100);
+        fields.get("spacing")!.value =
+          activeArray.kind === "linear"
+            ? String(activeArray.spacingModelUnits * tools.settings.millimetresPerUnit)
+            : "10";
+        fields.get("angle")!.value =
+          activeArray.kind === "radial"
+            ? String((activeArray.totalAngleRadians * 180) / Math.PI)
+            : "360";
+        fields.get("offset")!.value =
+          activeArray.kind === "radial"
+            ? String((activeArray.angularOffsetRadians * 180) / Math.PI)
+            : "0";
+        axis.value = activeArray.axis[0] !== 0 ? "x" : activeArray.axis[1] !== 0 ? "y" : "z";
+        if (activeArray.kind === "radial")
+          activeArray.pivot.forEach((v, i) => {
+            fields.get(`pivot${i}`)!.value = String(v * tools.settings.millimetresPerUnit);
+          });
+        centered.checked = activeArray.kind === "linear" && activeArray.centered;
+        orientation.value = activeArray.kind === "radial" ? activeArray.orientation : "rotate";
+        if (activeArray.kind === "radial") {
+          const inheritedScale =
+            uniformScale(tools.layers().project.layerStack.hierarchy.world(layer.id)) /
+            uniformScale(layer.transform);
+          gapInput.value = String(
+            Number(
+              Math.max(
+                0,
+                radialGap(activeArray, layer.transform, layer.volume.bounds, layer.primitive).gap *
+                  tools.settings.millimetresPerUnit *
+                  inheritedScale,
+              ).toFixed(6),
+            ),
+          );
+        }
+      }
+      syncArrayKind();
     }
+    applyArray.textContent = activeArray ? "Update array" : "Create array";
     for (const control of [
       kind,
       axis,
@@ -402,7 +477,11 @@ export function primitiveUI(
       bakeArray,
     ])
       control.disabled = blocked || !tools.layers().active.layer.editable;
+    if (kind.value === "radial" && Number(fields.get("count")!.value) < 2) gapInput.disabled = true;
     toggleArray.hidden = !activeArray;
+    toggleArray.textContent = activeArray?.enabled ? "Array enabled" : "Array disabled";
+    toggleArray.setAttribute("aria-pressed", String(!!activeArray?.enabled));
+    toggleArray.title = activeArray?.enabled ? "Disable array" : "Enable array";
     removeArray.hidden = !activeArray;
     bakeArray.hidden = !activeArray;
     transformPanel.hidden = !selected;
