@@ -15,7 +15,14 @@ const nextCache = {};
 const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
 
 for (const name of [
+  "assembly",
+  "assembly-tools",
+  "boolean-export",
+  "assembly-ui",
+  "assembly-controls",
+  "connector-placement",
   "modelling-api",
+  "object-array",
   "live-boolean",
   "boolean-ui",
   "object-dimensions",
@@ -23,6 +30,7 @@ for (const name of [
   "precision-tools",
   "primitive-tools",
   "primitive-ui",
+  "primitive-preview",
   "parametric-primitive",
   "studio-skybox",
   "world-settings-ui",

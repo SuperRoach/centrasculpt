@@ -53,13 +53,6 @@ export function booleanUI(
     key = next;
     body.replaceChildren();
     status.textContent = "";
-    const heading = document.createElement("p");
-    heading.textContent = `Target: ${target.name}. Modifiers apply top to bottom.`;
-    body.append(heading);
-    const explanation = document.createElement("p");
-    explanation.textContent =
-      "Sources remain editable. Enabled operands appear only in the result; their eye controls independent output when released. Select a source below to edit its shape or transform. Layers view inspects individual sources; exports use the Boolean result. Bake explicitly creates sculpt geometry.";
-    body.append(explanation);
     const source = document.createElement("select");
     source.setAttribute("aria-label", "Boolean source operand");
     for (const layer of l.project.layerStack.layers.filter((s) => s.id !== target.id)) {
@@ -129,7 +122,10 @@ export function booleanUI(
             ),
           ),
         ),
-        button("Remove", () => change(target.booleanModifiers?.filter((s) => s.id !== m.id))),
+        button("Remove from result", () =>
+          change(target.booleanModifiers?.filter((s) => s.id !== m.id)),
+        ),
+        button("Delete source", () => l.deleteObject(m.sourceId)),
       );
       if (i > 0)
         row.append(

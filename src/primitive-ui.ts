@@ -1,3 +1,6 @@
+import type { ModellingCommand } from "./modelling-api";
+import type { ArrayDefinition } from "./object-array";
+import type { PrimitiveSource } from "./parametric-primitive";
 import { PRIMITIVE_KINDS, primitiveWorldDimensions } from "./parametric-primitive";
 import { toDisplay } from "./physical-units";
 import type { PrecisionField, PrecisionTools } from "./precision-tools";
@@ -8,6 +11,11 @@ export function primitiveUI(
   host: HTMLElement,
   busy: () => boolean,
   precision: PrecisionTools,
+  runArrayCommand?: (command: ModellingCommand) => Promise<void>,
+  preview?: {
+    state: (open: boolean, editing: boolean) => void;
+    source: () => PrimitiveSource | undefined;
+  },
 ): { sync: () => void } {
   if (!tools.source) tools.editing = false;
   const panel = document.createElement("details");
@@ -15,6 +23,10 @@ export function primitiveUI(
   const title = document.createElement("summary");
   title.textContent = "Primitives";
   panel.append(title);
+  panel.ontoggle = () => {
+    preview?.state(panel.open, tools.editing);
+    sync();
+  };
   const body = document.createElement("div");
   body.className = "primitive-body";
   panel.append(body);
@@ -175,13 +187,172 @@ export function primitiveUI(
   note.textContent =
     "Bake when you’re ready to sculpt, cut or paint. Your editable source is kept.";
   body.append(status);
+  const repeat = document.createElement("details");
+  repeat.className = "primitive-transform array-panel";
+  const repeatTitle = document.createElement("summary");
+  repeatTitle.textContent = "Array / Repeat";
+  repeat.append(repeatTitle);
+  const repeatForm = document.createElement("div");
+  repeatForm.className = "numeric-transform";
+  repeat.append(repeatForm);
+  const kind = document.createElement("select");
+  kind.setAttribute("aria-label", "Array type");
+  for (const [value, label] of [
+    ["linear", "Linear"],
+    ["radial", "Radial"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    kind.append(option);
+  }
+  repeatForm.append(kind);
+  const fields = new Map<string, HTMLInputElement>();
+  const field = (key: string, label: string, value: string, step = "any") => {
+    const row = document.createElement("label"),
+      input = document.createElement("input");
+    row.textContent = label;
+    input.type = "number";
+    input.step = step;
+    input.value = value;
+    input.setAttribute("aria-label", label);
+    row.append(input);
+    repeatForm.append(row);
+    fields.set(key, input);
+    return input;
+  };
+  field("count", "Count", "4", "1");
+  field("spacing", "Spacing (mm)", "10");
+  field("angle", "Total angle (degrees)", "360");
+  field("offset", "Angular offset (degrees)", "0");
+  const axis = document.createElement("select");
+  axis.setAttribute("aria-label", "Array axis");
+  for (const value of ["x", "y", "z"]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = `Axis ${value.toUpperCase()}`;
+    axis.append(option);
+  }
+  repeatForm.append(axis);
+  for (const [i, value] of ["0", "0", "0"].entries())
+    field(`pivot${i}`, `Pivot ${"XYZ"[i]} (mm)`, value);
+  const centered = document.createElement("input");
+  centered.type = "checkbox";
+  centered.setAttribute("aria-label", "Centre linear distribution");
+  const centeredLabel = document.createElement("label");
+  centeredLabel.append(centered, " Centre linear distribution");
+  repeatForm.append(centeredLabel);
+  const orientation = document.createElement("select");
+  orientation.setAttribute("aria-label", "Radial orientation");
+  for (const [value, label] of [
+    ["rotate", "Rotate with array"],
+    ["retain", "Keep object orientation"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    orientation.append(option);
+  }
+  repeatForm.append(orientation);
+  const repeatButtons = document.createElement("div");
+  repeatButtons.className = "primitive-source-actions";
+  repeat.append(repeatButtons);
+  const repeatAction = (label: string, action: () => Promise<void>) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.onclick = () =>
+      void action()
+        .then(sync)
+        .catch((e) => {
+          status.hidden = false;
+          status.textContent = e instanceof Error ? e.message : String(e);
+        });
+    repeatButtons.append(b);
+    return b;
+  };
+  const applyArray = repeatAction("Create / Update Array", async () => {
+    if (!runArrayCommand) throw new Error("Array commands are unavailable.");
+    const layer = tools.layers().active.layer,
+      count = Number(fields.get("count")!.value),
+      axisName = axis.value,
+      axisVector: [number, number, number] =
+        axisName === "x" ? [1, 0, 0] : axisName === "y" ? [0, 1, 0] : [0, 0, 1],
+      existing = layer.array;
+    let definition: ArrayDefinition;
+    if (kind.value === "linear")
+      definition = {
+        id: existing?.id ?? "pending",
+        kind: "linear",
+        enabled: true,
+        count,
+        spacingModelUnits: Number(fields.get("spacing")!.value),
+        axis: axisVector,
+        centered: centered.checked,
+      };
+    else
+      definition = {
+        id: existing?.id ?? "pending",
+        kind: "radial",
+        enabled: true,
+        count,
+        totalAngleRadians: (Number(fields.get("angle")!.value) * Math.PI) / 180,
+        pivot: [
+          Number(fields.get("pivot0")!.value),
+          Number(fields.get("pivot1")!.value),
+          Number(fields.get("pivot2")!.value),
+        ],
+        axis: axisVector,
+        angularOffsetRadians: (Number(fields.get("offset")!.value) * Math.PI) / 180,
+        orientation: orientation.value as "rotate" | "retain",
+      };
+    if (existing) await runArrayCommand({ type: "array.update", id: layer.id, definition });
+    else {
+      const { id: _id, ...newDefinition } = definition;
+      await runArrayCommand({ type: "array.create", id: layer.id, definition: newDefinition });
+    }
+  });
+  const toggleArray = repeatAction("Enable / Disable", async () => {
+    if (!runArrayCommand) throw new Error("Array commands are unavailable.");
+    const layer = tools.layers().active.layer,
+      a = layer.array;
+    if (!a) throw new Error("Create an array first.");
+    const definition = structuredClone(a);
+    if (definition.kind === "linear")
+      definition.spacingModelUnits *= tools.settings.millimetresPerUnit;
+    else
+      definition.pivot = definition.pivot.map((v) => v * tools.settings.millimetresPerUnit) as [
+        number,
+        number,
+        number,
+      ];
+    await runArrayCommand({ type: "array.update", id: layer.id, definition });
+  });
+  const removeArray = repeatAction("Remove Array", async () => {
+    const layer = tools.layers().active.layer;
+    if (!runArrayCommand) throw new Error("Array commands are unavailable.");
+    await runArrayCommand({ type: "array.remove", id: layer.id });
+  });
+  const bakeArray = repeatAction("Bake to Independent Sculpt", async () => {
+    const layer = tools.layers().active.layer;
+    if (!runArrayCommand) throw new Error("Array commands are unavailable.");
+    await runArrayCommand({ type: "array.bake", id: layer.id });
+  });
+  body.append(repeat);
   host.append(panel);
-  let key = "";
+  let key = "",
+    project = tools.layers().project;
   const sync = () => {
+    if (project !== tools.layers().project) {
+      project = tools.layers().project;
+      panel.open = false;
+    }
+    if (panel.open && tools.editing && !tools.source) tools.editing = false;
     const selected = tools.source,
       editing = tools.editing,
-      source = selected ?? tools.draft,
+      source = (selected && preview?.source()) ?? selected ?? tools.draft,
       blocked = busy() || tools.pending;
+    preview?.state(panel.open, editing);
     for (const b of buttons) b.disabled = blocked;
     editMode.disabled =
       blocked || !tools.layers().active.layer.primitive || !!tools.layers().selectedGroupId;
@@ -194,6 +365,46 @@ export function primitiveUI(
     empty.hidden = !editing || !!selected;
     create.hidden = editing;
     sourceActions.hidden = !selected;
+    repeat.hidden = !tools.layers().active.layer || !!tools.layers().selectedGroupId;
+    const activeArray = tools.layers().active.layer.array;
+    if (activeArray) {
+      kind.value = activeArray.kind;
+      fields.get("count")!.value = String(activeArray.count);
+      fields.get("spacing")!.value =
+        activeArray.kind === "linear"
+          ? String(activeArray.spacingModelUnits * tools.settings.millimetresPerUnit)
+          : "10";
+      fields.get("angle")!.value =
+        activeArray.kind === "radial"
+          ? String((activeArray.totalAngleRadians * 180) / Math.PI)
+          : "360";
+      fields.get("offset")!.value =
+        activeArray.kind === "radial"
+          ? String((activeArray.angularOffsetRadians * 180) / Math.PI)
+          : "0";
+      axis.value = activeArray.axis[0] !== 0 ? "x" : activeArray.axis[1] !== 0 ? "y" : "z";
+      if (activeArray.kind === "radial")
+        activeArray.pivot.forEach((v, i) => {
+          fields.get(`pivot${i}`)!.value = String(v * tools.settings.millimetresPerUnit);
+        });
+      centered.checked = activeArray.kind === "linear" && activeArray.centered;
+      orientation.value = activeArray.kind === "radial" ? activeArray.orientation : "rotate";
+    }
+    for (const control of [
+      kind,
+      axis,
+      centered,
+      orientation,
+      ...fields.values(),
+      applyArray,
+      toggleArray,
+      removeArray,
+      bakeArray,
+    ])
+      control.disabled = blocked || !tools.layers().active.layer.editable;
+    toggleArray.hidden = !activeArray;
+    removeArray.hidden = !activeArray;
+    bakeArray.hidden = !activeArray;
     transformPanel.hidden = !selected;
     units.textContent = tools.settings.unit;
     name.textContent = selected ? tools.layers().active.layer.name : `New ${tools.draft.kind}`;
@@ -202,10 +413,10 @@ export function primitiveUI(
     create.textContent = `Create ${tools.draft.kind[0].toUpperCase() + tools.draft.kind.slice(1)}`;
     result.hidden = editing && !selected;
     result.textContent = selected
-      ? `${primitiveWorldDimensions(selected, tools.layers().active.layer.transform)
+      ? `${primitiveWorldDimensions(source, tools.layers().active.layer.transform)
           .map((v) => toDisplay(v, tools.settings).toFixed(2))
           .join(" × ")} ${tools.settings.unit} · physical bounds`
-      : "Created at model origin · workspace zoom won’t change its size";
+      : `${source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "Any axis changes diameter"} · drag handles to size, then Create`;
     result.title = selected
       ? "Model-axis bounds include rotation, scale and parent transforms. Dimension fields edit local source parameters."
       : "Use Transform or Edit selected to position your new primitive.";
@@ -229,6 +440,7 @@ export function primitiveUI(
       tools.settings.millimetresPerUnit,
       blocked,
       editable,
+      activeArray,
     ]);
     for (const input of dimensions.querySelectorAll("input"))
       input.disabled = blocked || (!!selected && !editable);
@@ -261,6 +473,15 @@ export function primitiveUI(
           status.textContent = String(e);
         });
       };
+      if (!selected)
+        input.oninput = () => {
+          const dimension = Number(input.value);
+          if (!input.value.trim() || !Number.isFinite(dimension) || dimension <= 0) return;
+          void tools
+            .dimension(field, dimension, false)
+            .then(sync)
+            .catch(() => {});
+        };
       input.onkeydown = (e) => {
         if (e.key === "Enter") input.blur();
         if (e.key === "Escape") {

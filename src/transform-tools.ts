@@ -113,6 +113,9 @@ export class LayerTransformTools {
   get resizing(): boolean {
     return !!this.resize || !!this.resizeAbort;
   }
+  get primitivePreview(): PrimitiveSource | undefined {
+    return this.resize?.next;
+  }
   get settled(): Promise<void> {
     return this.resizeWork;
   }

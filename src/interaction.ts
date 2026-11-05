@@ -51,3 +51,28 @@ export class InputOwnership {
     if (this.owner === owner) this.owner = "none";
   }
 }
+
+/** Desktop delete owns one key press; text editing and repeated keydown never remove layers. */
+export function handleLayerDeleteShortcut(
+  event: Pick<
+    KeyboardEvent,
+    "key" | "repeat" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey" | "preventDefault"
+  >,
+  blocked: boolean,
+  editingField: boolean,
+  remove: () => void,
+): boolean {
+  if (
+    blocked ||
+    editingField ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    event.shiftKey ||
+    (event.key !== "Delete" && event.key !== "Backspace")
+  )
+    return false;
+  event.preventDefault();
+  if (!event.repeat) remove();
+  return true;
+}

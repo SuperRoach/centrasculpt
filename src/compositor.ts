@@ -4,6 +4,7 @@ import type { ExportSource } from "./export-mesh";
 import type { LayerOperation, SculptProject, SdfLayer } from "./layers";
 import { booleanRoots, validateBooleanGraph } from "./live-boolean";
 import { IncrementalMesher } from "./mesh";
+import { arrayInstanceAngles } from "./object-array";
 import {
   primitiveDistance,
   primitiveWorldDimensions,
@@ -22,6 +23,67 @@ export function combineSdf(a: number, b: number, operation: LayerOperation): num
 }
 /** Prepared inverse matrix and borrowed READ-ONLY grid. No source grid is resampled or written. */
 export function prepareLayerSampler(layer: SdfLayer): (x: number, y: number, z: number) => number {
+  const source = prepareSingleLayerSampler(layer),
+    array = layer.array;
+  if (!array?.enabled || array.count <= 1) return source;
+  const axis = array.axis;
+  if (array.kind === "linear") {
+    const count = array.count,
+      ax = axis[0],
+      ay = axis[1],
+      az = axis[2],
+      offsets = Array.from(
+        { length: count },
+        (_, i) => (array.centered ? i - (count - 1) / 2 : i) * array.spacingModelUnits,
+      );
+    return (x, y, z) => {
+      let result = Infinity;
+      for (let i = 0; i < count; i++) {
+        const offset = offsets[i];
+        result = Math.min(result, source(x - ax * offset, y - ay * offset, z - az * offset));
+      }
+      return result;
+    };
+  }
+  const angles = arrayInstanceAngles(array),
+    cosines = angles.map(Math.cos),
+    sines = angles.map(Math.sin),
+    [px, py, pz] = array.pivot,
+    [cx, cy, cz] = layer.transform.position,
+    rotate = array.orientation === "rotate";
+  return (x, y, z) => {
+    let result = Infinity;
+    for (let i = 0; i < angles.length; i++) {
+      const c = cosines[i],
+        sine = sines[i];
+      if (rotate) {
+        const vx = x - px,
+          vy = y - py,
+          vz = z - pz,
+          s = -sine,
+          dot = vx * axis[0] + vy * axis[1] + vz * axis[2],
+          t = 1 - c,
+          qx = px + vx * c + (axis[1] * vz - axis[2] * vy) * s + axis[0] * dot * t,
+          qy = py + vy * c + (axis[2] * vx - axis[0] * vz) * s + axis[1] * dot * t,
+          qz = pz + vz * c + (axis[0] * vy - axis[1] * vx) * s + axis[2] * dot * t;
+        result = Math.min(result, source(qx, qy, qz));
+      } else {
+        const vx = cx - px,
+          vy = cy - py,
+          vz = cz - pz,
+          s = sine,
+          dot = vx * axis[0] + vy * axis[1] + vz * axis[2],
+          t = 1 - c,
+          dx = vx * c + (axis[1] * vz - axis[2] * vy) * s + axis[0] * dot * t - vx,
+          dy = vy * c + (axis[2] * vx - axis[0] * vz) * s + axis[1] * dot * t - vy,
+          dz = vz * c + (axis[0] * vy - axis[1] * vx) * s + axis[2] * dot * t - vz;
+        result = Math.min(result, source(x - dx, y - dy, z - dz));
+      }
+    }
+    return result;
+  };
+}
+function prepareSingleLayerSampler(layer: SdfLayer): (x: number, y: number, z: number) => number {
   const m = transformMatrix(layer.transform).invert().elements,
     scale = uniformScale(layer.transform);
   if (layer.primitive) {
@@ -167,10 +229,14 @@ export type CompositeLayout = {
 };
 /** One independent derived world grid. Sampling tries to match the finest world voxel,
  * but is bounded to 192³ (or a lower explicit quality cap). No source is converted. */
-export function compositeLayout(layers: readonly SdfLayer[], cap = 192): CompositeLayout {
+export function compositeLayout(
+  layers: readonly SdfLayer[],
+  cap = 192,
+  analyticPrimitives = false,
+): CompositeLayout {
   if (!Number.isInteger(cap) || cap < 8 || cap > 192)
     throw new Error("Composite resolution cap must be 8–192.");
-  const live = layers.some((l) => l.booleanModifiers?.length);
+  const live = layers.some((l) => l.booleanModifiers?.length || l.array?.enabled);
   const reachable = new Set<string>();
   const visit = (l: SdfLayer) => {
     if (reachable.has(l.id)) return;
@@ -201,18 +267,53 @@ export function compositeLayout(layers: readonly SdfLayer[], cap = 192): Composi
         live && layer.primitive
           ? primitiveWorldDimensions(layer.primitive, layer.transform)
           : undefined,
-      bounds = dimensions
+      baseBounds = dimensions
         ? {
             min: dimensions.map((d, i) => layer.transform.position[i] - d / 2),
             max: dimensions.map((d, i) => layer.transform.position[i] + d / 2),
           }
         : layer.volume.worldBounds(layer.transform);
-    desiredStep = Math.min(desiredStep, layer.volume.step * scale);
+    let bounds = baseBounds;
+    if (layer.array?.enabled && layer.array.count > 1 && layer.array.kind === "radial") {
+      const [px, py, pz] = layer.array.pivot;
+      let radius = 0;
+      for (const x of [bounds.min[0], bounds.max[0]])
+        for (const y of [bounds.min[1], bounds.max[1]])
+          for (const z of [bounds.min[2], bounds.max[2]])
+            radius = Math.max(radius, Math.hypot(x - px, y - py, z - pz));
+      bounds = {
+        min: [px - radius, py - radius, pz - radius],
+        max: [px + radius, py + radius, pz + radius],
+      };
+    } else if (layer.array?.enabled && layer.array.count > 1 && layer.array.kind === "linear") {
+      const array = layer.array,
+        lo = array.centered ? -(array.count - 1) / 2 : 0,
+        hi = array.centered ? (array.count - 1) / 2 : array.count - 1,
+        a = lo * array.spacingModelUnits,
+        b = hi * array.spacingModelUnits;
+      bounds = {
+        min: bounds.min.map((v, i) => v + Math.min(a * array.axis[i], b * array.axis[i])) as [
+          number,
+          number,
+          number,
+        ],
+        max: bounds.max.map((v, i) => v + Math.max(a * array.axis[i], b * array.axis[i])) as [
+          number,
+          number,
+          number,
+        ],
+      };
+    }
+    if (!analyticPrimitives || !live || !layer.primitive)
+      desiredStep = Math.min(desiredStep, layer.volume.step * scale);
     if (live && layer.primitive) {
       const dimensions = Object.values(layer.primitive).filter(
         (v): v is number => typeof v === "number",
       );
-      desiredStep = Math.min(desiredStep, (Math.min(...dimensions) * scale) / 8);
+      desiredStep = Math.min(
+        desiredStep,
+        (Math.min(...dimensions) * scale) / (analyticPrimitives ? 10 : 8),
+      );
     }
     for (let i = 0; i < 3; i++) {
       min[i] = Math.min(min[i], bounds.min[i]);
@@ -227,6 +328,13 @@ export function compositeLayout(layers: readonly SdfLayer[], cap = 192): Composi
   const extent = span / 2 + 2 * Math.max(desiredStep, span / (cap - 5));
   const desired = Math.ceil((2 * extent) / desiredStep) + 1,
     resolution = Math.max(8, Math.min(cap, desired));
+  const instanceWork =
+    layers.reduce((sum, layer) => sum + (layer.array?.enabled ? layer.array.count : 1), 0) *
+    resolution ** 3;
+  if (instanceWork > 64_000_000)
+    throw new Error(
+      "Array evaluation exceeds the 64 million sample budget. Reduce instances or source bounds before preview/export.",
+    );
   return { resolution, extent, center, desiredStep, capped: desired > cap };
 }
 export type CompositeStats = {
@@ -259,7 +367,7 @@ export class BooleanComposite {
   private paintAttributes(geometry: import("three").BufferGeometry): Float32Array | undefined {
     if (
       !this.project.layerStack.layers.some(
-        (l) => l.booleanModifiers?.length || !sculptPaint(l.volume).empty,
+        (l) => l.booleanModifiers?.length || l.array?.enabled || !sculptPaint(l.volume).empty,
       )
     )
       return;
@@ -282,9 +390,10 @@ export class BooleanComposite {
     geometry: import("three").BufferGeometry,
     version: number,
   ): Promise<{ colours?: Float32Array; maxSliceMs: number } | null> {
+    if (this.options.colours === false) return { maxSliceMs: 0 };
     if (
       !this.project.layerStack.layers.some(
-        (l) => l.booleanModifiers?.length || !sculptPaint(l.volume).empty,
+        (l) => l.booleanModifiers?.length || l.array?.enabled || !sculptPaint(l.volume).empty,
       )
     )
       return { maxSliceMs: 0 };
@@ -321,6 +430,36 @@ export class BooleanComposite {
   private version = 0;
   private disposed = false;
   private suspended = false;
+  private exportLeases = 0;
+  private get paused(): boolean {
+    return this.suspended || this.exportLeases > 0;
+  }
+  /** Evict rebuildable display data while an independent export owns the memory budget. */
+  async releaseForExport(): Promise<() => void> {
+    this.exportLeases++;
+    this.invalidate();
+    try {
+      await this.running;
+    } catch {
+      /* A failed display cache cannot prevent a fresh export. */
+    }
+    this.mesher?.dispose();
+    this.surface?.clear();
+    this.group.clear();
+    this.mesher = null;
+    this.surface = null;
+    this.volume = null;
+    this.layout = null;
+    this.stats = null;
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        this.exportLeases--;
+        this.invalidate();
+      }
+    };
+  }
   setSuspended(value: boolean): void {
     if (this.suspended === value) return;
     this.suspended = value;
@@ -335,6 +474,8 @@ export class BooleanComposite {
     private readonly material: Material,
     private cap = 192,
     private readonly exportMaterial: Material = material,
+    private readonly sourceCurrent: () => boolean = () => true,
+    private readonly options: { analyticPrimitives?: boolean; colours?: boolean } = {},
   ) {
     this.group.name = "Boolean Preview";
   }
@@ -356,6 +497,7 @@ export class BooleanComposite {
         l.transform,
         l.primitive,
         l.booleanModifiers,
+        l.array,
         l.volume.resolution,
         l.volume.extent,
         l.volume.dimensions,
@@ -365,6 +507,7 @@ export class BooleanComposite {
     );
   }
   syncMetadata(): void {
+    if (!this.sourceCurrent()) throw new Error("Evaluation cancelled: source changed.");
     const key = this.metadataKey();
     if (key !== this.fingerprint) {
       this.fingerprint = key;
@@ -454,7 +597,7 @@ export class BooleanComposite {
     this.syncMetadata();
     if (
       this.disposed ||
-      this.suspended ||
+      this.paused ||
       this.running ||
       this.failedVersion === this.version ||
       !this.pending ||
@@ -464,13 +607,15 @@ export class BooleanComposite {
     return this.rebuild();
   }
   rebuild(): Promise<boolean> {
-    if (this.disposed || this.suspended) return Promise.resolve(false);
+    if (this.disposed || this.paused) return Promise.resolve(false);
     this.syncMetadata();
     if (this.running) return this.running;
     this.running = this.build()
       .catch((error) => {
         this.failedVersion = this.version;
-        if (this.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) {
+        if (
+          this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
+        ) {
           this.mesher?.dispose();
           this.surface?.clear();
           this.group.clear();
@@ -489,11 +634,11 @@ export class BooleanComposite {
     return this.running;
   }
   async flush(): Promise<void> {
-    if (this.suspended)
+    if (this.paused)
       throw new Error("Boolean evaluation paused while controller tracking is unavailable.");
     this.syncMetadata();
     while (!this.disposed && (this.running || this.pending)) {
-      if (this.suspended)
+      if (this.paused)
         throw new Error("Boolean evaluation paused while controller tracking is unavailable.");
       await (this.running ?? this.rebuild());
       this.syncMetadata();
@@ -503,7 +648,11 @@ export class BooleanComposite {
     if (!this.pending) return false;
     const version = this.version,
       start = performance.now(),
-      layout = compositeLayout(this.project.layerStack.compositionLayers, this.cap),
+      layout = compositeLayout(
+        this.project.layerStack.compositionLayers,
+        this.cap,
+        this.options.analyticPrimitives,
+      ),
       key = JSON.stringify(layout),
       layoutChanged = key !== JSON.stringify(this.layout);
     const full = this.full || layoutChanged || !this.volume;
@@ -592,7 +741,7 @@ export class BooleanComposite {
       }
       if (this.material instanceof MeshStandardMaterial) {
         const enabled = this.project.layerStack.layers.some(
-          (l) => !!l.booleanModifiers?.length || !sculptPaint(l.volume).empty,
+          (l) => !!l.booleanModifiers?.length || !!l.array?.enabled || !sculptPaint(l.volume).empty,
         );
         if (enabled !== this.material.vertexColors) {
           this.material.vertexColors = enabled;
@@ -643,7 +792,7 @@ export class BooleanComposite {
   exportSources(): ExportSource[] {
     this.syncMetadata();
     if (
-      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length) &&
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled) &&
       this.stats?.capped
     )
       throw new Error(
@@ -670,7 +819,7 @@ export class BooleanComposite {
           .map((u) => ({
             positions: u.geometry.getAttribute("position").array as Float32Array,
             normals: u.geometry.getAttribute("normal").array as Float32Array,
-            colours: this.paintAttributes(u.geometry),
+            colours: this.options.colours === false ? undefined : this.paintAttributes(u.geometry),
           })),
         current: () =>
           this.metadataKey() === metadata &&

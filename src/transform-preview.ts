@@ -8,7 +8,9 @@ export class TransformPreview {
       this.owner = layers;
       this.separate = false;
     }
-    const live = layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length);
+    const live = layers.project.layerStack.layers.some(
+      (l) => l.booleanModifiers?.length || l.array?.enabled,
+    );
     if (layers.viewMode !== "boolean") this.separate = false;
     else if (
       layers.transforming ||
@@ -24,5 +26,6 @@ export class TransformPreview {
     const boolean = layers.viewMode === "boolean" && !this.separate;
     layers.group.visible = !boolean;
     layers.composite.group.visible = boolean && !layers.composite.failed;
+    layers.syncAssemblyPreview();
   }
 }

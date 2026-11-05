@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Group, Matrix4, Vector3 } from "three";
+import { Group, Matrix4, PerspectiveCamera, Scene, Vector3 } from "three";
 import { installFileReader } from "../scripts/fixtures/export-node.mjs";
 import { RecoveryBrowserWorker } from "../scripts/fixtures/node-recovery-worker.mjs";
 import { encodeExport } from "../work/test-build/glb-export.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
+import { InputOwnership } from "../work/test-build/interaction.mjs";
 import { createBaseProject } from "../work/test-build/layers.mjs";
 import {
   evaluatePrimitive,
@@ -14,6 +15,7 @@ import {
 } from "../work/test-build/parametric-primitive.mjs";
 import { fromDisplay, physicalExportLongestMM } from "../work/test-build/physical-units.mjs";
 import { PrecisionTools } from "../work/test-build/precision-tools.mjs";
+import { PrimitiveDraftPreview } from "../work/test-build/primitive-preview.mjs";
 import { PrimitiveTools } from "../work/test-build/primitive-tools.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { captureProject } from "../work/test-build/project-snapshot.mjs";
@@ -621,5 +623,196 @@ test("source brush/paint/mask reject implicit Bake; replaced and removed source 
     assert.equal(l.project.layerStack.layers.length, 1);
   } finally {
     l.dispose();
+  }
+});
+
+class PreviewCanvas extends EventTarget {
+  style = {};
+  getBoundingClientRect() {
+    return { left: 0, top: 0, width: 800, height: 600 };
+  }
+  setPointerCapture() {}
+  releasePointerCapture() {}
+}
+const previewFixture = (l) => {
+  let current = l;
+  const input = new InputOwnership(),
+    tools = new PrimitiveTools(() => current),
+    scene = new Scene(),
+    camera = new PerspectiveCamera(38, 1, 0.01, 100);
+  scene.add(l.group);
+  tools.editing = false;
+  let blocked = false;
+  const preview = new PrimitiveDraftPreview(
+    camera,
+    new PreviewCanvas(),
+    scene,
+    tools,
+    input,
+    () => blocked,
+    () => {},
+    () => {},
+  );
+  return {
+    input,
+    tools,
+    scene,
+    preview,
+    block: () => {
+      blocked = true;
+      preview.sync();
+    },
+    replace: (next) => {
+      current = next;
+      preview.sync();
+    },
+  };
+};
+for (const [source, axis, ratios, expected] of [
+  [box, "X", [2, 1, 1], [1, 0.6, 0.4]],
+  [cylinder, "X", [2, 1, 1], [1, 0.6, 1]],
+  [sphere, "Y", [1, 1.5, 1], [0.75, 0.75, 0.75]],
+])
+  test(`desktop ${source.kind} preview handles change source sizes without editing history or exports`, async () => {
+    const l = make(),
+      { preview, tools, input } = previewFixture(l);
+    try {
+      tools.draft = structuredClone(source);
+      const snapshot = async () =>
+        (
+          await captureProject(
+            l,
+            settings,
+            undefined,
+            undefined,
+            new AbortController().signal,
+            () => true,
+          )
+        ).snapshot;
+      const before = await snapshot(),
+        history = l.undoCount,
+        count = l.exportSources("all").length;
+      preview.setOpen(true);
+      assert(preview.active && preview.root.visible);
+      preview.controls.axis = axis;
+      preview.controls.dispatchEvent({ type: "mouseDown", mode: "scale" });
+      assert(!input.cameraEnabled);
+      preview.target.scale.fromArray(ratios);
+      preview.controls.dispatchEvent({ type: "objectChange" });
+      primitiveDimensions(tools.draft).forEach((v, i) => {
+        near(v, expected[i]);
+      });
+      preview.target.scale.set(0, 1, 1);
+      preview.controls.dispatchEvent({ type: "objectChange" });
+      primitiveDimensions(tools.draft).forEach((v, i) => {
+        near(v, expected[i]);
+      });
+      preview.target.updateWorldMatrix(true, true);
+      const size = preview.mesh.getWorldScale(new Vector3());
+      expected.forEach((v, i) => {
+        near(size.getComponent(i), v);
+      });
+      preview.controls.dispatchEvent({ type: "mouseUp", mode: "scale" });
+      assert(input.cameraEnabled);
+      assert.equal(l.undoCount, history);
+      assert.equal(l.exportSources("all").length, count);
+      assert.deepEqual(await snapshot(), before);
+      preview.setOpen(false);
+      assert(!preview.root.visible && !preview.controls.object);
+    } finally {
+      preview.dispose();
+      tools.dispose();
+      l.dispose();
+    }
+  });
+test("draft sizing cancellation, modal suspension and project replacement restore the last committed draft", () => {
+  const l = make(),
+    f = previewFixture(l),
+    { preview, tools } = f;
+  try {
+    for (const end of [() => preview.cancel(), () => preview.setOpen(false), () => f.block()]) {
+      preview.setOpen(true);
+      const before = structuredClone(tools.draft);
+      preview.controls.axis = "XYZ";
+      preview.controls.dispatchEvent({ type: "mouseDown", mode: "scale" });
+      preview.target.scale.setScalar(1.4);
+      preview.controls.dispatchEvent({ type: "objectChange" });
+      end();
+      assert.deepEqual(tools.draft, before);
+      assert(!preview.dragging);
+      assert(f.input.cameraEnabled);
+      assert.equal(l.undoCount, 0);
+    }
+    assert(f.input.beginPreview(true));
+    preview.controls.dispatchEvent({ type: "mouseUp", mode: "scale" });
+    assert(
+      !f.input.cameraEnabled,
+      "unrelated mouse-up cannot release another tool's preview ownership",
+    );
+    f.input.end("preview");
+  } finally {
+    preview.dispose();
+    tools.dispose();
+    l.dispose();
+  }
+});
+test("draft preview follows presentation transforms, reuses geometry while sizing, and creation is one undoable action", async () => {
+  const l = make(),
+    { preview, tools, scene } = previewFixture(l);
+  try {
+    l.group.position.set(2, 1, -3);
+    l.group.rotation.y = 0.3;
+    l.group.scale.setScalar(2);
+    preview.setOpen(true);
+    scene.updateMatrixWorld(true);
+    assert.deepEqual(preview.root.matrixWorld.elements, l.group.matrixWorld.elements);
+    const geometry = preview.mesh.geometry;
+    await tools.dimension("width", 70, false);
+    preview.sync();
+    assert.equal(preview.mesh.geometry, geometry);
+    near(preview.mesh.scale.x, 0.7);
+    await tools.create();
+    preview.sync();
+    assert(!preview.active && !preview.root.visible);
+    assert.equal(l.project.layerStack.layers.length, 2);
+    near(l.active.layer.primitive.width, 0.7);
+    assert.equal(l.undoCount, 1);
+    l.undo();
+    assert.equal(l.project.layerStack.layers.length, 1);
+    l.undo(true);
+    near(l.active.layer.primitive.width, 0.7);
+  } finally {
+    preview.dispose();
+    tools.dispose();
+    l.dispose();
+  }
+});
+test("switching projects during a draft drag clears ownership and never publishes into the new model", () => {
+  const l = make(),
+    next = make(),
+    f = previewFixture(l),
+    { preview, tools } = f;
+  try {
+    preview.setOpen(true);
+    const draft = structuredClone(tools.draft);
+    preview.controls.axis = "X";
+    preview.controls.dispatchEvent({ type: "mouseDown", mode: "scale" });
+    preview.target.scale.x = 2;
+    preview.controls.dispatchEvent({ type: "objectChange" });
+    f.replace(next);
+    assert.deepEqual(tools.draft, draft);
+    assert(!preview.active && !preview.open && !preview.controls.object);
+    assert(f.input.cameraEnabled);
+    assert.equal(l.undoCount, 0);
+    assert.equal(next.undoCount, 0);
+    preview.setOpen(true);
+    tools.editing = true;
+    preview.sync();
+    assert(!preview.active && !preview.root.visible);
+  } finally {
+    preview.dispose();
+    tools.dispose();
+    l.dispose();
+    next.dispose();
   }
 });

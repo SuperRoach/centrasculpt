@@ -1,7 +1,16 @@
+import { type FitReport, partMembers, partOwner } from "./assembly";
+import {
+  type ConnectorOptions,
+  generateConnector,
+  inspectAssembly,
+  type MateOptions,
+  mateParts,
+} from "./assembly-tools";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerGroup } from "./layer-hierarchy";
-import { newId } from "./layers";
+import { newId, validateAssemblyPart } from "./layers";
 import { type BooleanModifier, validateModifiers } from "./live-boolean";
+import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
 import { objectDimensions } from "./object-dimensions";
 import {
   type PrimitiveSource,
@@ -14,6 +23,18 @@ import { type Vec3, type VolumeTransform, validateTransform } from "./transform"
 /** Dimensions are local, translations are sculpture-world coordinates, rotations XYZ radians.
  * Scale is dimensionless. Workspace navigation is deliberately excluded. */
 export type ModellingCommand =
+  | { type: "part.inspect"; partA: string; partB: string }
+  | { type: "part.define"; objectId: string; clearanceMM: number }
+  | { type: "part.remove"; partId: string }
+  | { type: "part.assign"; objectId: string; partId: string | null }
+  | { type: "part.select"; partId: string }
+  | { type: "part.clearance"; partId: string; clearanceMM: number }
+  | { type: "part.mate"; options: MateOptions }
+  | { type: "connector.create"; options: ConnectorOptions }
+  | { type: "array.create"; id: string; definition: Omit<ArrayDefinition, "id"> & { id?: string } }
+  | { type: "array.update"; id: string; definition: ArrayDefinition }
+  | { type: "array.remove"; id: string }
+  | { type: "array.bake"; id: string }
   | {
       type: "boolean.create";
       id: string;
@@ -30,6 +51,10 @@ export type ModellingCommand =
   | { type: "primitive.bake"; id: string }
   | { type: "object.delete"; id: string };
 export type ModellingQuery =
+  | { type: "part.list" }
+  | { type: "part.get"; partId: string }
+  | { type: "array.list" }
+  | { type: "array.get"; id: string }
   | { type: "boolean.list" }
   | { type: "boolean.get"; id: string }
   | { type: "scene.summary" }
@@ -54,15 +79,31 @@ export type SceneSummary = {
   millimetresPerModelUnit: number;
   busy: boolean;
 };
-export type QueryValue<Q extends ModellingQuery> = Q extends { type: "scene.summary" }
-  ? SceneSummary
-  : Q extends { type: "object.list" }
-    ? ObjectMetadata[]
-    : Q extends { type: "boolean.list" }
-      ? { id: string; modifiers: BooleanModifier[] }[]
-      : Q extends { type: "boolean.get" }
-        ? BooleanModifier[]
-        : ObjectMetadata;
+export type PartMetadata = {
+  id: string;
+  name: string;
+  members: string[];
+  clearanceMM: number;
+  visible: boolean;
+  locked: boolean;
+};
+export type QueryValue<Q extends ModellingQuery> = Q extends { type: "part.list" }
+  ? PartMetadata[]
+  : Q extends { type: "part.get" }
+    ? PartMetadata
+    : Q extends { type: "scene.summary" }
+      ? SceneSummary
+      : Q extends { type: "array.list" }
+        ? { id: string; array: ArrayDefinition }[]
+        : Q extends { type: "array.get" }
+          ? ArrayDefinition | null
+          : Q extends { type: "object.list" }
+            ? ObjectMetadata[]
+            : Q extends { type: "boolean.list" }
+              ? { id: string; modifiers: BooleanModifier[] }[]
+              : Q extends { type: "boolean.get" }
+                ? BooleanModifier[]
+                : ObjectMetadata;
 class CommandError extends Error {
   constructor(
     readonly code: ErrorCode,
@@ -104,6 +145,8 @@ export class ModellingAPI {
     const layer = group ? undefined : this.layers.runtime(id).layer;
     return {
       id,
+      partId: partOwner(this.layers.project.layerStack, id),
+      array: layer?.array ? this.externalArray(layer.array) : null,
       booleanModifiers: structuredClone(layer?.booleanModifiers ?? []),
       consumedBy: this.layers.project.layerStack.layers
         .filter((l) => l.booleanModifiers?.some((m) => m.enabled && m.sourceId === id))
@@ -152,6 +195,26 @@ export class ModellingAPI {
     try {
       let value: unknown;
       switch (query.type) {
+        case "part.list":
+          value = this.layers.project.layerStack.layers
+            .filter((l) => l.assemblyPart)
+            .map((l) => this.partMetadata(l.id));
+          break;
+        case "part.get":
+          value = this.partMetadata(query.partId);
+          break;
+        case "array.list":
+          value = this.layers.project.layerStack.layers
+            .filter((l) => l.array)
+            .map((l) => ({ id: l.id, array: this.externalArray(l.array!) }));
+          break;
+        case "array.get":
+          this.node(query.id);
+          {
+            const array = this.layers.project.layerStack.get(query.id).array;
+            value = array ? this.externalArray(array) : null;
+          }
+          break;
         case "boolean.list":
           value = this.layers.project.layerStack.layers
             .filter((l) => l.booleanModifiers?.length)
@@ -190,6 +253,29 @@ export class ModellingAPI {
       return this.error(e);
     }
   }
+  private partMetadata(id: string): PartMetadata {
+    this.node(id);
+    const l = this.layers.project.layerStack.get(id);
+    if (!l.assemblyPart) this.fail("not_found", "Printable part does not exist.");
+    return {
+      id,
+      name: l.name,
+      members: partMembers(this.layers.project.layerStack, id),
+      clearanceMM: l.assemblyPart.clearanceMM,
+      visible: l.visible,
+      locked: l.locked,
+    };
+  }
+  private externalArray(array: ArrayDefinition): ArrayDefinition {
+    const value = structuredClone(array);
+    if (value.kind === "linear")
+      value.spacingModelUnits *= this.layers.display.precision.millimetresPerUnit;
+    else
+      value.pivot = value.pivot.map(
+        (v) => v * this.layers.display.precision.millimetresPerUnit,
+      ) as Vec3;
+    return value;
+  }
   private error(e: unknown): ModellingResult<never> {
     return {
       ok: false,
@@ -203,7 +289,7 @@ export class ModellingAPI {
   async execute(
     command: ModellingCommand,
     options: { expectedRevision: string; signal?: AbortSignal },
-  ): Promise<ModellingResult<{ id: string }>> {
+  ): Promise<ModellingResult<{ id: string; fit?: FitReport }>> {
     let selected: string | undefined,
       group: string | null = null;
     try {
@@ -215,6 +301,14 @@ export class ModellingAPI {
       if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
       if (
         ![
+          "part.inspect",
+          "part.define",
+          "part.remove",
+          "part.assign",
+          "part.select",
+          "part.clearance",
+          "part.mate",
+          "connector.create",
           "boolean.create",
           "boolean.update",
           "boolean.remove",
@@ -225,10 +319,32 @@ export class ModellingAPI {
           "object.rename",
           "primitive.bake",
           "object.delete",
+          "array.create",
+          "array.update",
+          "array.remove",
+          "array.bake",
         ].includes(command.type)
       )
         this.fail("unsupported", "Unsupported command.");
-      let source: PrimitiveSource | undefined, transform: VolumeTransform | undefined;
+      if (command.type === "part.inspect") {
+        this.partMetadata(command.partA);
+        this.partMetadata(command.partB);
+        this.pending = true;
+        try {
+          const fit = await inspectAssembly(
+            this.layers,
+            command.partA,
+            command.partB,
+            options.signal,
+          );
+          return { ok: true, revision: this.revision, value: { id: command.partA, fit } };
+        } finally {
+          this.pending = false;
+        }
+      }
+      let source: PrimitiveSource | undefined,
+        transform: VolumeTransform | undefined,
+        arrayDefinition: ArrayDefinition | undefined;
       try {
         if (command.type === "primitive.create" || command.type === "primitive.update")
           source = validatePrimitive(this.convertSource(command.source, this.factor(command.unit)));
@@ -238,6 +354,16 @@ export class ModellingAPI {
             ...command.transform,
             position: command.transform.position.map((v) => v * f) as Vec3,
           });
+        }
+        if (command.type === "array.create" || command.type === "array.update") {
+          const raw = structuredClone(command.definition) as ArrayDefinition;
+          if (raw.kind === "radial")
+            raw.pivot = raw.pivot.map(
+              (v) => v / this.layers.display.precision.millimetresPerUnit,
+            ) as Vec3;
+          arrayDefinition = validateArrayDefinition({ ...raw, id: raw.id ?? newId() });
+          if (arrayDefinition.kind === "linear")
+            arrayDefinition.spacingModelUnits /= this.layers.display.precision.millimetresPerUnit;
         }
         if (
           command.type === "object.rename" &&
@@ -249,6 +375,26 @@ export class ModellingAPI {
       } catch (e) {
         this.fail("invalid_input", e instanceof Error ? e.message : "Invalid input.");
       }
+      if (command.type === "part.define" || command.type === "part.clearance") {
+        try {
+          validateAssemblyPart({ clearanceMM: command.clearanceMM });
+        } catch (e) {
+          this.fail("invalid_input", e instanceof Error ? e.message : "Invalid clearance.");
+        }
+      }
+      const partEditIds =
+        command.type === "part.define" || command.type === "part.assign"
+          ? [command.objectId]
+          : command.type === "part.clearance" || command.type === "part.remove"
+            ? [command.partId]
+            : command.type === "part.mate"
+              ? [command.options.moving]
+              : command.type === "connector.create"
+                ? [command.options.pegPart, command.options.socketPart]
+                : [];
+      for (const partId of partEditIds)
+        if (!this.node(partId).editable)
+          this.fail("permission_denied", "Part or ancestor is hidden or locked.");
       if ("id" in command) {
         const node = this.node(command.id);
         if (!node.editable)
@@ -268,6 +414,11 @@ export class ModellingAPI {
       group = this.layers.selectedGroupId;
       this.pending = true;
       let id = "id" in command ? command.id : "";
+      if (command.type === "part.select") {
+        this.partMetadata(command.partId);
+        this.layers.select(command.partId);
+        return { ok: true, revision: this.revision, value: { id: command.partId } };
+      }
       // Generation uses the same selected-source ownership rules as desktop and XR.
       this.layers.selectedGroupId = null;
       if ("id" in command) {
@@ -275,6 +426,75 @@ export class ModellingAPI {
         else this.layers.select(command.id);
       }
       switch (command.type) {
+        case "part.define":
+          this.node(command.objectId);
+          id = command.objectId;
+          this.layers.setAssemblyPart(id, { clearanceMM: command.clearanceMM });
+          break;
+        case "part.remove":
+          this.partMetadata(command.partId);
+          id = command.partId;
+          this.layers.setAssemblyPart(id, undefined);
+          break;
+        case "part.clearance":
+          this.partMetadata(command.partId);
+          id = command.partId;
+          this.layers.setAssemblyPart(id, { clearanceMM: command.clearanceMM });
+          break;
+        case "part.assign":
+          this.node(command.objectId);
+          id = command.objectId;
+          if (command.partId) this.partMetadata(command.partId);
+          this.layers.reparent(id, command.partId);
+          break;
+        case "part.mate":
+          this.partMetadata(command.options.moving);
+          this.partMetadata(command.options.target);
+          mateParts(this.layers, command.options);
+          id = command.options.moving;
+          break;
+        case "connector.create":
+          this.node(command.options.pegPart);
+          this.node(command.options.socketPart);
+          id = await generateConnector(this.layers, command.options, options.signal);
+          break;
+        case "array.create": {
+          const layer = this.layers.project.layerStack.get(id);
+          if (layer.array)
+            this.fail("unsupported", "Object already has an array; update it instead.");
+          this.layers.setArrayDefinition(id, arrayDefinition);
+          break;
+        }
+        case "array.update": {
+          const layer = this.layers.project.layerStack.get(id);
+          if (!layer.array) this.fail("not_found", "Object has no array to update.");
+          if (arrayDefinition?.id !== layer.array.id)
+            this.fail("invalid_input", "Array ID is stable and cannot be changed.");
+          this.layers.setArrayDefinition(id, arrayDefinition);
+          break;
+        }
+        case "array.remove": {
+          const layer = this.layers.project.layerStack.get(id);
+          if (!layer.array) this.fail("not_found", "Object has no array to remove.");
+          this.layers.setArrayDefinition(id, undefined);
+          break;
+        }
+        case "array.bake": {
+          const layer = this.layers.project.layerStack.get(id);
+          if (!layer.array?.enabled)
+            this.fail("unsupported", "Enable an array before baking its evaluated instances.");
+          await this.layers.bake(
+            {
+              name: `${layer.name} array baked`.slice(0, 128),
+              resolution: 128,
+              sourceIds: [id],
+              hideSources: true,
+            },
+            options.signal,
+          );
+          id = this.layers.project.activeLayerId;
+          break;
+        }
         case "boolean.create": {
           const modifiers = this.layers.project.layerStack.get(id).booleanModifiers ?? [];
           this.layers.setBooleanModifiers(id, [

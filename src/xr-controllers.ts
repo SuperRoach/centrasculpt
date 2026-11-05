@@ -129,7 +129,9 @@ export class XRControllers {
   };
   private suspendBoolean(value: boolean): void {
     const layers = this.options.layers?.();
-    if (layers?.project.layerStack.layers.some((l) => l.booleanModifiers?.length))
+    if (
+      layers?.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
+    )
       layers.composite.setSuspended(value);
   }
   suspend(): void {

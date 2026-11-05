@@ -11,7 +11,11 @@ import { createMeshReference, validateReferences } from "../work/test-build/refe
 import { ReferenceView } from "../work/test-build/reference-view.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { parseSTL, STL_LIMITS } from "../work/test-build/stl.mjs";
-import { encodeSTL, validatePrintMesh } from "../work/test-build/stl-export.mjs";
+import {
+  encodeSTL,
+  stabilisePrintCoordinates,
+  validatePrintMesh,
+} from "../work/test-build/stl-export.mjs";
 import { identityTransform } from "../work/test-build/transform.mjs";
 
 const budget = 256 * 1024 ** 2;
@@ -314,4 +318,64 @@ test("binary triangle quota and reference aggregate quotas are explicit", () => 
     validateReferences(Array.from({ length: 7 }, (_, i) => ({ ...r, id: String(i) }))),
   );
   assert.throws(() => validateReferences([{ ...r, wireframe: "yes" }]));
+});
+
+const precisionTetrahedron = () => {
+  const a = [0, 0, 0],
+    b = [1, 0, 0],
+    c = [0, 1, 0],
+    d = [0, 0, 1],
+    m = [0.5, 0, 0];
+  return new Float32Array([a, c, m, m, c, b, a, b, d, a, d, c, b, c, d, a, m, b].flat());
+};
+test("Float32 collinear seam is retriangulated exactly without moving vertices or hiding topology checks", async () => {
+  const positions = precisionTetrahedron(),
+    original = positions.slice();
+  const before = await validatePrintMesh(positions);
+  assert.equal(before.degenerateTriangles, 1);
+  const stable = await stabilisePrintCoordinates(positions);
+  assert.equal(stable.repaired, 1);
+  assert.deepEqual(positions, original);
+  assert.equal(stable.positions.length, positions.length);
+  const allowed = new Set(
+    Array.from({ length: positions.length / 3 }, (_, i) =>
+      Array.from(positions.subarray(i * 3, i * 3 + 3)).join(","),
+    ),
+  );
+  for (let i = 0; i < stable.positions.length; i += 3)
+    assert(allowed.has(Array.from(stable.positions.subarray(i, i + 3)).join(",")));
+  const after = await validatePrintMesh(stable.positions);
+  assert.equal(after.boundaryEdges, 0);
+  assert.equal(after.nonManifoldEdges, 0);
+  assert.equal(after.inconsistentEdges, 0);
+  assert.equal(after.degenerateTriangles, 0);
+  assert.equal(after.blocking.length, 0);
+  const result = await encodeSTL(
+    [
+      {
+        name: "precision",
+        step: 0.1,
+        transform: identityTransform(),
+        chunks: [{ positions, normals: new Float32Array(positions.length).fill(1) }],
+      },
+    ],
+    "fast",
+    budget,
+    100,
+  );
+  assert.equal(result.report.precisionRetriangulations, 1);
+  assert.equal(result.report.blocking.length, 0);
+  assert.deepEqual(result.report.dimensions, [100, 100, 100]);
+});
+test("precision cleanup preserves ambiguous geometry for rejection and supports cancellation", async () => {
+  const input = precisionTetrahedron();
+  const ambiguous = new Float32Array([...input, ...input.subarray(18, 27)]);
+  const stable = await stabilisePrintCoordinates(ambiguous);
+  assert.equal(stable.repaired, 0);
+  assert.deepEqual(stable.positions, ambiguous);
+  assert((await validatePrintMesh(stable.positions)).blocking.length);
+  const abort = new AbortController();
+  abort.abort();
+  await assert.rejects(stabilisePrintCoordinates(input, new ExportWork(abort.signal)), /cancelled/);
+  assert.deepEqual(input, precisionTetrahedron());
 });

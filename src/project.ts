@@ -1,3 +1,4 @@
+import { validateAssembly } from "./assembly";
 import { BRUSH_RADIUS_LIMITS } from "./brush-settings";
 import { type ProjectDisplayPreferences, validateProjectDisplay } from "./display-preferences";
 import { validateHierarchy } from "./layer-hierarchy";
@@ -303,6 +304,7 @@ export function saveSculptProject(
     offset += count;
     return result;
   });
+  validateAssembly(project.layerStack);
   // Revalidate identity/order/selection after metadata may have been edited by clients.
   assertIndependentLayerVolumes(layers);
   if (
@@ -360,29 +362,33 @@ export function saveSculptProject(
   bytes.set(MAGIC);
   view.setUint32(
     8,
-    layers.some((l) => l.booleanModifiers?.length)
-      ? 12
-      : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
-        ? 11
-        : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
-              project.layerStack.layers.some(
-                (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
-              ),
-            )
-          ? 10
-          : assets.some((a) => a.mime === "model/stl")
-            ? 9
-            : hasPaint
-              ? 8
-              : project.layerStack.hierarchy.enabled
-                ? 7
-                : hasMasks
-                  ? 6
-                  : assets.length
-                    ? 5
-                    : layers.every((l) => isLegacyCubicGrid(l.volume))
-                      ? 3
-                      : 4,
+    layers.some((l) => l.assemblyPart)
+      ? 14
+      : layers.some((l) => l.array)
+        ? 13
+        : layers.some((l) => l.booleanModifiers?.length)
+          ? 12
+          : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
+            ? 11
+            : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
+                  project.layerStack.layers.some(
+                    (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
+                  ),
+                )
+              ? 10
+              : assets.some((a) => a.mime === "model/stl")
+                ? 9
+                : hasPaint
+                  ? 8
+                  : project.layerStack.hierarchy.enabled
+                    ? 7
+                    : hasMasks
+                      ? 6
+                      : assets.length
+                        ? 5
+                        : layers.every((l) => isLegacyCubicGrid(l.volume))
+                          ? 3
+                          : 4,
     true,
   );
   view.setUint32(12, metadata.length, true);
@@ -436,9 +442,11 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     version !== 9 &&
     version !== 10 &&
     version !== 11 &&
-    version !== 12
+    version !== 12 &&
+    version !== 13 &&
+    version !== 14
   )
-    throw new Error("Unsupported project version. This app supports versions 1–12.");
+    throw new Error("Unsupported project version. This app supports versions 1–13.");
   const length = view.getUint32(12, true);
   if (length < 2 || length > 65536 || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
@@ -531,6 +539,9 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     volume.values.set(values);
     if (layer.booleanModifiers?.length && version < 12)
       throw new Error("Live Booleans require project version 12.");
+    if (layer.assemblyPart && version < 14)
+      throw new Error("Assembly requires project version 14.");
+    if (layer.array && version < 13) throw new Error("Arrays require project version 13.");
     if (layer.primitive) {
       if (version < 11) throw new Error("Primitives require project version 11.");
       validatePrimitiveCache(layer.primitive, volume);
@@ -665,6 +676,7 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     stack.hierarchy.restore(metadata.hierarchy);
   }
   validateBooleanGraph(stack.layers);
+  validateAssembly(stack);
   const project = new SculptProject(stack, settings, name, id);
   if (metadata.toolPreferences !== undefined)
     project.toolPreferences = validateToolPreferences(metadata.toolPreferences);

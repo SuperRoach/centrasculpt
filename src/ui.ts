@@ -40,12 +40,12 @@ export function createUI() {
     <div class="range-label strength-label"><label for="strength">BRUSH STRENGTH</label><output id="strength-value">35%</output></div><input id="strength" type="range" min="0.01" max="1" step="0.01" value="0.35"/><div class="range-ends"><span>Gentle</span><span>Strong</span></div>
     <div class="range-label strength-label"><label for="hardness">BRUSH HARDNESS</label><output id="hardness-value">0%</output></div><input id="hardness" type="range" min="0" max="1" step="0.01" value="0"/><div class="range-ends"><span>Soft clay</span><span>Sharp edge · Smooth unchanged</span></div>
     <label for="resolution" class="strength-label">VOXEL RESOLUTION</label><div class="resolution-controls"><select id="resolution"><option value="64">64³ · Default</option><option value="128">128³ · Fine</option><option value="192">192³ · High memory</option></select><button id="apply-resolution">Resample</button></div><p class="resolution-note">Higher resolution allows finer detail. Resampling clears sculpt undo for this layer.</p></section>
-    <details class="instructions"><summary>CONTROLS & SHORTCUTS</summary><p><kbd>I</kbd> Cycle Normal / Matte / Glossy</p><p><kbd>G</kbd> Move stamp preview / finish moving</p><p><kbd>T</kbd> Rotate stamp ghost / finish rotation</p><p><kbd>W</kbd> Activate layer move</p><p><kbd>E</kbd> Activate layer rotation (or constrain X while moving)</p><p><kbd>E</kbd> / <kbd>D</kbd> / <kbd>C</kbd> Hold during layer move to constrain X / Y / Z</p><p><kbd>R</kbd> / <kbd>F</kbd> / <kbd>V</kbd> Hold during layer rotation to constrain X / Y / Z</p><p><kbd>B</kbd> Return to brush (hides shape ghost)</p><p><kbd>Drag</kbd> Sculpt the surface or move / rotate the layer</p><p><kbd>Right drag</kbd> Orbit the camera</p><p><kbd>Scroll</kbd> Zoom in / out</p><p><kbd>Middle drag</kbd> Pan the view</p><p><kbd>Cmd/Ctrl + Z</kbd> Undo stroke</p><p><kbd>+ Shift</kbd> Redo stroke</p></details>
+    <details class="instructions"><summary>CONTROLS & SHORTCUTS</summary><p><kbd>I</kbd> Cycle Normal / Matte / Glossy</p><p><kbd>G</kbd> Move stamp preview / finish moving</p><p><kbd>T</kbd> Rotate stamp ghost / finish rotation</p><p><kbd>W</kbd> Activate layer move</p><p><kbd>E</kbd> Activate layer rotation (or constrain X while moving)</p><p><kbd>E</kbd> / <kbd>D</kbd> / <kbd>C</kbd> Hold during layer move to constrain X / Y / Z</p><p><kbd>R</kbd> / <kbd>F</kbd> / <kbd>V</kbd> Hold during layer rotation to constrain X / Y / Z</p><p><kbd>B</kbd> Return to brush (hides shape ghost)</p><p><kbd>Drag</kbd> Sculpt the surface or move / rotate the layer</p><p><kbd>Right drag</kbd> Orbit the camera</p><p><kbd>Scroll</kbd> Zoom in / out</p><p><kbd>Middle drag</kbd> Pan the view</p><p><kbd>Delete / Backspace</kbd> Delete selected layer (undoable)</p><p><kbd>Cmd/Ctrl + Z</kbd> Undo</p><p><kbd>+ Shift</kbd> Redo</p></details>
     <div class="actions"><div class="history-buttons"><button id="undo" disabled title="Undo (Cmd/Ctrl+Z)">↶ Undo</button><button id="redo" disabled title="Redo (Cmd/Ctrl+Shift+Z)">↷ Redo</button></div><p id="history-info">0 undo · 0 redo</p>
     <div class="project-buttons"><button id="new-project">New Project…</button><button id="save-project">Save Project</button><button id="open-project">Open Project</button></div><input id="project-file" type="file" accept=".form" hidden/><p id="project-message" role="status"></p>
     <label for="export-format">EXPORT FORMAT</label><select id="export-format"><option value="stl">STL (.stl) · 3D printing</option><option value="glb">GLB (.glb) · 3D mesh and colour</option></select><label for="export-quality">EXPORT QUALITY</label><select id="export-quality"><option value="fast">Fast · existing triangles</option><option value="standard">Standard · welded and cleaned</option><option value="high">High · planar optimisation</option></select><p id="export-estimate" role="status"></p><button id="cancel-export" hidden>Cancel export</button><button id="export-selected">Export current layer</button>
     <button id="export">Export all layers</button><button id="export-boolean">Export unified boolean</button><button id="reset">↺ &nbsp; Reset sphere</button><p>All layers exports visible sculpt layers as separate parts. Hidden layers and references are excluded. Unified boolean exports the composed result.</p></div></aside>
-    <div id="viewport"><button type="button" id="cycle-render-style" class="render-style-toggle" aria-label="Cycle rendering style" title="Cycle Normal, Matte and Glossy (I)">◐ Normal</button><button type="button" id="cycle-camera-view" class="viewport-label" title="Cycle Perspective, Top, Side and Bottom views" aria-label="Camera view: Perspective. Switch to Top"><span class="dot" aria-hidden="true"></span> <span id="camera-view-label">Perspective</span></button><div id="status" role="status">Ready to sculpt</div><div class="bottom-label"><span id="mesh-info"></span><span id="rebuild-info">Measuring mesh…</span></div></div><aside class="layers-panel"><h2>Layers</h2>
+    <div id="viewport"><button type="button" id="cycle-render-style" class="render-style-toggle" aria-label="Cycle rendering style" title="Cycle Normal, Matte and Glossy (I)">◐ Normal</button><button type="button" id="cycle-camera-view" class="viewport-label" title="Cycle Perspective, Top, Side and Bottom views" aria-label="Camera view: Perspective. Switch to Top"><span class="dot" aria-hidden="true"></span> <span id="camera-view-label">Perspective</span></button><div id="status" role="status">Ready to sculpt</div><div id="viewport-toast" class="viewport-toast" role="status" aria-live="polite" hidden></div><div class="bottom-label"><span id="mesh-info"></span><span id="rebuild-info">Measuring mesh…</span></div></div><aside class="layers-panel"><h2>Layers</h2>
     <label id="surface-view-label">SURFACE VIEW</label><div id="composition-mode" class="surface-view-toggle" role="group" aria-labelledby="surface-view-label"><button type="button" data-surface-view="separate" aria-pressed="true" title="Show separate layers">Layers</button><button type="button" data-surface-view="boolean" aria-pressed="false" title="Show Boolean preview">Boolean</button></div><p id="composite-info" class="layers-hint" role="status"></p><label for="render-style">RENDERING STYLE</label><select id="render-style" title="Lighting style is viewport only; painted colours are exported. Press I to cycle."><option value="normal">Normal · Clay</option><option value="matte">Matte · Soft reflections</option><option value="glossy">Glossy · Surface inspection</option></select><label for="viewport-mode">LAYER DISPLAY COLOURS</label><select id="viewport-mode"><option value="clay">Clay</option><option value="layer-colours" selected>Layer Colours</option></select>
     <div class="new-layer-controls"><select id="new-layer-resolution" aria-label="New layer resolution"><option value="64">64³</option><option value="128">128³</option><option value="192">192³</option></select><select id="new-layer-contents" aria-label="New layer contents"><option value="empty">Empty clay volume</option><option value="sphere">Starter sphere</option></select><button id="new-layer">＋ New layer</button></div>
     <div class="layer-geometry-actions"><button id="cut-plane" title="Split layers with a plane">Plane Cut…</button><button id="bake-layers">Bake / Merge…</button></div><div id="bake-running" hidden><p id="bake-progress" role="status"></p><button id="cancel-bake">Cancel Bake</button></div>
@@ -57,8 +57,7 @@ export function createUI() {
     <label for="uniform-scale">UNIFORM SCALE</label><input id="uniform-scale" data-transform-field="scale" type="number" min="0.001" max="1000" step="0.01" aria-label="Uniform scale"/>
     <button id="reset-transform">Reset Transform</button><p id="transform-note" class="layers-hint">Move: drag a layer surface to move it freely; hold E/D/C to constrain to X/Y/Z. Rotate: drag for free rotation; hold R/F/V to constrain to X/Y/Z. All scale handles are uniform. Numeric fields are absolute project coordinates. Use Sculpt to resume brushing.</p></section></aside></main>
     <dialog id="new-project-dialog" aria-labelledby="new-project-title"><form method="dialog"><h2 id="new-project-title">New Project</h2><p>Replaces the open project and starts fresh history. Save your current work first. Existing recovery checkpoints are kept.</p><label for="new-project-resolution">Resolution</label><select id="new-project-resolution"><option value="64">64³ · Default</option><option value="128">128³ · Fine</option><option value="192">192³ · High memory</option></select><label for="new-project-contents">First layer</label><select id="new-project-contents"><option value="sphere">Starter sphere</option><option value="empty">Empty clay volume</option></select><div class="dialog-actions"><button value="cancel">Cancel</button><button value="create">Create project</button></div></form></dialog>
-    <dialog id="bake-dialog" aria-labelledby="bake-title"><form method="dialog"><h2 id="bake-title">Bake visible Boolean result</h2><p>Creates a new editable SDF layer. Original layers are never deleted or resampled.</p><label for="bake-name">RESULT NAME</label><input id="bake-name" type="text" required maxlength="128" value="Baked sculpture"/><label for="bake-resolution">OUTPUT RESOLUTION</label><select id="bake-resolution"><option value="64">64³</option><option value="128" selected>128³</option><option value="192">192³</option></select><label for="bake-scope">SOURCES</label><select id="bake-scope"><option value="visible">Visible Boolean result</option><option value="pair">Selected layer + chosen layer (Union)</option></select><label for="bake-other">MERGE WITH</label><select id="bake-other"></select><pre id="bake-bounds"></pre><p id="bake-estimate" role="status"></p><p>Lower output resolution can permanently lose fine detail in the baked result. Sources keep all their detail.</p><label class="bake-hide"><input id="bake-hide" type="checkbox" checked/> Hide contributing source layers after baking</label><p id="bake-overlap-note"></p><p id="bake-error" role="alert"></p><div class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button id="confirm-bake" value="bake">Bake new layer</button></div></form></dialog>
-    <dialog id="delete-layer-dialog"><form method="dialog"><h2>Delete layer?</h2><p id="delete-layer-message"></p><div class="dialog-actions"><button value="cancel">Cancel</button><button value="delete" class="danger">Delete layer</button></div></form></dialog>
+    <dialog id="bake-dialog" aria-labelledby="bake-title"><form method="dialog"><h2 id="bake-title">Bake visible Boolean result</h2><label for="bake-name">RESULT NAME</label><input id="bake-name" type="text" required maxlength="128" value="Baked sculpture"/><label for="bake-resolution">OUTPUT RESOLUTION</label><select id="bake-resolution"><option value="64">64³</option><option value="128" selected>128³</option><option value="192">192³</option></select><p id="bake-detail-note" role="status"></p><label class="bake-hide"><input id="bake-hide" type="checkbox" checked/> Hide source layers after baking</label><p id="bake-overlap-note"></p><details id="bake-merge-options"><summary>Merge two layers instead</summary><label for="bake-other">MERGE WITH</label><select id="bake-other"></select></details><p id="bake-error" role="alert"></p><div class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button id="confirm-bake" value="bake">Bake new layer</button></div></form></dialog>
     <dialog id="cut-dialog" aria-labelledby="cut-title"><form method="dialog"><h2 id="cut-title">Plane Cut</h2><p>Preview the cutting plane. The two closed SDF pieces will remain separate; the second piece becomes a new layer.</p><label for="cut-axis">PLANE NORMAL</label><select id="cut-axis"><option value="x">X axis</option><option value="y">Y axis</option><option value="z">Z axis</option></select><label for="cut-scope">AFFECTED LAYERS</label><select id="cut-scope"><option value="active">Active layer</option><option value="all-editable">All visible, unlocked SDF layers</option></select><label for="cut-offset">PLANE POSITION</label><input id="cut-offset" type="range" min="-1.4" max="1.4" step="0.02" value="0"/><output id="cut-offset-value">0.00</output><label for="cut-tilt-x">TILT X</label><input id="cut-tilt-x" type="range" min="-90" max="90" step="15" value="0"/><label for="cut-tilt-y">TILT Y</label><input id="cut-tilt-y" type="range" min="-90" max="90" step="15" value="0"/><p id="cut-preview-status" role="status">Plane preview only · no geometry changed</p><p id="cut-error" role="alert"></p><div class="dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button id="cut-apply" value="apply">Cut into new layer</button></div></form></dialog>
     <footer><span>A little curiosity. Infinite possibilities.</span><span>CENTRA SCULPT · YOUR CREATIVE SPACE</span></footer>`;
   let brushSelection: ((mode: BrushMode) => void) | null = null;
@@ -178,9 +177,19 @@ export function createUI() {
     .addEventListener("change", (event) =>
       layerAction("mode", "", (event.target as HTMLSelectElement).value),
     );
-  const deleteDialog = document.querySelector<HTMLDialogElement>("#delete-layer-dialog")!;
   const bakeDialog = document.querySelector<HTMLDialogElement>("#bake-dialog")!;
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  window.addEventListener("pagehide", () => clearTimeout(toastTimer), { once: true });
   return {
+    toast(text: string) {
+      const element = document.getElementById("viewport-toast")!;
+      clearTimeout(toastTimer);
+      element.textContent = text;
+      element.hidden = false;
+      toastTimer = setTimeout(() => {
+        element.hidden = true;
+      }, 2500);
+    },
     onBrushSelection(callback: (mode: BrushMode) => void) {
       brushSelection = callback;
     },
@@ -252,9 +261,9 @@ export function createUI() {
       name.value = "Baked sculpture";
       resolution.value = "128";
       hide.checked = true;
-      const scope = document.querySelector<HTMLSelectElement>("#bake-scope")!,
+      const merge = document.querySelector<HTMLDetailsElement>("#bake-merge-options")!,
         other = document.querySelector<HTMLSelectElement>("#bake-other")!;
-      scope.value = "visible";
+      merge.open = false;
       other.replaceChildren();
       for (const layer of sourceLayers.filter((l) => l.id !== activeId)) {
         const option = document.createElement("option");
@@ -262,24 +271,24 @@ export function createUI() {
         option.textContent = layer.name;
         other.append(option);
       }
-      scope.options[1].disabled = !other.options.length;
-      const sources = () => (scope.value === "pair" ? [activeId, other.value] : undefined);
+      merge.hidden = !other.options.length;
+      const sources = () => (merge.open ? [activeId, other.value] : undefined);
       const update = () => {
-        document.getElementById("bake-title")!.textContent =
-          scope.value === "pair" ? "Merge two layers (Union)" : "Bake visible Boolean result";
+        document.getElementById("bake-title")!.textContent = merge.open
+          ? "Merge two layers (Union)"
+          : "Bake visible Boolean result";
         document.querySelector('label[for="bake-other"]')!.textContent =
           `MERGE ${sourceLayers.find((l) => l.id === activeId)?.name ?? "SELECTED LAYER"} WITH`;
         document.getElementById("bake-overlap-note")!.textContent = hide.checked
-          ? "Sources remain in the project, hidden and independently recoverable."
-          : "Sources will stay visible. The viewport switches to Separate Layers to avoid recombining them with the baked result; surfaces may overlap.";
+          ? ""
+          : "Visible sources may overlap the baked layer.";
         try {
-          other.disabled = scope.value !== "pair";
+          other.disabled = !merge.open;
           const plan = getPlan(Number(resolution.value), sources());
           onBounds(plan);
-          document.getElementById("bake-bounds")!.textContent =
-            `World bounds (cube)\nMin: ${plan.min.map((v) => v.toFixed(3)).join(", ")}\nMax: ${plan.max.map((v) => v.toFixed(3)).join(", ")}\nVoxel spacing: ${plan.worldStep.toFixed(5)} world units`;
-          document.getElementById("bake-estimate")!.textContent =
-            `${plan.sourceIds.length} ${scope.value === "pair" ? "chosen" : "visible"} sources · New grid + scratch: ${(plan.gridBytes / 1048576).toFixed(1)} MiB · All project grids + scratch: ${(plan.projectGridBytes / 1048576).toFixed(1)} MiB. Preview caches, meshes, GPU buffers and history are additional.${plan.detailLimited ? " Output sampling is coarser than the finest source." : ""}`;
+          document.getElementById("bake-detail-note")!.textContent = plan.detailLimited
+            ? "Lower resolution may soften fine detail."
+            : "";
           if (!name.value.trim()) throw new Error("Enter a name for the baked layer.");
           confirm.disabled = false;
           document.getElementById("bake-error")!.textContent = "";
@@ -287,12 +296,12 @@ export function createUI() {
           onBounds(null);
           confirm.disabled = true;
           document.getElementById("bake-error")!.textContent = (error as Error).message;
-          document.getElementById("bake-bounds")!.textContent = "";
-          document.getElementById("bake-estimate")!.textContent = "";
+          document.getElementById("bake-detail-note")!.textContent = "";
         }
       };
-      for (const element of [name, resolution, hide, scope, other])
+      for (const element of [name, resolution, hide, other])
         element.addEventListener("input", update);
+      merge.addEventListener("toggle", update);
       update();
       bakeDialog.returnValue = "cancel";
       bakeDialog.showModal();
@@ -300,8 +309,9 @@ export function createUI() {
         bakeDialog.addEventListener(
           "close",
           () => {
-            for (const element of [name, resolution, hide, scope, other])
+            for (const element of [name, resolution, hide, other])
               element.removeEventListener("input", update);
+            merge.removeEventListener("toggle", update);
             onBounds(null);
             resolve(
               bakeDialog.returnValue === "bake"
@@ -328,19 +338,6 @@ export function createUI() {
     },
     get modalOpen() {
       return !!document.querySelector("dialog[open]");
-    },
-    confirmDelete(name: string): Promise<boolean> {
-      document.getElementById("delete-layer-message")!.textContent =
-        `Delete “${name}” and its voxel data and undo history? Other layers will be kept.`;
-      deleteDialog.returnValue = "cancel";
-      return new Promise((resolve) => {
-        deleteDialog.addEventListener(
-          "close",
-          () => resolve(deleteDialog.returnValue === "delete"),
-          { once: true },
-        );
-        deleteDialog.showModal();
-      });
     },
     compositeInfo(text: string) {
       document.getElementById("composite-info")!.textContent = text;

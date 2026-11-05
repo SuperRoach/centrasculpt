@@ -20,6 +20,7 @@ const palette = [
   "#929fc9",
 ];
 export type ProjectDisplayPreferences = {
+  assemblyPreview?: boolean;
   precision?: PrecisionSettings;
   mode: ViewportMode;
   colours: Record<string, string>;
@@ -52,6 +53,8 @@ export function validateProjectDisplay(
     throw new Error("Invalid project layer colour or target layer.");
   if (data.supportGuide !== undefined && typeof data.supportGuide !== "boolean")
     throw new Error("Invalid support guide preference.");
+  if (data.assemblyPreview !== undefined && typeof data.assemblyPreview !== "boolean")
+    throw new Error("Invalid assembly preview preference.");
   const renderStyle =
     data.renderStyle === undefined
       ? undefined
@@ -59,6 +62,9 @@ export function validateProjectDisplay(
   const vrUiScale = data.vrUiScale === undefined ? undefined : validateVRUIScale(data.vrUiScale);
   const world = data.world === undefined ? undefined : validateWorldSettings(data.world);
   return {
+    ...(data.assemblyPreview === undefined
+      ? {}
+      : { assemblyPreview: data.assemblyPreview as boolean }),
     ...(data.precision === undefined ? {} : { precision: validatePrecision(data.precision) }),
     ...(data.supportGuide === undefined ? {} : { supportGuide: data.supportGuide as boolean }),
     ...(data.lighting === undefined ? {} : { lighting: validateLighting(data.lighting) }),
@@ -74,6 +80,7 @@ export function validateProjectDisplay(
 }
 /** Runtime display preferences with an explicit native-project snapshot boundary. */
 export class LayerDisplayPreferences {
+  assemblyPreview = false;
   precision = defaultPrecision();
   lighting?: LightingSettings;
   references: ReferenceImage[] = [];
@@ -110,6 +117,7 @@ export class LayerDisplayPreferences {
     layers: readonly { id: string; order: number }[],
   ): ProjectDisplayPreferences {
     return {
+      ...(this.assemblyPreview ? { assemblyPreview: true } : {}),
       precision: structuredClone(this.precision),
       ...(!this.supportGuide ? { supportGuide: false } : {}),
       ...(this.lighting ? { lighting: structuredClone(this.lighting) } : {}),
@@ -142,6 +150,7 @@ export class LayerDisplayPreferences {
             layers.map((layer) => layer.id),
           );
     this.precision = validated?.precision ?? defaultPrecision();
+    this.assemblyPreview = validated?.assemblyPreview ?? false;
     this.lighting = validated?.lighting;
     this.references = validated?.references ?? [];
     this.world = validated?.world ?? defaultWorldSettings();

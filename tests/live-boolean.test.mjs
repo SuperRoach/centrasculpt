@@ -135,7 +135,7 @@ test("graph cycles, missing/self refs, duplicate IDs and locks reject atomically
     l.setFlag(cutter.id, "locked", true);
     assert.throws(() => l.setBooleanModifiers(box.id, []), /locked/);
     l.setFlag(cutter.id, "locked", false);
-    assert.throws(() => l.deleteObject(cutter.id), /references/);
+    assert.throws(() => l.remove(cutter.id), /references/);
     assert.throws(() => validateModifiers([modifier(cutter.id), modifier(cutter.id)]), /Duplicate/);
     assert.throws(() => validateModifiers([{ ...modifier(cutter.id), enabled: "yes" }]), /Invalid/);
     assert.throws(
@@ -494,6 +494,85 @@ test("disposal between cooperative colour preparation and publication cannot res
   try {
     assert.equal(await l.composite.rebuild(), false);
     assert.equal(l.composite.trackedBytes, 0);
+  } finally {
+    l.dispose();
+  }
+});
+
+test("deleting a shared live source removes enabled and disabled references in one reversible action", async () => {
+  const { l, box, cutter } = await fixture();
+  try {
+    const other = await l.regeneratePrimitive({ kind: "box", width: 0.2, height: 0.2, depth: 0.2 });
+    const spare = await l.regeneratePrimitive({ kind: "sphere", diameter: 0.02 });
+    l.setBooleanModifiers(other.id, [
+      modifier(spare.id, "union", "keep"),
+      { ...modifier(cutter.id, "difference", "disabled-cut"), enabled: false },
+    ]);
+    const original = [box, other].map((layer) => structuredClone(layer.booleanModifiers));
+    l.reparent(cutter.id, box.id);
+    l.select(cutter.id);
+    const hierarchy = l.project.layerStack.hierarchy.snapshot(),
+      field = cutter.volume.getDenseView().slice(),
+      before = l.undoCount;
+    l.deleteObject(cutter.id);
+    assert.equal(l.undoCount, before + 1);
+    assert.equal(box.booleanModifiers.length, 0);
+    assert.deepEqual(
+      other.booleanModifiers.map((m) => m.id),
+      ["keep"],
+    );
+    assert(!l.project.layerStack.layers.some((layer) => layer.id === cutter.id));
+    validateBooleanGraph(l.project.layerStack.layers);
+    const opened = openSculptProject(saveSculptProject(l.project));
+    assert(!opened.layerStack.layers.some((layer) => layer.id === cutter.id));
+    l.undo();
+    assert.equal(l.project.layerStack.get(cutter.id), cutter);
+    assert.deepEqual(cutter.volume.getDenseView(), field);
+    assert.deepEqual(l.project.layerStack.hierarchy.snapshot(), hierarchy);
+    [box, other].forEach((layer, i) => {
+      assert.deepEqual(layer.booleanModifiers, original[i]);
+    });
+    l.undo(true);
+    assert(!l.project.layerStack.layers.some((layer) => layer.id === cutter.id));
+    validateBooleanGraph(l.project.layerStack.layers);
+  } finally {
+    l.dispose();
+  }
+});
+
+test("a refused or interrupted source deletion preserves references, selection and the redo branch", async () => {
+  const { l, box, cutter } = await fixture();
+  try {
+    const other = await l.regeneratePrimitive({ kind: "sphere", diameter: 0.04 });
+    l.setBooleanModifiers(other.id, [modifier(cutter.id, "union", "second-use")]);
+    l.setFlag(other.id, "locked", true);
+    l.renameNode(box.id, "Temporary name");
+    l.undo();
+    const before = l.recoveryKey(),
+      undo = l.undoCount,
+      redo = l.redoCount;
+    assert.throws(() => l.deleteObject(cutter.id), /locked/);
+    assert.equal(l.recoveryKey(), before);
+    assert.equal(l.undoCount, undo);
+    assert.equal(l.redoCount, redo);
+    l.setFlag(other.id, "locked", false);
+    l.reparent(other.id, cutter.id);
+    l.renameNode(box.id, "Another name");
+    l.undo();
+    const state = l.recoveryKey(),
+      history = [l.undoCount, l.redoCount],
+      remove = l.project.layerStack.remove;
+    l.project.layerStack.remove = () => {
+      throw new Error("Injected removal failure");
+    };
+    try {
+      assert.throws(() => l.deleteObject(cutter.id), /Injected/);
+    } finally {
+      l.project.layerStack.remove = remove;
+    }
+    assert.equal(l.recoveryKey(), state);
+    assert.deepEqual([l.undoCount, l.redoCount], history);
+    validateBooleanGraph(l.project.layerStack.layers);
   } finally {
     l.dispose();
   }

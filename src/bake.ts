@@ -38,7 +38,11 @@ export type BakeStats = {
 };
 export function bakeSources(project: SculptProject, ids?: readonly string[]) {
   if (!ids) return project.layerStack.compositionLayers;
-  if (ids.length === 1 && project.layerStack.get(ids[0]).booleanModifiers?.length) {
+  if (
+    ids.length === 1 &&
+    (project.layerStack.get(ids[0]).booleanModifiers?.length ||
+      project.layerStack.get(ids[0]).array?.enabled)
+  ) {
     const needed = new Set<string>();
     const visit = (id: string) => {
       if (needed.has(id)) return;

@@ -1,9 +1,14 @@
 import whatsNew from "../WHATS_NEW.md?raw";
+import { partOwner } from "./assembly";
+import { restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
+import { assemblyUI } from "./assembly-ui";
+import { prepareBooleanExport } from "./boolean-export";
 import { exportFilename } from "./export-filename";
 import { questCapture } from "./performance-capture";
 import { physicalExportLongestMM, physicalGLBSources } from "./physical-units";
 import { PrecisionTools, selectionDimensions } from "./precision-tools";
 import { precisionUI } from "./precision-ui";
+import { PrimitiveDraftPreview } from "./primitive-preview";
 import { primitiveUI } from "./primitive-ui";
 import { TransformPreview } from "./transform-preview";
 import { mountWhatsNew } from "./whats-new";
@@ -25,7 +30,7 @@ import type { ExportQuality, ExportSource } from "./export-mesh";
 import { EXPORT_MEMORY_LIMIT, exportAdmission } from "./export-mesh";
 import { IndependentLayers } from "./independent-layers";
 import type { EditorMode } from "./interaction";
-import { InputOwnership } from "./interaction";
+import { handleLayerDeleteShortcut, InputOwnership } from "./interaction";
 import { DesktopLayerPalette } from "./layer-palette";
 import { pickEditableLayer } from "./layer-picking";
 import type { LayerOperation } from "./layers";
@@ -33,6 +38,7 @@ import { createBaseProject } from "./layers";
 import { prepareLibrary } from "./library-worker-client";
 import { LightRig } from "./light-rig";
 import { lightingUI } from "./lighting-ui";
+import { ModellingAPI, type ModellingCommand } from "./modelling-api";
 import { MAX_PROJECT_BYTES } from "./project";
 import { ProjectBrowser } from "./project-browser";
 import { ProjectLibrary } from "./project-library";
@@ -117,6 +123,8 @@ const stabilityMetrics = new StabilityMetrics();
 let stabilityText = "";
 let precision: PrecisionTools | undefined;
 let primitivesUI: { sync: () => void } | undefined;
+let primitivePreview: PrimitiveDraftPreview | undefined;
+let assemblyControlsUI: { sync: () => void } | undefined;
 let measurementUI: { sync: () => void } | undefined;
 let xrExperience: XRExperience | undefined;
 const xrBlocked = () => xrExperience?.blocking ?? false;
@@ -335,6 +343,7 @@ function refresh() {
     display.colour(layers.project.id, layer.id, layer.order),
   );
   desktopLayers?.render();
+  assemblyControlsUI?.sync();
   measurementUI?.sync();
   primitivesUI?.sync();
   ui.resolution(layers.active.layer.volume.resolution);
@@ -378,12 +387,31 @@ function updatePointer(e: PointerEvent) {
   );
   pointerInside = true;
 }
+// Inspection owns scene taps before gizmos, Tube and sculpt listeners receive them.
+renderer.domElement.addEventListener(
+  "pointerdown",
+  (event) => {
+    const assembly = precision?.primitives.assembly;
+    if (!assembly?.ownsPointer || event.button !== 0) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (loadingProject || ui.modalOpen || xrBlocked()) return;
+    updatePointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    assembly.pickRay(raycaster);
+    assemblyControlsUI?.sync();
+  },
+  true,
+);
 transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () => layers, input, {
   beforeDrag: stopSculpt,
   camera: (enabled) => {
     controls.enabled = enabled;
   },
-  changed: syncTransformUI,
+  changed: () => {
+    syncTransformUI();
+    primitivesUI?.sync();
+  },
   status: (text) => ui.status(text),
   error: (text) => ui.projectMessage(text, true),
   hitLayer: (event) => {
@@ -402,6 +430,7 @@ transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () 
     snapArrow.visible = false;
   },
   busy: () =>
+    !!primitivePreview?.active ||
     loadingProject ||
     ui.modalOpen ||
     xrBlocked() ||
@@ -589,6 +618,11 @@ syncViewportTools();
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 renderer.domElement.addEventListener("pointermove", (event) => {
   updatePointer(event);
+  if (precision?.primitives.assembly.picking) {
+    raycaster.setFromCamera(pointer, camera);
+    precision.primitives.assembly.hoverRay(raycaster);
+    return;
+  }
   if (
     editorTools?.active === "transform" &&
     editorTools.surfaceSnap.enabled &&
@@ -610,6 +644,7 @@ renderer.domElement.addEventListener("pointerleave", () => {
   snapArrow.visible = false;
 });
 renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (primitivePreview?.active) return;
   if (precision?.primitives.placing) return;
   if (precision?.active) {
     if (!loadingProject && !ui.modalOpen && !xrBlocked() && e.button === 0) {
@@ -736,6 +771,17 @@ window.addEventListener("keydown", (event) => {
     document.getElementById("save-project")!.click();
     return;
   }
+  if (event.key === "Escape" && precision?.primitives.assembly.ownsPointer) {
+    event.preventDefault();
+    void precision.primitives.assembly.run("cancel");
+    return;
+  }
+  if (event.key === "Escape" && primitivePreview?.dragging) {
+    event.preventDefault();
+    primitivePreview.cancel();
+    ui.status("Preview sizing cancelled");
+    return;
+  }
   if (event.key === "Escape" && (layers.transforming || transformTools?.resizing)) {
     transformTools?.cancel();
     ui.status("Transform cancelled");
@@ -757,6 +803,39 @@ window.addEventListener("keydown", (event) => {
   if (
     event.target instanceof Element &&
     event.target.closest('input:not([type="range"]),textarea,select,[contenteditable="true"]')
+  )
+    return;
+  if (
+    handleLayerDeleteShortcut(
+      event,
+      loadingProject ||
+        renderer.xr.isPresenting ||
+        input.referenceEditing ||
+        !!precision?.primitives.assembly.ownsPointer,
+      event.target instanceof Element &&
+        !!event.target.closest(
+          'input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]',
+        ),
+      () => {
+        stop();
+        try {
+          const node = layers.transformNode;
+          if (!layers.selectedGroupId && layers.project.layerStack.layers.length === 1) {
+            ui.toast("Only one layer — nothing to delete");
+            return;
+          }
+          layers.deleteObject(node.id);
+          ui.toast("Layer deleted");
+          cursor.visible = false;
+          ui.projectMessage(`Deleted ${node.name}. Undo with Cmd/Ctrl+Z.`);
+        } catch (error) {
+          ui.toast(message(error));
+          ui.projectMessage(message(error), true);
+        }
+        refresh();
+        transformTools?.sync();
+      },
+    )
   )
     return;
   if (input.referenceEditing && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -977,10 +1056,9 @@ ui.onLayerAction(async (action, id, value) => {
     }
     if (action === "delete") {
       const layer = layers.project.layerStack.get(id);
-      if (layers.isEmpty(id) || (await ui.confirmDelete(layer.name))) {
-        layers.remove(id);
-        ui.projectMessage(`Deleted ${layer.name}. Only its history was removed.`);
-      }
+      layers.deleteObject(id);
+      ui.toast("Layer deleted");
+      ui.projectMessage(`Deleted ${layer.name}. Undo with Cmd/Ctrl+Z.`);
     } else if (action === "select") layers.select(id);
     else if (action === "rename") {
       layers.rename(id, value!);
@@ -1285,6 +1363,7 @@ async function openProjectFile(
   transformTools?.sync();
   ui.projectMessage("Validating all layer data…");
   let candidate: IndependentLayers | undefined;
+  let previewWarning = "";
   const signal = libraryAbort.signal;
   try {
     await recovery?.settle();
@@ -1307,6 +1386,13 @@ async function openProjectFile(
     }
     if (signal.aborted) throw new Error("Project open cancelled.");
     candidate.viewMode = layers.viewMode;
+    try {
+      await restoreAssemblyPreview(candidate, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      previewWarning = ` Assembly preview could not be rebuilt: ${message(error)} Use Assembly → Show assembly preview to retry.`;
+    }
+    if (signal.aborted) throw new Error("Project open cancelled.");
     references.clear();
     referenceEditor?.finish();
     xrExperience!.rig.sculptureRoot.remove(layers.group, layers.composite.group);
@@ -1338,7 +1424,8 @@ async function openProjectFile(
     ui.projectMessage(
       `Opened ${file.name}: ${project.layerStack.layers.length} independent layers. History starts fresh.`,
     );
-    ui.status("Project opened");
+    ui.status(previewWarning ? "Project opened · review assembly preview" : "Project opened");
+    if (previewWarning) ui.projectMessage(`Project opened.${previewWarning}`, true);
     recovery?.replaceProject();
     manualSaveError = "";
     restoredSaveKey = expectedProjectId ? recoveryKey() : "";
@@ -1388,6 +1475,13 @@ window.addEventListener("keydown", (event) => {
   }
 });
 function exportEstimate(): void {
+  if (
+    layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
+  ) {
+    document.getElementById("export-estimate")!.textContent =
+      "Boolean geometry is evaluated during export. Final triangle count and sampling spacing appear in the print report.";
+    return;
+  }
   const count = layers.project.layerStack.layers.reduce(
     (n, l) => n + (l.visible ? layers.runtime(l.id).triangles : 0),
     0,
@@ -1404,7 +1498,7 @@ function exportEstimate(): void {
     note = message(error);
   }
   document.getElementById("export-estimate")!.textContent =
-    `${layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length) ? "Visible Boolean result" : "Visible source"}: ${(layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length) ? (layers.composite.stats?.triangles ?? 0) : count).toLocaleString()} triangles before optimisation. ${note}`;
+    `Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;
 }
 document.getElementById("export-quality")!.addEventListener("change", exportEstimate);
 
@@ -1418,6 +1512,43 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
   let calibratedLongestMM = 0;
   if (loadingProject || xrBlocked()) return;
   stop();
+  if (
+    format === "stl" &&
+    scope !== "composite" &&
+    layers.project.layerStack.layers.some((l) => l.assemblyPart)
+  ) {
+    const assembly = precision!.primitives.assembly;
+    assembly.exportQuality = document.querySelector<HTMLSelectElement>("#export-quality")!
+      .value as ExportQuality;
+    if (scope === "selected") {
+      const owner = partOwner(layers.project.layerStack, layers.project.activeLayerId);
+      if (!owner) {
+        exportMessage(
+          "Select an object in a printable part, or use Assembly / Fit to assign it.",
+          true,
+        );
+        return;
+      }
+      assembly.partA = owner;
+    }
+    loadingProject = true;
+    ui.projectBusy(true, true);
+    exportMessage("Preparing STL export…");
+    try {
+      recovery?.cancelJob();
+      await recovery?.settle();
+      await paint();
+      await assembly.run(scope === "selected" ? "export" : "export-all");
+      exportMessage(assembly.status);
+    } catch (error) {
+      exportMessage(message(error), true);
+    } finally {
+      loadingProject = false;
+      ui.projectBusy(false);
+      refresh();
+    }
+    return;
+  }
   clearPreparedExport();
   const filename = exportFilename(
     scope === "selected"
@@ -1443,112 +1574,136 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     await recovery?.settle();
     if (signal.aborted) throw new Error("Export cancelled.");
     await paint();
-    let sources: ExportSource[];
-    if (
-      scope === "selected" &&
-      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)
-    )
-      throw new Error("Choose visible Boolean result export for scenes with live modifiers.");
-    if (
-      scope === "composite" ||
-      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)
-    ) {
-      exportMessage("Evaluating Boolean result at the existing quality cap…");
-      // Abort the export wait; the shared preview scheduler may finish its own cache.
-      let release = () => {};
-      try {
-        await Promise.race([
-          layers.composite.flush(),
-          new Promise<never>((_, reject) => {
-            const abort = () => reject(new Error("Export cancelled."));
-            signal.addEventListener("abort", abort, { once: true });
-            release = () => signal.removeEventListener("abort", abort);
-            if (signal.aborted) abort();
-          }),
-        ]);
-      } finally {
-        release();
-      }
-      if (stlMM !== undefined && layers.composite.stats?.capped)
-        throw new Error(
-          "Unified STL unavailable at the current Boolean quality cap: detail would be lost. Export individual parts or reduce the model bounds.",
-        );
-      sources = layers.composite.exportSources();
-    } else sources = layers.exportSources(scope, stlMM === undefined);
-    if (stlMM !== undefined)
-      sources = sources.map((source) => ({
-        ...source,
-        chunks: source.chunks.map(({ positions, normals }) => ({ positions, normals })),
-      }));
-    if (stlMM !== undefined) {
-      calibratedLongestMM = physicalExportLongestMM(sources, display.precision.millimetresPerUnit);
-      if (printUsePhysical.checked) {
-        stlMM = calibratedLongestMM;
-        printSize.value = String(stlMM);
-      }
-    }
-    if (stlMM === undefined)
-      sources = physicalGLBSources(sources, display.precision.millimetresPerUnit);
-    const quality = document.querySelector<HTMLSelectElement>("#export-quality")!
-      .value as ExportQuality;
-    const result = await exportGlbAsync(sources, quality, {
-      signal,
-      stlMM,
-      maxBytes: Math.max(1, EXPORT_MEMORY_LIMIT - layers.trackedBytes),
-      progress: (p) => {
-        exportMessage(
-          `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% · Cancel available`,
-        );
+    await withExportMemory(
+      layers,
+      async () => {
+        let prepared: Awaited<ReturnType<typeof prepareBooleanExport>> | undefined;
+        try {
+          let sources: ExportSource[];
+          if (
+            scope === "selected" &&
+            layers.project.layerStack.layers.some(
+              (l) => l.booleanModifiers?.length || l.array?.enabled,
+            )
+          )
+            throw new Error("Choose visible Boolean result export for scenes with live modifiers.");
+          if (
+            scope === "composite" ||
+            layers.project.layerStack.layers.some(
+              (l) => l.booleanModifiers?.length || l.array?.enabled,
+            )
+          ) {
+            exportMessage("Preparing a memory-bounded Boolean export…");
+            prepared = await prepareBooleanExport(
+              layers,
+              layers.project,
+              signal,
+              stlMM !== undefined,
+            );
+            sources = prepared.sources;
+          } else sources = layers.exportSources(scope, stlMM === undefined);
+          if (stlMM !== undefined)
+            sources = sources.map((source) => ({
+              ...source,
+              chunks: source.chunks.map(({ positions, normals }) => ({ positions, normals })),
+            }));
+          if (stlMM !== undefined) {
+            calibratedLongestMM = physicalExportLongestMM(
+              sources,
+              display.precision.millimetresPerUnit,
+            );
+            if (printUsePhysical.checked) {
+              stlMM = calibratedLongestMM;
+              printSize.value = String(stlMM);
+            }
+          }
+          if (stlMM === undefined)
+            sources = physicalGLBSources(sources, display.precision.millimetresPerUnit);
+          const quality = document.querySelector<HTMLSelectElement>("#export-quality")!
+            .value as ExportQuality;
+          const result = await exportGlbAsync(sources, quality, {
+            signal,
+            stlMM,
+            maxBytes:
+              prepared?.availableBytes() ?? Math.max(1, EXPORT_MEMORY_LIMIT - layers.trackedBytes),
+            progress: (p) => {
+              exportMessage(
+                `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% · Cancel available`,
+              );
+            },
+          });
+          if (prepared && result.stats[0]) {
+            result.stats[0].inputTriangles += prepared.removedTriangles;
+            result.stats[0].planarRemoved += prepared.removedTriangles;
+            result.stats[0].maxPlanarDeviation = Math.max(
+              result.stats[0].maxPlanarDeviation,
+              prepared.maxPlanarDeviation,
+            );
+            if (result.report && stlMM !== undefined)
+              result.report.effectiveResolutionMM =
+                (Math.max(...prepared.sources.map((source) => source.step)) *
+                  stlMM *
+                  display.precision.millimetresPerUnit) /
+                calibratedLongestMM;
+          }
+          if (signal.aborted) throw new Error("Export cancelled.");
+          const encodedView = new DataView(result.data);
+          if (
+            format === "stl"
+              ? result.data.byteLength < 84 ||
+                !result.report ||
+                84 + encodedView.getUint32(80, true) * 50 !== result.data.byteLength
+              : result.data.byteLength < 12 || encodedView.getUint32(0, true) !== 0x46546c67
+          )
+            throw new Error("Export format mismatch. No file downloaded.");
+          if (stlMM !== undefined) {
+            const report = result.report!;
+            printReport.textContent = [
+              `${printUsePhysical.checked ? "Project physical scale" : "Target size override"} · calibrated scope longest ${calibratedLongestMM.toFixed(3)} mm · export ${(stlMM / calibratedLongestMM).toFixed(6)}× project scale`,
+              `Physical size: ${report.dimensions.map((n) => n.toFixed(3)).join(" × ")} mm`,
+              ...(report.effectiveResolutionMM === undefined
+                ? []
+                : [`Boolean evaluation spacing: ${report.effectiveResolutionMM.toFixed(4)} mm`]),
+              `${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`,
+              `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,
+              `Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,
+              ...report.blocking.map((s) => "BLOCKED: " + s),
+              ...report.warnings.map((s) => "WARNING: " + s),
+              ...report.unsupported.map((s) => "NOT CHECKED / LIMIT: " + s),
+            ].join("\n");
+            if (report.blocking.length)
+              throw new Error("STL blocked: " + report.blocking.join(" "));
+            prepareExportDownload(result.data, filename, "model/stl", report.warnings.length > 0);
+            printReportDownload.hidden = false;
+            printReportDownload.onclick = () =>
+              download(
+                new Blob(
+                  [
+                    JSON.stringify(
+                      { ...report, scope, targetLongestMM: stlMM, quality, repairs: result.stats },
+                      null,
+                      2,
+                    ),
+                  ],
+                  { type: "application/json" },
+                ),
+                filename.replace(/\.stl$/i, "-print-report.json"),
+              );
+            if (report.warnings.length) {
+              exportMessage(`Review print warnings, then download ${filename}.`);
+            } else {
+              printDownload.click();
+            }
+            return;
+          }
+          prepareExportDownload(result.data, filename, "model/gltf-binary", false);
+          printDownload.click();
+        } finally {
+          prepared?.dispose();
+        }
       },
-    });
-    if (signal.aborted) throw new Error("Export cancelled.");
-    const encodedView = new DataView(result.data);
-    if (
-      format === "stl"
-        ? result.data.byteLength < 84 ||
-          !result.report ||
-          84 + encodedView.getUint32(80, true) * 50 !== result.data.byteLength
-        : result.data.byteLength < 12 || encodedView.getUint32(0, true) !== 0x46546c67
-    )
-      throw new Error("Export format mismatch. No file downloaded.");
-    if (stlMM !== undefined) {
-      const report = result.report!;
-      printReport.textContent = [
-        `${printUsePhysical.checked ? "Project physical scale" : "Target size override"} · calibrated scope longest ${calibratedLongestMM.toFixed(3)} mm · export ${(stlMM / calibratedLongestMM).toFixed(6)}× project scale`,
-        `Physical size: ${report.dimensions.map((n) => n.toFixed(3)).join(" × ")} mm`,
-        `${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`,
-        `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,
-        `Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,
-        ...report.blocking.map((s) => "BLOCKED: " + s),
-        ...report.warnings.map((s) => "WARNING: " + s),
-        ...report.unsupported.map((s) => "NOT CHECKED / LIMIT: " + s),
-      ].join("\n");
-      if (report.blocking.length) throw new Error("STL blocked: " + report.blocking.join(" "));
-      prepareExportDownload(result.data, filename, "model/stl", report.warnings.length > 0);
-      printReportDownload.hidden = false;
-      printReportDownload.onclick = () =>
-        download(
-          new Blob(
-            [
-              JSON.stringify(
-                { ...report, scope, targetLongestMM: stlMM, quality, repairs: result.stats },
-                null,
-                2,
-              ),
-            ],
-            { type: "application/json" },
-          ),
-          filename.replace(/\.stl$/i, "-print-report.json"),
-        );
-      if (report.warnings.length) {
-        exportMessage(`Review print warnings, then download ${filename}.`);
-      } else {
-        printDownload.click();
-      }
-      return;
-    }
-    prepareExportDownload(result.data, filename, "model/gltf-binary", false);
-    printDownload.click();
+      (warning) => exportMessage(warning, true),
+    );
   } catch (error) {
     exportMessage(`${message(error)} Source sculpture kept.`, !signal.aborted);
   } finally {
@@ -1744,6 +1899,20 @@ desktopLayers = new DesktopLayerPalette(
   () => loadingProject || ui.modalOpen || xrBlocked(),
   () => stop(),
 );
+document.querySelector(".layers-panel")!.addEventListener(
+  "click",
+  (event) => {
+    const assembly = precision?.primitives.assembly;
+    if (!assembly?.picking || loadingProject || ui.modalOpen || xrBlocked()) return;
+    const title = (event.target as Element).closest(".hierarchy-name"),
+      id = title?.closest<HTMLElement>("[data-node-id]")?.dataset.nodeId;
+    if (!id) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    assembly.pickLayer(id);
+  },
+  true,
+);
 desktopLayers.render();
 const precisionPanel = document.createElement("details");
 precisionPanel.className = "precision-settings";
@@ -1909,6 +2078,8 @@ const desktopTube = new DesktopTubeTool(
     !input.referenceEditing &&
     !precision?.active &&
     !precision?.primitives.placing &&
+    !primitivePreview?.active &&
+    !precision?.primitives.assembly.ownsPointer &&
     input.mode === "sculpt",
   () => refresh(),
 );
@@ -1974,11 +2145,13 @@ function applySurfaceSnap(
   }
   if (layers.viewMode === "boolean") {
     const participants = new Set<string>();
-    for (const layer of layers.project.layerStack.layers)
+    for (const layer of layers.project.layerStack.layers) {
       if (layer.booleanModifiers?.length) {
         participants.add(layer.id);
         for (const modifier of layer.booleanModifiers) participants.add(modifier.sourceId);
       }
+      if (layer.array?.enabled) participants.add(layer.id);
+    }
     if (!participants.has(selectedId)) {
       layers.composite.group.updateWorldMatrix(true, true);
       layers.composite.group.traverse((object) => {
@@ -2064,11 +2237,75 @@ precision = new PrecisionTools(
   },
 );
 precision.sync();
+primitivePreview = new PrimitiveDraftPreview(
+  camera,
+  renderer.domElement,
+  scene,
+  precision.primitives,
+  input,
+  () =>
+    loadingProject ||
+    ui.modalOpen ||
+    xrBlocked() ||
+    input.referenceEditing ||
+    shapeGhost.model.enabled ||
+    !!precision?.active ||
+    !!precision?.primitives.assembly.ownsPointer,
+  () => primitivesUI?.sync(),
+  (enabled) => {
+    controls.enabled = enabled;
+  },
+);
+let primitivePanelState = "";
 primitivesUI = primitiveUI(
   precision.primitives,
   precisionPanel.parentElement!,
   () => loadingProject || ui.modalOpen || xrBlocked(),
   precision,
+  async (command: ModellingCommand) => {
+    const api = new ModellingAPI(layers),
+      result = await api.execute(command, { expectedRevision: api.revision });
+    if (!result.ok) throw new Error(result.error.message);
+    syncView();
+    refresh();
+  },
+  {
+    state: (open, editing) => {
+      const state = `${open}:${editing}`;
+      if (state === primitivePanelState) return;
+      primitivePanelState = state;
+      if (open) {
+        stop();
+        precision!.start(0);
+        shapeGhost.clear();
+        cursor.visible = false;
+      }
+      primitivePreview!.setOpen(open);
+      if (open && editing && precision!.primitives.source) transformTools!.setMode("scale");
+      transformTools?.sync();
+    },
+    source: () => transformTools?.primitivePreview,
+  },
+);
+precision.primitives.assembly.onExport = (result) => {
+  const name = result.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  download(new Blob([result.data], { type: "model/stl" }), `${name}.stl`);
+  download(
+    new Blob([JSON.stringify(result.report, null, 2)], { type: "application/json" }),
+    `${name}-print-report.json`,
+  );
+};
+precision.primitives.assembly.beforePick = () => {
+  stop();
+  precision!.start(0);
+  shapeGhost.clear();
+  cursor.visible = false;
+};
+assemblyControlsUI = assemblyUI(
+  precision.primitives.assembly,
+  precisionPanel.parentElement!,
+  () => loadingProject || ui.modalOpen || xrBlocked(),
+  ui.viewport,
 );
 measurementUI = precisionUI(
   precision,
@@ -2260,7 +2497,9 @@ const projectBrowser = new ProjectBrowser(
       }
     },
     thumbnail: async () => {
-      if (layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) {
+      if (
+        layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
+      ) {
         await layers.composite.flush();
         return captureProjectThumbnail(renderer, layers.composite.group);
       }
@@ -2815,6 +3054,7 @@ entryRecoveryEnter.addEventListener("click", () => {
   void xrExperience!.session.enter();
 });
 function interruptSession(_reason: string): void {
+  primitivePreview?.cancel();
   libraryAbort.abort();
   libraryAbort = new AbortController();
   recovery?.cancelJob();
@@ -2850,6 +3090,7 @@ const recoveryTimer = setInterval(() => {
   }
 }, 500);
 import.meta.hot?.dispose(() => {
+  primitivePreview?.dispose();
   clearInterval(recoveryTimer);
   snapArrow.removeFromParent();
   snapArrow.line.geometry.dispose();
@@ -2881,7 +3122,9 @@ function pollComposite(now: number): void {
   if (
     booleanPreview &&
     (!layers.transforming ||
-      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) &&
+      layers.project.layerStack.layers.some(
+        (l) => l.booleanModifiers?.length || l.array?.enabled,
+      )) &&
     !loadingProject &&
     !ui.modalOpen &&
     now - lastCompositePoll > 100
@@ -2913,8 +3156,15 @@ function pollComposite(now: number): void {
         });
   }
 }
+let lastAssemblyUISync = 0;
 renderer.setAnimationLoop((now, frame) => {
   precision?.sync();
+  primitivePreview?.sync();
+  if (primitivePreview?.active) transformTools?.sync();
+  if (now - lastAssemblyUISync > 150) {
+    assemblyControlsUI?.sync();
+    lastAssemblyUISync = now;
+  }
   const cpuStart = performance.now();
   lighting.sync(now, document.visibilityState !== "hidden");
   lightUI.sync();
@@ -2954,6 +3204,8 @@ renderer.setAnimationLoop((now, frame) => {
     pointerInside &&
     !precision?.active &&
     !precision?.primitives.placing &&
+    !primitivePreview?.active &&
+    !precision?.primitives.assembly.ownsPointer &&
     editorTools?.active !== "tube" &&
     editorTools?.active !== "edit-spline" &&
     input.canSculpt(

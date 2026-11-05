@@ -9,7 +9,10 @@ import {
   SphereGeometry,
   Vector3,
 } from "three";
+import { AssemblyControls } from "./assembly-controls";
 import type { IndependentLayers } from "./independent-layers";
+import { ModellingAPI, type ModellingCommand } from "./modelling-api";
+import type { ArrayDefinition } from "./object-array";
 import {
   PRIMITIVE_KINDS,
   type PrimitiveSource,
@@ -23,6 +26,7 @@ import type { XRControllerState } from "./xr-input";
 import type { MenuContent } from "./xr-menu-model";
 /** Source editing and temporary placement. Preview is never an export/compositor source. */
 export class PrimitiveTools {
+  readonly assembly: AssemblyControls;
   draft: PrimitiveSource = { kind: "box", width: 0.5, height: 0.5, depth: 0.5 };
   editing = true;
   private lastTime = 0;
@@ -41,10 +45,18 @@ export class PrimitiveTools {
   private abort?: AbortController;
   private field = "";
   private entry = "";
+  private arrayCount = 4;
+  private arrayKind: "linear" | "radial" = "radial";
+  private arrayAxis = 2;
+  private arrayAngle = 360;
+  private arraySpacing = 10;
+  private arrayOrientation: "rotate" | "retain" = "retain";
+  private arrayMenu = false;
   constructor(
     readonly layers: () => IndependentLayers,
     private readonly changed: () => void = () => {},
   ) {
+    this.assembly = new AssemblyControls(layers, changed);
     this.previewRoot.matrixAutoUpdate = false;
     this.previewRoot.add(this.preview);
     this.preview.visible = false;
@@ -83,6 +95,7 @@ export class PrimitiveTools {
     this.updatePreview();
   }
   cancel(): void {
+    this.assembly.cancelPick();
     this.abort?.abort();
     this.placing = false;
     this.preview.visible = false;
@@ -168,6 +181,7 @@ export class PrimitiveTools {
     });
   }
   step(tool: XRControllerState | undefined, pose: Matrix4 | undefined, enabled: boolean): boolean {
+    if (this.assembly.step(tool, pose, enabled)) return true;
     if (!this.placing) return false;
     const l = this.layers();
     if (l.project !== this.project) {
@@ -224,6 +238,7 @@ export class PrimitiveTools {
     return true;
   }
   content(): MenuContent {
+    if (this.assembly.open) return this.assembly.content();
     const buttons: MenuContent["buttons"] = [
       {
         id: "precision:home",
@@ -258,6 +273,52 @@ export class PrimitiveTools {
         add(`key:${key}`, key, i);
       add("apply", `Apply ${this.entry || "…"}`, 12);
       add("cancel-field", "Cancel", 13);
+    } else if (this.arrayMenu) {
+      const active = this.layers().active.layer,
+        array = active.array;
+      add("array-home", "‹ Primitives", 0);
+      add("array-count", `Repeat count · ${array?.count ?? this.arrayCount}`, 1, !active.editable);
+      add("array-kind", `Pattern · ${array?.kind ?? this.arrayKind}`, 2, !active.editable);
+      add("array-axis", `Axis · ${"XYZ"[this.arrayAxis]}`, 3, !active.editable);
+      add(
+        "array-angle",
+        `Arc · ${array?.kind === "radial" ? Math.round((array.totalAngleRadians * 180) / Math.PI) : this.arrayAngle}°`,
+        4,
+        !active.editable,
+      );
+      add(
+        "array-spacing",
+        `Spacing · ${array?.kind === "linear" ? (array.spacingModelUnits * this.settings.millimetresPerUnit).toFixed(1) : this.arraySpacing} mm`,
+        5,
+        !active.editable,
+      );
+      add(
+        "array-orientation",
+        `Orientation · ${array?.kind === "radial" ? array.orientation : this.arrayOrientation}`,
+        6,
+        !active.editable,
+      );
+      add("array-pivot", "Pivot = selected object centre", 7, !active.editable);
+      add(
+        "array-apply",
+        array ? "Update array preview" : "Create array preview",
+        8,
+        !active.editable,
+      );
+      add(
+        "array-toggle",
+        array?.enabled ? "Disable array" : "Enable array",
+        9,
+        !array || !active.editable,
+      );
+      add("array-remove", "Remove array", 10, !array || !active.editable);
+      add("array-bake", "Bake instances to sculpt", 11, !array?.enabled || !active.editable);
+      add(
+        "array-distribution",
+        `Distribution · ${array?.kind === "linear" ? (array.centered ? "centred" : "one way") : "centred"}`,
+        12,
+        !active.editable,
+      );
     } else {
       PRIMITIVE_KINDS.forEach((kind, i) => {
         add(`type:${kind}`, `New ${kind}`, i);
@@ -285,23 +346,71 @@ export class PrimitiveTools {
       );
       add("bake", "Bake to Sculpt Layer", 9, !this.source || !this.layers().active.layer.editable);
       add("transform", "Exact position / rotation / scale…", 10);
+      add("assembly-open", "Assembly / Fit…", 12);
+      add("array-open", "Array / Repeat…", 13, !this.layers().active.layer.editable);
     }
     return {
-      title: "PRIMITIVES",
-      subtitle: this.source
-        ? `Physical bounds · ${primitiveWorldDimensions(
-            this.source,
-            this.layers().active.layer.transform,
-          )
-            .map((v) => toDisplay(v, this.settings).toFixed(3))
-            .join(" × ")} ${this.settings.unit} · fields are local`
-        : "Editable Box · Cylinder · Sphere · model physical scale",
+      title: this.arrayMenu ? "ARRAY / REPEAT" : "PRIMITIVES",
+      subtitle: this.arrayMenu
+        ? "Editable evaluated instances · count · axis · spacing or arc · pivot · explicit Bake"
+        : this.source
+          ? `Physical bounds · ${primitiveWorldDimensions(
+              this.source,
+              this.layers().active.layer.transform,
+            )
+              .map((v) => toDisplay(v, this.settings).toFixed(3))
+              .join(" × ")} ${this.settings.unit} · fields are local`
+          : "Editable Box · Cylinder · Sphere · model physical scale",
       buttons,
       labels: [],
       footer: this.feedback,
     };
   }
+  private async applyArrayCommand(command: ModellingCommand): Promise<void> {
+    const api = new ModellingAPI(this.layers()),
+      result = await api.execute(command, { expectedRevision: api.revision });
+    if (!result.ok) throw new Error(result.error.message);
+    this.feedback = "Array updated · source stays editable · Undo available";
+    this.changed();
+  }
+  private arrayDefinition(): ArrayDefinition {
+    const layer = this.layers().active.layer,
+      existing = layer.array,
+      axis: [number, number, number] =
+        this.arrayAxis === 0 ? [1, 0, 0] : this.arrayAxis === 1 ? [0, 1, 0] : [0, 0, 1],
+      count = existing?.count ?? this.arrayCount;
+    if (this.arrayKind === "linear")
+      return {
+        id: existing?.id ?? "pending",
+        kind: "linear",
+        enabled: true,
+        count,
+        spacingModelUnits:
+          existing?.kind === "linear"
+            ? existing.spacingModelUnits * this.settings.millimetresPerUnit
+            : this.arraySpacing,
+        axis: existing?.kind === "linear" ? [...existing.axis] : axis,
+        centered: existing?.kind === "linear" ? existing.centered : true,
+      };
+    return {
+      id: existing?.id ?? "pending",
+      kind: "radial",
+      enabled: true,
+      count,
+      totalAngleRadians:
+        existing?.kind === "radial"
+          ? existing.totalAngleRadians
+          : (this.arrayAngle * Math.PI) / 180,
+      pivot: (existing?.kind === "radial" ? existing.pivot : layer.transform.position).map(
+        (v) => v * this.settings.millimetresPerUnit,
+      ) as [number, number, number],
+      axis: existing?.kind === "radial" ? [...existing.axis] : axis,
+      angularOffsetRadians: existing?.kind === "radial" ? existing.angularOffsetRadians : 0,
+      orientation: existing?.kind === "radial" ? existing.orientation : this.arrayOrientation,
+    };
+  }
   activate(id: string): boolean {
+    if (this.assembly.activate(id)) return true;
     if (!id.startsWith("primitive:")) return false;
     if (id === "primitive:cancel") {
       this.cancel();
@@ -333,6 +442,113 @@ export class PrimitiveTools {
       else if (a === "unit") {
         const units = ["mm", "cm", "in"] as const;
         this.settings.unit = units[(units.indexOf(this.settings.unit) + 1) % 3];
+      } else if (a === "assembly-open") this.assembly.open = true;
+      else if (a === "array-open") this.arrayMenu = true;
+      else if (a === "array-home") this.arrayMenu = false;
+      else if (a === "array-count") {
+        const counts = [4, 6, 8, 12, 16],
+          current = this.layers().active.layer.array?.count ?? this.arrayCount;
+        this.arrayCount = counts[(counts.indexOf(current) + 1) % counts.length];
+        const layer = this.layers().active.layer,
+          definition = this.arrayDefinition();
+        if (layer.array) {
+          definition.count = this.arrayCount;
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-kind") {
+        this.arrayKind =
+          (this.layers().active.layer.array?.kind ?? this.arrayKind) === "radial"
+            ? "linear"
+            : "radial";
+      } else if (a === "array-axis") {
+        this.arrayAxis = (this.arrayAxis + 1) % 3;
+        const layer = this.layers().active.layer,
+          definition = this.arrayDefinition();
+        definition.axis =
+          this.arrayAxis === 0 ? [1, 0, 0] : this.arrayAxis === 1 ? [0, 1, 0] : [0, 0, 1];
+        if (layer.array)
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+      } else if (a === "array-angle") {
+        const values = [90, 180, 270, 360],
+          layer = this.layers().active.layer,
+          current =
+            layer.array?.kind === "radial"
+              ? Math.round((layer.array.totalAngleRadians * 180) / Math.PI)
+              : this.arrayAngle;
+        this.arrayAngle = values[(values.indexOf(current) + 1) % values.length];
+        if (layer.array?.kind === "radial") {
+          const definition = this.arrayDefinition() as Extract<ArrayDefinition, { kind: "radial" }>;
+          definition.totalAngleRadians = (this.arrayAngle * Math.PI) / 180;
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-spacing") {
+        const values = [5, 10, 20, 40],
+          layer = this.layers().active.layer,
+          current =
+            layer.array?.kind === "linear"
+              ? layer.array.spacingModelUnits * this.settings.millimetresPerUnit
+              : this.arraySpacing;
+        this.arraySpacing = values[(values.indexOf(current) + 1) % values.length];
+        if (layer.array?.kind === "linear") {
+          const definition = this.arrayDefinition() as Extract<ArrayDefinition, { kind: "linear" }>;
+          definition.spacingModelUnits = this.arraySpacing;
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-orientation") {
+        const layer = this.layers().active.layer,
+          current =
+            layer.array?.kind === "radial" ? layer.array.orientation : this.arrayOrientation;
+        this.arrayOrientation = current === "rotate" ? "retain" : "rotate";
+        if (layer.array?.kind === "radial") {
+          const definition = this.arrayDefinition() as Extract<ArrayDefinition, { kind: "radial" }>;
+          definition.orientation = this.arrayOrientation;
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-pivot") {
+        const layer = this.layers().active.layer;
+        if (layer.array?.kind === "radial") {
+          const definition = this.arrayDefinition() as Extract<ArrayDefinition, { kind: "radial" }>;
+          definition.pivot = layer.transform.position.map(
+            (v) => v * this.settings.millimetresPerUnit,
+          ) as [number, number, number];
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-distribution") {
+        const layer = this.layers().active.layer;
+        if (layer.array?.kind === "linear") {
+          const definition = this.arrayDefinition() as Extract<ArrayDefinition, { kind: "linear" }>;
+          definition.centered = !layer.array.centered;
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        }
+      } else if (a === "array-apply") {
+        const layer = this.layers().active.layer,
+          definition = this.arrayDefinition();
+        if (layer.array)
+          void this.applyArrayCommand({ type: "array.update", id: layer.id, definition });
+        else {
+          const { id: _id, ...definitionWithoutId } = definition;
+          void this.applyArrayCommand({
+            type: "array.create",
+            id: layer.id,
+            definition: definitionWithoutId,
+          });
+        }
+      } else if (a === "array-toggle") {
+        const layer = this.layers().active.layer;
+        if (layer.array)
+          void this.applyArrayCommand({
+            type: "array.update",
+            id: layer.id,
+            definition: {
+              ...this.arrayDefinition(),
+              id: layer.array.id,
+              enabled: !layer.array.enabled,
+            },
+          });
+      } else if (a === "array-remove") {
+        void this.applyArrayCommand({ type: "array.remove", id: this.layers().active.layer.id });
+      } else if (a === "array-bake") {
+        void this.applyArrayCommand({ type: "array.bake", id: this.layers().active.layer.id });
       }
     } catch (e) {
       this.feedback = e instanceof Error ? e.message : "Invalid primitive";
@@ -340,6 +556,7 @@ export class PrimitiveTools {
     return true;
   }
   dispose(): void {
+    this.assembly.dispose();
     this.cancel();
     this.previewRoot.removeFromParent();
     this.preview.removeFromParent();

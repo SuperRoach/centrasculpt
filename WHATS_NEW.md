@@ -1,3 +1,53 @@
+### Export directly from assembly preview (2026-11-06)
+
+- **Export current layer** and **Export all layers** accept the first tap while the assembly preview is finishing, then export automatically. Immediate progress feedback confirms the request; repeated taps cannot start duplicate jobs.
+
+### Restore assembly previews and export reliably (2026-11-06)
+
+- **Assembly → Show assembly preview** shows the peg and socket result again. Saved projects and recovery checkpoints remember this view and rebuild it when opened. Selecting a layer keeps the preview visible.
+- Boolean exports release temporary display caches and prepare geometry in bounded chunks. Stock boxes with the default peg and socket now export at High quality within the existing memory budget. Print reports include the actual Boolean sampling spacing; geometry and topology limits still apply.
+
+### Delete live Boolean sources directly (2026-11-06)
+
+- Select a peg, socket cutter or other live Boolean source and press **Delete**, or choose **Delete layer**. Its uses are removed automatically; **Undo** restores the layer and its operations together.
+- **Live Boolean Shapes** has a **Delete source** action beside each operation. **Remove from result** keeps the source layer. The explanatory paragraphs have been removed.
+
+### Size primitives before creating them (2026-11-06)
+
+- Expanding **Primitives** shows a temporary creation preview with draggable size handles. Box handles change width, height and depth; cylinder handles change diameter or height; sphere handles change diameter. Dimension fields update with the handles, and typing a size updates the preview.
+- Choose **Create** to add the sized shape as one undoable action. Closing the section hides the preview; Escape during a drag restores its previous size. **Edit selected** uses the existing source resize handles.
+
+### Place peg-and-socket joints by tapping (2026-11-06)
+
+- Fixed the preview error for two default boxes with stock peg settings. The assembly now displays within its preview budget and reports its effective detail level.
+
+- In **Assembly → Peg & socket**, set diameter, length and clearance, then choose **Place peg & socket**. Tap the peg’s layer, tap the socket’s layer, then tap the joint face to create them.
+- A live wire preview follows the surface and automatically matches the socket position and direction on the other layer, including separated components. The other layer is shown as an outline while placing the joint.
+- Socket sizes follow the peg and clearance automatically. Manual sizes and coordinates remain under **Advanced**. Creation is one undoable action and opens the evaluated assembly preview when the quality budget allows it.
+
+### Check fit by tapping two layers (2026-11-05)
+
+- Open **Assembly → Check fit**, then tap two layers in the scene or desktop Layers list. The second tap checks them automatically; ordinary layers need no printable-part setup.
+- Read the gap or overlap result directly over the canvas. Selection outlines and step-by-step prompts show what to tap; **Escape** or **Cancel** exits safely.
+- Peg/socket, alignment and part/export controls now live in separate collapsed sections. Use **Pick two layers** for connectors or alignment; new printable parts are created only when you apply those operations.
+
+### Delete layers with the keyboard (2026-11-05)
+
+- On desktop, press **Delete** (or **Backspace** on a Mac keyboard) to remove the selected layer. **Cmd/Ctrl+Z** restores it. Typing in fields and holding the key will not delete additional layers. A brief on-screen message confirms deletion or explains when only one layer remains.
+
+### Phase 6.6 — Assemble parts and check their fit (2026-11-05)
+
+- Define named printable parts from existing layers, assign their components, and keep them independently editable. Find **Assembly / Fit** on desktop or in VR under **World Settings → Measure & Precision → Primitives**.
+- Inspect approximate gaps and interference in millimetres, with nominal-clearance settings, resolution warnings and candidate collision markers. Fit checks are approximate and cannot guarantee a physical fit.
+- Align centres, bounding faces or axes with deliberate offsets, and create editable peg-and-socket geometry with explicit dimensions and radial clearance. Undo connector generation as one action.
+- Preview the evaluated assembly without joining its parts, then export individual calibrated STLs with companion print reports. Parts and editable connectors travel with saved projects and recovery checkpoints.
+
+### Phase 6.5 — Repeat objects with editable arrays (2026-11-05)
+
+- Create editable **Radial** and **Linear** arrays from Primitives/Array on desktop or **World Settings → Measure & Precision → Primitives → Array/Repeat** in VR. Set count, axis, total angle or physical spacing, pivot, centred distribution and whether copies rotate with the array.
+- Array copies remain linked to their source and update when it changes. Toggle the array or its source visibility; edit its settings later, then choose **Bake** only when you need an independent sculpt layer.
+- Exported GLB/STL evaluates repeated geometry and live Boolean operands. For example, repeat a cylinder as a Boolean cutter to make mounting holes; the cutters do not export as extra visible parts.
+
 ### Phase 6.4 — Snap objects to surfaces (2026-11-05)
 
 - Turn on **Surface snap** in Transform options to place a selected object on a visible sculpt or imported STL surface while moving it. A live point-and-normal marker shows the current hit; freehand placement remains the default.

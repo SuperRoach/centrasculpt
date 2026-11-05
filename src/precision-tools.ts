@@ -106,6 +106,7 @@ export class PrecisionTools {
     return this.layers().display.precision;
   }
   sync(): void {
+    this.primitives.assembly.sync();
     const layers = this.layers();
     if (this.project !== layers.project || this.saved !== this.settings) {
       this.primitives.cancel();
@@ -441,7 +442,8 @@ export class PrecisionTools {
     ).toString();
   }
   activate(id: string): boolean {
-    if (id === "primitive:place") this.start(0);
+    if (id === "primitive:place" || id === "assembly:pick-fit" || id === "assembly:pick-pair")
+      this.start(0);
     if (id === "primitive:transform") {
       this.page = "transform";
       return true;

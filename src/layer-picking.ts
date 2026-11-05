@@ -20,3 +20,21 @@ export function pickEditableLayer(ray: Raycaster, layers: IndependentLayers) {
   }
   return null;
 }
+
+/** Inspection may read locked layers; source visibility still follows the hierarchy. */
+export function pickVisibleLayer(ray: Raycaster, layers: IndependentLayers): string | null {
+  let nearest = Infinity,
+    id: string | null = null;
+  for (const layer of layers.project.layerStack.layers) {
+    if (!layer.visible) continue;
+    const surface = layers.runtime(layer.id).surface.group;
+    if (!surface.visible) continue;
+    surface.updateWorldMatrix(true, true);
+    const hit = ray.intersectObject(surface, true).find((hit) => hit.object.visible);
+    if (hit && hit.distance < nearest) {
+      nearest = hit.distance;
+      id = layer.id;
+    }
+  }
+  return id;
+}

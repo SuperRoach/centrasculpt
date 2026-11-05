@@ -399,9 +399,9 @@ async function simplifyPlanar(
     added: number[] = [],
     epsilon = step * 1e-6;
   for (let v = 0; v < count; v++) {
-    if (v % 1024 === 0) await work.pause("Optimising planar regions", v, count);
+    if (v % 128 === 0) await work.pause("Optimising planar regions", v, count);
     const star = adj[v];
-    if (blocked[v] || star.length < 3 || star.length > 16) continue;
+    if (blocked[v] || star.length < 3 || star.length > 64) continue;
     const next = new Map<number, number>();
     let valid = true;
     for (const i of star) {
@@ -425,8 +425,12 @@ async function simplifyPlanar(
       ring.push(n);
     }
     if (!valid || next.get(ring.at(-1)!) !== ring[0]) continue;
-    const base = cross(p, ring[0], ring[1], ring[2]),
+    let base = cross(p, ring[0], ring[1], ring[2]),
       length = Math.hypot(...base);
+    for (let j = 2; length <= step * step * 1e-12 && j < ring.length - 1; j++) {
+      base = cross(p, ring[0], ring[j], ring[j + 1]);
+      length = Math.hypot(...base);
+    }
     if (length <= step * step * 1e-12) continue;
     const n = base.map((x) => x / length);
     let maxDeviation = 0;
@@ -459,7 +463,7 @@ async function simplifyPlanar(
         turn = cross(p, a, b, c),
         inside = cross(p, a, b, v);
       if (
-        turn.reduce((s, x, k) => s + x * n[k], 0) <= step * step * 1e-12 ||
+        turn.reduce((s, x, k) => s + x * n[k], 0) < -step * step * 1e-12 ||
         inside.reduce((s, x, k) => s + x * n[k], 0) < -step * step * 1e-12
       ) {
         valid = false;
@@ -467,18 +471,43 @@ async function simplifyPlanar(
       }
     }
     if (!valid) continue;
-    for (let j = 2; j < ring.length - 1; j++)
-      if (edges.has(edgeKey(ring[0], ring[j]))) valid = false;
-    if (!valid) continue;
-    const replacement: number[] = [];
-    for (let j = 1; j < ring.length - 1; j++) {
-      const a = ring[0],
-        b = ring[j],
-        c = ring[j + 1],
-        face = cross(p, a, b, c);
-      if (face.reduce((s, x, k) => s + x * n[k], 0) <= step * step * 1e-12) valid = false;
-      replacement.push(a, b, c);
+    const boundary = new Set(ring.map((id, i) => edgeKey(id, ring[(i + 1) % ring.length]))),
+      polygon = [...ring],
+      replacement: number[] = [];
+    const area = (a: number, b: number, c: number) =>
+      cross(p, a, b, c).reduce((sum, value, k) => sum + value * n[k], 0);
+    while (polygon.length > 3 && valid) {
+      let clipped = false;
+      for (let j = 0; j < polygon.length; j++) {
+        const a = polygon[(j + polygon.length - 1) % polygon.length],
+          b = polygon[j],
+          c = polygon[(j + 1) % polygon.length],
+          diagonal = edgeKey(a, c);
+        if (area(a, b, c) <= step * step * 1e-6 || (edges.has(diagonal) && !boundary.has(diagonal)))
+          continue;
+        // Keep every boundary vertex, including collinear points on a proposed diagonal.
+        if (
+          polygon.some(
+            (id) =>
+              id !== a &&
+              id !== b &&
+              id !== c &&
+              area(a, b, id) >= -step * step * 1e-12 &&
+              area(b, c, id) >= -step * step * 1e-12 &&
+              area(c, a, id) >= -step * step * 1e-12,
+          )
+        )
+          continue;
+        replacement.push(a, b, c);
+        polygon.splice(j, 1);
+        clipped = true;
+        break;
+      }
+      if (!clipped) valid = false;
     }
+    if (valid && area(polygon[0], polygon[1], polygon[2]) > step * step * 1e-6)
+      replacement.push(...polygon);
+    else valid = false;
     // Preserve the original orientation and reject pathological normal fields.
     const original = cross(p, tri[star[0]], tri[star[0] + 1], tri[star[0] + 2]);
     if (original.reduce((s, x, k) => s + x * n[k], 0) <= 0) valid = false;
@@ -496,4 +525,60 @@ async function simplifyPlanar(
   }
   for (let i = 0; i < added.length; i += 3) result.push(added[i], added[i + 1], added[i + 2]);
   return result;
+}
+
+/** Bound planar cleanup to one chunk at a time before whole-model STL admission.
+ * Closed planar one-rings only: curved features and all chunk boundaries stay fixed. */
+export async function compactPlanarSources(
+  sources: readonly ExportSource[],
+  maxBytes: number,
+  work = new ExportWork(),
+): Promise<{ sources: ExportSource[]; removedTriangles: number; maxPlanarDeviation: number }> {
+  const output: ExportSource[] = [];
+  let bytes = 0,
+    removedTriangles = 0,
+    maxPlanarDeviation = 0;
+  for (const source of sources) {
+    const chunks: ExportChunk[] = [];
+    for (const original of source.chunks) {
+      if (!original.positions.length) continue;
+      let chunk: ExportChunk = { positions: original.positions, normals: original.normals };
+      for (let pass = 0; pass < 12; pass++) {
+        work.check();
+        exportAdmission([{ ...source, chunks: [chunk] }], "high", maxBytes - bytes);
+        const mesh = await optimiseExportMesh({ ...source, chunks: [chunk] }, "high", work),
+          count = mesh.indices?.length ?? mesh.positions.length / 3,
+          positions = new Float32Array(count * 3),
+          normals = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          if (i % 2048 === 0) await work.pause("Preparing compact Boolean surface", i, count);
+          const index = (mesh.indices?.[i] ?? i) * 3;
+          positions.set(mesh.positions.subarray(index, index + 3), i * 3);
+          normals.set(mesh.normals.subarray(index, index + 3), i * 3);
+        }
+        maxPlanarDeviation = Math.max(maxPlanarDeviation, mesh.stats.maxPlanarDeviation);
+        let stable = true;
+        for (let i = 0; i < positions.length; i += 9)
+          if (
+            Math.hypot(...cross(positions, i / 3, i / 3 + 1, i / 3 + 2)) <=
+            source.step * source.step * 1e-6
+          ) {
+            stable = false;
+            break;
+          }
+        // A new sliver could collapse after physical-unit Float32 conversion. Keep the last stable chunk.
+        if (!stable) break;
+        const unchanged = positions.length >= chunk.positions.length;
+        chunk = { positions, normals };
+        if (unchanged) break;
+      }
+      removedTriangles += (original.positions.length - chunk.positions.length) / 9;
+      bytes += chunk.positions.byteLength + chunk.normals.byteLength;
+      if (bytes > maxBytes)
+        throw new Error("Compact Boolean export exceeds the memory budget. Export fewer parts.");
+      chunks.push(chunk);
+    }
+    output.push({ ...source, chunks });
+  }
+  return { sources: output, removedTriangles, maxPlanarDeviation };
 }

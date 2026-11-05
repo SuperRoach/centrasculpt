@@ -12,6 +12,7 @@ import {
   SphereGeometry,
   Vector3,
 } from "three";
+import { validateAssembly } from "./assembly";
 import type { BakeOptions, BakeProgress, BakeStats, SurfaceView } from "./bake";
 import {
   bakeSources,
@@ -31,12 +32,20 @@ import type { ExportSource } from "./export-mesh";
 import { SculptHistory } from "./history";
 import { type HierarchyState, LayerGroup } from "./layer-hierarchy";
 import type { LayerOperation, SculptProject } from "./layers";
-import { assertIndependentLayerVolumes, newId, SdfLayer, validateName } from "./layers";
+import {
+  type AssemblyPart,
+  assertIndependentLayerVolumes,
+  newId,
+  SdfLayer,
+  validateAssemblyPart,
+  validateName,
+} from "./layers";
 import { type BooleanModifier, validateBooleanGraph, validateModifiers } from "./live-boolean";
 import { MaskOverlay } from "./mask-overlay";
 import { IncrementalMesher } from "./mesh";
 import { RadialMoveField } from "./move-field";
 import { reconstructMoveAsync } from "./move-worker-client";
+import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
 import { PaintSurface, paintColours } from "./paint-surface";
 import { evaluatePrimitive, type PrimitiveSource, validatePrimitive } from "./parametric-primitive";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
@@ -239,14 +248,23 @@ type HierarchyEntry = {
   activeAfter: string;
   selectedBefore: string | null;
   selectedAfter: string | null;
+  booleans?: { layerId: string; before?: BooleanModifier[]; after: BooleanModifier[] }[];
 };
 type PaintEntry = { kind: "paint"; layerId: string; before: PaintSnapshot; after: PaintSnapshot };
 type TimelineEntry =
+  | { kind: "assembly-batch"; layerId: string; entries: TimelineEntry[] }
+  | { kind: "assembly"; layerId: string; before?: AssemblyPart; after?: AssemblyPart }
   | {
       kind: "boolean";
       layerId: string;
       before: BooleanModifier[] | undefined;
       after: BooleanModifier[];
+    }
+  | {
+      kind: "array";
+      layerId: string;
+      before: ArrayDefinition | undefined;
+      after: ArrayDefinition | undefined;
     }
   | { kind: "name"; layerId: string; before: string; after: string }
   | PaintEntry
@@ -388,7 +406,7 @@ export class IndependentLayers {
   }
   private releaseHierarchyOrphans(): void {
     const kept = new Set(
-      [...this.past, ...this.future].flatMap((e) => (e.kind === "hierarchy" ? e.removed : [])),
+      this.historyEntries().flatMap((e) => (e.kind === "hierarchy" ? e.removed : [])),
     );
     for (const r of this.retainedHierarchy)
       if (!this.runtimes.has(r.layer.id) && !kept.has(r)) {
@@ -402,6 +420,7 @@ export class IndependentLayers {
     activeBefore: string,
     selectedBefore: string | null,
     removed: LayerRuntime[] = [],
+    booleans?: HierarchyEntry["booleans"],
   ): void {
     const after = this.project.layerStack.hierarchy.snapshot();
     if (JSON.stringify(before) === JSON.stringify(after)) return;
@@ -412,7 +431,12 @@ export class IndependentLayers {
       before,
       after,
       removed,
-      bytes: (JSON.stringify(before).length + JSON.stringify(after).length) * 2,
+      booleans,
+      bytes:
+        (JSON.stringify(before).length +
+          JSON.stringify(after).length +
+          JSON.stringify(booleans ?? []).length) *
+        2,
       activeBefore,
       activeAfter: this.project.activeLayerId,
       selectedBefore,
@@ -420,7 +444,9 @@ export class IndependentLayers {
     });
     for (const r of removed) this.retainedHierarchy.add(r);
     let excess = this.past.filter((e) => e.kind === "hierarchy").length - 100;
-    this.past = this.past.filter((e) => e.kind !== "hierarchy" || excess-- <= 0);
+    this.past = this.past.filter(
+      (e) => e.kind !== "hierarchy" || this.assemblyTransaction || excess-- <= 0,
+    );
     this.releaseHierarchyOrphans();
     this.committedRevision++;
     this.syncPresentation();
@@ -436,6 +462,7 @@ export class IndependentLayers {
       selected = this.selectedGroupId;
     try {
       work();
+      validateAssembly(this.project.layerStack);
       this.recordHierarchy(before, active, selected);
     } catch (error) {
       h.restore(before);
@@ -472,7 +499,9 @@ export class IndependentLayers {
     this.discardFuture();
     this.past.push({ kind: "name", layerId: id, before, after: name });
     let excess = this.past.filter((e) => e.kind === "name").length - 100;
-    this.past = this.past.filter((e) => e.kind !== "name" || excess-- <= 0);
+    this.past = this.past.filter(
+      (e) => e.kind !== "name" || this.assemblyTransaction || excess-- <= 0,
+    );
     this.committedRevision++;
     this.syncPresentation();
   }
@@ -655,7 +684,7 @@ export class IndependentLayers {
   ) {
     this.composite = new BooleanComposite(project, this.compositeMaterial, 192, this.neutral);
     this.composite.availableBytes = () => 256 * 1024 ** 2 - this.trackedBytes;
-    if (project.layerStack.layers.some((l) => l.booleanModifiers?.length))
+    if (project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled))
       this.viewMode = "boolean";
     this.assertCapacity();
     assertIndependentLayerVolumes(project.layerStack.layers);
@@ -702,12 +731,16 @@ export class IndependentLayers {
     }
     return `${this.commandScope}:${this.commandRevision}`;
   }
-  recoveryKey(): string {
+  /** Derived views depend on source edits, not which layer the UI has selected. */
+  get sourceRevision(): string {
+    return this.recoveryKey(false);
+  }
+  recoveryKey(includeSelection = true): string {
     return JSON.stringify([
       this.project.id,
       this.committedRevision,
       this.project.layerStack.hierarchy.snapshot(),
-      this.project.activeLayerId,
+      includeSelection ? this.project.activeLayerId : null,
       this.project.layerStack.layers.map((l) => [
         l.metadata(),
         l.volume.dimensions,
@@ -727,7 +760,7 @@ export class IndependentLayers {
       vertices = 0,
       triangles = 0;
     const held = new Set(this.runtimes.values());
-    for (const entry of [...this.past, ...this.future])
+    for (const entry of this.historyEntries())
       if (entry.kind === "bake") held.add(entry.runtime);
       else if (entry.kind === "hierarchy") for (const r of entry.removed) held.add(r);
       else if (entry.kind === "cut") {
@@ -757,7 +790,7 @@ export class IndependentLayers {
       }
     }
     const maskBytes = [...held].reduce((n, r) => n + sculptMask(r.volume).memoryBytes, 0),
-      maskHistoryBytes = [...this.past, ...this.future].reduce(
+      maskHistoryBytes = this.historyEntries().reduce(
         (n, e) =>
           n + (e.kind === "mask" ? maskSnapshotBytes(e.before) + maskSnapshotBytes(e.after) : 0),
         0,
@@ -787,9 +820,9 @@ export class IndependentLayers {
     };
   }
   get trackedBytes(): number {
-    let bytes = 0;
+    let bytes = this.assemblyPreview?.bytes() ?? 0;
     const held = new Set(this.runtimes.values());
-    for (const entry of [...this.past, ...this.future])
+    for (const entry of this.historyEntries())
       if (entry.kind === "bake") held.add(entry.runtime);
       else if (entry.kind === "hierarchy") for (const r of entry.removed) held.add(r);
       else if (entry.kind === "cut") {
@@ -818,20 +851,20 @@ export class IndependentLayers {
       }
     }
     const caches = new Set<VolumeStore>();
-    for (const e of [...this.past, ...this.future])
+    for (const e of this.historyEntries())
       if (e.kind === "tube") {
         caches.add(e.before.volume);
         caches.add(e.after.volume);
       }
     for (const v of caches)
       if (![...held].some((r) => r.volume === v)) bytes += volumeSampleCount(v) * 8;
-    for (const e of [...this.past, ...this.future]) {
+    for (const e of this.historyEntries()) {
       if (e.kind === "hierarchy") bytes += e.bytes;
       if (e.kind === "name") bytes += (e.before.length + e.after.length) * 2;
     }
-    for (const e of [...this.past, ...this.future])
+    for (const e of this.historyEntries())
       if (e.kind === "mask") bytes += maskSnapshotBytes(e.before) + maskSnapshotBytes(e.after);
-    for (const e of [...this.past, ...this.future]) {
+    for (const e of this.historyEntries()) {
       if (e.kind === "paint") bytes += paintSnapshotBytes(e.before) + paintSnapshotBytes(e.after);
       if (e.kind === "voxels" && e.paintBefore && e.paintAfter)
         bytes += paintSnapshotBytes(e.paintBefore) + paintSnapshotBytes(e.paintAfter);
@@ -907,7 +940,7 @@ export class IndependentLayers {
   ): void {
     const layers = this.project.layerStack.layers;
     const held = new Set<LayerRuntime>();
-    for (const entry of this.future)
+    for (const entry of this.flattenEntries(this.future))
       if (
         entry.kind === "bake" &&
         !this.runtimes.has(entry.layerId) &&
@@ -916,13 +949,13 @@ export class IndependentLayers {
         held.add(entry.runtime);
     for (const r of this.retainedHierarchy)
       if (!this.runtimes.has(r.layer.id) && r.layer.id !== reactivating) held.add(r);
-    for (const entry of this.future)
+    for (const entry of this.flattenEntries(this.future))
       if (entry.kind === "cut") {
         held.add(entry.original);
         held.add(entry.negative);
         held.add(entry.positive);
       }
-    for (const entry of this.future)
+    for (const entry of this.flattenEntries(this.future))
       if (entry.kind === "cut-batch")
         for (const cut of entry.entries) {
           held.add(cut.original);
@@ -944,6 +977,41 @@ export class IndependentLayers {
       throw new Error(
         "Project voxel budget exceeded. Explicitly reduce a layer resolution or delete a layer; existing layers were kept.",
       );
+  }
+  private assemblyPreview?: {
+    group: Group;
+    current: () => boolean;
+    dispose: () => void;
+    bytes: () => number;
+  };
+  clearAssemblyPreview(): void {
+    this.display.assemblyPreview = false;
+    const preview = this.assemblyPreview;
+    this.assemblyPreview = undefined;
+    preview?.dispose();
+  }
+  installAssemblyPreview(preview: NonNullable<IndependentLayers["assemblyPreview"]>): void {
+    this.clearAssemblyPreview();
+    this.assemblyPreview = preview;
+    this.display.assemblyPreview = true;
+    this.group.add(preview.group);
+    this.viewMode = "separate";
+    this.syncPresentation();
+  }
+  get assemblyPreviewActive(): boolean {
+    return !!this.assemblyPreview && this.assemblyPreview.current() && this.viewMode === "separate";
+  }
+  syncAssemblyPreview(): boolean {
+    if (!this.assemblyPreview) return false;
+    if (!this.assemblyPreview.current() || this.viewMode !== "separate") {
+      this.clearAssemblyPreview();
+      this.syncPresentation();
+      return false;
+    }
+    for (const runtime of this.runtimes.values()) runtime.surface.group.visible = false;
+    this.group.visible = true;
+    this.composite.group.visible = false;
+    return true;
   }
   syncPresentation(): void {
     if (this.selectedGroupId) {
@@ -983,6 +1051,7 @@ export class IndependentLayers {
       this.display.colour(this.project.id, layer.id, layer.order);
       group.updateWorldMatrix(true, true);
     }
+    this.syncAssemblyPreview();
   }
   /** Preallocate every throwing stage, then publish store/history/mesh together.
    * Undo and cancellation retain harmless capacity but replay exact voxel values. */
@@ -1025,7 +1094,12 @@ export class IndependentLayers {
     return true;
   }
   private assertSculptable(layer: SdfLayer): void {
-    if (layer.procedural || layer.primitive || layer.booleanModifiers?.length)
+    if (
+      layer.procedural ||
+      layer.primitive ||
+      layer.booleanModifiers?.length ||
+      layer.array?.enabled
+    )
       throw new Error("Bake the parametric source to a sculpt layer before brushing.");
   }
   select(id: string): void {
@@ -1423,6 +1497,13 @@ export class IndependentLayers {
       to = redo ? this.past : this.future,
       entry = from.at(-1);
     if (!entry) return null;
+    if (entry.kind === "assembly-batch") {
+      from.pop();
+      from.push(...(redo ? [...entry.entries].reverse() : entry.entries));
+      for (let i = 0; i < entry.entries.length; i++) this.undo(redo);
+      to.splice(to.length - entry.entries.length, entry.entries.length, entry);
+      return this.project.activeLayerId;
+    }
     if (entry.kind === "name") {
       this.project.layerStack.hierarchy.get(entry.layerId).name = redo ? entry.after : entry.before;
       from.pop();
@@ -1435,6 +1516,8 @@ export class IndependentLayers {
       const stack = this.project.layerStack,
         h = stack.hierarchy;
       if (redo) {
+        for (const change of entry.booleans ?? [])
+          stack.get(change.layerId).booleanModifiers = structuredClone(change.after);
         entry.removed = entry.removed.map((r) => {
           const live = this.runtime(r.layer.id);
           this.retainedHierarchy.delete(r);
@@ -1452,6 +1535,9 @@ export class IndependentLayers {
           stack.insert(r.layer);
           this.install(r);
         }
+      if (!redo)
+        for (const change of entry.booleans ?? [])
+          stack.get(change.layerId).booleanModifiers = structuredClone(change.before);
       this.replayHierarchy(redo ? entry.after : entry.before, redo ? entry.before : entry.after);
       stack.select(redo ? entry.activeAfter : entry.activeBefore);
       this.selectedGroupId = redo ? entry.selectedAfter : entry.selectedBefore;
@@ -1506,13 +1592,19 @@ export class IndependentLayers {
       this.group.remove(old.surface.group);
       old.dispose();
       this.install(next);
-      for (const e of [...this.past, ...this.future])
+      for (const e of this.historyEntries())
         if (e.kind === "bake" && e.layerId === layer.id) e.runtime = next;
       this.composite.invalidate();
     } else if (entry.kind === "order") this.restoreOrder(redo ? entry.after : entry.before);
     else if (entry.kind === "boolean") {
       layer.assertEditable();
       layer.booleanModifiers = structuredClone(redo ? entry.after : entry.before);
+      this.composite.invalidate();
+    } else if (entry.kind === "assembly") {
+      layer.assemblyPart = structuredClone(redo ? entry.after : entry.before);
+    } else if (entry.kind === "array") {
+      layer.assertEditable();
+      layer.array = structuredClone(redo ? entry.after : entry.before);
       this.composite.invalidate();
     } else if (entry.kind === "operation") {
       if (layer.locked) throw new Error("Unlock the layer to change its operation.");
@@ -2002,6 +2094,7 @@ export class IndependentLayers {
       const layer = new SdfLayer(volume, {
         ...copy,
         booleanModifiers: source.booleanModifiers?.map((m) => ({ ...m, id: newId() })),
+        array: source.array ? { ...structuredClone(source.array), id: newId() } : undefined,
         name: this.uniqueName(`${source.name.slice(0, 123)} copy`),
       });
       candidate = new LayerRuntime(layer, this.neutral, volume, true);
@@ -2095,6 +2188,7 @@ export class IndependentLayers {
     const layer = new SdfLayer(volume, {
         ...metadata,
         booleanModifiers: source.booleanModifiers?.map((m) => ({ ...m, id: newId() })),
+        array: source.array ? { ...structuredClone(source.array), id: newId() } : undefined,
         name: this.uniqueName(`${source.name.slice(0, 123)} copy`),
       }),
       runtime = new LayerRuntime(layer, this.neutral);
@@ -2135,7 +2229,6 @@ export class IndependentLayers {
   }
   /** Undoable leaf deletion using the same retained-runtime hierarchy history as groups. */
   deleteObject(id: string): void {
-    this.assertBooleanUnreferenced(id);
     const stack = this.project.layerStack,
       h = stack.hierarchy,
       node = h.get(id);
@@ -2146,17 +2239,30 @@ export class IndependentLayers {
     this.assertAvailable();
     node.assertEditable();
     if (stack.layers.length <= 1) throw new Error("Keep at least one sculpt layer.");
+    const consumers = stack.layers.filter((layer) =>
+      layer.booleanModifiers?.some((modifier) => modifier.sourceId === id),
+    );
+    for (const consumer of consumers) consumer.assertEditable();
+    const booleans = consumers.map((consumer) => ({
+      layerId: consumer.id,
+      before: structuredClone(consumer.booleanModifiers),
+      after: (consumer.booleanModifiers ?? []).filter((modifier) => modifier.sourceId !== id),
+    }));
     const runtime = this.runtime(id),
       before = h.snapshot(),
       active = this.project.activeLayerId,
       selected = this.selectedGroupId;
     try {
+      for (const change of booleans)
+        stack.get(change.layerId).booleanModifiers = structuredClone(change.after);
       for (const child of h.children(id)) h.reparent(child, h.parent(id));
       stack.remove(id);
       this.runtimes.delete(id);
       this.group.remove(runtime.surface.group);
       this.selectedGroupId = null;
     } catch (error) {
+      for (const change of booleans)
+        stack.get(change.layerId).booleanModifiers = structuredClone(change.before);
       if (!stack.layers.some((layer) => layer.id === id)) stack.insert(runtime.layer);
       if (!this.runtimes.has(id)) this.install(runtime);
       h.restore(before);
@@ -2164,7 +2270,13 @@ export class IndependentLayers {
       this.selectedGroupId = selected;
       throw error;
     }
-    this.recordHierarchy(before, active, selected, [runtime]);
+    this.recordHierarchy(
+      before,
+      active,
+      selected,
+      [runtime],
+      booleans.length ? booleans : undefined,
+    );
   }
   remove(id: string): void {
     this.assertBooleanUnreferenced(id);
@@ -2229,21 +2341,33 @@ export class IndependentLayers {
     });
   }
   private recordMetadata(
-    entry: Extract<TimelineEntry, { kind: "operation" | "order" | "boolean" }>,
+    entry: Extract<
+      TimelineEntry,
+      { kind: "operation" | "order" | "boolean" | "array" | "assembly" }
+    >,
   ): void {
     this.discardFuture();
     this.past.push(entry);
     let excess =
       this.past.filter(
         (e) =>
-          (e.kind === "operation" || e.kind === "order" || e.kind === "boolean") &&
+          (e.kind === "operation" ||
+            e.kind === "order" ||
+            e.kind === "boolean" ||
+            e.kind === "array" ||
+            e.kind === "assembly") &&
           e.layerId === entry.layerId,
       ).length - 100;
     this.past = this.past.filter((e) => {
       if (
-        (e.kind === "operation" || e.kind === "order" || e.kind === "boolean") &&
+        (e.kind === "operation" ||
+          e.kind === "order" ||
+          e.kind === "boolean" ||
+          e.kind === "array" ||
+          e.kind === "assembly") &&
         e.layerId === entry.layerId &&
-        excess > 0
+        excess > 0 &&
+        !this.assemblyTransaction
       ) {
         excess--;
         return false;
@@ -2269,6 +2393,7 @@ export class IndependentLayers {
     layer.booleanModifiers = after;
     try {
       validateBooleanGraph(this.project.layerStack.layers);
+      validateAssembly(this.project.layerStack);
     } catch (error) {
       layer.booleanModifiers = original;
       throw error;
@@ -2279,6 +2404,80 @@ export class IndependentLayers {
       layerId: id,
       before: original === undefined ? undefined : before,
       after: structuredClone(after),
+    });
+    this.committedRevision++;
+    this.viewMode = "boolean";
+    this.composite.invalidate();
+    this.syncPresentation();
+  }
+  private flattenEntries(entries: TimelineEntry[]): TimelineEntry[] {
+    return entries.flatMap((e) =>
+      e.kind === "assembly-batch" ? this.flattenEntries(e.entries) : [e],
+    );
+  }
+  private historyEntries(): TimelineEntry[] {
+    return this.flattenEntries([...this.past, ...this.future]);
+  }
+  private assemblyTransaction = false;
+  assemblyCheckpoint(): number {
+    if (this.assemblyTransaction) throw new Error("An assembly transaction is already active.");
+    this.assemblyTransaction = true;
+    return this.past.length;
+  }
+  finishAssemblyTransaction(start: number): void {
+    this.assemblyTransaction = false;
+    const entries = this.past.splice(start);
+    if (entries.length)
+      this.past.push({ kind: "assembly-batch", layerId: entries[0].layerId, entries });
+  }
+  rollbackAssemblyTransaction(start: number): void {
+    this.assemblyTransaction = false;
+    while (this.past.length > start) this.undo();
+    this.discardFuture();
+  }
+  setAssemblyPart(id: string, value: unknown): void {
+    this.assertAvailable();
+    this.finishStroke();
+    this.finishTransform();
+    const layer = this.project.layerStack.get(id);
+    layer.assertEditable();
+    const before = layer.assemblyPart;
+    const after = value == null ? undefined : validateAssemblyPart(value);
+    layer.assemblyPart = after;
+    try {
+      validateAssembly(this.project.layerStack);
+    } catch (e) {
+      layer.assemblyPart = before;
+      throw e;
+    }
+    this.recordMetadata({ kind: "assembly", layerId: id, before, after });
+    this.committedRevision++;
+    this.syncPresentation();
+  }
+  /** Atomically replace one source array modifier; instances borrow the original source field. */
+  setArrayDefinition(id: string, value: unknown): void {
+    this.assertAvailable();
+    this.finishStroke();
+    this.finishTransform();
+    const layer = this.project.layerStack.get(id);
+    layer.assertEditable();
+    const before = layer.array,
+      after = value === undefined || value === null ? undefined : validateArrayDefinition(value);
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    if (
+      after &&
+      this.project.layerStack.layers.some(
+        (candidate) => candidate.id !== id && candidate.array?.id === after.id,
+      )
+    )
+      throw new Error("Array IDs must be unique across source objects.");
+    layer.array = after;
+    this.discardFuture();
+    this.recordMetadata({
+      kind: "array",
+      layerId: id,
+      before: before && structuredClone(before),
+      after: after && structuredClone(after),
     });
     this.committedRevision++;
     this.viewMode = "boolean";
@@ -2333,7 +2532,7 @@ export class IndependentLayers {
     this.group.remove(previous.surface.group);
     previous.dispose();
     this.install(next);
-    for (const entry of [...this.past, ...this.future])
+    for (const entry of this.historyEntries())
       if (entry.kind === "bake" && entry.layerId === previous.layer.id) entry.runtime = next;
     this.past = this.past.filter(
       (entry) => entry.layerId !== previous.layer.id || entry.kind !== "voxels",
@@ -2344,7 +2543,7 @@ export class IndependentLayers {
     this.syncPresentation();
   }
   private discardFuture(): void {
-    for (const entry of this.future)
+    for (const entry of this.flattenEntries(this.future))
       if (entry.kind === "bake" && !this.runtimes.has(entry.layerId)) {
         entry.runtime.dispose();
         this.display.remove(this.project.id, entry.layerId);
@@ -2451,13 +2650,15 @@ export class IndependentLayers {
   ): Promise<SdfLayer> {
     if (
       options.sourceIds?.length === 1 &&
-      this.project.layerStack.get(options.sourceIds[0]).booleanModifiers?.length &&
+      (this.project.layerStack.get(options.sourceIds[0]).booleanModifiers?.length ||
+        this.project.layerStack.get(options.sourceIds[0]).array?.enabled) &&
       ![64, 128, 192].includes(options.resolution)
     )
       options = { ...options, resolution: 128 };
     if (
       options.sourceIds?.length === 1 &&
       !this.project.layerStack.get(options.sourceIds[0]).booleanModifiers?.length &&
+      !this.project.layerStack.get(options.sourceIds[0]).array?.enabled &&
       (this.project.layerStack.get(options.sourceIds[0]).procedural ||
         this.project.layerStack.get(options.sourceIds[0]).primitive)
     )
@@ -2466,14 +2667,14 @@ export class IndependentLayers {
     const validated = validateBakeOptions(options),
       plan = this.bakePlan(validated.resolution, validated.sourceIds);
     if (
-      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length) &&
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled) &&
       plan.detailLimited
     )
       throw new Error(
         "Live Boolean Bake exceeds the selected resolution; reduce bounds or choose higher resolution.",
       );
     if (
-      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length) &&
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled) &&
       plan.sourceIds.some((id) => this.project.layerStack.get(id).locked)
     )
       throw new Error("Unlock Boolean sources before baking and changing their visibility.");
@@ -2828,7 +3029,7 @@ export class IndependentLayers {
         old.layer.primitive = source.kind !== "tube" ? source : undefined;
         this.install(candidate);
         old.dispose();
-        for (const e of this.past)
+        for (const e of this.flattenEntries(this.past))
           if (e.kind === "bake" && e.layerId === old.layer.id) e.runtime = candidate;
         this.past.push({
           kind: "tube",
@@ -3125,7 +3326,9 @@ export class IndependentLayers {
   /** Borrow committed SDF-derived chunk buffers, never display/GPU deformation helpers.
    * Snapshotting owns copies; guards reject edits/replacement while those copies are made. */
   exportSources(scope: "visible" | "selected" = "visible", includePaint = true): ExportSource[] {
-    if (this.project.layerStack.layers.some((l) => l.booleanModifiers?.length)) {
+    if (
+      this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
+    ) {
       if (scope === "selected")
         throw new Error("Export the visible Boolean result for scenes with live modifiers.");
       this.composite.syncMetadata();
@@ -3233,9 +3436,10 @@ export class IndependentLayers {
   }
   dispose(): void {
     this.disposed = true;
+    this.clearAssemblyPreview();
     this.composite.dispose();
     const all = new Set([...this.runtimes.values(), ...this.retainedHierarchy]);
-    for (const entry of [...this.past, ...this.future])
+    for (const entry of this.historyEntries())
       if (entry.kind === "bake") all.add(entry.runtime);
       else if (entry.kind === "hierarchy") for (const r of entry.removed) all.add(r);
       else if (entry.kind === "cut") {

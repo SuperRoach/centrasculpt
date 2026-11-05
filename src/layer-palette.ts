@@ -867,6 +867,11 @@ export class DesktopLayerPalette {
         row.group ? (l.selectGroup(n.id), this.transform()) : l.select(n.id);
       });
       title.className = "hierarchy-name";
+      const nameLabel = document.createElement("span");
+      nameLabel.className = "layer-name-label";
+      nameLabel.textContent = n.name;
+      title.replaceChildren(nameLabel);
+      title.title = n.name;
       const swatch = document.createElement("span");
       swatch.className = row.group ? "layer-swatch group-swatch" : "layer-swatch";
       swatch.setAttribute("aria-hidden", "true");
@@ -886,7 +891,8 @@ export class DesktopLayerPalette {
           info.title = modifiers.length
             ? "Editable modifiers in Live Boolean Shapes"
             : `Used by ${consumers.map((l) => l.name).join(", ")}; excluded from independent Boolean output`;
-          header.append(info);
+          info.className = "layer-csg-info";
+          card.append(info);
         }
       }
       const visibility = button(
@@ -1058,7 +1064,7 @@ export class DesktopLayerPalette {
         actions.append(reorder);
         button(
           card,
-          "Delete layer…",
+          "Delete layer",
           () => {
             this.legacy
               .querySelector<HTMLButtonElement>(`[data-layer-id="${n.id}"] [data-action="delete"]`)
