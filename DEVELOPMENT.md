@@ -20,3 +20,9 @@ Every completed phase or significant change must:
 3. Run strict TypeScript, production build and the complete automated test suite; record actual results and counts.
 
 Keep physical Quest acceptance separate from host evidence. Never claim release readiness while critical acceptance is pending. Do not commit, push or merge without explicit permission for the current work.
+
+## Headless modelling (Phase 7.0)
+
+`npm run example:headless` runs a real Node example that creates editable primitives and a live Boolean subtraction, assigns a printable part, inspects it, saves `work/phase-7-0/headless-enclosure.form` and runs STL diagnostics. Pass a destination with `npm run example:headless -- /absolute/path/example.form`. Run `npm run benchmark:headless` for host CPU timings and `npm test -- headless-editing` for the focused contracts.
+
+The supported integration boundary is `ModellingAPI` in `src/modelling-api.ts`, backed by the active `IndependentLayers`. Use `execute`, `batch`, `query` and asynchronous `diagnostics`; reuse native `saveSculptProject`/`openSculptProject`. See [the API contract and transaction example](docs/MODELLING_COMMANDS.md#phase-70--transactions-dry-runs-and-inspection). The Node scripts reuse the repository compiler harness and Three.js CPU geometry, without DOM or XR. Browser UI, IndexedDB Project Library, recovery workers and download dialogs remain browser integrations; the CLI writes native bytes directly. There is no external connector or transport.

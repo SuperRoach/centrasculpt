@@ -1,14 +1,17 @@
 import { type FitReport, partMembers, partOwner } from "./assembly";
 import {
   type ConnectorOptions,
+  exportPartSTL,
   generateConnector,
   inspectAssembly,
+  inspectLayers,
   type MateOptions,
   mateParts,
+  partBounds,
 } from "./assembly-tools";
-import type { IndependentLayers } from "./independent-layers";
+import { IndependentLayers } from "./independent-layers";
 import { LayerGroup } from "./layer-hierarchy";
-import { newId, validateAssemblyPart } from "./layers";
+import { LayerStack, newId, SculptProject, SdfLayer, validateAssemblyPart } from "./layers";
 import { type BooleanModifier, validateModifiers } from "./live-boolean";
 import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
 import { objectDimensions } from "./object-dimensions";
@@ -23,6 +26,10 @@ import { type Vec3, type VolumeTransform, validateTransform } from "./transform"
 /** Dimensions are local, translations are sculpture-world coordinates, rotations XYZ radians.
  * Scale is dimensionless. Workspace navigation is deliberately excluded. */
 export type ModellingCommand =
+  | { type: "group.create"; name: string }
+  | { type: "object.parent"; id: string; parentId: string | null }
+  | { type: "object.flag"; id: string; flag: "visible" | "locked"; value: boolean }
+  | { type: "object.duplicate"; id: string }
   | { type: "part.inspect"; partA: string; partB: string }
   | { type: "part.define"; objectId: string; clearanceMM: number }
   | { type: "part.remove"; partId: string }
@@ -31,8 +38,13 @@ export type ModellingCommand =
   | { type: "part.clearance"; partId: string; clearanceMM: number }
   | { type: "part.mate"; options: MateOptions }
   | { type: "connector.create"; options: ConnectorOptions }
-  | { type: "array.create"; id: string; definition: Omit<ArrayDefinition, "id"> & { id?: string } }
-  | { type: "array.update"; id: string; definition: ArrayDefinition }
+  | {
+      type: "array.create";
+      id: string;
+      unit?: PhysicalUnit;
+      definition: Omit<ArrayDefinition, "id"> & { id?: string };
+    }
+  | { type: "array.update"; id: string; unit?: PhysicalUnit; definition: ArrayDefinition }
   | { type: "array.remove"; id: string }
   | { type: "array.bake"; id: string }
   | {
@@ -51,6 +63,10 @@ export type ModellingCommand =
   | { type: "primitive.bake"; id: string }
   | { type: "object.delete"; id: string };
 export type ModellingQuery =
+  | { type: "scene.hierarchy" }
+  | { type: "assembly.parts" }
+  | { type: "geometry.bounds"; id: string }
+  | { type: "geometry.diagnostics"; id: string }
   | { type: "part.list" }
   | { type: "part.get"; partId: string }
   | { type: "array.list" }
@@ -87,23 +103,42 @@ export type PartMetadata = {
   visible: boolean;
   locked: boolean;
 };
-export type QueryValue<Q extends ModellingQuery> = Q extends { type: "part.list" }
-  ? PartMetadata[]
-  : Q extends { type: "part.get" }
-    ? PartMetadata
-    : Q extends { type: "scene.summary" }
-      ? SceneSummary
-      : Q extends { type: "array.list" }
-        ? { id: string; array: ArrayDefinition }[]
-        : Q extends { type: "array.get" }
-          ? ArrayDefinition | null
-          : Q extends { type: "object.list" }
-            ? ObjectMetadata[]
-            : Q extends { type: "boolean.list" }
-              ? { id: string; modifiers: BooleanModifier[] }[]
-              : Q extends { type: "boolean.get" }
-                ? BooleanModifier[]
-                : ObjectMetadata;
+export type QueryValue<Q extends ModellingQuery> = Q extends { type: "scene.hierarchy" }
+  ? ReturnType<IndependentLayers["project"]["layerStack"]["hierarchy"]["snapshot"]>
+  : Q extends { type: "geometry.bounds" }
+    ? { units: "mm"; min: number[]; max: number[]; accuracy: "conservative" }
+    : Q extends { type: "geometry.diagnostics" }
+      ? { status: "not_evaluated"; limitations: string[]; triangles: number | null }
+      : Q extends { type: "part.list" | "assembly.parts" }
+        ? PartMetadata[]
+        : Q extends { type: "part.get" }
+          ? PartMetadata
+          : Q extends { type: "scene.summary" }
+            ? SceneSummary
+            : Q extends { type: "array.list" }
+              ? { id: string; array: ArrayDefinition }[]
+              : Q extends { type: "array.get" }
+                ? ArrayDefinition | null
+                : Q extends { type: "object.list" }
+                  ? ObjectMetadata[]
+                  : Q extends { type: "boolean.list" }
+                    ? { id: string; modifiers: BooleanModifier[] }[]
+                    : Q extends { type: "boolean.get" }
+                      ? BooleanModifier[]
+                      : ObjectMetadata;
+/** `$alias` references resolve only to earlier results in this ordered batch. */
+export type ModellingStep = { command: ModellingCommand; as?: string };
+export type BatchOptions = { expectedRevision: string; signal?: AbortSignal; dryRun?: boolean };
+export type BatchReport = {
+  dryRun: boolean;
+  results: { id: string }[];
+  aliases: Record<string, string>;
+  objects: ObjectMetadata[];
+  changes: { created: string[]; modified: string[]; deleted: string[] };
+  limits: { commands: number; layers: number; memoryBytes: number };
+  geometryValidation: "source_caches_only";
+  limitations: string[];
+};
 class CommandError extends Error {
   constructor(
     readonly code: ErrorCode,
@@ -112,8 +147,8 @@ class CommandError extends Error {
     super(message);
   }
 }
-/** One adapter per editor. No DOM, XR, network, persistence or voxel ownership.
- * Each execute is one atomic backend edit, never an implicit multi-command batch. */
+/** Local adapter over the authoritative editor. No DOM, XR, transport or voxel ownership.
+ * execute() applies one operation; batch() explicitly groups ordered operations. */
 export class ModellingAPI {
   private pending = false;
   constructor(
@@ -147,6 +182,7 @@ export class ModellingAPI {
       id,
       partId: partOwner(this.layers.project.layerStack, id),
       array: layer?.array ? this.externalArray(layer.array) : null,
+      arrayUnit: "mm" as const,
       booleanModifiers: structuredClone(layer?.booleanModifiers ?? []),
       consumedBy: this.layers.project.layerStack.layers
         .filter((l) => l.booleanModifiers?.some((m) => m.enabled && m.sourceId === id))
@@ -157,6 +193,10 @@ export class ModellingAPI {
       type: group ? "group" : (layer?.primitive?.kind ?? (layer?.procedural ? "tube" : "sculpt")),
       localTransform: pose(n.localTransform),
       worldTransform: pose(n.transform),
+      dimensionsAccuracy:
+        layer?.array?.enabled || layer?.booleanModifiers?.length
+          ? "source_only"
+          : "source_geometry",
       dimensionsMM: layer?.primitive
         ? primitiveWorldDimensions(layer.primitive, n.transform).map((v) => v * mm)
         : this.layers.recoveryReady
@@ -193,8 +233,38 @@ export class ModellingAPI {
   }
   query<Q extends ModellingQuery>(query: Q): ModellingResult<QueryValue<Q>> {
     try {
+      if (this.layers.modellingBusy) this.fail("busy", "A modelling transaction is active.");
       let value: unknown;
       switch (query.type) {
+        case "scene.hierarchy":
+          value = structuredClone(this.layers.project.layerStack.hierarchy.snapshot());
+          break;
+        case "geometry.bounds": {
+          this.node(query.id);
+          if (!this.layers.recoveryReady) this.fail("busy", "Geometry is being edited.");
+          const box = partBounds(this.layers, query.id, true),
+            mm = this.layers.display.precision.millimetresPerUnit;
+          value = {
+            units: "mm",
+            min: box.min.toArray().map((v) => v * mm),
+            max: box.max.toArray().map((v) => v * mm),
+            accuracy: "conservative",
+          };
+          break;
+        }
+        case "geometry.diagnostics": {
+          const node = this.node(query.id);
+          value = {
+            status: "not_evaluated",
+            triangles: node instanceof LayerGroup ? null : this.layers.runtime(query.id).triangles,
+            limitations: [
+              "Source preview triangle count is not evaluated Boolean topology.",
+              "Use diagnostics() for STL mesh topology and fit samples; no physical printability guarantee.",
+            ],
+          };
+          break;
+        }
+        case "assembly.parts":
         case "part.list":
           value = this.layers.project.layerStack.layers
             .filter((l) => l.assemblyPart)
@@ -253,6 +323,251 @@ export class ModellingAPI {
       return this.error(e);
     }
   }
+  /** Executes existing operations, retaining only normal history deltas/runtimes.
+   * Dry runs use independent metadata/runtimes, borrowing existing fields read-only. */
+  async batch(
+    steps: readonly ModellingStep[],
+    options: BatchOptions,
+  ): Promise<ModellingResult<BatchReport>> {
+    let owner: symbol | undefined, checkpoint: number | undefined;
+    let temporary: IndependentLayers | undefined;
+    let admitted = false;
+    try {
+      if (!this.canEdit()) this.fail("permission_denied", "Editing is not permitted.");
+      if (this.pending || this.layers.modellingBusy || !this.layers.recoveryReady)
+        this.fail("busy", "Editor has an active operation.");
+      if (options.expectedRevision !== this.revision)
+        this.fail("revision_conflict", "Scene changed; query again before editing.");
+      if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
+      if (!Array.isArray(steps) || !steps.length || steps.length > 64)
+        this.fail("invalid_input", "A batch requires 1–64 commands.");
+      const encoded = JSON.stringify(steps, (_key, value) => {
+        if (typeof value === "number" && !Number.isFinite(value))
+          this.fail("invalid_input", "Numbers must be finite.");
+        return value;
+      });
+      if (encoded.length > 65536) this.fail("invalid_input", "Command payload exceeds 64 KiB.");
+      const input = JSON.parse(encoded) as ModellingStep[];
+      const names = new Set<string>();
+      for (const step of input) {
+        if (!step || !step.command || typeof step.command.type !== "string")
+          this.fail("invalid_input", "Each step requires a command.");
+        if (step.as !== undefined) {
+          if (!/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(step.as) || names.has(step.as))
+            this.fail("invalid_input", "Aliases must be unique identifiers.");
+          names.add(step.as);
+        }
+        // Explicit allow-list: dry-run must never write borrowed SDF/mask/paint stores.
+        if (
+          ![
+            "group.create",
+            "object.parent",
+            "object.flag",
+            "object.duplicate",
+            "part.define",
+            "part.remove",
+            "part.assign",
+            "part.clearance",
+            "part.mate",
+            "array.create",
+            "array.update",
+            "array.remove",
+            "array.bake",
+            "boolean.create",
+            "boolean.update",
+            "boolean.remove",
+            "boolean.bake",
+            "primitive.create",
+            "primitive.update",
+            "object.transform",
+            "object.rename",
+            "primitive.bake",
+            "object.delete",
+          ].includes(step.command.type)
+        )
+          this.fail("unsupported", "This command is not supported inside a modelling batch.");
+      }
+      this.pending = true;
+      admitted = true;
+      let target = this.layers;
+      if (options.dryRun) {
+        if (this.layers.trackedBytes > 128 * 1024 ** 2)
+          this.fail("operation_failed", "Dry-run staging exceeds its 128 MiB source budget.");
+        const original = this.layers.project,
+          stack = new LayerStack(
+            original.layerStack.layers.map((l) => new SdfLayer(l.volume, l.metadata())),
+            original.activeLayerId,
+          );
+        stack.hierarchy.restore(structuredClone(original.layerStack.hierarchy.snapshot()));
+        const project = new SculptProject(
+          stack,
+          structuredClone(original.settings),
+          original.name,
+          original.id,
+        );
+        project.displayPreferences = structuredClone(
+          this.layers.display.snapshot(project.id, stack.layers),
+        );
+        temporary = new IndependentLayers(project);
+        temporary.selectedGroupId = this.layers.selectedGroupId;
+        target = temporary;
+      }
+      const api = new ModellingAPI(target, this.canEdit);
+      const calibration = target.display.precision.millimetresPerUnit;
+      const beforeObjects = new Map(
+        [...target.project.layerStack.layers, ...target.project.layerStack.hierarchy.groups].map(
+          (n) => [n.id, JSON.stringify(api.objectMetadata(n.id))],
+        ),
+      );
+      owner = target.acquireModellingLease();
+      const start = target.withModellingLease(owner, () => target.assemblyCheckpoint());
+      checkpoint = start;
+      const aliases: Record<string, string> = {},
+        results: { id: string }[] = [];
+      const referenceKeys = new Set([
+        "id",
+        "objectId",
+        "parentId",
+        "sourceId",
+        "partId",
+        "moving",
+        "target",
+        "pegPart",
+        "socketPart",
+      ]);
+      const resolve = (value: unknown, key = ""): unknown => {
+        if (referenceKeys.has(key) && typeof value === "string" && value.startsWith("$")) {
+          return Object.hasOwn(aliases, value.slice(1))
+            ? aliases[value.slice(1)]
+            : this.fail("not_found", `Unknown prior result ${value}.`);
+        }
+        if (Array.isArray(value)) return value.map((v) => resolve(v));
+        if (value && typeof value === "object")
+          return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v, k)]));
+        return value;
+      };
+      for (const step of input) {
+        if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
+        const command = resolve(step.command) as ModellingCommand;
+        const result = await target.withModellingLease(owner, () =>
+          api.executeCommand(command, { expectedRevision: api.revision, signal: options.signal }),
+        );
+        if (!result.ok) throw new CommandError(result.error.code, result.error.message);
+        if (target.display.precision.millimetresPerUnit !== calibration)
+          this.fail("revision_conflict", "Physical calibration changed during the batch.");
+        results.push({ id: result.value.id });
+        if (step.as) aliases[step.as] = result.value.id;
+      }
+      if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
+      if (options.dryRun && this.revision !== options.expectedRevision)
+        this.fail("revision_conflict", "Scene changed during dry-run.");
+      const objects = target.withModellingLease(owner, () =>
+        [...target.project.layerStack.layers, ...target.project.layerStack.hierarchy.groups].map(
+          (n) => api.objectMetadata(n.id),
+        ),
+      );
+      target.withModellingLease(owner, () => target.finishAssemblyTransaction(start));
+      checkpoint = undefined;
+      target.releaseModellingLease(owner);
+      owner = undefined;
+      return {
+        ok: true,
+        revision: this.revision,
+        value: {
+          dryRun: !!options.dryRun,
+          results,
+          aliases,
+          objects,
+          changes: {
+            created: objects.filter((o) => !beforeObjects.has(o.id)).map((o) => o.id),
+            modified: objects
+              .filter(
+                (o) => beforeObjects.has(o.id) && beforeObjects.get(o.id) !== JSON.stringify(o),
+              )
+              .map((o) => o.id),
+            deleted: [...beforeObjects.keys()].filter((id) => !objects.some((o) => o.id === id)),
+          },
+          limits: { commands: 64, layers: 8, memoryBytes: 256 * 1024 ** 2 },
+          geometryValidation: "source_caches_only",
+          limitations: [
+            "Source caches are evaluated with backend resource limits; final Boolean/STL topology and physical fit are not validated.",
+            "Dry-run object IDs are provisional; use aliases when executing the real batch.",
+          ],
+        },
+      };
+    } catch (error) {
+      const target = temporary ?? this.layers;
+      const failedCheckpoint = checkpoint;
+      if (owner && failedCheckpoint !== undefined)
+        target.withModellingLease(owner, () =>
+          target.rollbackAssemblyTransaction(failedCheckpoint),
+        );
+      return this.error(
+        options.signal?.aborted
+          ? new CommandError("cancelled", "Operation cancelled; batch rolled back.")
+          : error,
+      );
+    } finally {
+      if (owner) (temporary ?? this.layers).releaseModellingLease(owner);
+      temporary?.dispose();
+      if (admitted) this.pending = false;
+    }
+  }
+  /** Explicit asynchronous geometry evaluation. Reports refer to sampled/evaluated meshes,
+   * never a certification that the physical object will print or fit. */
+  async diagnostics(
+    request: { id: string; otherId?: string; clearanceMM?: number },
+    signal?: AbortSignal,
+  ) {
+    try {
+      if (this.layers.modellingBusy || !this.layers.recoveryReady)
+        this.fail("busy", "Editor has an active operation.");
+      if (signal?.aborted) this.fail("cancelled", "Diagnostics cancelled.");
+      if (
+        request.clearanceMM !== undefined &&
+        (!Number.isFinite(request.clearanceMM) ||
+          request.clearanceMM < 0 ||
+          request.clearanceMM > 1000)
+      )
+        this.fail("invalid_input", "Clearance must be 0–1000 mm.");
+      this.node(request.id);
+      if (request.otherId) this.node(request.otherId);
+      const revision = this.revision;
+      const fit = request.otherId
+        ? await inspectLayers(
+            this.layers,
+            request.id,
+            request.otherId,
+            request.clearanceMM ?? 0,
+            signal,
+          )
+        : null;
+      const layer = this.layers.project.layerStack.layers.find((l) => l.id === request.id);
+      const report = layer?.assemblyPart
+        ? (await exportPartSTL(this.layers, request.id, signal)).report
+        : null;
+      if (revision !== this.revision)
+        this.fail("revision_conflict", "Scene changed during diagnostics.");
+      return {
+        ok: true as const,
+        revision,
+        value: {
+          fit,
+          print: report,
+          topologyAccuracy: report ? "exact_on_exported_mesh" : "unsupported",
+          fitAccuracy: fit ? "sampled_approximation" : "not_evaluated",
+          limitations: [
+            "STL topology requires a printable part; mark the desired root with part.define.",
+            "Topology is checked on the sampled export mesh, not the analytic solid. Physical printability/fit is not guaranteed.",
+          ],
+        },
+      };
+    } catch (e) {
+      return this.error(
+        signal?.aborted ? new CommandError("cancelled", "Diagnostics cancelled.") : e,
+      );
+    }
+  }
   private partMetadata(id: string): PartMetadata {
     this.node(id);
     const l = this.layers.project.layerStack.get(id);
@@ -290,9 +605,19 @@ export class ModellingAPI {
     command: ModellingCommand,
     options: { expectedRevision: string; signal?: AbortSignal },
   ): Promise<ModellingResult<{ id: string; fit?: FitReport }>> {
+    if (this.layers.modellingBusy)
+      return this.error(new CommandError("busy", "A modelling transaction is active."));
+    return this.executeCommand(command, options);
+  }
+  private async executeCommand(
+    command: ModellingCommand,
+    options: { expectedRevision: string; signal?: AbortSignal },
+  ): Promise<ModellingResult<{ id: string; fit?: FitReport }>> {
     let selected: string | undefined,
       group: string | null = null;
     try {
+      if (!command || typeof command !== "object" || typeof command.type !== "string")
+        this.fail("invalid_input", "Command type is required.");
       if (!this.canEdit()) this.fail("permission_denied", "Editing is not permitted.");
       if (this.pending || !this.layers.recoveryReady)
         this.fail("busy", "Editor has an active operation.");
@@ -301,6 +626,10 @@ export class ModellingAPI {
       if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
       if (
         ![
+          "group.create",
+          "object.parent",
+          "object.flag",
+          "object.duplicate",
           "part.inspect",
           "part.define",
           "part.remove",
@@ -348,6 +677,12 @@ export class ModellingAPI {
       try {
         if (command.type === "primitive.create" || command.type === "primitive.update")
           source = validatePrimitive(this.convertSource(command.source, this.factor(command.unit)));
+        if (command.type === "boolean.update") validateModifiers(command.modifiers);
+        if (
+          command.type === "boolean.create" &&
+          !["union", "difference", "intersect"].includes(command.operation)
+        )
+          throw new Error("Invalid Boolean operation.");
         if (command.type === "object.transform") {
           const f = this.factor(command.unit);
           transform = validateTransform({
@@ -357,16 +692,18 @@ export class ModellingAPI {
         }
         if (command.type === "array.create" || command.type === "array.update") {
           const raw = structuredClone(command.definition) as ArrayDefinition;
-          if (raw.kind === "radial")
-            raw.pivot = raw.pivot.map(
-              (v) => v / this.layers.display.precision.millimetresPerUnit,
-            ) as Vec3;
+          const factor = this.factor(command.unit ?? "mm");
+          if (raw.kind === "radial") raw.pivot = raw.pivot.map((v) => v * factor) as Vec3;
+          if (raw.kind === "linear") raw.spacingModelUnits *= factor;
           arrayDefinition = validateArrayDefinition({ ...raw, id: raw.id ?? newId() });
-          if (arrayDefinition.kind === "linear")
-            arrayDefinition.spacingModelUnits /= this.layers.display.precision.millimetresPerUnit;
         }
         if (
-          command.type === "object.rename" &&
+          command.type === "object.flag" &&
+          (!["visible", "locked"].includes(command.flag) || typeof command.value !== "boolean")
+        )
+          throw new Error("Invalid object flag.");
+        if (
+          (command.type === "object.rename" || command.type === "group.create") &&
           (typeof command.name !== "string" ||
             !command.name.trim() ||
             command.name.trim().length > 128)
@@ -397,7 +734,12 @@ export class ModellingAPI {
           this.fail("permission_denied", "Part or ancestor is hidden or locked.");
       if ("id" in command) {
         const node = this.node(command.id);
-        if (!node.editable)
+        const flagRecovery =
+          command.type === "object.flag" &&
+          !this.layers.project.layerStack.hierarchy.parentsLocked(command.id) &&
+          ((command.flag === "locked" && !command.value) ||
+            (command.flag === "visible" && command.value && !node.locked));
+        if (!node.editable && !flagRecovery)
           this.fail("permission_denied", "Object or ancestor is hidden or locked.");
         if (
           (command.type === "primitive.update" || command.type === "primitive.bake") &&
@@ -426,6 +768,21 @@ export class ModellingAPI {
         else this.layers.select(command.id);
       }
       switch (command.type) {
+        case "group.create":
+          id = this.layers.createGroup(command.name);
+          break;
+        case "object.parent":
+          if (command.parentId) this.node(command.parentId);
+          this.layers.reparent(id, command.parentId);
+          break;
+        case "object.flag":
+          this.layers.setNodeFlag(id, command.flag, command.value);
+          break;
+        case "object.duplicate":
+          if (this.node(id) instanceof LayerGroup)
+            this.fail("unsupported", "Group duplication is unsupported.");
+          id = (await this.layers.duplicateAsync(id, options.signal)).id;
+          break;
         case "part.define":
           this.node(command.objectId);
           id = command.objectId;
@@ -574,7 +931,7 @@ export class ModellingAPI {
       }
       return { ok: true, revision: this.revision, value: { id } };
     } catch (e) {
-      if (selected && this.layers.recoveryReady) {
+      if (selected && this.layers.recoveryReady && !this.layers.modellingBusy) {
         this.layers.select(selected);
         if (group) this.layers.selectGroup(group);
       }

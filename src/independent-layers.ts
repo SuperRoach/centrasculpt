@@ -252,7 +252,15 @@ type HierarchyEntry = {
 };
 type PaintEntry = { kind: "paint"; layerId: string; before: PaintSnapshot; after: PaintSnapshot };
 type TimelineEntry =
-  | { kind: "assembly-batch"; layerId: string; entries: TimelineEntry[] }
+  | {
+      kind: "assembly-batch";
+      layerId: string;
+      entries: TimelineEntry[];
+      activeBefore: string;
+      activeAfter: string;
+      selectedBefore: string | null;
+      selectedAfter: string | null;
+    }
   | { kind: "assembly"; layerId: string; before?: AssemblyPart; after?: AssemblyPart }
   | {
       kind: "boolean";
@@ -703,6 +711,7 @@ export class IndependentLayers {
    * Includes retained Bake runtimes; excludes pending Maps, derived CSG and JS/GPU overhead. */
   get recoveryReady(): boolean {
     return (
+      (!this.modellingOwner || this.modellingAccess) &&
       !this.copyPending &&
       !this.tubePending &&
       !this.cutPending &&
@@ -904,7 +913,34 @@ export class IndependentLayers {
   get drawing(): boolean {
     return this.strokeLayer !== null;
   }
+  private modellingOwner: symbol | null = null;
+  private modellingAccess = false;
+  get modellingBusy(): boolean {
+    return this.modellingOwner !== null;
+  }
+  acquireModellingLease(): symbol {
+    this.assertAvailable();
+    if (!this.recoveryReady) throw new Error("Finish the current edit first.");
+    this.modellingOwner = Symbol("modelling transaction");
+    return this.modellingOwner;
+  }
+  withModellingLease<T>(owner: symbol, work: () => T): T {
+    if (this.modellingOwner !== owner) throw new Error("Invalid modelling lease.");
+    const previous = this.modellingAccess;
+    this.modellingAccess = true;
+    try {
+      return work();
+    } finally {
+      this.modellingAccess = previous;
+    }
+  }
+  releaseModellingLease(owner: symbol): void {
+    if (this.modellingOwner !== owner) throw new Error("Invalid modelling lease.");
+    this.modellingOwner = null;
+  }
   private assertAvailable(): void {
+    if (this.modellingOwner && !this.modellingAccess)
+      throw new Error("A modelling transaction is active.");
     this.interruptBackground();
     if (this.copyPending) throw new Error("Wait for layer duplication or cancel it.");
     if (this.tubePending) throw new Error("Wait for tube regeneration or cancel it.");
@@ -1502,6 +1538,9 @@ export class IndependentLayers {
       from.push(...(redo ? [...entry.entries].reverse() : entry.entries));
       for (let i = 0; i < entry.entries.length; i++) this.undo(redo);
       to.splice(to.length - entry.entries.length, entry.entries.length, entry);
+      this.project.layerStack.select(redo ? entry.activeAfter : entry.activeBefore);
+      this.selectedGroupId = redo ? entry.selectedAfter : entry.selectedBefore;
+      this.syncPresentation();
       return this.project.activeLayerId;
     }
     if (entry.kind === "name") {
@@ -2416,24 +2455,71 @@ export class IndependentLayers {
     );
   }
   private historyEntries(): TimelineEntry[] {
-    return this.flattenEntries([...this.past, ...this.future]);
+    return this.flattenEntries([...this.past, ...this.future, ...this.assemblyRedo]);
   }
   private assemblyTransaction = false;
+  private assemblyRedo: TimelineEntry[] = [];
+  private assemblyBefore: {
+    active: string;
+    group: string | null;
+    revision: number;
+    view: "separate" | "boolean";
+  } | null = null;
   assemblyCheckpoint(): number {
     if (this.assemblyTransaction) throw new Error("An assembly transaction is already active.");
     this.assemblyTransaction = true;
+    this.assemblyRedo = this.future;
+    this.future = [];
+    this.assemblyBefore = {
+      active: this.project.activeLayerId,
+      group: this.selectedGroupId,
+      revision: this.committedRevision,
+      view: this.viewMode,
+    };
     return this.past.length;
   }
   finishAssemblyTransaction(start: number): void {
     this.assemblyTransaction = false;
     const entries = this.past.splice(start);
-    if (entries.length)
-      this.past.push({ kind: "assembly-batch", layerId: entries[0].layerId, entries });
+    this.future = this.assemblyRedo;
+    this.assemblyRedo = [];
+    const before = this.assemblyBefore;
+    this.assemblyBefore = null;
+    if (entries.length && before) {
+      this.past.push({
+        kind: "assembly-batch",
+        layerId: entries[0].layerId,
+        entries,
+        activeBefore: before.active,
+        activeAfter: this.project.activeLayerId,
+        selectedBefore: before.group,
+        selectedAfter: this.selectedGroupId,
+      });
+      this.discardFuture();
+    }
   }
   rollbackAssemblyTransaction(start: number): void {
     this.assemblyTransaction = false;
+    // A replaced/closed editor has already disposed all retained runtimes, including saved redo.
+    if (this.disposed) {
+      this.assemblyRedo = [];
+      this.assemblyBefore = null;
+      return;
+    }
     while (this.past.length > start) this.undo();
-    this.discardFuture();
+    // Discard only the failed batch's redo. Keep older redo and retained runtimes alive.
+    this.discardFuture(true);
+    this.future = this.assemblyRedo;
+    this.assemblyRedo = [];
+    const before = this.assemblyBefore;
+    this.assemblyBefore = null;
+    if (before) {
+      this.project.layerStack.select(before.active);
+      this.selectedGroupId = before.group;
+      this.committedRevision = before.revision;
+      this.viewMode = before.view;
+      this.syncPresentation();
+    }
   }
   setAssemblyPart(id: string, value: unknown): void {
     this.assertAvailable();
@@ -2542,7 +2628,8 @@ export class IndependentLayers {
     );
     this.syncPresentation();
   }
-  private discardFuture(): void {
+  private discardFuture(preserveVoxelRedo = false): void {
+    if (this.assemblyTransaction) return;
     for (const entry of this.flattenEntries(this.future))
       if (entry.kind === "bake" && !this.runtimes.has(entry.layerId)) {
         entry.runtime.dispose();
@@ -2561,7 +2648,8 @@ export class IndependentLayers {
         }
     this.future = [];
     this.releaseHierarchyOrphans();
-    for (const runtime of this.runtimes.values()) runtime.history.discardRedo();
+    if (!preserveVoxelRedo)
+      for (const runtime of this.runtimes.values()) runtime.history.discardRedo();
   }
   private bakeState(): BakeState {
     return {

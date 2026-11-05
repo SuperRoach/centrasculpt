@@ -15,6 +15,8 @@
     "test:tap": "node scripts/test.mjs --test-reporter=tap",
     "test:junit": "node scripts/test.mjs --test-reporter=junit",
     "benchmark": "node scripts/benchmark.mjs",
+    "example:headless": "node scripts/headless-enclosure.mjs",
+    "benchmark:headless": "node scripts/benchmark-headless.mjs",
     "benchmark:composite": "node scripts/benchmark-composite.mjs",
     "benchmark:bake": "node scripts/benchmark-bake.mjs",
     "benchmark:shapes": "node scripts/benchmark-shapes.mjs",

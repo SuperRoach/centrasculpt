@@ -36,7 +36,7 @@ The UI still owns its controls, selection and notifications. This adapter calls 
 
 A future Phase 7 host can own adapter lifetime, map tool schemas to the typed discriminated commands, supply admission policy and cancellation, and serialize structured results. It must independently implement transport authentication/authorization, user approval policy and audit logging if external access is introduced. None exists in this milestone.
 
-Deferred: multi-command atomic batches, dry-run/planning, progress subscriptions, persistent revisions, external schemas/transports, agent-driven selection/visibility/lock/grouping commands, partial parameter patches and source type conversion. Rename and transform are distinct transactions. Primitive cache/history bounds, polygonal curves, sampled Bake accuracy, eight-layer/resource limits and pending physical Quest acceptance remain Phase 6.2 limitations. No new rendering/input feature requires headset acceptance in this adapter milestone.
+Historical Phase 6.2.1 deferrals (transactions, dry-runs and grouping/flags are now delivered below): progress subscriptions, persistent revisions, external schemas/transports, partial parameter patches and source type conversion. Rename and transform are distinct transactions. Primitive cache/history bounds, polygonal curves, sampled Bake accuracy, eight-layer/resource limits and pending physical Quest acceptance remain Phase 6.2 limitations. No new rendering/input feature requires headset acceptance in this adapter milestone.
 
 
 ## Phase 6.3 — live Boolean commands
@@ -83,3 +83,75 @@ Surface placement follow-up (2026-11-06): `ConnectorOptions` accepts optional `s
 `object.delete` and `IndependentLayers.deleteObject` now remove incoming Boolean references (including disabled modifiers) along with the selected source layer. The retained-runtime hierarchy history stores the affected modifier stacks, so a single Undo restores geometry, hierarchy/placement, selection and incoming references; Redo unlinks before removing the source. Other modifiers and source fields are retained. Every consuming target must be editable; source/target locks, the final-layer guard and existing busy-state checks still apply. Failed removal restores modifier stacks, hierarchy and selection without discarding the redo branch. The low-level irreversible `remove` method and Cut retain their referenced-source refusal. Desktop Delete/Backspace, Delete layer and the Live Boolean Shapes Delete source button use the same undoable deletion path. “Remove from result” still only unlinks the modifier.
 
 Array definitions optionally accept `scalePerItem` (ratio, default 1): copy i has relative size `scalePerItem ** i`. Desktop percentages divide by 100 at the UI boundary. Both radial and linear definitions support it. Mutations validate the final relative size within 0.001–1000 and retain existing history/revision/resource guards. Non-default progressive arrays save as native v15.
+
+
+## Phase 7.0 — transactions, dry-runs and inspection
+
+Implemented 2026-11-06. This section supersedes the earlier single-command-only limitations. The existing authoritative editor, evaluators, formats and history are reused. There is no network listener, MCP server, remote execution, provider credential or browser bridge.
+
+```ts
+const steps: ModellingStep[] = [
+  { as: "body", command: { type: "primitive.create", unit: "mm",
+    source: { kind: "box", width: 50, height: 20, depth: 40 } } },
+  { as: "cutter", command: { type: "primitive.create", unit: "mm",
+    source: { kind: "cylinder", diameter: 12, height: 30 } } },
+  { command: { type: "boolean.create", id: "$body", sourceId: "$cutter",
+    operation: "difference" } },
+  { command: { type: "part.define", objectId: "$body", clearanceMM: 0.3 } },
+  { command: { type: "part.assign", objectId: "$cutter", partId: "$body" } },
+];
+const revision = api.revision;
+const preview = await api.batch(steps, { expectedRevision: revision, dryRun: true, signal });
+if (!preview.ok) throw new Error(preview.error.message);
+// Review preview.value.objects; source dimensions and limitations are explicit.
+const result = await api.batch(steps, { expectedRevision: revision, signal });
+if (result.ok) {
+  const body = result.value.aliases.body;
+  const hierarchy = api.query({ type: "scene.hierarchy" });
+  const parts = api.query({ type: "assembly.parts" });
+  const bounds = api.query({ type: "geometry.bounds", id: body });
+  const diagnostics = await api.diagnostics({ id: body }, signal);
+  // Native persistence; UI hosts should use their ordinary save/library workflow.
+  const bytes = saveSculptProject(layers.project);
+}
+```
+
+Run the complete version with `npm run example:headless`. It uses the repository TypeScript compiler harness and writes a real native `.form` project. It does not require a DOM, WebXR, WebGL renderer or event simulation. Node needs dependencies installed and repository root as cwd. UI dialogs, thumbnails, IndexedDB Project Library and autosave worker orchestration still require the browser; the CLI does not emulate those services. The project is the same native project consumed by those integrations, with no agent-only scene format.
+
+### Ordered batches and ownership
+
+`batch(steps, { expectedRevision, signal?, dryRun? })` accepts 1–64 steps and at most 65,536 JSON characters. Each step has a command and optional unique `as` identifier (ASCII letter, then letters/digits/underscore; at most 64 characters). A reference such as `$body` in an object reference field resolves to an earlier result. Names remain literal strings. Dry-run IDs are provisional; submit the same aliases for the real batch. Results contain ordered IDs, alias mappings, detached predicted object metadata, explicit `changes.created/modified/deleted` ID lists, fixed limits and geometric limitations. Final object metadata includes all surviving objects; deleted IDs may still appear in ordered results.
+
+The scene revision must match at admission. A backend lease prevents ordinary human editing commands and other adapters from editing during a real batch, including across cooperative async yields. Calibration changes during async preparation reject the batch while preserving the newer calibration. Queries return `busy`; recovery readiness stays false so autosave/export cannot consume partial state. Ordered operations validate inputs, references, inheritance, graph constraints and resource limits through the same backend as individual commands. Successful batches retain their child history entries as one compound Undo/Redo action. Failure/cancellation replays those retained entries in reverse through the backend, disposes failed candidates and restores selection, source view and earlier redo (including voxel redo). Closing/replacing the editor discards its disposed state; in-flight work returns structured failure and never publishes into the replacement. There is no full-project rollback snapshot. A failed real batch may advance the opaque revision while restoring scene contents; query again before retrying. Do not mutate raw project fields outside editor commands.
+
+`connector.create` owns its own compound backend transaction and is explicitly unsupported inside `batch`; execute it separately. Read-only `part.inspect` and selection-only `part.select` are also excluded from batches. Empty/overlong/malformed requests, unknown/future aliases and duplicate aliases are rejected. No implicit Bake, silent quality reduction, group duplication or primitive type conversion is provided.
+
+### Additional commands and physical units
+
+- `group.create { name }` creates a hierarchy group and returns its stable ID.
+- `object.parent { id, parentId }` attaches/detaches while retaining world pose; null detaches.
+- `object.flag { id, flag: "visible" | "locked", value }` changes local flags. Effective hidden/locked ancestors still prohibit edits. Explicit show/unlock commands permit recovering a node's own local flag; locked parents remain protected.
+- `object.duplicate { id }` copies a supported layer with independent SDF, mask/paint and modifier IDs using normal duplicate history. Groups are unsupported.
+- Existing primitive/transform, Boolean, array, part, deletion and explicit Bake commands work in batches, with the exclusions above.
+
+Primitive sizes and transform positions require `mm`, `cm` or `in`; rotations are radians and scales dimensionless. Array create/update accept `unit` for spacing/pivot; omission retains the earlier fixed-mm API for compatibility. The legacy field `spacingModelUnits` is interpreted in the supplied physical unit at this boundary, then converted before backend validation. Returned arrays are in mm and object metadata includes `arrayUnit: "mm"`. Part clearances, mates and connector fields explicitly end in `MM`. No calibration is inferred from primitive dimensions.
+
+### Read-only inspection and geometry diagnostics
+
+`scene.summary`, `object.list`, `object.get`, `scene.hierarchy`, `assembly.parts` (alias of `part.list`), existing Boolean/array/part queries, `geometry.bounds { id }` and `geometry.diagnostics { id }` return JSON-compatible data without history or full field copies. `scene.hierarchy` is a detached native hierarchy snapshot: its raw transforms remain in model units, interpreted using `scene.summary.millimetresPerModelUnit`. Use `object.get` for explicit local/world `positionMM`, radians and scale. Dimensions in object metadata describe source geometry; `dimensionsAccuracy: "source_only"` identifies live arrays/Booleans. Bounds return millimetre min/max and `accuracy: "conservative"`; live subtraction/intersection can make the actual result smaller and arrays use conservative sampling layout bounds. Bounds currently require a layer root; group object metadata includes descendant dimensions instead.
+
+The synchronous `geometry.diagnostics` query reports source triangle count and `not_evaluated`, never a false topology pass. Call asynchronous `diagnostics({ id, otherId?, clearanceMM? }, signal?)` for actual geometry work:
+
+- An optional second object invokes the existing bounded SDF fit sampler: approximate gaps/overlaps, sample spacing, interference and nominal clearance with `fitAccuracy: "sampled_approximation"`.
+- If the primary layer is a printable part, the existing independent part STL exporter evaluates its graph and runs the same topology validator used for downloads. `print` includes mm dimensions, components, boundary/non-manifold/inconsistent edges, degenerate triangles, inverted components, blocking/warnings/unsupported checks and effective resolution. `topologyAccuracy: "exact_on_exported_mesh"` applies only to that sampled export mesh.
+- Unmarked layers/groups return null print reports with `topologyAccuracy: "unsupported"`. Mark a part explicitly to request export topology. Unsupported checks such as general self-intersections/material/wall thickness and physical fit remain explicit in reports. Export refusals return structured backend errors rather than fabricating a passing report. Geometry work is bounded and cancellable, and stale scenes are rejected.
+
+A topologically valid mesh does not establish printability or physical fit. Test the target slicer and print clearance coupons. The runnable example produces one part with an editable hole; it is not a complete Raspberry Pi case design or a verified board-specific fixture.
+
+### Dry-run limits and future connectors
+
+Dry-run creates isolated layer metadata, hierarchy, display state and geometry runtimes, borrowing existing SDF/mask/paint stores read-only. Supported commands replace or copy sources rather than brushing borrowed stores. Original native bytes, selection, history, redo and revision remain unchanged. Temporary geometry is disposed on success/failure. Human edits can continue on the authoritative editor during a dry-run; a changed revision makes its result stale and returns `revision_conflict`.
+
+This is actual source cache generation with the backend layer/sample/aspect/triangle/memory checks, not schema-only validation. Ordinary live Boolean/array assignment does not evaluate final CSG topology. `geometryValidation: "source_caches_only"` makes that distinction explicit; dimensions are predicted reliably for source primitives, with conservative/source-only labels elsewhere. Final STL diagnostics remain a separate explicit call. Existing eight-layer, 16-instance array, 64M sample, 192³ resolution, 256 MiB tracked-memory and STL validation limits apply. Dry-run additionally rejects source editors tracking more than 128 MiB before staging; JS/GPU/process peaks are not fully accounted by this estimate.
+
+A future secure local connector should bind one adapter to the current editor lifetime, map tools onto exported `ModellingCommand`, `ModellingQuery`, `ModellingStep` and `BatchOptions`, preserve structured errors/revisions/AbortSignals and apply its own host policy. Transport authentication, authorization, user consent and audit remain future work. The local policy callback is admission logic, not authentication. Raw editor/lease methods are trusted host internals, not an external permission surface.

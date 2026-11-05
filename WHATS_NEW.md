@@ -1,3 +1,9 @@
+### Headless modelling tools — Phase 7.0 (2026-11-06)
+
+- Local scripts can create and edit objects, groups, arrays and printable parts, inspect their relationships, and save native projects without VR input.
+- Apply ordered edits as one Undo action, or preview them without changing the project. Stale edits are rejected and failed batches roll back.
+- A runnable Node example demonstrates editable Boolean subtraction and printing diagnostics. Diagnostics describe sampled geometry and do not guarantee physical fit or printability.
+
 ### Scale each repeated item (2026-11-06)
 
 - **Array / Repeat → Scale per item (%)** applies a recurring multiplier to linear or radial copies. At 90%, sizes are 100%, 90%, 81%, 72.9% and so on. Use 100% for equal sizes or more than 100% to grow each copy.
