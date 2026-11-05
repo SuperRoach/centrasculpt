@@ -1,5 +1,102 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+2026-11-06 publication: user authorized committing and pushing the completed enclosure work, panel polish and existing validated project-library/export/menu refinements. This supersedes earlier no-commit statements for this publication. Physical Quest and printed-fit acceptance remain pending.
+
+## Enclosure panel polish — 2026-11-06
+
+### 1. What changed
+
+Added a descriptive heading tooltip and small info indicator. Grouped desktop fields into Inside size, Walls & base and Lid, each with shared mm units and three compact columns. Added outside base dimensions (width × depth × height), segmented new/edit controls and primary styling that follows Preview changes → Apply changes. Cancel appears during preview/work. Full accessible field labels and keyboard focus styles remain available.
+
+### 2. Architectural decisions
+
+Presentation changes are scoped to `enclosure-ui.ts` and `.enclosure-*` CSS. Existing parameters, draft hydration, revision guards, source previews, transactions and exports are reused unchanged. No new geometry or persistent schema.
+
+### 3. Build and test results
+
+`npm run check` passed Biome format/lint (603 warnings / 96 infos / zero errors, 339 files), strict TypeScript, production build (1.60 s) and **1,574/1,574 tests across 93 files**, no failures/skips/cancellations; test wall 78.14 s. Log: `work/phase-7-1/polish-check.log`. Browser visual inspection verified the grouped fields, heading help, mode states and a depth draft 20 → 28 mm updating the outside summary to 30 × 34 × 17 mm. Existing recovery checkpoints were left untouched. `git diff --check` passed.
+
+### 4. Benchmarks and regressions
+
+No engine/sampling/controller changes or new performance claim. Existing enclosure and full regression suites retain geometry, persistence and interaction coverage.
+
+### 5. Known limitations and blockers
+
+Heading tooltip uses the existing native title pattern. Physical Quest and printed-fit acceptance remain pending. Existing uncommitted changes are preserved; no commit/push/merge.
+
+### 6. Next recommendations
+
+Retain 7.2 face-relative cutouts/mounting/named constraints, 7.3 secure local MCP and 7.4 agent plan-preview-apply. Continue physical acceptance separately.
+
+
+## Enclosure editing follow-up — 2026-11-06
+
+### 1. What changed
+
+Simplified desktop/VR copy to Enclosure, Name, Preview changes, Apply changes and Edit selected enclosure; removed the repetitive physical-fit message from these controls. Loaded enclosures bind to their existing pair when the panel opens or a project is replaced. Update previews now draw the new source outlines in the parts' saved transforms, so an inside-depth edit is visible before applying it. Final application still prepares the independent evaluated assembly view.
+
+### 2. Architectural decisions
+
+Retained draft/preview/confirmation and the existing one-action transaction. Inspection now permits additional root Boolean operations after the original base cavity/lid lip operation, and additional part members. Rebuild modifies only the five generated sources and root intent; added cutter parameters, transforms, IDs, parents and modifier ordering stay intact. The original cavity/lip structure must remain first and enabled. This supports manually positioned USB-style openings without introducing the Phase 7.2 associative face constraints.
+
+### 3. Build and test results
+
+Focused enclosure suite passed 17/17, including added visible-update-outline and USB-style subtraction/persistence/resize/Undo cases. Final `npm run check` passed Biome formatting/lint (603 warnings / 96 infos / zero errors, 339 files), strict TypeScript, production build (1.58 s) and **1,574/1,574 tests across 93 files**, no failures/skips/cancellations; test wall 79.98 s. Log: `work/phase-7-1/followup-check.log`. Connected-browser smoke on isolated port 5193 imported/opened the native example, automatically selected update mode, changed inside depth 20 → 24 mm, displayed the 30 × 17 × 30 mm preview, applied one Undo action, rebuilt the view and completed autosave. `git diff --check` passed.
+
+### 4. Benchmarks and regressions
+
+No source field, sampling algorithm, calibration, export scale, controller guide, Tool Wheel or skybox changes. Added preview geometry is presentation-only and excluded from part export. Existing finite/resource/admission limits remain. No new performance claim; see the Phase 7.1 host benchmark below.
+
+### 5. Known limitations and blockers
+
+Pre-apply lines show source solids/cutters; Apply changes displays the actual Boolean result. Port cutters retain their placement when the enclosure changes size, so check their position after moving a wall. Physical Quest/slicer/printed-fit acceptance remains pending. All prior uncommitted work is retained; no commit or push.
+
+### 6. Next recommendations
+
+Verify the simpler flow on Quest in both handedness settings and check port placement in the target slicer. Preserve 7.2 face-relative cutouts, mounting patterns and named constraints; 7.3 secure local MCP; 7.4 agent plan-preview-apply.
+
+
+## Phase 7.1 handover — Parametric Enclosure & Removable-Lid Recipes
+
+Updated 2026-11-06. Active Git checkout `/Users/brettjames/development/vrappPOC`, HEAD `bb86df6`; Documents workspace remains empty. Reviewed current status and Phase 7.0 transactions/commands, Phase 6.6 assembly/fit, 6.3 live Booleans, 6.2 primitives, 6.1 precision and 5.3 STL semantics against implementation. Initial Git status had 14 modified tracked files plus `src/export-feedback.ts` and `src/project-library-ui.ts`; all retained, including ongoing library/export/menu refinements. No commit, push or merge performed.
+
+### 1. What changed
+
+Added reusable typed `api.enclosure.create/update`, pure dimension planning/outer-to-inner conversion, structured `enclosure.inspect` and actual-SDF `enclosure.samples` queries. A friction-fit recipe generates an open-top hollow base and separate removable lid, with an overlapping hollow lip ring and positive configurable per-side clearance. Five editable rounded-prism sources and three ordered live CSG operations retain the complete parameter intent. Default base is 30 × 17 × 26 mm; lid is 30 × 7 × 26 mm. No board-specific dimensions, screw fastening or universal physical-fit claims.
+
+Desktop **Enclosure recipe** and Quest **World Settings → Measure & Precision → Primitives → Enclosure recipe** use the same staged controls and command API. Stage validates isolated source caches, provides a dimension review and unpickable wire sources for new recipes; confirmation applies one transaction and builds independent assembly preview. Existing root transforms permit independent base/lid manipulation. Explicit rebuild preserves root orientation/scale and placement offsets while recomputing sizes/mating height. Invalid/stale/cancelled work cannot publish partial source changes; controller changes/tracking loss cancel VR staging. Native saves, real worker recovery and Project Library/Save As copies retain editable intent. Added runnable `example:enclosure` and `benchmark:enclosure` scripts. See [complete semantics/API](PHASE_7_1_ENCLOSURES.md).
+
+### 2. Architectural decisions
+
+Recipes expand into Phase 7.0 primitive/transform/Boolean/parenting/part metadata commands under its backend lease and compound rollback/history. Intent is validated optional printable-part metadata on each root; there is no second geometry graph or cross-part recipe ID list. Existing hierarchy/Boolean references therefore remap on Library duplication. Native v16 is required only for recipe or rounded-prism current/original parameters; legacy codec paths remain intact. Single-root duplication of a recipe part rejects and directs users to Library project duplication, avoiding references into the original private part. Full five-source recipe copies in one scene would exceed the existing eight-layer limit.
+
+Box sources optionally support an analytic rounded XZ rectangle extruded along Y, including zero-radius square corners and thin plates up to 128:1 aspect. Legacy box SDF evaluation/cache values and ordinary 8:1 primitives remain unchanged. The existing compositor evaluates actual source distances, nested difference and union. New rounded-prism sampling distinguishes curvature from thickness, targets six samples across source/planar subtraction thickness, and deterministically staggers its padded grid to avoid symmetric Float32 zero-vertex seam collapse. No source transform/physical-size mutation occurs. Existing sample/memory/triangle caps, revision guards and cooperative scheduling remain. Admitted rounded meshes can skip redundant preliminary chunk compaction while retaining final quality optimisation and actual STL topology validation. Parent-transform history now stores exact local poses, including no-op/cancel restoration, fixing byte-level Undo/rollback drift exposed by recipe updates.
+
+### 3. Build and test results
+
+Baseline `npm run check` passed Biome format/lint (**599 warnings / 96 infos / zero errors**, 333 files), strict TypeScript, production build (**1.95 s**) and **1,557/1,557 tests across 92 files**, zero failures/skips/cancellations; test wall **85.78 s**. Log: `work/phase-7-1/baseline-check.log`. Intermediate full integration passed **1,569/1,569** (88.17 s), before the final export/inspection/controller cases. Final `npm run check` passed Biome formatting/lint (**601 warnings / 96 infos / zero errors**, 339 files), strict TypeScript, production build (**2.48 s**) and **1,572/1,572 tests across 93 files**, zero failures/skips/cancellations; test wall **92.18 s**. Log: `work/phase-7-1/final-v3-check.log`. Final quick smoke **21/21** passed; `git diff --check` passed.
+
+New deterministic tests cover finite/radius/rim/lip validation and malformed cycles, negative-inside rounded SDF, open cavity/floor/walls, nested lip union and positive overlap, clearance changes, coherent updates and outer-size conversion, stable part identity/independent transforms, isolated dry-run, rollback/retained redo/one Undo/Redo, cancellation during source generation, explicit source edits without Bake, locks/rewired structure, native v16/legacy rejection, actual recovery worker and Library duplication, structured queries/sparse thickness sections, bounded VR keypad targets and controller reassignment/tracking loss for both tool hands. Actual final binary STL bounds/topology tests cover rounded and tall square-corner examples, unequal longest dimensions at common 200 mm/unit calibration and excluded presentation geometry.
+
+Desktop connected-browser smoke test on isolated localhost port 5191 verified Stage → Confirm create, separate Base/Lid sources, one Undo action, saved recipe edit from 0.3 to 0.6 mm clearance, second one-action confirmation and completed autosave. Browser automation backend was unavailable, so the connected in-app browser was used. Existing recovery checkpoints were not restored/discarded. Physical Quest testing remains pending.
+
+### 4. Benchmarks and regressions
+
+Host Node **v26.8.1**, **Apple M5 Pro**, two warmups plus five observations: create median/p95 **104.118 / 125.213 ms**, isolated dry-run **112.239 / 118.214 ms**, update **119.083 / 124.776 ms**. Five-sample p95 is the maximum observed. Maximum tracked source/history runtime memory in this fixture: **9,590,770 bytes**; excludes JS/process/GPU peaks. Single High STL observations: base **1,969.65 ms / 114,468 triangles**, lid **1,055.00 ms / 63,762 triangles**. Both report one component, zero boundary/non-manifold/winding/degenerate/inverted counts, expected mm dimensions within Float32 tolerance and **0.5 mm** sampling spacing. A 0.3 mm nominal clearance is explicitly flagged below that spacing.
+
+Evidence: `work/phase-7-1/benchmark.json`, `benchmark-final.log`, `example-final.log`, focused/full check logs. `npm run example:enclosure` also writes the normal editable `example/enclosure.form`, `base-mm.stl`, `lid-mm.stl` and companion print reports under that directory. Host timings are not headset frame/thermal measurements. Source fields, calibrated support-guide profiles, Studio Skybox/Passthrough and main Tool Wheel Cut implementation were not changed by this phase. Existing regression suites cover these paths. Vite retains its existing bundle-size advisory.
+
+### 5. Known limitations and blockers
+
+Friction-fit lip only; screw-on lids, snap undercuts, seals, board mounting and face-relative cutouts are deferred. Dry-run validates source caches, not final Boolean mesh topology or physical printability. Export validates the actual final Float32 STL and refuses an enclosure unless it has one closed, consistently wound manifold shell. This still does not establish self-intersection freedom, global minimum walls, target-slicer success or printer/material fit. Thickness queries probe only four central sections (512 midpoint samples each) and can miss local defects. Changing calibration follows existing project-wide reinterpretation; saved recipe mm intent does not silently change with it.
+
+Large/thin enclosures can exceed existing grids, 300,000 STL triangles or 256 MiB admission. A source recipe can be valid while a particular export quality refuses. New preview shows wire sources, not a certified evaluated mesh; update staging provides a dimension/source-cache review. Confirmation and subsequent display evaluation are distinct: a failed/cancelled derived preview retains the committed recipe and Undo. Existing GLB scopes remain available; new per-part GLB packaging is not implemented. Library project duplication is supported; a single scene cannot contain two complete five-source recipes under the eight-layer limit. No MCP server/transport/authentication/remote execution is installed. Physical Quest 3, slicer and printed-fit validation remain pending.
+
+### 6. Next recommendations
+
+Complete Quest acceptance in both handedness settings: menu/keypad ownership, cancel/tracking/session interruption, source/part editing, save/recovery/Library duplication, downloads, guide clearance, Cut, Studio/Passthrough and sustained resource/frame behavior. Inspect both mm STLs in the intended slicer and print a clearance coupon before choosing a real printer/material tolerance. Preserve **7.2 face-relative cutouts / board mounting patterns / named constraints**, **7.3 secure local MCP**, and **7.4 agent plan-preview-apply**; secure connector work must build on the existing revision/transaction boundary. No authorization to commit, push or merge is implied.
+
+
 
 ## Phase 7.0 handover — Headless Editing, Transactions & Inspection
 

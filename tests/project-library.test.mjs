@@ -7,7 +7,11 @@ import { describeNative, importNative, renameNative } from "../work/test-build/l
 import { defaultLighting } from "../work/test-build/lighting.mjs";
 import { openSculptProject, saveProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { ProjectBrowser } from "../work/test-build/project-browser.mjs";
-import { libraryName, ProjectLibrary } from "../work/test-build/project-library.mjs";
+import {
+  libraryModifiedLabel,
+  libraryName,
+  ProjectLibrary,
+} from "../work/test-build/project-library.mjs";
 import { hydrateProject, projectTransfer } from "../work/test-build/project-transfer.mjs";
 import { newProjectData } from "../work/test-build/project-workflow.mjs";
 import { IndexedRecoveryStore } from "../work/test-build/recovery-store.mjs";
@@ -601,4 +605,82 @@ test("100-project bound refuses entry 101 without evicting saved work", async ()
   } finally {
     s.close();
   }
+});
+
+test("untouched starter creates a named project directly without a replacement prompt", async () => {
+  const f = fixture();
+  try {
+    const starterKey = f.port.key();
+    f.port.pristine = () => f.port.key() === starterKey;
+    await f.b.activate("library:new");
+    f.b.draft = "My next sculpture";
+    await f.b.activate("library:submit");
+    assert.equal(f.b.confirmation, null);
+    assert.equal(f.opens(), 1);
+    assert.equal(f.b.name, "My next sculpture");
+    assert.equal(f.b.form, null);
+    assert.equal((await f.s.list()).length, 0);
+    assert(f.b.dirty);
+  } finally {
+    f.s.close();
+  }
+});
+test("editing the starter restores the save or discard prompt for new projects", async () => {
+  const f = fixture();
+  try {
+    const starterKey = f.port.key();
+    f.port.pristine = () => f.port.key() === starterKey;
+    f.edit();
+    await f.b.activate("library:new");
+    f.b.draft = "Next";
+    await f.b.activate("library:submit");
+    assert.equal(f.b.confirmation, "replace");
+    assert.equal(f.opens(), 0);
+    await f.b.activate("library:cancel");
+    assert.equal(f.opens(), 0);
+    assert(f.b.dirty);
+  } finally {
+    f.s.close();
+  }
+});
+test("starter exemption still rejects edits made during new project preparation", async () => {
+  const f = fixture();
+  try {
+    const starterKey = f.port.key();
+    f.port.pristine = () => f.port.key() === starterKey;
+    let finish;
+    f.port.create = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    await f.b.activate("library:new");
+    const job = f.b.activate("library:submit");
+    f.edit();
+    finish(raw());
+    await job;
+    assert.equal(f.opens(), 0);
+    assert.match(f.b.status, /changed/);
+  } finally {
+    f.s.close();
+  }
+});
+
+test("library edit times use friendly minutes and hours, then calendar dates after one day", () => {
+  const now = Date.parse("2026-11-06T10:00:00Z");
+  for (const [minutes, expected] of [
+    [0, "Just now"],
+    [1, "1 min ago"],
+    [5, "5 mins ago"],
+    [59, "59 mins ago"],
+    [60, "1 hr ago"],
+    [240, "4 hrs ago"],
+    [1439, "23 hrs ago"],
+  ]) {
+    assert.equal(libraryModifiedLabel(now - minutes * 60_000, now), expected);
+  }
+  assert.equal(libraryModifiedLabel(now + 60_000, now), "Just now");
+  assert.equal(
+    libraryModifiedLabel(now - 86400_000, now),
+    new Date(now - 86400_000).toLocaleDateString(),
+  );
 });

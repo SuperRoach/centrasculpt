@@ -1,8 +1,9 @@
+import { ExtrudeGeometry, Shape } from "three";
 import { SDFVolume } from "./sdf";
 import { transformMatrix, type Vec3 } from "./transform";
 /** Dimensions are layer-local model units, never tracking/workspace metres. */
 export type PrimitiveSource =
-  | { kind: "box"; width: number; height: number; depth: number }
+  | { kind: "box"; width: number; height: number; depth: number; cornerRadius?: number }
   | { kind: "cylinder"; diameter: number; height: number }
   | { kind: "sphere"; diameter: number };
 export const PRIMITIVE_KINDS = ["box", "cylinder", "sphere"] as const;
@@ -17,7 +18,12 @@ export function validatePrimitive(value: unknown): PrimitiveSource {
         : s.kind === "sphere"
           ? ["diameter"]
           : [];
-  if (!keys.length || Object.keys(s).some((k) => k !== "kind" && !keys.includes(k)))
+  if (
+    !keys.length ||
+    Object.keys(s).some(
+      (k) => k !== "kind" && !(s.kind === "box" && k === "cornerRadius") && !keys.includes(k),
+    )
+  )
     throw new Error("Unsupported primitive type or parameter.");
   for (const key of keys)
     if (
@@ -28,8 +34,19 @@ export function validatePrimitive(value: unknown): PrimitiveSource {
     )
       throw new Error("Primitive dimensions must be finite, from 0.001 to 16 model units.");
   const sizes = keys.map((k) => s[k] as number);
-  if (Math.min(...sizes) / Math.max(...sizes) < 1 / 8)
-    throw new Error("Primitive aspect ratio exceeds 8:1; use separate parts.");
+  if (
+    s.cornerRadius !== undefined &&
+    (s.kind !== "box" ||
+      typeof s.cornerRadius !== "number" ||
+      !Number.isFinite(s.cornerRadius) ||
+      s.cornerRadius < 0 ||
+      s.cornerRadius > Math.min(s.width as number, s.depth as number) / 2)
+  )
+    throw new Error("Corner radius must be finite and within half the box width/depth.");
+  if (Math.min(...sizes) / Math.max(...sizes) < 1 / (s.cornerRadius === undefined ? 8 : 128))
+    throw new Error(
+      `Primitive aspect ratio exceeds ${s.kind === "box" && s.cornerRadius !== undefined ? 128 : 8}:1; use separate parts.`,
+    );
   return { ...s } as PrimitiveSource;
 }
 export function primitiveDimensions(source: PrimitiveSource): Vec3 {
@@ -49,12 +66,20 @@ export function primitiveDistance(s: PrimitiveSource, x: number, y: number, z: n
       b = Math.abs(y) - s.height / 2;
     return Math.hypot(Math.max(a, 0), Math.max(b, 0)) + Math.min(Math.max(a, b), 0);
   }
-  const a = Math.abs(x) - s.width / 2,
+  if (s.cornerRadius === undefined) {
+    const a = Math.abs(x) - s.width / 2,
+      b = Math.abs(y) - s.height / 2,
+      c = Math.abs(z) - s.depth / 2;
+    return (
+      Math.hypot(Math.max(a, 0), Math.max(b, 0), Math.max(c, 0)) + Math.min(Math.max(a, b, c), 0)
+    );
+  }
+  const radius = s.cornerRadius;
+  const a = Math.abs(x) - s.width / 2 + radius,
     b = Math.abs(y) - s.height / 2,
-    c = Math.abs(z) - s.depth / 2;
-  return (
-    Math.hypot(Math.max(a, 0), Math.max(b, 0), Math.max(c, 0)) + Math.min(Math.max(a, b, c), 0)
-  );
+    c = Math.abs(z) - s.depth / 2 + radius;
+  const radial = Math.hypot(Math.max(a, 0), Math.max(c, 0)) + Math.min(Math.max(a, c), 0) - radius;
+  return Math.hypot(Math.max(radial, 0), Math.max(b, 0)) + Math.min(Math.max(radial, b), 0);
 }
 /** Bounded disposable preview lattice required by the existing chunk mesher and native codec.
  * Fitted spacing preserves small parts without rebuilding the project's sculpt lattice. */
@@ -67,8 +92,13 @@ export function* evaluatePrimitive(
   const s = validatePrimitive(source),
     dimensions = primitiveDimensions(s),
     longest = Math.max(...dimensions);
-  if (Math.min(...dimensions) / longest < 1 / 8)
-    throw new Error("Primitive aspect ratio exceeds 8:1; use separate parts.");
+  if (
+    Math.min(...dimensions) / longest <
+    1 / (s.kind === "box" && s.cornerRadius !== undefined ? 128 : 8)
+  )
+    throw new Error(
+      `Primitive aspect ratio exceeds ${s.kind === "box" && s.cornerRadius !== undefined ? 128 : 8}:1; use separate parts.`,
+    );
   const extent = longest * 0.6;
   resolution = Math.max(33, Math.min(resolution % 2 ? resolution : resolution - 1, 63));
   if (resolution ** 3 > maxSamples) throw new Error("Primitive exceeds the staging memory budget.");
@@ -132,4 +162,31 @@ export function primitiveWorldDimensions(
         ? s.diameter * Math.hypot(x, z) + s.height * Math.abs(y)
         : d[0] * Math.abs(x) + d[1] * Math.abs(y) + d[2] * Math.abs(z);
   }) as Vec3;
+}
+
+/** Exact planar extents; curved corners are tessellated only for source presentation/export. */
+export function roundedBoxGeometry(s: Extract<PrimitiveSource, { kind: "box" }>) {
+  const r = s.cornerRadius ?? 0,
+    x = s.width / 2,
+    z = s.depth / 2,
+    path = new Shape();
+  path.moveTo(-x + r, -z);
+  path.lineTo(x - r, -z);
+  if (r) path.absarc(x - r, -z + r, r, -Math.PI / 2, 0, false);
+  path.lineTo(x, z - r);
+  if (r) path.absarc(x - r, z - r, r, 0, Math.PI / 2, false);
+  path.lineTo(-x + r, z);
+  if (r) path.absarc(-x + r, z - r, r, Math.PI / 2, Math.PI, false);
+  path.lineTo(-x, -z + r);
+  if (r) path.absarc(-x + r, -z + r, r, Math.PI, Math.PI * 1.5, false);
+  path.closePath();
+  const g = new ExtrudeGeometry(path, {
+    depth: s.height,
+    bevelEnabled: false,
+    curveSegments: 24,
+    steps: 1,
+  });
+  g.translate(0, 0, -s.height / 2);
+  g.rotateX(Math.PI / 2);
+  return g;
 }

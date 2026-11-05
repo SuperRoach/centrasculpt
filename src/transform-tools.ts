@@ -23,7 +23,10 @@ export function scaledPrimitive(
   const factor = (a: string) => ratios[["X", "Y", "Z"].indexOf(a)];
   if (source.kind === "box")
     return validatePrimitive({
-      kind: "box",
+      ...source,
+      ...(source.cornerRadius === undefined
+        ? {}
+        : { cornerRadius: source.cornerRadius * Math.min(ratios[0], ratios[2]) }),
       width: source.width * ratios[0],
       height: source.height * ratios[1],
       depth: source.depth * ratios[2],

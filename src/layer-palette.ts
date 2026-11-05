@@ -999,14 +999,19 @@ export class DesktopLayerPalette {
       primary.className = "layer-action-stack";
       actions.append(primary);
       card.append(actions);
-      button(
+      const transform = button(
         primary,
         "Transform",
         () => {
           this.transform();
         },
         !n.editable,
-      ).classList.add("layer-primary-action");
+      );
+      iconAction(
+        transform,
+        "Transform",
+        '<path d="M12 3v18M3 12h18m-12-6 3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3"/>',
+      );
       const siblings = h.children(h.parent(n.id)),
         index = siblings.indexOf(n.id),
         reorder = document.createElement("div");
@@ -1025,7 +1030,7 @@ export class DesktopLayerPalette {
       down.title = "Move down in layer list";
       down.setAttribute("aria-label", "Move " + n.name + " down");
       if (row.group) {
-        actions.append(reorder);
+        card.append(reorder);
         button(card, "Ungroup · keep children", () => l.deleteGroup(n.id, "keep"), !n.editable);
         const details = document.createElement("details"),
           summary = document.createElement("summary");
@@ -1039,7 +1044,7 @@ export class DesktopLayerPalette {
         );
         card.append(details);
       } else {
-        button(
+        const duplicate = button(
           primary,
           "Duplicate",
           () => {
@@ -1060,10 +1065,14 @@ export class DesktopLayerPalette {
             this.changed();
           },
           !n.editable,
-        ).classList.add("layer-primary-action");
-        actions.append(reorder);
-        button(
-          card,
+        );
+        iconAction(
+          duplicate,
+          "Duplicate layer",
+          '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
+        );
+        const remove = button(
+          primary,
           "Delete layer",
           () => {
             this.legacy
@@ -1072,6 +1081,16 @@ export class DesktopLayerPalette {
           },
           n.locked || l.project.layerStack.layers.length === 1,
         );
+        iconAction(
+          remove,
+          "Delete layer",
+          '<path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
+        );
+        remove.classList.add("layer-delete");
+        const settings = document.createElement("div");
+        settings.className = "layer-compact-settings";
+        settings.append(reorder);
+        card.append(settings);
         const layer = l.project.layerStack.get(n.id),
           colour = document.createElement("input");
         colour.type = "color";
@@ -1084,16 +1103,23 @@ export class DesktopLayerPalette {
             l.syncPresentation();
           }),
         );
-        card.append(colour);
+        colour.title = "Layer display colour";
+        settings.append(colour);
         const operation = document.createElement("select");
         operation.setAttribute("aria-label", "Boolean operation for " + n.name);
-        for (const op of ["union", "difference", "intersect"]) operation.add(new Option(op, op));
+        for (const [op, label] of [
+          ["union", "∪ Union"],
+          ["difference", "− Subtract"],
+          ["intersect", "∩ Intersect"],
+        ])
+          operation.add(new Option(label, op));
+        operation.title = "Boolean operation";
         operation.value = layer.operation;
         operation.disabled = layer.locked;
         operation.addEventListener("change", () =>
           run(() => l.setOperation(n.id, operation.value as "union" | "difference" | "intersect")),
         );
-        card.append(operation);
+        settings.append(operation);
         const order = document.createElement("div");
         order.className = "boolean-order";
         const booleanIndex = h.compositionOrder.indexOf(n.id),
@@ -1101,7 +1127,14 @@ export class DesktopLayerPalette {
         label.textContent = `Boolean order · ${booleanIndex + 1}`;
         order.append(label);
         order.title = "Order in which layers combine in the Boolean result";
-        card.append(order);
+        const advanced = document.createElement("details");
+        const summary = document.createElement("summary");
+        summary.textContent = "Boolean order";
+        advanced.className = "layer-boolean-settings";
+        advanced.title =
+          "Evaluation order affects subtraction and intersection independently of list order";
+        advanced.append(summary, order);
+        card.append(advanced);
         const earlier = button(
             order,
             "↑",
@@ -1121,4 +1154,11 @@ export class DesktopLayerPalette {
       }
     }
   }
+}
+
+function iconAction(button: HTMLButtonElement, label: string, paths: string): void {
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.classList.add("layer-icon-action");
+  button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 }

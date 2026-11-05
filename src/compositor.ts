@@ -6,6 +6,7 @@ import { booleanRoots, validateBooleanGraph } from "./live-boolean";
 import { IncrementalMesher } from "./mesh";
 import { arrayInstanceAngles, arrayInstanceScales } from "./object-array";
 import {
+  primitiveDimensions,
   primitiveDistance,
   primitiveWorldDimensions,
   validatePrimitive,
@@ -346,13 +347,45 @@ export function compositeLayout(
     if (!analyticPrimitives || !live || !layer.primitive)
       desiredStep = Math.min(desiredStep, layer.volume.step * scale * smallestInstance);
     if (live && layer.primitive) {
-      const dimensions = Object.values(layer.primitive).filter(
-        (v): v is number => typeof v === "number",
-      );
+      const dimensions = primitiveDimensions(layer.primitive);
       desiredStep = Math.min(
         desiredStep,
-        (Math.min(...dimensions) * scale * smallestInstance) / (analyticPrimitives ? 10 : 8),
+        (Math.min(...dimensions) * scale * smallestInstance) /
+          (layer.primitive.kind === "box" && layer.primitive.cornerRadius !== undefined
+            ? 6
+            : analyticPrimitives
+              ? 10
+              : 8),
       );
+    }
+    // Six samples across rounded-prism features is a bounded target, not a fit guarantee.
+    // Aligned rounded-prism differences: opposite planar surfaces can form walls much
+    // thinner than either source. Radius is curvature, not a solid feature thickness.
+    if (live && layer.primitive?.kind === "box" && layer.primitive.cornerRadius !== undefined) {
+      for (const modifier of layer.booleanModifiers ?? []) {
+        const cutter = layers.find((l) => l.id === modifier.sourceId);
+        if (
+          !modifier.enabled ||
+          modifier.operation !== "difference" ||
+          cutter?.primitive?.kind !== "box" ||
+          cutter.array ||
+          cutter.transform.rotation.some(
+            (v, i) => Math.abs(v - layer.transform.rotation[i]) > 1e-10,
+          ) ||
+          cutter.transform.scale.some((v, i) => Math.abs(v - layer.transform.scale[i]) > 1e-10)
+        )
+          continue;
+        const centre = new Vector3(...cutter.transform.position)
+          .applyMatrix4(transformMatrix(layer.transform).invert())
+          .toArray();
+        const outer = primitiveDimensions(layer.primitive),
+          inner = primitiveDimensions(cutter.primitive);
+        for (let axis = 0; axis < 3; axis++)
+          for (const sign of [-1, 1]) {
+            const wall = outer[axis] / 2 - inner[axis] / 2 + sign * centre[axis];
+            if (wall > 1e-8) desiredStep = Math.min(desiredStep, (wall * scale) / 6);
+          }
+      }
     }
     for (let i = 0; i < 3; i++) {
       min[i] = Math.min(min[i], bounds.min[i]);
@@ -365,6 +398,13 @@ export function compositeLayout(
     span = Math.max(...max.map((v, i) => v - min[i]));
   // Padding remains positive for all Boolean operations, closing the extracted surface.
   const extent = span / 2 + 2 * Math.max(desiredStep, span / (cap - 5));
+  // Deterministically stagger new rounded-prism grids away from exact planar zero
+  // samples. Symmetric zero vertices can collapse after STL Float32 conversion.
+  // Padding covers this sub-step offset; no source pose or physical dimension changes.
+  if (layers.some((l) => l.primitive?.kind === "box" && l.primitive.cornerRadius !== undefined))
+    [0.1732050807568877, 0.2236067977499789, 0.2645751311064591].forEach((fraction, axis) => {
+      center[axis] += Math.min(desiredStep, span / (cap - 5)) * fraction;
+    });
   const desired = Math.ceil((2 * extent) / desiredStep) + 1,
     resolution = Math.max(8, Math.min(cap, desired));
   const instanceWork =

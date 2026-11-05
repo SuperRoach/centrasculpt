@@ -10,6 +10,7 @@ import {
   Vector3,
 } from "three";
 import { AssemblyControls } from "./assembly-controls";
+import { EnclosureControls } from "./enclosure-controls";
 import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI, type ModellingCommand } from "./modelling-api";
 import type { ArrayDefinition } from "./object-array";
@@ -27,6 +28,7 @@ import type { MenuContent } from "./xr-menu-model";
 /** Source editing and temporary placement. Preview is never an export/compositor source. */
 export class PrimitiveTools {
   readonly assembly: AssemblyControls;
+  readonly enclosure: EnclosureControls;
   draft: PrimitiveSource = { kind: "box", width: 0.5, height: 0.5, depth: 0.5 };
   editing = true;
   private lastTime = 0;
@@ -58,6 +60,7 @@ export class PrimitiveTools {
     private readonly changed: () => void = () => {},
   ) {
     this.assembly = new AssemblyControls(layers, changed);
+    this.enclosure = new EnclosureControls(layers, changed);
     this.previewRoot.matrixAutoUpdate = false;
     this.previewRoot.add(this.preview);
     this.preview.visible = false;
@@ -97,6 +100,7 @@ export class PrimitiveTools {
   }
   cancel(): void {
     this.assembly.cancelPick();
+    this.enclosure.cancel();
     this.abort?.abort();
     this.placing = false;
     this.preview.visible = false;
@@ -182,6 +186,7 @@ export class PrimitiveTools {
     });
   }
   step(tool: XRControllerState | undefined, pose: Matrix4 | undefined, enabled: boolean): boolean {
+    this.enclosure.observeController(tool);
     if (this.assembly.step(tool, pose, enabled)) return true;
     if (!this.placing) return false;
     const l = this.layers();
@@ -239,6 +244,7 @@ export class PrimitiveTools {
     return true;
   }
   content(): MenuContent {
+    if (this.enclosure.open) return this.enclosure.content();
     if (this.assembly.open) return this.assembly.content();
     const buttons: MenuContent["buttons"] = [
       {
@@ -330,13 +336,17 @@ export class PrimitiveTools {
       PRIMITIVE_KINDS.forEach((kind, i) => {
         add(`type:${kind}`, `New ${kind}`, i);
       });
-      add("place", this.placing ? "Restart placement" : "Place preview…", 3);
+      add(
+        this.placing ? "cancel" : "place",
+        this.placing ? "Cancel placement" : "Place preview…",
+        3,
+      );
       add("edit", "Edit selected primitive", 4, !this.layers().active.layer.primitive);
-      add("cancel", "Cancel placement", 11);
+
       add("unit", `Units · ${this.settings.unit}`, 5);
       const s = this.source ?? this.draft;
       Object.entries(s)
-        .filter(([k]) => k !== "kind")
+        .filter(([k]) => k !== "kind" && k !== "cornerRadius")
         .forEach(([k, v], i) => {
           add(
             `field:${k}`,
@@ -354,6 +364,7 @@ export class PrimitiveTools {
       add("bake", "Bake to Sculpt Layer", 9, !this.source || !this.layers().active.layer.editable);
       add("transform", "Exact position / rotation / scale…", 10);
       add("assembly-open", "Assembly / Fit…", 12);
+      add("enclosure-open", "Enclosure…", 11);
       add("array-open", "Array / Repeat…", 13, !this.layers().active.layer.editable);
     }
     return {
@@ -420,6 +431,7 @@ export class PrimitiveTools {
     };
   }
   activate(id: string): boolean {
+    if (this.enclosure.activate(id)) return true;
     if (this.assembly.activate(id)) return true;
     if (!id.startsWith("primitive:")) return false;
     if (id === "primitive:cancel") {
@@ -452,6 +464,9 @@ export class PrimitiveTools {
       else if (a === "unit") {
         const units = ["mm", "cm", "in"] as const;
         this.settings.unit = units[(units.indexOf(this.settings.unit) + 1) % 3];
+      } else if (a === "enclosure-open") {
+        this.enclosure.open = true;
+        this.enclosure.openSelected();
       } else if (a === "assembly-open") this.assembly.open = true;
       else if (a === "array-open") this.arrayMenu = true;
       else if (a === "array-home") this.arrayMenu = false;
@@ -577,6 +592,7 @@ export class PrimitiveTools {
   }
   dispose(): void {
     this.assembly.dispose();
+    this.enclosure.dispose();
     this.cancel();
     this.previewRoot.removeFromParent();
     this.preview.removeFromParent();

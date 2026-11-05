@@ -362,35 +362,42 @@ export function saveSculptProject(
   bytes.set(MAGIC);
   view.setUint32(
     8,
-    layers.some((l) => l.array?.scalePerItem !== undefined && l.array.scalePerItem !== 1)
-      ? 15
-      : layers.some((l) => l.assemblyPart)
-        ? 14
-        : layers.some((l) => l.array)
-          ? 13
-          : layers.some((l) => l.booleanModifiers?.length)
-            ? 12
-            : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
-              ? 11
-              : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
-                    project.layerStack.layers.some(
-                      (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
-                    ),
-                  )
-                ? 10
-                : assets.some((a) => a.mime === "model/stl")
-                  ? 9
-                  : hasPaint
-                    ? 8
-                    : project.layerStack.hierarchy.enabled
-                      ? 7
-                      : hasMasks
-                        ? 6
-                        : assets.length
-                          ? 5
-                          : layers.every((l) => isLegacyCubicGrid(l.volume))
-                            ? 3
-                            : 4,
+    layers.some(
+      (l) =>
+        l.assemblyPart?.enclosure ||
+        (l.primitiveOriginal?.kind === "box" && l.primitiveOriginal.cornerRadius !== undefined) ||
+        (l.primitive?.kind === "box" && l.primitive.cornerRadius !== undefined),
+    )
+      ? 16
+      : layers.some((l) => l.array?.scalePerItem !== undefined && l.array.scalePerItem !== 1)
+        ? 15
+        : layers.some((l) => l.assemblyPart)
+          ? 14
+          : layers.some((l) => l.array)
+            ? 13
+            : layers.some((l) => l.booleanModifiers?.length)
+              ? 12
+              : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
+                ? 11
+                : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
+                      project.layerStack.layers.some(
+                        (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
+                      ),
+                    )
+                  ? 10
+                  : assets.some((a) => a.mime === "model/stl")
+                    ? 9
+                    : hasPaint
+                      ? 8
+                      : project.layerStack.hierarchy.enabled
+                        ? 7
+                        : hasMasks
+                          ? 6
+                          : assets.length
+                            ? 5
+                            : layers.every((l) => isLegacyCubicGrid(l.volume))
+                              ? 3
+                              : 4,
     true,
   );
   view.setUint32(12, metadata.length, true);
@@ -447,9 +454,10 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     version !== 12 &&
     version !== 13 &&
     version !== 14 &&
-    version !== 15
+    version !== 15 &&
+    version !== 16
   )
-    throw new Error("Unsupported project version. This app supports versions 1–15.");
+    throw new Error("Unsupported project version. This app supports versions 1–16.");
   const length = view.getUint32(12, true);
   if (length < 2 || length > 65536 || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
@@ -540,6 +548,14 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
       latticeMin: latticeMin as [number, number, number],
     });
     volume.values.set(values);
+    if (
+      (layer.assemblyPart?.enclosure ||
+        (layer.primitiveOriginal?.kind === "box" &&
+          layer.primitiveOriginal.cornerRadius !== undefined) ||
+        (layer.primitive?.kind === "box" && layer.primitive.cornerRadius !== undefined)) &&
+      version < 16
+    )
+      throw new Error("Enclosure recipes and rounded prisms require project version 16.");
     if (layer.booleanModifiers?.length && version < 12)
       throw new Error("Live Booleans require project version 12.");
     if (layer.assemblyPart && version < 14)

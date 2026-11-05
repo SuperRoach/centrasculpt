@@ -107,6 +107,7 @@ export class PrecisionTools {
   }
   sync(): void {
     this.primitives.assembly.sync();
+    this.primitives.enclosure.sync();
     const layers = this.layers();
     if (this.project !== layers.project || this.saved !== this.settings) {
       this.primitives.cancel();

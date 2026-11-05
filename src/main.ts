@@ -3,6 +3,8 @@ import { partOwner } from "./assembly";
 import { restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
 import { assemblyUI } from "./assembly-ui";
 import { prepareBooleanExport } from "./boolean-export";
+import { enclosureUI } from "./enclosure-ui";
+import { createExportFeedback } from "./export-feedback";
 import { exportFilename } from "./export-filename";
 import { questCapture } from "./performance-capture";
 import { physicalExportLongestMM, physicalGLBSources } from "./physical-units";
@@ -10,6 +12,7 @@ import { PrecisionTools, selectionDimensions } from "./precision-tools";
 import { precisionUI } from "./precision-ui";
 import { PrimitiveDraftPreview } from "./primitive-preview";
 import { primitiveUI } from "./primitive-ui";
+import { renderProjectLibrary } from "./project-library-ui";
 import { TransformPreview } from "./transform-preview";
 import { mountWhatsNew } from "./whats-new";
 
@@ -124,6 +127,7 @@ let stabilityText = "";
 let precision: PrecisionTools | undefined;
 let primitivesUI: { sync: () => void } | undefined;
 let primitivePreview: PrimitiveDraftPreview | undefined;
+let enclosureControlsUI: { sync: () => void } | undefined;
 let assemblyControlsUI: { sync: () => void } | undefined;
 let measurementUI: { sync: () => void } | undefined;
 let xrExperience: XRExperience | undefined;
@@ -344,6 +348,7 @@ function refresh() {
   );
   desktopLayers?.render();
   assemblyControlsUI?.sync();
+  enclosureControlsUI?.sync();
   measurementUI?.sync();
   primitivesUI?.sync();
   ui.resolution(layers.active.layer.volume.resolution);
@@ -400,6 +405,7 @@ renderer.domElement.addEventListener(
     raycaster.setFromCamera(pointer, camera);
     assembly.pickRay(raycaster);
     assemblyControlsUI?.sync();
+    enclosureControlsUI?.sync();
   },
   true,
 );
@@ -1533,6 +1539,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     }
     loadingProject = true;
     ui.projectBusy(true, true);
+    exportFeedback.start();
     exportMessage("Preparing STL export…");
     try {
       recovery?.cancelJob();
@@ -1543,6 +1550,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     } catch (error) {
       exportMessage(message(error), true);
     } finally {
+      exportFeedback.stop();
       loadingProject = false;
       ui.projectBusy(false);
       refresh();
@@ -1570,6 +1578,8 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
   syncTransformUI();
   transformTools?.sync();
   cancelExport.style.visibility = "visible";
+  exportFeedback.start();
+  exportMessage("Preparing sculpture…");
   try {
     await recovery?.settle();
     if (signal.aborted) throw new Error("Export cancelled.");
@@ -1599,6 +1609,12 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
               layers.project,
               signal,
               stlMM !== undefined,
+              (p) => {
+                exportFeedback.progress(p);
+                exportMessage(
+                  `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% of stage`,
+                );
+              },
             );
             sources = prepared.sources;
           } else sources = layers.exportSources(scope, stlMM === undefined);
@@ -1627,8 +1643,9 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             maxBytes:
               prepared?.availableBytes() ?? Math.max(1, EXPORT_MEMORY_LIMIT - layers.trackedBytes),
             progress: (p) => {
+              exportFeedback.progress(p);
               exportMessage(
-                `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% · Cancel available`,
+                `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% of stage · Cancel available`,
               );
             },
           });
@@ -1707,6 +1724,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
   } catch (error) {
     exportMessage(`${message(error)} Source sculpture kept.`, !signal.aborted);
   } finally {
+    exportFeedback.stop();
     exportAbort = null;
     cancelExport.style.visibility = "hidden";
     loadingProject = false;
@@ -1786,6 +1804,7 @@ const printDownload = document.createElement("a");
 printDownload.id = "export-download";
 printDownload.style.visibility = "hidden";
 exportResult.append(exportStatus, printDownload, cancelExport);
+const exportFeedback = createExportFeedback(exportResult);
 document.getElementById("export-boolean")!.after(exportResult);
 cancelExport.hidden = false;
 cancelExport.style.visibility = "hidden";
@@ -2307,6 +2326,11 @@ assemblyControlsUI = assemblyUI(
   () => loadingProject || ui.modalOpen || xrBlocked(),
   ui.viewport,
 );
+enclosureControlsUI = enclosureUI(
+  precision.primitives.enclosure,
+  precisionPanel.parentElement!,
+  () => loadingProject || ui.modalOpen || xrBlocked(),
+);
 measurementUI = precisionUI(
   precision,
   precisionPanel.parentElement!,
@@ -2359,86 +2383,10 @@ let libraryRenderKey = "";
 function renderProjectBrowser() {
   if (!libraryDialog.open) return;
   const content = projectBrowser.content(),
-    key = JSON.stringify(content);
+    key = JSON.stringify([content, projectBrowser.records]);
   if (key === libraryRenderKey) return;
   libraryRenderKey = key;
-  const focus = (document.activeElement as HTMLElement)?.dataset.libraryAction;
-  const title = document.createElement("h2");
-  title.textContent = content.title;
-  const subtitle = document.createElement("p");
-  subtitle.textContent = content.subtitle;
-  const status = document.createElement("p");
-  status.setAttribute("role", "status");
-  status.textContent = content.footer;
-  const close = document.createElement("button");
-  close.textContent = "Close library";
-  close.dataset.libraryAction = "close";
-  close.onclick = () => libraryDialog.close();
-  libraryDialog.replaceChildren(title, subtitle, close);
-  const selectedRecord = projectBrowser.records.find(
-    (record) => record.id === projectBrowser.selected,
-  );
-  if (selectedRecord?.thumbnail && !projectBrowser.form && !projectBrowser.confirmation) {
-    const preview = document.createElement("img");
-    preview.className = "project-library-preview";
-    preview.src = selectedRecord.thumbnail;
-    preview.alt = `Preview of ${selectedRecord.name}`;
-    libraryDialog.append(preview);
-  }
-  if (projectBrowser.form) {
-    const input = document.createElement("input");
-    input.value = projectBrowser.draft;
-    input.maxLength = 80;
-    input.disabled = projectBrowser.busy;
-    input.onkeydown = (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void projectBrowser.activate("library:submit");
-      }
-    };
-    input.setAttribute("aria-label", "Project name");
-    input.oninput = () => {
-      projectBrowser.draft = input.value;
-    };
-    libraryDialog.append(input);
-  }
-  for (const label of content.labels) {
-    const p = document.createElement("p");
-    p.textContent = label.text;
-    libraryDialog.append(p);
-  }
-  const actions = document.createElement("div");
-  actions.className = "project-library-actions";
-  for (const b of content.buttons) {
-    if (
-      b.id.startsWith("library:key:") ||
-      ["library:backspace", "library:clear-name"].includes(b.id)
-    )
-      continue;
-    const button = document.createElement("button");
-    button.textContent = b.detail ? `${b.label} · ${b.detail}` : b.label;
-    button.disabled = !!b.disabled;
-    button.dataset.libraryAction = b.id;
-    if (b.id.startsWith("library:select:")) {
-      const record = projectBrowser.records.find(
-        (item) => item.id === b.id.slice("library:select:".length),
-      );
-      if (record?.thumbnail) {
-        const image = document.createElement("img");
-        image.className = "project-library-row-preview";
-        image.src = record.thumbnail;
-        image.alt = `Preview of ${record.name}`;
-        button.prepend(image);
-      }
-    }
-    button.onclick = () => void projectBrowser.activate(b.id);
-    actions.append(button);
-  }
-  libraryDialog.append(actions, status);
-  if (focus)
-    Array.from(libraryDialog.querySelectorAll<HTMLButtonElement>("button"))
-      .find((b) => b.dataset.libraryAction === focus)
-      ?.focus();
+  renderProjectLibrary(libraryDialog, projectBrowser);
 }
 function showProjectBrowser() {
   stop();
@@ -2455,6 +2403,11 @@ const projectBrowser = new ProjectBrowser(
   ),
   {
     key: () => recoveryKey(),
+    pristine: () =>
+      layers === starterLayers &&
+      layers.sourceRevision === starterRevision &&
+      JSON.stringify(display.snapshot(layers.project.id, layers.project.layerStack.layers)) ===
+        starterPresentation,
     ready: () => !loadingProject && layers.recoveryReady,
     changed: () => {
       renderProjectBrowser();
@@ -2505,7 +2458,11 @@ const projectBrowser = new ProjectBrowser(
       }
       return captureProjectThumbnail(renderer, layers.group);
     },
-    open: (data, name) => openProjectFile(new File([], `${name}.form`), data, undefined, true),
+    open: async (data, name) => {
+      const opened = await openProjectFile(new File([], `${name}.form`), data, undefined, true);
+      if (opened) libraryDialog.close();
+      return opened;
+    },
     create: async (resolution, contents) =>
       (
         await prepareLibrary(
@@ -2544,6 +2501,19 @@ libraryButton.onclick = () => {
   void projectBrowser.run(() => projectBrowser.refresh());
 };
 document.getElementById("new-project")!.before(libraryButton);
+const projectMenu = document.getElementById("project-menu")!;
+document.getElementById("about-version")!.textContent = `Version ${__APP_VERSION__}`;
+for (const button of projectMenu.querySelectorAll<HTMLButtonElement>("button")) {
+  button.addEventListener("click", () => {
+    projectMenu.hidePopover();
+    const action = button.dataset.projectMenu;
+    if (action === "about") {
+      document.querySelector<HTMLDialogElement>("#about-dialog")!.showModal();
+    } else if (action === "library") {
+      if (!loadingProject && !xrBlocked()) libraryButton.click();
+    } else if (action) document.getElementById(action)?.click();
+  });
+}
 document.getElementById("open-project")!.textContent = "Import Project";
 document.getElementById("save-project")!.textContent = "Save in Browser";
 window.addEventListener("beforeunload", (event) => {
@@ -2773,6 +2743,11 @@ const recoveryKey = () =>
       editorTools?.snapshotPreferences(),
     ],
     (key, value) => (key === "bytes" && value instanceof Uint8Array ? value.byteLength : value),
+  );
+const starterLayers = layers,
+  starterRevision = layers.sourceRevision,
+  starterPresentation = JSON.stringify(
+    display.snapshot(layers.project.id, layers.project.layerStack.layers),
   );
 function updateSaveIndicator(): void {
   const button = document.querySelector<HTMLButtonElement>("#header-save")!;
@@ -3163,6 +3138,7 @@ renderer.setAnimationLoop((now, frame) => {
   if (primitivePreview?.active) transformTools?.sync();
   if (now - lastAssemblyUISync > 150) {
     assemblyControlsUI?.sync();
+    enclosureControlsUI?.sync();
     lastAssemblyUISync = now;
   }
   const cpuStart = performance.now();

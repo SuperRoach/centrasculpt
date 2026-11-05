@@ -1,3 +1,19 @@
+### A tidier enclosure panel (2026-11-06)
+
+- Hover over **Enclosure** for a short explanation. Size, wall and lid settings are grouped into compact rows, with a live outside-size summary.
+- New/edit controls show the current mode, and the next preview or apply action is highlighted.
+
+### Clearer enclosure editing (2026-11-06)
+
+- **Enclosure** uses simpler wording and opens a loaded enclosure for editing. Choose **Preview changes** to see the new size, then **Apply changes** to keep it.
+- Resizing keeps extra live Boolean operations and cutters, so openings such as USB ports can stay editable. Cutters keep their existing placement; check them after moving a wall.
+
+### Editable enclosures and removable lids — Phase 7.1 (2026-11-06)
+
+- **Enclosure recipe** creates a hollow base and separate friction-fit lid with editable cavity, wall, floor, corner, lip and clearance dimensions. Available on desktop and in VR under **Measure & Precision → Primitives**.
+- Stage and review before confirming; creation or recipe updates use one Undo action. Source shapes stay editable, and native saves, recovery and Library project copies retain the recipe.
+- Export base and lid separately at the same physical mm scale, with closed-mesh validation and resolution warnings. Screw lids are deferred; slicer checks, physical Quest testing and printed fit remain pending.
+
 ### Headless modelling tools — Phase 7.0 (2026-11-06)
 
 - Local scripts can create and edit objects, groups, arrays and printable parts, inspect their relationships, and save native projects without VR input.

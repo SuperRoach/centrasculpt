@@ -1,10 +1,17 @@
 import { newId } from "./layers";
 import { describeNative, renameNative } from "./library-codec";
-import { libraryName, type ProjectLibrary, type ProjectRecord } from "./project-library";
+import {
+  libraryModifiedLabel,
+  libraryName,
+  type ProjectLibrary,
+  type ProjectRecord,
+} from "./project-library";
 import type { MenuButton, MenuContent } from "./xr-menu-model";
 export interface BrowserPort {
   key(): string;
   ready(): boolean;
+  /** True only while the initial disposable starter scene is untouched. */
+  pristine?(): boolean;
   encode(): Promise<ArrayBuffer>;
   open(data: ArrayBuffer, name: string): Promise<boolean>;
   thumbnail?(): string | undefined | Promise<string | undefined>;
@@ -100,7 +107,7 @@ export class ProjectBrowser {
   private async replace(action: () => Promise<void>) {
     if (!this.port.ready())
       throw new Error("Finish the current edit before replacing the project.");
-    if (this.dirty) {
+    if (this.dirty && !this.port.pristine?.()) {
       this.pending = action;
       this.confirmation = "replace";
     } else await action();
@@ -370,25 +377,18 @@ export class ProjectBrowser {
         labels.push(
           { text: r.name, x: 56, y: 245, width: 1040, height: 70 },
           {
-            text: `${r.thumbnail ? "Preview saved" : "Preview unavailable"} · ${r.layers} layers · ${r.resolutions.join(" / ")}³ · ${(r.bytes / 1048576).toFixed(1)} MiB`,
+            text: `${r.layers} ${r.layers === 1 ? "layer" : "layers"}`,
             x: 56,
             y: 325,
             width: 1040,
             height: 70,
           },
           {
-            text: `Edited ${new Date(r.modified).toLocaleString()}`,
+            text: `Edited ${libraryModifiedLabel(r.modified)}`,
             x: 56,
             y: 400,
             width: 1040,
             height: 60,
-          },
-          {
-            text: `Opened ${r.opened ? new Date(r.opened).toLocaleString() : "never"} · native v${r.version} (source v${r.sourceVersion})`,
-            x: 56,
-            y: 460,
-            width: 1040,
-            height: 70,
           },
         );
         add("open", "Open project", 40, 560, 524, 100, undefined, !this.port.ready());
@@ -410,7 +410,7 @@ export class ProjectBrowser {
           370 + i * 168,
           1072,
           150,
-          `${r.resolutions.join("/")}³ · ${r.layers} layers · ${new Date(r.modified).toLocaleDateString()}`,
+          `${r.layers} ${r.layers === 1 ? "layer" : "layers"} · ${libraryModifiedLabel(r.modified)}`,
         );
         buttons.at(-1)!.thumbnail = r.thumbnail;
       });

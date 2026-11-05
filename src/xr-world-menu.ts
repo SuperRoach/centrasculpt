@@ -2,6 +2,7 @@ import type { EditorToolState } from "./editor-tool-state";
 import type { LightRig } from "./light-rig";
 import { defaultLighting, LIGHT_COLOURS, LIGHT_IDS, type LightId } from "./lighting";
 import type { PrecisionTools } from "./precision-tools";
+import { libraryModifiedLabel } from "./project-library";
 import type { ReferenceView } from "./reference-view";
 import type { Turntable } from "./turntable";
 import { mirrorGuideSettings, STUDIO_BACKGROUNDS, turntableSettings } from "./world-settings";
@@ -97,9 +98,41 @@ export class XRWorldMenu {
     let subtitle = "Environment · background · guides · turntable · preferences";
     if (this.section === "project" && this.port?.projectBrowser) {
       const content = this.port.projectBrowser.content();
-      content.buttons = content.buttons.filter((b) => b.id !== "library:refresh");
-      content.buttons.push(buttons[0]);
-      if (!this.port.projectBrowser.form && !this.port.projectBrowser.confirmation)
+      const browser = this.port.projectBrowser;
+      const listing = !browser.form && !browser.confirmation && !browser.selected;
+      content.buttons = content.buttons.filter(
+        (b) =>
+          !["library:reload", "library:previous", "library:next", "library:refresh"].includes(
+            b.id,
+          ) && !(listing && b.id.startsWith("library:select:")),
+      );
+      content.buttons.push({ ...buttons[0], rect: { x: 40, y: 140, width: 250, height: 74 } });
+      const icons: Record<string, string> = {
+        "save-as": "＋",
+        "download-current": "↓",
+        refresh: "↻",
+        rename: "✎",
+        duplicate: "⧉",
+        download: "↓",
+        delete: "×",
+        clear: "‹",
+      };
+      for (const b of content.buttons) {
+        const action = b.id.slice(8);
+        if (icons[action]) b.icon = icons[action];
+        if (b.id === "library:save") b.rect = { x: 310, y: 140, width: 250, height: 74 };
+        if (b.id === "library:save-as") b.rect = { x: 580, y: 140, width: 160, height: 74 };
+        if (b.id === "library:download-current")
+          b.rect = { x: 760, y: 140, width: 160, height: 74 };
+      }
+      if (!browser.form && !browser.confirmation) {
+        content.buttons.push({
+          id: "library:refresh",
+          label: "Refresh",
+          icon: "↻",
+          disabled: browser.busy,
+          rect: { x: 940, y: 140, width: 172, height: 74 },
+        });
         for (const [i, action] of (["export", "print", "recover"] as const).entries())
           content.buttons.push({
             id: `project:${action}`,
@@ -109,9 +142,33 @@ export class XRWorldMenu {
                 : action === "print"
                   ? "3D Print / Export STL…"
                   : "Recovery…",
-            disabled: busy || this.port.projectBrowser.busy || !this.port.projectAction,
+            disabled: busy || browser.busy || !this.port.projectAction,
             rect: { x: 40 + i * 365, y: 1008, width: 345, height: 78 },
           });
+      }
+      if (listing) {
+        for (const [i, record] of browser.records.entries())
+          content.buttons.push({
+            id: `library:select:${record.id}`,
+            label: record.name,
+            detail: `${record.layers} ${record.layers === 1 ? "layer" : "layers"} · ${libraryModifiedLabel(record.modified)}`,
+            thumbnail: record.thumbnail,
+            disabled: browser.busy,
+            rect: {
+              x: 40 + (i % 2) * 548,
+              y: 360 + Math.floor(i / 2) * 210,
+              width: 524,
+              height: 194,
+            },
+            clip: { x: 32, y: 360, width: 1088, height: 620 },
+          });
+        content.scroll = {
+          offset: 0,
+          max: Math.max(0, Math.ceil(browser.records.length / 2) * 210 - 16 - 620),
+        };
+        if (content.scroll.max)
+          content.footer = "Tool stick ↑ / ↓ to scroll · point and trigger to select";
+      }
       return content;
     }
     if (this.section === "project") {

@@ -1555,3 +1555,51 @@ for (const hand of ["left", "right"])
       h.dispose();
     }
   });
+
+test("VR library scrolls all thumbnail rows, clips ray targets and resets on details", () => {
+  const restore = fakeDocument();
+  const browser = new ProjectBrowser(
+    { list: async () => [] },
+    { key: () => "initial", ready: () => true, changed() {} },
+  );
+  browser.records = Array.from({ length: 12 }, (_, i) => ({
+    id: `saved-${i}`,
+    name: `Saved ${i}`,
+    layers: 1,
+    modified: Date.now(),
+    resolutions: [64],
+  }));
+  const f = fixture({ projectBrowser: browser });
+  let view;
+  try {
+    view = new XRMenuView(f.model);
+    f.model.setRequest("tool-wheel");
+    f.model.activate("project");
+    let content = view.menuContent();
+    assert.equal(content.buttons.filter((b) => b.id.startsWith("library:select:")).length, 12);
+    assert(
+      !content.buttons.some((b) =>
+        ["library:next", "library:previous", "library:reload"].includes(b.id),
+      ),
+    );
+    assert(content.buttons.find((b) => b.id === "library:refresh").icon);
+    assert(content.scroll.max > 0);
+    const last = content.buttons.find((b) => b.id === "library:select:saved-11");
+    assert.equal(f.model.hit(last.rect.x + 20, last.rect.y + 20, content), null);
+    view.scrollOffset = content.scroll.max;
+    content = view.menuContent();
+    const visible = content.buttons.find((b) => b.id === last.id);
+    assert.equal(f.model.hit(visible.rect.x + 20, visible.rect.y + 40, content), last.id);
+    view.scrollOffset = 1e6;
+    assert.equal(view.menuContent().scroll.offset, content.scroll.max);
+    browser.selected = "saved-11";
+    content = view.menuContent();
+    assert.equal(view.scrollOffset, 0);
+    assert(!content.scroll);
+    assert(content.buttons.find((b) => b.id === "library:duplicate").icon);
+  } finally {
+    view?.dispose();
+    f.layers.dispose();
+    restore();
+  }
+});

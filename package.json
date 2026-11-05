@@ -34,7 +34,9 @@
     "format:check": "biome format .",
     "lint": "biome check .",
     "check:types": "tsc --noEmit --strict",
-    "check": "npm run format:check && npm run lint && npm run check:types && npm run build && npm run test:full"
+    "check": "npm run format:check && npm run lint && npm run check:types && npm run build && npm run test:full",
+    "example:enclosure": "node scripts/recipe-enclosure.mjs",
+    "benchmark:enclosure": "node scripts/benchmark-enclosure.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

@@ -1,4 +1,5 @@
 import type { ProjectDisplayPreferences } from "./display-preferences";
+import { type EnclosureIntent, validateEnclosureIntent } from "./enclosure-recipe";
 import { LayerHierarchy } from "./layer-hierarchy";
 import { type BooleanModifier, validateBooleanGraph, validateModifiers } from "./live-boolean";
 import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
@@ -10,12 +11,16 @@ import type { VolumeTransform } from "./transform";
 import { identityTransform, validateTransform } from "./transform";
 import type { VolumeStore } from "./volume-store";
 export type LayerOperation = "union" | "difference" | "intersect";
-export type AssemblyPart = { clearanceMM: number };
+export type AssemblyPart = { clearanceMM: number; enclosure?: EnclosureIntent };
 export function validateAssemblyPart(v: unknown): AssemblyPart {
   const n = (v as AssemblyPart)?.clearanceMM;
   if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 1000)
     throw new Error("Part clearance must be 0–1000 mm.");
-  return { clearanceMM: n };
+  const enclosure = (v as AssemblyPart).enclosure;
+  return {
+    clearanceMM: n,
+    ...(enclosure === undefined ? {} : { enclosure: validateEnclosureIntent(enclosure) }),
+  };
 }
 export type LayerMetadata = {
   assemblyPart?: AssemblyPart;

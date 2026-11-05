@@ -74,6 +74,7 @@ export class XRMenuView implements XRMenuInteraction {
   private slider: string | null = null;
   private dragPageHover: string | null = null;
   private dragPageSince = 0;
+  private scrollScope = "";
   scrollOffset = 0;
   private scrollTime: number | null = null;
   private ready = false;
@@ -128,8 +129,28 @@ export class XRMenuView implements XRMenuInteraction {
     this.cursor.add(this.dragRing);
   }
   private menuContent(): MenuContent {
-    if (this.model.page !== "layers" || this.model.palette.view !== "list")
-      return this.model.content();
+    const raw = this.model.content();
+    const scope = raw.scroll
+      ? "library"
+      : this.model.page === "layers" && this.model.palette.view === "list"
+        ? "layers"
+        : "";
+    if (scope !== this.scrollScope) {
+      this.scrollOffset = 0;
+      this.scrollTime = null;
+      this.scrollScope = scope;
+    }
+    if (raw.scroll) {
+      this.scrollOffset = Math.max(0, Math.min(raw.scroll.max, this.scrollOffset));
+      return {
+        ...raw,
+        scroll: { ...raw.scroll, offset: this.scrollOffset },
+        buttons: raw.buttons.map((b) =>
+          b.clip && b.rect ? { ...b, rect: { ...b.rect, y: b.rect.y - this.scrollOffset } } : b,
+        ),
+      };
+    }
+    if (this.model.page !== "layers" || this.model.palette.view !== "list") return raw;
     const palette = this.model.palette,
       page = palette.page,
       count = this.model.tools.port.layers().hierarchyRows().length,
@@ -274,12 +295,7 @@ export class XRMenuView implements XRMenuInteraction {
         this.owner = tool.connectionId;
         this.ready = false;
       }
-      if (
-        this.model.page === "layers" &&
-        this.model.palette.view === "list" &&
-        tool.stick?.available &&
-        !this.model.tools.busy
-      ) {
+      if (this.content?.scroll !== undefined && tool.stick?.available && !this.model.tools.busy) {
         const dt =
           this.scrollTime === null ? 0 : Math.max(0, Math.min(50, time - this.scrollTime)) / 1000;
         this.scrollTime = time;
@@ -612,6 +628,27 @@ export class XRMenuView implements XRMenuInteraction {
     ctx.strokeStyle = style.stroke;
     ctx.lineWidth = style.lineWidth;
     ctx.stroke();
+    if (b.icon) {
+      drawVRText(
+        ctx,
+        b.icon,
+        { x: r.x, y: r.y + 4, width: r.width, height: r.height * 0.55 },
+        36,
+        style.text,
+        true,
+        "center",
+      );
+      drawVRText(
+        ctx,
+        b.label,
+        { x: r.x + 4, y: r.y + r.height * 0.56, width: r.width - 8, height: r.height * 0.4 },
+        18,
+        style.text,
+        true,
+        "center",
+      );
+      return;
+    }
     if (b.thumbnail) {
       let image = this.thumbnailImages.get(b.thumbnail);
       if (!image) {
@@ -623,7 +660,7 @@ export class XRMenuView implements XRMenuInteraction {
         image.src = b.thumbnail;
       }
       if (image.complete && image.naturalWidth) {
-        const size = Math.min(116, r.height - 18);
+        const size = Math.min(b.id.startsWith("library:select:") ? 156 : 116, r.height - 18);
         ctx.save();
         ctx.beginPath();
         ctx.roundRect(r.x + 12, r.y + (r.height - size) / 2, size, size, 12);
@@ -633,11 +670,30 @@ export class XRMenuView implements XRMenuInteraction {
         drawVRText(
           ctx,
           b.label,
-          { x: r.x + 144, y: r.y + 12, width: r.width - 164, height: r.height - 24 },
+          {
+            x: r.x + size + 26,
+            y: r.y + 12,
+            width: r.width - size - 40,
+            height: b.detail ? r.height * 0.56 : r.height - 24,
+          },
           VR_UI.value,
           style.text,
           true,
         );
+        if (b.detail)
+          drawVRText(
+            ctx,
+            b.detail,
+            {
+              x: r.x + size + 26,
+              y: r.y + r.height * 0.62,
+              width: r.width - size - 40,
+              height: r.height * 0.32,
+            },
+            22,
+            style.text,
+            false,
+          );
         return;
       }
     }

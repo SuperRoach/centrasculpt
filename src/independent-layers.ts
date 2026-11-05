@@ -47,7 +47,12 @@ import { RadialMoveField } from "./move-field";
 import { reconstructMoveAsync } from "./move-worker-client";
 import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
 import { PaintSurface, paintColours } from "./paint-surface";
-import { evaluatePrimitive, type PrimitiveSource, validatePrimitive } from "./parametric-primitive";
+import {
+  evaluatePrimitive,
+  type PrimitiveSource,
+  roundedBoxGeometry,
+  validatePrimitive,
+} from "./parametric-primitive";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
 import { evaluateTube, type TubeSource, validateTube } from "./procedural-tube";
 import { MAX_PROJECT_LAYERS, MAX_PROJECT_TRIANGLES, MAX_PROJECT_VOXELS } from "./project";
@@ -142,11 +147,13 @@ export class LayerRuntime {
         const s = this.primitiveSource;
         const indexed =
           s.kind === "box"
-            ? new BoxGeometry(s.width, s.height, s.depth)
+            ? s.cornerRadius === undefined
+              ? new BoxGeometry(s.width, s.height, s.depth)
+              : roundedBoxGeometry(s)
             : s.kind === "cylinder"
               ? new CylinderGeometry(s.diameter / 2, s.diameter / 2, s.height, 96)
               : new SphereGeometry(s.diameter / 2, 96, 64);
-        this.primitiveGeometry = indexed.toNonIndexed();
+        this.primitiveGeometry = indexed.index ? indexed.toNonIndexed() : indexed.clone();
         indexed.dispose();
         const positions = this.primitiveGeometry.getAttribute("position");
         for (let i = 0; i < positions.array.length; i++)
@@ -283,7 +290,14 @@ type TimelineEntry =
   | CutEntry
   | CutBatchEntry
   | { kind: "voxels"; layerId: string; paintBefore?: PaintSnapshot; paintAfter?: PaintSnapshot }
-  | { kind: "transform"; layerId: string; before: VolumeTransform; after: VolumeTransform }
+  | {
+      kind: "transform";
+      layerId: string;
+      before: VolumeTransform;
+      after: VolumeTransform;
+      localBefore: VolumeTransform;
+      localAfter: VolumeTransform;
+    }
   | { kind: "operation"; layerId: string; before: LayerOperation; after: LayerOperation }
   | { kind: "order"; layerId: string; before: string[]; after: string[] };
 
@@ -358,6 +372,7 @@ export class IndependentLayers {
   private transformSession: {
     layerId: string;
     before: VolumeTransform;
+    localBefore: VolumeTransform;
     hierarchyBefore?: HierarchyState;
   } | null = null;
   selectedGroupId: string | null = null;
@@ -1449,6 +1464,7 @@ export class IndependentLayers {
     this.transformSession = {
       layerId: node.id,
       before: copyTransform(node.transform),
+      localBefore: copyTransform(node.localTransform),
       hierarchyBefore:
         this.selectedGroupId || this.project.layerStack.hierarchy.children(node.id).length
           ? this.project.layerStack.hierarchy.snapshot()
@@ -1471,8 +1487,15 @@ export class IndependentLayers {
     if (!session) return false;
     this.transformSession = null;
     const after = copyTransform(this.project.layerStack.hierarchy.get(session.layerId).transform);
+    if (sameTransform(session.before, after)) {
+      this.project.layerStack.hierarchy.get(session.layerId).localTransform = copyTransform(
+        session.localBefore,
+      );
+      if (session.hierarchyBefore) this.syncPresentation();
+      else this.syncLayerPose(session.layerId);
+      return false;
+    }
     if (session.hierarchyBefore) {
-      if (sameTransform(session.before, after)) return false;
       this.recordHierarchy(
         session.hierarchyBefore,
         this.project.activeLayerId,
@@ -1480,9 +1503,17 @@ export class IndependentLayers {
       );
       return true;
     }
-    if (sameTransform(session.before, after)) return false;
     this.discardFuture();
-    this.past.push({ kind: "transform", layerId: session.layerId, before: session.before, after });
+    this.past.push({
+      kind: "transform",
+      layerId: session.layerId,
+      before: session.before,
+      after,
+      localBefore: session.localBefore,
+      localAfter: copyTransform(
+        this.project.layerStack.hierarchy.get(session.layerId).localTransform,
+      ),
+    });
     let excess =
       this.past.filter((entry) => entry.kind === "transform" && entry.layerId === session.layerId)
         .length - 100;
@@ -1499,8 +1530,8 @@ export class IndependentLayers {
     const session = this.transformSession;
     if (!session) return;
     this.transformSession = null;
-    this.project.layerStack.hierarchy.get(session.layerId).transform = copyTransform(
-      session.before,
+    this.project.layerStack.hierarchy.get(session.layerId).localTransform = copyTransform(
+      session.localBefore,
     );
     if (session.hierarchyBefore) this.syncPresentation();
     else this.syncLayerPose(session.layerId);
@@ -1651,7 +1682,7 @@ export class IndependentLayers {
     } else {
       const runtime = this.editableRuntime(entry.layerId, true);
       if (entry.kind === "transform") {
-        runtime.layer.transform = copyTransform(redo ? entry.after : entry.before);
+        runtime.layer.localTransform = copyTransform(redo ? entry.localAfter : entry.localBefore);
         this.syncLayerPose(entry.layerId);
       } else {
         if (entry.kind === "voxels") {
@@ -2087,6 +2118,10 @@ export class IndependentLayers {
     this.finishTransform();
     const source = this.project.layerStack.get(id);
     source.assertEditable();
+    if (source.assemblyPart?.enclosure)
+      throw new Error(
+        "Duplicate the enclosure project in Project Library to preserve its independent parts and dependencies. Single-root layer duplication is unsupported.",
+      );
     this.assertCapacity(volumeSampleCount(source.volume), undefined, 1);
     const before = this.bakeState(),
       metadata = source.metadata(),
@@ -2199,6 +2234,10 @@ export class IndependentLayers {
     const source = this.project.layerStack.get(id),
       n = source.volume.resolution;
     source.assertEditable();
+    if (source.assemblyPart?.enclosure)
+      throw new Error(
+        "Duplicate the enclosure project in Project Library to preserve its independent parts and dependencies. Single-root layer duplication is unsupported.",
+      );
     const before = this.bakeState();
     this.assertCapacity(volumeSampleCount(source.volume), undefined, 1);
     if (

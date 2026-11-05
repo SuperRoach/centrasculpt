@@ -15,6 +15,7 @@ export type MenuButton = {
   detail?: string;
   colour?: string;
   thumbnail?: string;
+  icon?: string;
   muted?: boolean;
   swatch?: boolean;
   selected?: boolean;

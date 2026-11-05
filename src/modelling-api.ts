@@ -9,6 +9,7 @@ import {
   mateParts,
   partBounds,
 } from "./assembly-tools";
+import { type EnclosureIntent, EnclosureRecipes } from "./enclosure-recipe";
 import { IndependentLayers } from "./independent-layers";
 import { LayerGroup } from "./layer-hierarchy";
 import { LayerStack, newId, SculptProject, SdfLayer, validateAssemblyPart } from "./layers";
@@ -31,7 +32,7 @@ export type ModellingCommand =
   | { type: "object.flag"; id: string; flag: "visible" | "locked"; value: boolean }
   | { type: "object.duplicate"; id: string }
   | { type: "part.inspect"; partA: string; partB: string }
-  | { type: "part.define"; objectId: string; clearanceMM: number }
+  | { type: "part.define"; objectId: string; clearanceMM: number; enclosure?: EnclosureIntent }
   | { type: "part.remove"; partId: string }
   | { type: "part.assign"; objectId: string; partId: string | null }
   | { type: "part.select"; partId: string }
@@ -63,6 +64,8 @@ export type ModellingCommand =
   | { type: "primitive.bake"; id: string }
   | { type: "object.delete"; id: string };
 export type ModellingQuery =
+  | { type: "enclosure.inspect"; baseId: string; lidId: string }
+  | { type: "enclosure.samples"; baseId: string; lidId: string }
   | { type: "scene.hierarchy" }
   | { type: "assembly.parts" }
   | { type: "geometry.bounds"; id: string }
@@ -103,29 +106,33 @@ export type PartMetadata = {
   visible: boolean;
   locked: boolean;
 };
-export type QueryValue<Q extends ModellingQuery> = Q extends { type: "scene.hierarchy" }
-  ? ReturnType<IndependentLayers["project"]["layerStack"]["hierarchy"]["snapshot"]>
-  : Q extends { type: "geometry.bounds" }
-    ? { units: "mm"; min: number[]; max: number[]; accuracy: "conservative" }
-    : Q extends { type: "geometry.diagnostics" }
-      ? { status: "not_evaluated"; limitations: string[]; triangles: number | null }
-      : Q extends { type: "part.list" | "assembly.parts" }
-        ? PartMetadata[]
-        : Q extends { type: "part.get" }
-          ? PartMetadata
-          : Q extends { type: "scene.summary" }
-            ? SceneSummary
-            : Q extends { type: "array.list" }
-              ? { id: string; array: ArrayDefinition }[]
-              : Q extends { type: "array.get" }
-                ? ArrayDefinition | null
-                : Q extends { type: "object.list" }
-                  ? ObjectMetadata[]
-                  : Q extends { type: "boolean.list" }
-                    ? { id: string; modifiers: BooleanModifier[] }[]
-                    : Q extends { type: "boolean.get" }
-                      ? BooleanModifier[]
-                      : ObjectMetadata;
+export type QueryValue<Q extends ModellingQuery> = Q extends { type: "enclosure.inspect" }
+  ? ReturnType<EnclosureRecipes["inspect"]>
+  : Q extends { type: "enclosure.samples" }
+    ? ReturnType<EnclosureRecipes["samples"]>
+    : Q extends { type: "scene.hierarchy" }
+      ? ReturnType<IndependentLayers["project"]["layerStack"]["hierarchy"]["snapshot"]>
+      : Q extends { type: "geometry.bounds" }
+        ? { units: "mm"; min: number[]; max: number[]; accuracy: "conservative" }
+        : Q extends { type: "geometry.diagnostics" }
+          ? { status: "not_evaluated"; limitations: string[]; triangles: number | null }
+          : Q extends { type: "part.list" | "assembly.parts" }
+            ? PartMetadata[]
+            : Q extends { type: "part.get" }
+              ? PartMetadata
+              : Q extends { type: "scene.summary" }
+                ? SceneSummary
+                : Q extends { type: "array.list" }
+                  ? { id: string; array: ArrayDefinition }[]
+                  : Q extends { type: "array.get" }
+                    ? ArrayDefinition | null
+                    : Q extends { type: "object.list" }
+                      ? ObjectMetadata[]
+                      : Q extends { type: "boolean.list" }
+                        ? { id: string; modifiers: BooleanModifier[] }[]
+                        : Q extends { type: "boolean.get" }
+                          ? BooleanModifier[]
+                          : ObjectMetadata;
 /** `$alias` references resolve only to earlier results in this ordered batch. */
 export type ModellingStep = { command: ModellingCommand; as?: string };
 export type BatchOptions = { expectedRevision: string; signal?: AbortSignal; dryRun?: boolean };
@@ -151,6 +158,9 @@ class CommandError extends Error {
  * execute() applies one operation; batch() explicitly groups ordered operations. */
 export class ModellingAPI {
   private pending = false;
+  get enclosure() {
+    return new EnclosureRecipes(this, this.layers);
+  }
   constructor(
     private readonly layers: IndependentLayers,
     private readonly canEdit: () => boolean = () => true,
@@ -236,6 +246,12 @@ export class ModellingAPI {
       if (this.layers.modellingBusy) this.fail("busy", "A modelling transaction is active.");
       let value: unknown;
       switch (query.type) {
+        case "enclosure.inspect":
+          value = this.enclosure.inspect(query.baseId, query.lidId);
+          break;
+        case "enclosure.samples":
+          value = this.enclosure.samples(query.baseId, query.lidId);
+          break;
         case "scene.hierarchy":
           value = structuredClone(this.layers.project.layerStack.hierarchy.snapshot());
           break;
@@ -714,7 +730,10 @@ export class ModellingAPI {
       }
       if (command.type === "part.define" || command.type === "part.clearance") {
         try {
-          validateAssemblyPart({ clearanceMM: command.clearanceMM });
+          validateAssemblyPart({
+            clearanceMM: command.clearanceMM,
+            ...(command.type === "part.define" ? { enclosure: command.enclosure } : {}),
+          });
         } catch (e) {
           this.fail("invalid_input", e instanceof Error ? e.message : "Invalid clearance.");
         }
@@ -786,7 +805,12 @@ export class ModellingAPI {
         case "part.define":
           this.node(command.objectId);
           id = command.objectId;
-          this.layers.setAssemblyPart(id, { clearanceMM: command.clearanceMM });
+          this.layers.setAssemblyPart(id, {
+            clearanceMM: command.clearanceMM,
+            ...(command.type === "part.define"
+              ? { enclosure: command.enclosure }
+              : { enclosure: this.layers.project.layerStack.get(id).assemblyPart?.enclosure }),
+          });
           break;
         case "part.remove":
           this.partMetadata(command.partId);
@@ -796,7 +820,10 @@ export class ModellingAPI {
         case "part.clearance":
           this.partMetadata(command.partId);
           id = command.partId;
-          this.layers.setAssemblyPart(id, { clearanceMM: command.clearanceMM });
+          this.layers.setAssemblyPart(id, {
+            clearanceMM: command.clearanceMM,
+            enclosure: this.layers.project.layerStack.get(id).assemblyPart?.enclosure,
+          });
           break;
         case "part.assign":
           this.node(command.objectId);

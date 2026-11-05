@@ -346,6 +346,28 @@ async function encodePartSTL(
     result.report.effectiveResolutionMM =
       Math.max(...exported.map((source) => source.step)) *
       layers.display.precision.millimetresPerUnit;
+    const intent = layers.project.layerStack.get(id).assemblyPart?.enclosure;
+    if (intent) {
+      const r = result.report;
+      if (
+        r.boundaryEdges ||
+        r.nonManifoldEdges ||
+        r.inconsistentEdges ||
+        r.degenerateTriangles ||
+        r.components !== 1 ||
+        r.invertedComponents
+      )
+        throw new Error(
+          `Enclosure export requires one closed, consistently wound manifold shell. Sampled mesh: ${r.boundaryEdges} boundary, ${r.nonManifoldEdges} non-manifold, ${r.inconsistentEdges} winding, ${r.degenerateTriangles} degenerate; ${r.components} components. Adjust dimensions/resolution or export quality and retry.`,
+        );
+      r.warnings.push(
+        "Enclosure fit and minimum wall thickness are not certified. Inspect in your slicer and print a clearance coupon.",
+      );
+      if (intent.parameters.lid.clearanceMm < (r.effectiveResolutionMM ?? Infinity))
+        r.warnings.push(
+          "Lid clearance is below exported sampling spacing; mating-surface fit is approximate.",
+        );
+    }
     if (result.stats[0]) {
       result.stats[0].inputTriangles += prepared.removedTriangles;
       result.stats[0].planarRemoved += prepared.removedTriangles;
