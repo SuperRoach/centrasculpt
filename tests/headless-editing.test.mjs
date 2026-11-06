@@ -259,10 +259,10 @@ test("invalid commands, aliases, units, policy and limits fail without edits", a
     );
     const full = await batch(
       api,
-      Array.from({ length: 8 }, () => ({ command: create })),
+      Array.from({ length: 16 }, () => ({ command: create })),
     );
     assert(!full.ok);
-    assert.match(full.error.message, /8 independent layers/);
+    assert.match(full.error.message, /16 independent layers/);
     assert.deepEqual(snapshot(l), before);
   } finally {
     l.dispose();

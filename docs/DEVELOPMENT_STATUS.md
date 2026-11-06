@@ -1,5 +1,97 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+2026-11-06 publication: user explicitly authorized committing and pushing Phase 7.3 local MCP access, approval-panel refinements, automatic session discovery, 16-layer capacity and Move/Rotate/Scale tools. This supersedes earlier no-commit statements for this publication. Physical Quest and printed-fit acceptance remain pending.
+
+## Agent discovery, 16 layers and transform tools — 2026-11-06
+
+### 1. What changed
+
+MCP now discovers the current development session automatically when launched with just the adapter script; no temporary path needs copying into client configuration. Temporary credentials still rotate, connection approval defaults to read-only and editing remains explicit. Added dedicated `move_object`, `rotate_object` and `scale_object` tools. Raised the shared independent-layer cap from 8 to 16 across native save/load, admission, connectors, Bake, desktop and VR menus and API limit reports. Existing uncommitted Phase 7.3 work retained; no commit/push/merge.
+
+### 2. Architectural decisions
+
+`agent-session.mjs` publishes an atomic mode-0600 pointer under ignored `work/agent-session.json`; it contains only the temporary session path. MCP rereads discovery/credentials on each call, so the same process can follow a Vite restart; explicit session arguments remain supported. Cleanup checks pointer ownership. Isolated browser tests override discovery so they do not replace the user's live-session pointer. Multiple agent Vite instances in one checkout discover the most recently started; explicit paths support isolation. No persisted approval or static authentication token. Normal editing remains independent.
+
+Move accepts world translation in mm/cm/in and `by` (default) or `set`. Rotate accepts XYZ degrees and `by` (default, quaternion composition in world axes about the object's origin) or `set`. Scale sets absolute world scale. Each preserves other pose components and delegates to the existing revision-checked modelling batch, preserving admission/locks/Undo. Multi-operation single Undo still uses full transform commands in `apply_changes`. Layer count increases without increasing memory, voxel or triangle budgets or changing the native schema.
+
+### 3. Build and test results
+
+Final `npm run check` passed Biome format/lint (348 files; 608 warnings / 96 infos / zero errors), strict TypeScript, production build (1.75 s), and **1,584/1,584 tests across 94 files**, no failures/skips/cancellations, 79.92 s command wall. Evidence: `work/phase-7-3/expansion-final-check.log`. Focused MCP **10/10** passed; enclosure/headless capacity suites **40/40** passed (14.53 s); quick smoke **21/21** passed. Actual browser smoke passed with no temporary-file argument, testing auto-discovery, Move and 30-degree Rotate, physical/source dimensions, stable IDs, Undo to the original scene, dismissal/reopen, disconnect/ordinary Redo, shutdown and normal/production isolation. Evidence: `expansion-focused.log`, `expansion-capacity.log`, `expansion-quick.log`, `expansion-browser.log`. Diff whitespace check passed.
+
+Initial full run exposed two older fixtures expecting eight-layer capacity; updated those to the 16-layer boundary. Recipe fixture now creates three complete enclosures (16 total layers with the original Base), round-trips natively, rejects a fourth recipe without changing bytes, and restores all three through Undo/Redo. Browser fixture now checks primitive dimensions separately from rotated world-axis bounds. Discovery regression verifies rotating credentials, pointer permissions and older-session cleanup preserving a newer pointer. Native 16-layer regression rejects layer 17 without history changes.
+
+### 4. Benchmarks and regressions
+
+No headset frame/performance claim. Existing 256 MiB admission and project voxel/triangle budgets remain; 16 large grids may still refuse. Complete tool, geometry, export, recovery, persistence and VR regressions pass. Vite retains the existing bundle-size advisory. Production has no adapter listener or credentials.
+
+### 5. Known limitations and blockers
+
+Restart agent Vite once to load the discovery publisher and expanded bridge schemas, then refresh the MCP client once for the new tools/configuration. Later Vite sessions need browser approval but no configuration path change. Old app versions with an eight-layer cap refuse projects above eight layers; use the newer app to open them. Single recipe-root duplication remains unsupported; multiple independently created recipes now fit. Physical Quest and printed-fit acceptance remain pending. Explicitly configured old session paths do not auto-discover; omit the session argument.
+
+### 6. Next recommendations
+
+Try Move/Rotate against a deliberate local scene, retaining browser approval/write controls. Configure Codex/Cursor once using the script-only examples in the updated MCP guide. Keep WebMCP, Quest synchronisation, pairing indicators, cloud relay, Phase 7.2 associative features and Phase 7.4 agent planning as future work.
+
+## Local agent approval polish — 2026-11-06
+
+### 1. What changed
+
+Restyled approval in the editor's warm neutral/green palette. Removed the introductory paragraph and connected-status row; a header check-circle carries connection status with hover text. Close collapses the panel to a compact launcher without revoking access; reopening retains permission state. Editing uses a compact switch and revocation remains explicit. Errors explain wrong origin, ownership or unavailable bridge.
+
+### 2. Architectural decisions
+
+Presentation stays in the optional browser adapter and dev-only `agent-access.css`. Existing approval, read-only/write grants, cancellation and modelling execution are unchanged. Status remains available to assistive technology; dismissal is separate from revocation.
+
+### 3. Build and test results
+
+`npm run check` passed formatting/lint (608 warnings / 96 infos / zero errors), strict TypeScript, build and 1,581/1,581 tests across 94 files, 81.47 s test command wall. Final icon CSS also passed a subsequent production build (2.40 s). Quick suite passed 21/21. Real-browser MCP smoke passed, including dismiss/reopen, permission changes, editing, Undo, disconnect and production isolation. Actual panel screenshot visually inspected. Evidence: `work/phase-7-3/approval-final-check.log`, `approval-build.log`, `approval-browser.log`, `approval-quick.log`, `browser-created.png`. Diff whitespace check passed.
+
+### 4. Benchmarks and regressions
+
+No geometry or performance claim. All existing modelling and persistence regressions pass; production excludes the optional panel and CSS.
+
+### 5. Known limitations and blockers
+
+Dismissal lasts for the current page lifetime. Development-only POC restrictions remain. Prior uncommitted Phase 7.3 work is retained. No commit, push or merge.
+
+### 6. Next recommendations
+
+Try the compact controls locally; hover the indicator for connection details and reopen via the lower-left launcher. WebMCP, Quest synchronisation, pairing indicators and cloud relay remain future possibilities.
+
+## Phase 7.3 handover — Local Agent Access (MCP), 2026-11-06
+
+### 1. What changed
+
+Implemented an optional development-only stdio MCP server using the official SDK and strict Zod tool schemas. Codex/Cursor can inspect the approved active browser scene, list/get stable objects and mm dimensions, create/update basic primitives, transform objects, create Phase 7.1 enclosures, dry-run supported batches, apply one-action transactions and Undo. `npm run dev` starts ordinary Vite without agent access; `npm run dev:agent` explicitly starts loopback Vite and a temporary authenticated loopback browser bridge. The MCP client starts the separate stdio process using the printed session-file path. A browser panel requires connection approval, defaults to read-only, and offers explicit editing permission and revocation. Full setup/tool contracts/errors/removal: [local MCP guide](PHASE_7_3_LOCAL_MCP.md).
+
+Reviewed the current Phase 7.0 command/query/transaction implementation, Phase 7.1 recipes, package scripts, Vite configuration and this status before editing. Phase 7.2 face-relative cutouts/mounting/named constraints remain unimplemented. Active checkout `/Users/brettjames/development/vrappPOC`, starting HEAD `b7a7b5b`; initial Git status was clean. The Documents workspace is empty. No commit, push or merge performed.
+
+### 2. Architectural decisions
+
+Transport and permissions live in removable `scripts/agent-*.mjs`, `src/agent-access.ts` and `src/agent-browser.ts`; the modelling engine, commands, history and codecs are unchanged. Browser writes call existing `ModellingAPI.batch` / `api.enclosure.create`; Undo calls the authoritative editor history. The adapter resolves the current editor on every request, including after native project replacement. Existing revisions, leases, admission, cooperative cancellation, locks/visibility, calibration and history remain authoritative. Supported batches are deliberately limited to primitive create/update and object transform. Dry-run is source-cache staging with provisional IDs and currently requires the existing API's editing grant. There is no new agent planner or final mesh certification.
+
+The bridge binds only `127.0.0.1`, validates exact Host and configured local Origin, and uses distinct random 256-bit browser/MCP bearer credentials. MCP credentials are in a private temporary directory / mode-0600 session file; the browser credential comes from a dev-only virtual module. Approval/write grants are memory-only. One approved browser tab, one in-flight operation, 64 KiB bodies, 64-command batches, 10-second browser deadline, 12-second bridge timeout and 15-second MCP HTTP timeout. Heartbeat expires after 2.5 seconds. Revocation/disconnect/timeout drops queued work and aborts cooperative operations; expired results cannot execute new work. Production replaces the agent enable constant with false, eliminating the browser module. SDK/Zod/Playwright are development dependencies. No agent metadata or credentials are stored in native `.form` files, no manual-save tool is exposed, and normal recovery/autosave follows ordinary editor changes.
+
+### 3. Build and test results
+
+Baseline `npm run check` passed formatting/lint, strict TypeScript, production build (**1.77 s**) and **1,574/1,574 tests across 93 files** (81.05 s command wall, 80.98 s test duration). Evidence: `work/phase-7-3/baseline-check.log`. First full integration run passed 1,579/1,580; its new lock test incorrectly assumed layer flag controls produced a history entry. Corrected the fixture to restore flags through their existing controls. Log retained as `integration-v1-check.log`.
+
+Final `npm run check` passed Biome format/lint (**347 files; 603 existing warnings / 96 infos / zero errors**), strict TypeScript, production build (**2.01 s**) and **1,581/1,581 tests across 94 files**, no failures/skips/cancellations; **82.53 s** command wall. Evidence: `work/phase-7-3/final-check.log`. Focused `npm run test:agent` passed **7/7** (0.81 s wall), including actual official stdio SDK client/server subprocess interaction. Negative coverage includes disabled/unapproved access, invalid credentials/origin/schema/oversize, read-only writes, competing editor/request, stale revision, busy editor/lease, aborted/expired work, cancelled-generation byte-exact rollback, locked/hidden sources, late results, disconnect/shutdown and credential/listener cleanup. It also verifies one Undo for a multi-command batch, preserved IDs/mm dimensions and current-editor replacement. `git diff --check` passed.
+
+Real-browser `npm run test:agent:browser` passed with installed Chromium (revision 1234 via explicit executable override), Playwright 1.65.0 and isolated profile on port 5197. It starts actual agent Vite and stdio MCP; verifies approval/read-only, live scene identity, box creation, visible transform, editor row, 20 × 30 × 40 mm inspection, update to 24 mm width, stale rejection, Undo back to the original scene, MCP disconnect and ordinary UI Redo. It then verifies Vite shutdown closes the bridge/removes credentials, normal Vite does not load agent modules, and production JS contains neither credentials nor adapter/SDK markers. Earlier smoke fixture failures (icon-prefixed Redo locator and release-note text matching an overly broad production marker) were corrected; final evidence: `work/phase-7-3/browser-smoke.log`, `browser-created.png`, `browser-disconnected-redo.png`. Existing user recovery records were not restored/discarded. Localhost test binding and browser launch required running outside the filesystem/network sandbox; the initial sandbox-only focused run reported EPERM and the authorized rerun passed.
+
+### 4. Benchmarks and regressions
+
+No geometry or headset performance claim. Source sampling, compositor, physical units, native persistence, exports, tools/controllers, skybox and passthrough are unchanged and retain full regression coverage. The bridge adds polling only in explicitly enabled development mode. Normal startup and production isolation were exercised, not inferred. Vite retains its existing bundle-size advisory. The agent-created box was visually inspected in the real editor screenshot beside the original sphere.
+
+### 5. Known limitations and blockers
+
+Local development POC only: no LAN/public/cloud endpoint, per-client identity/grants, multi-tab collaboration, native file writes, remote geometry engine or physical Quest acceptance. All local MCP clients holding the session credential share the browser-approved grant. MCP session paths change on each Vite startup and must be refreshed in client configuration. Background-tab throttling can revoke the heartbeat. Heavy operations can exceed the deliberately short deadline. A transport failure after commit may lose its response; inspect the current scene/revision before retrying. SIGKILL of an idle MCP process cannot send revocation; explicitly revoke the shared browser grant. Forced Vite termination may leave an inert private credential file, with no running listener. Recipe and API resource/printability limitations remain. Actual Codex/Cursor configuration examples were checked against official documentation; automated interoperability uses the official SDK stdio client, not a manually configured Codex/Cursor session.
+
+### 6. Next recommendations
+
+Try the documented Codex/Cursor configuration against an intentionally enabled local session and review writes in the browser. Revoke access before switching tasks, and keep manual project saves explicit. Preserve Phase 7.2 associative cutouts/mounting/named constraints and Phase 7.4 agent plan-preview-apply. WebMCP, Quest synchronisation, pairing indicators and cloud relay are future possibilities, not implemented features. Physical Quest/slicer/printed-fit acceptance remains separate. No authorization to commit, push or merge is implied.
+
 2026-11-06 publication: user authorized committing and pushing the completed enclosure work, panel polish and existing validated project-library/export/menu refinements. This supersedes earlier no-commit statements for this publication. Physical Quest and printed-fit acceptance remain pending.
 
 ## Enclosure panel polish — 2026-11-06

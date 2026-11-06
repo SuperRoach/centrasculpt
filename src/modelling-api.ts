@@ -22,6 +22,7 @@ import {
   validatePrimitive,
 } from "./parametric-primitive";
 import { type PhysicalUnit, unitMM } from "./physical-units";
+import { MAX_PROJECT_LAYERS } from "./project";
 import { type Vec3, type VolumeTransform, validateTransform } from "./transform";
 
 /** Dimensions are local, translations are sculpture-world coordinates, rotations XYZ radians.
@@ -503,7 +504,7 @@ export class ModellingAPI {
               .map((o) => o.id),
             deleted: [...beforeObjects.keys()].filter((id) => !objects.some((o) => o.id === id)),
           },
-          limits: { commands: 64, layers: 8, memoryBytes: 256 * 1024 ** 2 },
+          limits: { commands: 64, layers: MAX_PROJECT_LAYERS, memoryBytes: 256 * 1024 ** 2 },
           geometryValidation: "source_caches_only",
           limitations: [
             "Source caches are evaluated with backend resource limits; final Boolean/STL topology and physical fit are not validated.",

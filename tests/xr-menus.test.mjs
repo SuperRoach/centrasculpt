@@ -920,13 +920,13 @@ test("VR new-layer action is guarded during edits, at layer capacity, and report
     assert.match(f.model.feedback, /voxel budget/);
     assert.equal(f.layers.project.layerStack.layers.length, 1);
     f.layers.create = create;
-    while (f.layers.project.layerStack.layers.length < 8) f.tools.createLayer();
+    while (f.layers.project.layerStack.layers.length < 16) f.tools.createLayer();
     const content = f.model.content(),
       button = content.buttons.find((b) => b.id === "new-layer");
     assert(button.disabled);
     assert.match(button.detail, /Maximum/);
     f.model.activate("new-layer");
-    assert.equal(f.layers.project.layerStack.layers.length, 8);
+    assert.equal(f.layers.project.layerStack.layers.length, 16);
     for (const b of content.buttons) {
       assert(b.rect.y + b.rect.height < 1092);
       assert.equal(f.model.hit(...buttonPoint(f.model, b.id)), b.id);

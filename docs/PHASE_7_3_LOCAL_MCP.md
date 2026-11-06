@@ -1,0 +1,226 @@
+# Phase 7.3 — optional local MCP access
+
+Development proof of concept, 2026-11-06. Uses the official `@modelcontextprotocol/sdk`
+stdio server and Zod schemas. Phase 7.0 `ModellingAPI` and Phase 7.1 enclosure recipes
+remain the only modelling implementation. Phase 7.2 face-relative cutouts, mounting
+patterns and named constraints are not implemented.
+
+## Start and connect
+
+1. Run `npm install` in the repository (Node 22+ recommended).
+2. Normal editing: `npm run dev`. No bridge or MCP process starts.
+3. Agent editing: `npm run dev:agent`. This starts Vite on **127.0.0.1:5173** and a
+   second loopback-only bridge on an OS-assigned port. If 5173 is already occupied,
+   stop that server yourself or use `npm run dev:agent -- --port 5197`. The exact
+   matching browser origin is printed. `localhost`, HTTPS and LAN addresses do not match.
+4. Configure the MCP client once with the adapter script path below. The server discovers
+   the current session automatically through ignored `work/agent-session.json`.
+   Credentials still rotate on every startup; no session path needs copying.
+5. Configure your MCP client below and let that client launch the stdio server.
+   `npm run mcp:agent` is the equivalent manual
+   server entry point, but is intended to be launched by a client, not interactively.
+6. Open the printed browser origin. Choose **Approve connection** in **Local agent
+   access (development)**. This approves the current editor tab and shares scene
+   metadata with local MCP clients holding this session credential. Default is read-only.
+7. Check **Allow editing (includes Undo)** to allow writes. Uncheck it to revoke
+   write permission; choose **Revoke access** to revoke all access. Revocation aborts
+   in-flight cooperative operations. A disconnected/restarted client may require
+   browser approval again. These controls are development tools, not project data.
+
+Only one browser tab owns the bridge at a time. Revoke the original tab before
+approving another. Multiple MCP clients share the one approved session; this POC
+does not offer separate identities or grants per client. Only one request is admitted
+at a time. This is local developer access, not an internet or multi-user security boundary.
+
+## Codex
+
+Add this to your user `~/.codex/config.toml`, replacing the repository path:
+
+```toml
+[mcp_servers.centra_sculpt]
+command = "node"
+args = ["/ABS/REPO/scripts/agent-mcp.mjs"]
+tool_timeout_sec = 20
+```
+
+Alternatively: `codex mcp add centra_sculpt -- node /ABS/REPO/scripts/agent-mcp.mjs`.
+Use an absolute Node executable if the app cannot find `node` on PATH. Refresh or
+restart the client's MCP connection after changing its configuration. No Codex
+configuration or permissions are modified automatically by this repository.
+
+Configuration syntax follows [official OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp).
+
+## Cursor
+
+Add to your local `.cursor/mcp.json` or user `~/.cursor/mcp.json` (use a local configuration):
+
+```json
+{
+  "mcpServers": {
+    "centra_sculpt": {
+      "command": "node",
+      "args": ["/ABS/REPO/scripts/agent-mcp.mjs"]
+    }
+  }
+}
+```
+
+Enable/restart the server in Cursor's MCP settings, then approve the browser connection.
+See [Cursor MCP configuration](https://prod.cursor.com/docs/mcp).
+
+## Tool contracts
+
+The exact strict executable schemas are in [`scripts/agent-schemas.mjs`](../scripts/agent-schemas.mjs)
+and are published by MCP `tools/list`. Unknown fields, nonfinite numbers, missing
+units and unsupported commands are rejected before bridge admission. All mutations
+require `expectedRevision` from the most recent scene/object result. All object
+results use stable IDs and mm dimensions. Results are returned as both MCP text JSON
+and `structuredContent`: `{ok:true, revision, value}` or
+`{ok:false, revision?, error:{code,message}}`. Errors set MCP `isError`.
+
+| Tool | Arguments in addition to `expectedRevision` for writes |
+| --- | --- |
+| `scene_summary` | `{}`; project ID, object count, calibration, busy state and revision |
+| `list_objects` | `{}`; detached object metadata |
+| `get_object` | `{id}`; primitive, hierarchy, flags, world/local pose, physical dimensions |
+| `create_primitive` | `{unit, source}` |
+| `update_primitive` | `{id, unit, source}`; primitive type must stay the same |
+| `transform_object` | `{id, unit, transform:{position:[x,y,z], rotation:[x,y,z], scale:[x,y,z]}}` |
+| `move_object` | `{id, unit, translation:[x,y,z], mode?:"by" or "set"}`; default adds a world-axis offset |
+| `rotate_object` | `{id, rotationDegrees:[x,y,z], mode?:"by" or "set"}`; default composes world XYZ rotation about object origin |
+| `scale_object` | `{id, scale:[x,y,z]}`; absolute world scale, preserving position/orientation |
+| `create_enclosure` | `{parameters, dryRun?:boolean}`; existing Phase 7.1 recipe |
+| `preview_changes` | `{steps:[{command, as?:alias}]}`; isolated Phase 7.0 dry-run |
+| `apply_changes` | `{steps:[{command, as?:alias}]}`; one logical Undo transaction |
+| `undo` | no additional fields; undoes the editor's last action, including user actions |
+
+`unit` is `mm`, `cm` or `in`. `source` is a strict union:
+
+```json
+{"kind":"box","width":20,"height":30,"depth":40}
+{"kind":"sphere","diameter":20}
+{"kind":"cylinder","diameter":20,"height":30}
+```
+
+Source dimensions must be positive, finite and at most 10,000 (in the specified
+unit); the engine applies its tighter physical/aspect/resource limits. The adapter
+exposes these three basic primitive schemas; rounded boxes remain available through
+the existing enclosure API/UI. Translations are world coordinates in the explicit
+unit, rotations XYZ radians, scale dimensionless. These do not move the VR workspace.
+
+`steps` contains 1–64 commands: `primitive.create` with `unit/source`,
+`primitive.update` with `id/unit/source`, or `object.transform` with
+`id/unit/transform`. Each adds a `type` field matching that command name. Optional
+unique `as` identifiers match `[a-zA-Z][a-zA-Z0-9_]{0,63}`. An `id` may refer to an
+earlier result as `$alias`. Preview IDs are provisional; apply the original commands,
+not the preview IDs. Preview currently also requires editing permission because
+the authoritative API gates dry-run. It validates source caches, not final evaluated
+Boolean topology or physical printability. This is not the future Phase 7.4 planner.
+
+Example `apply_changes` arguments (replace the revision):
+
+```json
+{
+  "expectedRevision": "LATEST_REVISION",
+  "steps": [
+    {"as":"box","command":{"type":"primitive.create","unit":"mm","source":{"kind":"box","width":20,"height":30,"depth":40}}},
+    {"command":{"type":"object.transform","id":"$box","unit":"mm","transform":{"position":[150,0,0],"rotation":[0,0,0],"scale":[1,1,1]}}}
+  ]
+}
+```
+
+Enclosure parameters (all lengths in mm; recipe validation also checks geometric relationships):
+
+```json
+{
+  "units":"mm", "name":"Enclosure",
+  "innerWidthMm":24, "innerDepthMm":20, "innerHeightMm":14,
+  "wallThicknessMm":3, "floorThicknessMm":3, "cornerRadiusMm":4,
+  "lid":{"type":"friction-fit","clearanceMm":0.3,"lipDepthMm":4,"thicknessMm":3}
+}
+```
+
+Names are 1–90 characters; lengths are finite and positive (corner radius may be
+zero). Phase 7.1 requires 0.05–1000 mm and validates walls, rim, lip and clearance.
+No save, load, export, arbitrary code, filesystem or network tools are exposed.
+Agent changes participate in normal local recovery/autosave like manual edits;
+the adapter cannot silently overwrite a manually saved `.form` project.
+
+Scene capacity is now **16 independent layers**, shared by editor, recipes, connectors,
+VR controls and native save/load. Existing voxel, triangle and memory budgets still
+apply; 16 large/high-resolution sources may exceed those budgets. Projects containing
+more than eight layers will be refused by older app versions with the eight-layer cap.
+
+The convenience move/rotate/scale tools preserve unspecified pose components and use
+the same revision-checked transaction. Rotate `by` composes a quaternion in world axes;
+`set` replaces XYZ Euler orientation. It does not orbit the object around the world origin.
+For a multi-step single Undo transaction, use `apply_changes` with full `object.transform`
+commands.
+
+## Boundaries and errors
+
+- The HTTP bridge binds **only 127.0.0.1** and verifies exact Host and configured
+  browser Origin. It requires distinct random 256-bit browser and MCP bearer tokens.
+  The browser token is delivered by a dev-only virtual module; MCP credentials are
+  written only to a private temporary directory with a mode-0600 session file.
+- Browser approval and write grants live in memory. No credentials, permissions or
+  agent-specific data go into native projects, recovery metadata or production assets.
+- 64 KiB request bodies; 64-command batches; one in-flight request; 10-second browser
+  operation deadline, 12-second bridge timeout, 15-second MCP HTTP timeout. Editor
+  heartbeat expires after 2.5 seconds; 250 ms polling (subject to browser scheduling).
+  Background-tab throttling may disconnect. Keep the approved editor visible.
+- Revocation, expired heartbeat, client request disconnect or timeout drops queued
+  work and revokes access. The browser aborts running work on transport failure or
+  local revocation. Cooperative engine cancellation rolls transactions back. A result
+  can be lost after a transaction commits; inspect scene/revision before retrying.
+- `permission_denied` / read-only: approve the tab and enable editing. `busy`: finish
+  an existing stroke, modal, transform, project operation or transaction. `revision_conflict`:
+  inspect again and rebuild the request. HTTP 401: old/wrong credential; restart agent mode and reload the editor. HTTP 403: wrong origin/host, expired or unapproved access. HTTP 409:
+  another tab/request or an expired result. HTTP 400: malformed/schema-invalid request.
+  HTTP 413: oversized request. `cancelled`: timed out or revoked; query before retrying.
+- MCP shutdown revokes bridge permission while leaving Vite/editor running. Stopping
+  Vite closes the bridge, settles pending work and deletes the temporary directory.
+  Forced OS termination can leave an inert credential file; it has no running listener
+  and can be deleted manually. SIGKILL of an idle MCP process cannot send revocation;
+  use the browser's Revoke access control to clear the shared session grant.
+
+## Verify
+
+```bash
+npm run check
+npm run test:agent
+npx playwright install chromium
+npm run test:agent:browser
+```
+
+Browser smoke uses a fresh browser profile and port 5197, creates/inspects/transforms/
+updates a real box through stdio MCP, checks editor rows, Undo and ordinary Redo after
+disconnect, then verifies normal startup and scans the production assets from `npm run
+build`. It never restores/discards existing browser recovery. Optional overrides:
+`AGENT_SMOKE_PORT`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE` (absolute Chromium executable).
+Evidence/screenshots are written under ignored `work/phase-7-3/`.
+
+## Disable or remove
+
+Use **Revoke access**, stop the MCP client server, stop agent Vite, then use `npm run
+dev`. Remove/disable the MCP client configuration. No application preference or
+project conversion is needed.
+
+Complete removal: delete `scripts/agent-*.mjs`, `src/agent-access.ts`,
+`src/agent-browser.ts`, `src/agent-access.css`, `tests/agent-access.test.mjs` and this guide; remove the
+`__AGENT_ENABLED__` dynamic-import block in `src/main.ts`, declarations in
+`src/vite-env.d.ts`, conditional agent plugin/define in `vite.config.ts`, agent
+scripts from `package.json`, and the `agent-access` entry in `scripts/compile-core.mjs`.
+Run `npm uninstall --save-dev @modelcontextprotocol/sdk zod @playwright/test` to
+update dependencies/lockfile, then `npm run check`. No sculpting engine, command API,
+native codec or project schema needs modification.
+
+WebMCP, Quest synchronisation, pairing indicators, cloud relay and Phase 7.4 agent
+plan-preview-apply are future possibilities, not implemented features.
+
+Automatic discovery reads credentials afresh for every call, so an MCP process can
+remain running while Vite restarts. Browser approval still starts read-only each
+session. An explicit session-file argument remains available for isolated tests.
+`CENTRA_AGENT_DISCOVERY_FILE` overrides the pointer location for isolated test servers.
+Only the latest agent-enabled server in a checkout is discovered; use explicit paths
+for simultaneous sessions. Cleanup from an older server cannot delete a newer pointer.

@@ -1,4 +1,5 @@
 import { BRUSH_RADIUS_LIMITS } from "./brush-settings";
+import { MAX_PROJECT_LAYERS } from "./project";
 import type { RenderStyle } from "./render-style";
 import { volumeLabel } from "./volume-store";
 import "./style.css";
@@ -458,7 +459,7 @@ export function createUI() {
         list.append(row);
       }
       const create = document.querySelector<HTMLButtonElement>("#new-layer")!;
-      create.disabled = layers.length >= 8;
+      create.disabled = layers.length >= MAX_PROJECT_LAYERS;
       create.dataset.unavailable = String(create.disabled);
     },
     get hardness() {

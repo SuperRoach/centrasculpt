@@ -22,6 +22,7 @@ for (const name of [
   "assembly-controls",
   "connector-placement",
   "modelling-api",
+  "agent-access",
   "enclosure-recipe",
   "enclosure-controls",
   "enclosure-ui",

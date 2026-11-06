@@ -188,11 +188,19 @@ test("failed/cancelled/stale recipe batches preserve bytes and redo, capacity/fe
     assert(!(await create(api, p)).ok);
     assert.deepEqual(bytes(l), before);
     const good = ok(await create(api));
+    ok(await create(api));
+    ok(await create(api));
+    assert.equal(l.project.layerStack.layers.length, 16);
+    assert.equal(openSculptProject(saveSculptProject(l.project)).layerStack.layers.length, 16);
     const after = bytes(l);
     assert(!(await create(api)).ok);
     assert.deepEqual(bytes(l), after);
     l.undo();
+    l.undo();
+    l.undo();
     assert.deepEqual(bytes(l), before);
+    l.undo(true);
+    l.undo(true);
     l.undo(true);
     assert(l.project.layerStack.get(good.partIds.base));
   } finally {

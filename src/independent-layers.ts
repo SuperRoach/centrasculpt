@@ -1023,7 +1023,7 @@ export class IndependentLayers {
       additional +
       [...held].reduce((sum, r) => sum + volumeSampleCount(r.volume), 0);
     if (layers.length + extraLayers > MAX_PROJECT_LAYERS)
-      throw new Error("Maximum of 8 independent layers reached.");
+      throw new Error(`Maximum of ${MAX_PROJECT_LAYERS} independent layers reached.`);
     if (samples > MAX_PROJECT_VOXELS)
       throw new Error(
         "Project voxel budget exceeded. Explicitly reduce a layer resolution or delete a layer; existing layers were kept.",
@@ -3071,7 +3071,7 @@ export class IndependentLayers {
         0,
       );
       if (!old && this.project.layerStack.layers.length >= MAX_PROJECT_LAYERS)
-        throw new Error("Maximum of 8 independent layers reached.");
+        throw new Error(`Maximum of ${MAX_PROJECT_LAYERS} independent layers reached.`);
       const maxSamples = Math.min(
         MAX_PROJECT_VOXELS - otherSamples,
         Math.floor((256 * 1024 ** 2 - baseTracked) / 8),

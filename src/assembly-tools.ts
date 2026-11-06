@@ -7,6 +7,7 @@ import type { IndependentLayers } from "./independent-layers";
 import { LayerStack, newId, SculptProject } from "./layers";
 import { booleanRoots } from "./live-boolean";
 import { primitiveDimensions, validatePrimitive } from "./parametric-primitive";
+import { MAX_PROJECT_LAYERS } from "./project";
 import { encodeSTL } from "./stl-export";
 import { copyTransform, identityTransform, transformMatrix, type Vec3 } from "./transform";
 export type MateOptions = {
@@ -177,8 +178,10 @@ export async function generateConnector(
   [...o.positionMM, ...o.rotationRadians, ...(o.socketPositionMM ?? [])].forEach((v) => {
     finite(v);
   });
-  if (stack.layers.length + 2 > 8)
-    throw new Error("Connector needs room for two editable sources (8-layer limit).");
+  if (stack.layers.length + 2 > MAX_PROJECT_LAYERS)
+    throw new Error(
+      `Connector needs room for two editable sources (${MAX_PROJECT_LAYERS}-layer limit).`,
+    );
   const mm = layers.display.precision.millimetresPerUnit;
   const placement = identityTransform();
   placement.position = o.positionMM.map((v) => v / mm) as Vec3;

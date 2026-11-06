@@ -87,7 +87,7 @@ export function planBake(
   if (!visible.length) throw new Error("Show at least one source layer before baking.");
   if (layers.length >= MAX_PROJECT_LAYERS)
     throw new Error(
-      "Bake needs room for a new layer (maximum 8). Original layers are never deleted.",
+      `Bake needs room for a new layer (maximum ${MAX_PROJECT_LAYERS}). Original layers are never deleted.`,
     );
   if (!Number.isSafeInteger(Math.max(...layers.map((l) => l.order)) + 1))
     throw new Error(

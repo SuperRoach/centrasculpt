@@ -1,3 +1,19 @@
+### Easier agent connections and more room to build (2026-11-06)
+
+- Configure the local MCP connection once; new development sessions are discovered automatically. Browser approval and editing permission stay under your control.
+- Work with up to 16 layers, within the existing resource budgets. Native projects keep all layers; projects above eight layers require this newer app.
+- Agents now have dedicated Move, Rotate and Scale tools that preserve the rest of each object's pose and support Undo.
+
+### Clearer local agent approval (2026-11-06)
+
+- Local agent access now matches the editor, with a compact connection icon, an editing switch and a separate revoke action. Dismiss the panel and reopen it from the small corner icon. Connection errors offer more specific recovery steps.
+
+### Local agent access for developers — Phase 7.3 (2026-11-06)
+
+- Start with `npm run dev:agent` to connect Codex or Cursor to the open local editor. Approve the connection in the browser, then choose whether to allow editing.
+- Agents can inspect objects and dimensions, create or adjust shapes and enclosures, preview supported edits and Undo changes. Edits use the same modelling commands and history as the editor.
+- Normal startup and production builds keep agent access off. Access can be revoked at any time; setup and removal instructions are in the local MCP guide.
+
 ### A tidier enclosure panel (2026-11-06)
 
 - Hover over **Enclosure** for a short explanation. Size, wall and lid settings are grouped into compact rows, with a live outside-size summary.

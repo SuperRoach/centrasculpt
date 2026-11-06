@@ -3,6 +3,7 @@ import type { EditorToolState } from "./editor-tool-state";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerGroup, validateHierarchy } from "./layer-hierarchy";
 import { newId } from "./layers";
+import { MAX_PROJECT_LAYERS } from "./project";
 import type { MenuButton, MenuContent } from "./xr-menu-model";
 
 const PAGE = 4;
@@ -532,9 +533,9 @@ export class LayerPaletteModel {
       960,
       524,
       78,
-      busy || l.project.layerStack.layers.length >= 8,
-      l.project.layerStack.layers.length >= 8
-        ? "Maximum of 8 layers reached"
+      busy || l.project.layerStack.layers.length >= MAX_PROJECT_LAYERS,
+      l.project.layerStack.layers.length >= MAX_PROJECT_LAYERS
+        ? `Maximum of ${MAX_PROJECT_LAYERS} layers reached`
         : "Empty clay volume · 64³",
     );
     add(
@@ -544,7 +545,9 @@ export class LayerPaletteModel {
       960,
       524,
       78,
-      busy || l.project.layerStack.layers.length >= 8 || l.project.layerStack.layers.length < 2,
+      busy ||
+        l.project.layerStack.layers.length >= MAX_PROJECT_LAYERS ||
+        l.project.layerStack.layers.length < 2,
     );
     return {
       title: "LAYERS",

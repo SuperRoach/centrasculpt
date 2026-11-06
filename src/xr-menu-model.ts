@@ -475,7 +475,9 @@ export class XRMenuModel {
         78,
         false,
         this.tools.busy || full,
-        full ? "Maximum of 8 layers reached" : "Empty clay volume · 64³ · selects new layer",
+        full
+          ? `Maximum of ${MAX_PROJECT_LAYERS} layers reached`
+          : "Empty clay volume · 64³ · selects new layer",
       );
       add(
         "merge-layers",

@@ -2331,6 +2331,24 @@ enclosureControlsUI = enclosureUI(
   precisionPanel.parentElement!,
   () => loadingProject || ui.modalOpen || xrBlocked(),
 );
+if (__AGENT_ENABLED__) {
+  void import("./agent-browser").then(({ mountAgentAccess }) => {
+    mountAgentAccess(
+      () => layers,
+      () =>
+        loadingProject ||
+        ui.modalOpen ||
+        xrBlocked() ||
+        !!precision?.active ||
+        input.referenceEditing ||
+        shapeGhost.model.enabled,
+      () => {
+        syncView();
+        refresh();
+      },
+    );
+  });
+}
 measurementUI = precisionUI(
   precision,
   precisionPanel.parentElement!,
