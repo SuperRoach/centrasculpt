@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { tools } from "./agent-schemas.mjs";
+import { commandTools, tools } from "./agent-schemas.mjs";
 import { readSession } from "./agent-session.mjs";
 
 const sessionPath = process.argv[2];
@@ -34,6 +34,19 @@ for (const [name, tool] of Object.entries(tools)) {
           AbortSignal.any([extra.signal, AbortSignal.timeout(15000)]),
         );
         result = await response.json();
+        if (name === "get_capabilities" && result.ok)
+          Object.assign(result.value, {
+            tools: Object.keys(tools),
+            batchCommandTypes: Object.values(commandTools),
+            featureAvailability: {
+              booleans: true,
+              arrays: true,
+              hierarchy: true,
+              printableParts: true,
+              enclosures: true,
+              evaluatedDiagnostics: true,
+            },
+          });
       } catch (error) {
         result = {
           ok: false,

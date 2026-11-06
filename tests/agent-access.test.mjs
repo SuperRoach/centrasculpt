@@ -182,7 +182,10 @@ test("MCP schemas reject malformed/unsupported payloads and preserve explicit un
     },
     {
       name: "apply_changes",
-      args: { steps: [{ command: { type: "object.delete", id: "x" } }], expectedRevision: "r" },
+      args: {
+        steps: [{ command: { type: "connector.create", options: {} } }],
+        expectedRevision: "r",
+      },
     },
   ])
     assert.throws(() => validateCall(value));
@@ -439,5 +442,126 @@ test("bridge timeout and shutdown settle pending calls and refuse late results",
     );
   } finally {
     await bridge.close();
+  }
+});
+
+test("expanded schemas and executor preserve editable stacks, arrays, hierarchy and recipes", async () => {
+  const { layers, api } = createHeadlessEditor();
+  const run = agentExecutor(
+    layers,
+    () => true,
+    () => false,
+    () => {},
+  );
+  const call = async (name, fields = {}) => {
+    const args = validateCall({
+      name,
+      args: {
+        ...fields,
+        ...(tools[name].schema.shape.expectedRevision ? { expectedRevision: api.revision } : {}),
+      },
+    }).args;
+    const result = await run(job(name, args), signal());
+    assert(result.ok, JSON.stringify(result));
+    return result.value;
+  };
+  try {
+    const a = (await call("create_primitive", { unit: "mm", source })).results[0].id;
+    const b = (
+      await call("create_primitive", {
+        unit: "mm",
+        source: { kind: "cylinder", diameter: 8, height: 40 },
+      })
+    ).results[0].id;
+    await call("boolean_create", { id: a, sourceId: b, operation: "difference" });
+    await call("boolean_create", { id: a, sourceId: b, operation: "union" });
+    const stack = await call("get_booleans", { id: a });
+    await call("boolean_update", {
+      id: a,
+      modifiers: stack.reverse().map((m, i) => ({ ...m, enabled: i !== 0 })),
+    });
+    assert.equal((await call("get_booleans", { id: a }))[0].enabled, false);
+    await call("boolean_remove", { id: a, modifierId: stack[0].id });
+    for (const definition of [
+      {
+        kind: "linear",
+        enabled: true,
+        count: 3,
+        axis: [1, 0, 0],
+        spacingModelUnits: 30,
+        centered: false,
+        scalePerItem: 0.9,
+      },
+      {
+        kind: "radial",
+        enabled: true,
+        count: 3,
+        axis: [0, 1, 0],
+        pivot: [30, 0, 0],
+        totalAngleRadians: 2 * Math.PI,
+        angularOffsetRadians: 0,
+        orientation: "rotate",
+        scalePerItem: 0.9,
+      },
+    ]) {
+      await call("array_create", { id: b, unit: "mm", definition });
+      const current = await call("get_array", { id: b });
+      await call("array_update", { id: b, unit: "mm", definition: { ...current, count: 2 } });
+      assert.equal((await call("get_array", { id: b })).count, 2);
+      await call("array_remove", { id: b });
+    }
+    const group = (await call("group_create", { name: "Assembly" })).results[0].id;
+    await call("object_parent", { id: a, parentId: group });
+    await call("object_rename", { id: a, name: "Body" });
+    await call("object_duplicate", { id: b });
+    const cycle = await run(
+      job("object_parent", { id: group, parentId: a, expectedRevision: api.revision }),
+      signal(),
+    );
+    assert.equal(cycle.ok, false);
+    await call("part_define", { objectId: a, clearanceMM: 0.3 });
+    await call("part_assign", { objectId: b, partId: a });
+    const other = (await call("create_primitive", { unit: "mm", source })).results[0].id;
+    await call("part_define", { objectId: other, clearanceMM: 0.3 });
+    await call("part_mate", {
+      options: { moving: other, target: a, mode: "faces", axis: "x", offsetMM: 1 },
+    });
+    const fit = await call("inspect_parts", { partA: a, partB: other });
+    assert.equal(fit.fitAccuracy, "sampled_approximation");
+    assert.equal(fit.fit.nominalClearanceMM, 0.3);
+    await call("create_connector", {
+      options: {
+        pegPart: a,
+        socketPart: other,
+        pegDiameterMM: 4,
+        pegLengthMM: 5,
+        socketDiameterMM: 4.6,
+        socketDepthMM: 6,
+        radialClearanceMM: 0.3,
+        positionMM: [0, 0, 0],
+        rotationRadians: [0, 0, 0],
+      },
+    });
+    const parameters = {
+      units: "mm",
+      name: "Case",
+      innerWidthMm: 24,
+      innerDepthMm: 20,
+      innerHeightMm: 14,
+      wallThicknessMm: 3,
+      floorThicknessMm: 3,
+      cornerRadiusMm: 4,
+      lid: { type: "friction-fit", clearanceMm: 0.3, lipDepthMm: 4, thicknessMm: 3 },
+    };
+    const enclosure = await call("create_enclosure", { parameters });
+    const { base: baseId, lid: lidId } = enclosure.partIds;
+    await call("update_enclosure", {
+      baseId,
+      lidId,
+      parameters: { ...parameters, innerWidthMm: 26 },
+    });
+    assert(await call("inspect_enclosure", { baseId, lidId }));
+  } finally {
+    layers.dispose();
   }
 });

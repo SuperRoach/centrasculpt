@@ -144,13 +144,58 @@ try {
   const unmoved = await call("get_object", { id });
   assert((await call("undo", { expectedRevision: unmoved.revision })).ok);
   assert.equal((await call("scene_summary")).value.objects, before.value.objects);
+  const caps = await call("get_capabilities");
+  assert(caps.ok);
+  assert(caps.value.tools.includes("boolean_create"));
+  assert.equal(caps.value.limits.layers, 16);
+  const steps = [
+    {
+      as: "body",
+      command: {
+        type: "primitive.create",
+        unit: "mm",
+        source: { kind: "box", width: 30, height: 20, depth: 30 },
+      },
+    },
+    {
+      as: "hole",
+      command: {
+        type: "primitive.create",
+        unit: "mm",
+        source: { kind: "cylinder", diameter: 8, height: 30 },
+      },
+    },
+    {
+      command: { type: "boolean.create", id: "$body", sourceId: "$hole", operation: "difference" },
+    },
+    { as: "group", command: { type: "group.create", name: "MCP assembly" } },
+    { command: { type: "object.parent", id: "$body", parentId: "$group" } },
+    { command: { type: "object.rename", id: "$body", name: "Editable body" } },
+    { command: { type: "part.define", objectId: "$body", clearanceMM: 0.3 } },
+    { command: { type: "part.assign", objectId: "$hole", partId: "$body" } },
+  ];
+  const revision = (await call("scene_summary")).revision;
+  const preview = await call("dry_run_changes", { expectedRevision: revision, steps });
+  assert(preview.ok, JSON.stringify(preview));
+  assert.equal(preview.value.geometryValidation, "source_caches_only");
+  assert.equal((await call("scene_summary")).revision, revision);
+  const batch = await call("apply_changes", { expectedRevision: revision, steps });
+  assert(batch.ok, JSON.stringify(batch));
+  const body = batch.value.aliases.body;
+  assert.equal((await call("get_booleans", { id: body })).value[0].operation, "difference");
+  const diagnostics = await call("get_geometry_diagnostics", { id: body });
+  assert(diagnostics.ok, JSON.stringify(diagnostics));
+  assert.equal(diagnostics.value.topologyAccuracy, "exact_on_exported_mesh");
+  assert((await call("get_hierarchy")).ok);
+  assert((await call("undo", { expectedRevision: batch.revision })).ok);
+  assert.equal((await call("scene_summary")).value.objects, before.value.objects);
   await client.close();
   client = undefined;
   await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor();
   // Ordinary editor history remains functional after the MCP process exits.
   const redo = page.locator("#redo");
   await redo.click();
-  await page.getByText(object.value.name, { exact: true }).first().waitFor();
+  await page.getByText("Editable body", { exact: true }).first().waitFor();
   await page.screenshot({ path: `${output}/browser-disconnected-redo.png` });
   assert.deepEqual(pageErrors, []);
   await stop(server);

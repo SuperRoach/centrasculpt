@@ -1,5 +1,71 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 7.3.1 — expanded local MCP modelling — 2026-11-06
+
+### 1. What changed
+
+Expanded optional local MCP access to live Boolean stacks, linear/radial progressive
+arrays, hierarchy, flags, duplication/deletion, printable assembly metadata, mating,
+connectors, enclosure updates and source/evaluated geometry inspection. Added
+read-only capability discovery and `dry_run_changes`; safe Phase 7.0 command types
+now work in named-reference batches. Existing session discovery, approval controls,
+16-layer capacity and move/rotate/scale contracts remain intact. Working tree was
+clean at start. No commit, push or merge authorized or performed.
+
+### 2. Architectural decisions
+
+Strict Zod schemas map onto the existing ModellingAPI query, batch, execute,
+diagnostics and enclosure interfaces. The adapter owns no geometry, transaction,
+rollback or history implementation. All edits retain revision checks and engine
+admission. Explicit Bake commands are available; no implicit Bake. Connectors and
+recipes retain standalone atomic engine transactions. Part inspection uses the
+read-only bounded diagnostics interface, including optional evaluated primary-part
+STL topology. Tool names and supported command types in MCP capability results
+come from the registered schema catalog; shared layer/array constants supply those
+limits. Existing transport and production import boundaries were retained.
+
+### 3. Build and test results
+
+Initial baseline verification completed format/lint, strict TypeScript, build and
+all engine tests; localhost MCP tests were sandbox-blocked (EPERM). Unrestricted
+verification then passed all 1,584 existing tests. Expanded focused tests passed
+11/11, with the connector assertion also passing in the full suite. Actual Chromium plus official
+stdio MCP passed named-reference dry-run/commit, live Boolean subtraction, part
+assignment, evaluated STL diagnostics, single Undo, ordinary Redo after disconnect,
+approval/read-only/stale revision controls and normal/production isolation. Final `npm run check` passed Biome format/lint (348 files, 608 existing warnings,
+96 infos, no errors), strict TypeScript, production build and **1,585/1,585 tests
+across 94 files**, no failures/skips/cancellations. Diff whitespace check passed. Evidence logs:
+`work/phase-7-3-1/centra-baseline.log`, `centra-check.log`, `centra-focused.log`,
+`centra-browser.log`, `centra-final3-check.log`; browser screenshots remain
+under ignored `work/phase-7-3/`.
+
+### 4. Benchmarks and regressions
+
+No new performance benchmark or headset measurement. Inspection invokes existing
+bounded geometry/export work and can hit bridge deadlines or engine resource
+ceilings. Source-cache dry-runs remain distinct from evaluated sampled STL checks.
+The 16-layer limit does not increase memory or geometry budgets. Existing automated
+coverage retains cancellation rollback, editor replacement, source locks/visibility,
+stale revisions, authenticated loopback admission and capacity enforcement.
+
+### 5. Known limitations and blockers
+
+Physical printer fit and Quest acceptance remain unverified. No general wall
+thickness, self-intersection or material certification. Evaluated topology requires
+a printable part; bounds are conservative and fit uses a bounded SDF sampler.
+Radial radius is controlled through source offset/pivot; no separate array gap
+parameter exists. Group duplication, selection-only batch commands, connectors in
+batches and nested enclosure recipes remain unsupported. No Phase 7.2 constraints,
+WebMCP, remote networking, cloud services or automatic project-save tool.
+
+### 6. Next recommendations
+
+Review the published `tools/list` schemas and capability result in Codex/Cursor,
+exercise representative multi-part models and validate exported results in the
+intended slicer. Print clearance coupons before claiming fit. Run physical Quest
+acceptance separately. Keep this integration optional and development-only.
+
+
 2026-11-06 publication: user explicitly authorized committing and pushing Phase 7.3 local MCP access, approval-panel refinements, automatic session discovery, 16-layer capacity and Move/Rotate/Scale tools. This supersedes earlier no-commit statements for this publication. Physical Quest and printed-fit acceptance remain pending.
 
 ## Agent discovery, 16 layers and transform tools — 2026-11-06

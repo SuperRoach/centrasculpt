@@ -11,11 +11,95 @@ const source = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("cylinder"), diameter: positive, height: positive }).strict(),
 ]);
 const transform = z.object({ position: vector, rotation: vector, scale: vector }).strict();
-const command = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("primitive.create"), unit, source }).strict(),
-  z.object({ type: z.literal("primitive.update"), id, unit, source }).strict(),
-  z.object({ type: z.literal("object.transform"), id, unit, transform }).strict(),
-]);
+const name = z.string().trim().min(1).max(128);
+const operation = z.enum(["union", "difference", "intersect"]);
+const modifier = z.object({ id, sourceId: id, operation, enabled: z.boolean() }).strict();
+const arrayFields = {
+  enabled: z.boolean(),
+  count: number.int().min(1).max(16),
+  scalePerItem: positive.optional(),
+  axis: vector,
+};
+const arrayDefinition = (arrayId) =>
+  z.discriminatedUnion("kind", [
+    z
+      .object({
+        ...arrayFields,
+        id: arrayId,
+        kind: z.literal("linear"),
+        spacingModelUnits: positive,
+        centered: z.boolean(),
+      })
+      .strict(),
+    z
+      .object({
+        ...arrayFields,
+        id: arrayId,
+        kind: z.literal("radial"),
+        totalAngleRadians: number.positive().max(2 * Math.PI),
+        pivot: vector,
+        angularOffsetRadians: number,
+        orientation: z.enum(["rotate", "retain"]),
+      })
+      .strict(),
+  ]);
+const mate = z
+  .object({
+    moving: id,
+    target: id,
+    mode: z.enum(["centres", "faces", "axes"]),
+    axis: z.enum(["x", "y", "z"]),
+    offsetMM: number,
+    matchNormal: z.boolean().optional(),
+    movingNormal: vector.optional(),
+    targetNormal: vector.optional(),
+  })
+  .strict();
+const connector = z
+  .object({
+    pegPart: id,
+    socketPart: id,
+    pegDiameterMM: positive,
+    pegLengthMM: positive,
+    socketDiameterMM: positive,
+    socketDepthMM: positive,
+    radialClearanceMM: number.nonnegative(),
+    positionMM: vector,
+    socketPositionMM: vector.optional(),
+    rotationRadians: vector,
+  })
+  .strict();
+export const commandFields = {
+  "primitive.create": { unit, source },
+  "primitive.update": { id, unit, source },
+  "object.transform": { id, unit, transform },
+  "group.create": { name },
+  "object.parent": { id, parentId: id.nullable() },
+  "object.flag": { id, flag: z.enum(["visible", "locked"]), value: z.boolean() },
+  "object.duplicate": { id },
+  "object.delete": { id },
+  "object.rename": { id, name },
+  "boolean.create": { id, sourceId: id, operation },
+  "boolean.update": { id, modifiers: z.array(modifier).max(64) },
+  "boolean.remove": { id, modifierId: id },
+  "array.create": { id, unit, definition: arrayDefinition(id.optional()) },
+  "array.update": { id, unit, definition: arrayDefinition(id) },
+  "array.remove": { id },
+  "part.define": { objectId: id, clearanceMM: number.nonnegative().max(1000) },
+  "part.remove": { partId: id },
+  "part.assign": { objectId: id, partId: id.nullable() },
+  "part.clearance": { partId: id, clearanceMM: number.nonnegative().max(1000) },
+  "part.mate": { options: mate },
+  "primitive.bake": { id },
+  "boolean.bake": { id },
+  "array.bake": { id },
+};
+const command = z.discriminatedUnion(
+  "type",
+  Object.entries(commandFields).map(([type, fields]) =>
+    z.object({ type: z.literal(type), ...fields }).strict(),
+  ),
+);
 const revision = { expectedRevision: id };
 const batch = {
   ...revision,
@@ -132,13 +216,85 @@ export const tools = {
       "Undo the editor's most recent logical action (including user actions). Requires editing permission and current revision.",
   },
 };
+export const commandTools = Object.fromEntries(
+  Object.keys(commandFields).map((type) => [type.replace(".", "_"), type]),
+);
+export const queryTools = {
+  get_hierarchy: "scene.hierarchy",
+  list_booleans: "boolean.list",
+  get_booleans: "boolean.get",
+  list_arrays: "array.list",
+  get_array: "array.get",
+  list_parts: "part.list",
+  get_part: "part.get",
+  get_bounds: "geometry.bounds",
+  get_source_diagnostics: "geometry.diagnostics",
+  inspect_enclosure: "enclosure.inspect",
+  sample_enclosure: "enclosure.samples",
+};
+for (const [tool, type] of Object.entries(commandTools))
+  tools[tool] = {
+    schema: z.object({ ...revision, ...commandFields[type] }).strict(),
+    description: `Execute ${type} through the authoritative engine. Requires editing permission; explicit Bake only.`,
+  };
+for (const [tool, type] of Object.entries(queryTools))
+  tools[tool] = {
+    schema: z
+      .object(
+        type.startsWith("enclosure.")
+          ? { baseId: id, lidId: id }
+          : type === "part.get"
+            ? { partId: id }
+            : type.endsWith(".get") || type.startsWith("geometry.")
+              ? { id }
+              : {},
+      )
+      .strict(),
+    description: `Read ${type}; source bounds are conservative, not evaluated topology.`,
+  };
+tools.dry_run_changes = tools.preview_changes;
+tools.create_connector = {
+  schema: z.object({ ...revision, options: connector }).strict(),
+  description: "Generate editable peg/socket sources atomically; standalone only.",
+};
+tools.inspect_parts = {
+  schema: z.object({ ...revision, partA: id, partB: id }).strict(),
+  description:
+    "Read-only sampled fit inspection; requires an exact revision, not editing permission. Physical fit unknown.",
+};
+tools.get_geometry_diagnostics = {
+  schema: z
+    .object({ id, otherId: id.optional(), clearanceMM: number.nonnegative().max(1000).optional() })
+    .strict(),
+  description:
+    "Evaluate printable-part STL topology and optional sampled clearance; bounded, cancellable, physical fit unknown.",
+};
+tools.update_enclosure = {
+  schema: z
+    .object({ ...revision, baseId: id, lidId: id, parameters, dryRun: z.boolean().optional() })
+    .strict(),
+  description: "Update an existing enclosure through its authoritative recipe; standalone only.",
+};
+tools.get_capabilities = {
+  schema: z.object({}).strict(),
+  description: "Read implemented tools, command support, conventions and resource limitations.",
+};
 export const requestSchema = z
   .object({
     name: z.enum(Object.keys(tools)),
     args: z.record(z.string(), z.unknown()),
   })
   .strict();
-export const isWrite = (name) => !["scene_summary", "list_objects", "get_object"].includes(name);
+export const isWrite = (name) =>
+  ![
+    "scene_summary",
+    "list_objects",
+    "get_object",
+    "get_capabilities",
+    "get_geometry_diagnostics",
+    "inspect_parts",
+    ...Object.keys(queryTools),
+  ].includes(name);
 export function validateCall(value) {
   const call = requestSchema.parse(value);
   return { name: call.name, args: tools[call.name].schema.parse(call.args) };

@@ -108,9 +108,8 @@ exposes these three basic primitive schemas; rounded boxes remain available thro
 the existing enclosure API/UI. Translations are world coordinates in the explicit
 unit, rotations XYZ radians, scale dimensionless. These do not move the VR workspace.
 
-`steps` contains 1–64 commands: `primitive.create` with `unit/source`,
-`primitive.update` with `id/unit/source`, or `object.transform` with
-`id/unit/transform`. Each adds a `type` field matching that command name. Optional
+`steps` contains 1–64 safe Phase 7.0 commands (see the Phase 7.3.1 expansion below
+and `get_capabilities`). Each adds a `type` field matching its command name. Optional
 unique `as` identifiers match `[a-zA-Z][a-zA-Z0-9_]{0,63}`. An `id` may refer to an
 earlier result as `$alias`. Preview IDs are provisional; apply the original commands,
 not the preview IDs. Preview currently also requires editing permission because
@@ -224,3 +223,69 @@ session. An explicit session-file argument remains available for isolated tests.
 `CENTRA_AGENT_DISCOVERY_FILE` overrides the pointer location for isolated test servers.
 Only the latest agent-enabled server in a checkout is discovered; use explicit paths
 for simultaneous sessions. Cleanup from an older server cannot delete a newer pointer.
+
+## Phase 7.3.1 expanded modelling tools — 2026-11-06
+
+The strict schemas published by `tools/list` are authoritative. Added:
+
+- `get_capabilities`: implemented tool names, batch command types, availability,
+  units, limits and limitations. Read-only, but requires browser connection approval.
+- `boolean_create`, `boolean_update`, `boolean_remove`, `get_booleans`,
+  `list_booleans`. Update supplies the complete ordered modifier stack; change
+  `enabled` to disable/enable and reorder the array to reorder evaluation.
+- `array_create`, `array_update`, `array_remove`, `get_array`, `list_arrays`.
+  Definitions are the engine's linear/radial definitions, including `scalePerItem`.
+  Create may omit definition ID; update requires the returned ID. `unit` is required.
+  `spacingModelUnits` is a legacy field name interpreted in that explicit unit;
+  radial `pivot` uses the same unit. Radius is the source offset from that pivot.
+  Axis is a nonzero vector; angles are radians; count is 1–16. There is no separate
+  gap parameter in the authoritative array API. Linear spacing and radial angle/
+  pivot provide its supported spacing controls.
+- `group_create`, `object_parent`, `object_flag`, `object_duplicate`,
+  `object_delete`, `object_rename`, `get_hierarchy`. Null parent detaches while
+  preserving world pose. Group duplication is unsupported. Hierarchy snapshot
+  transforms use model units; object metadata has explicit mm transforms.
+- `part_define`, `part_assign`, `part_remove`, `part_clearance`, `part_mate`,
+  `get_part`, `list_parts`, `inspect_parts`, `create_connector`. Physical assembly
+  fields end in `MM`; normals and axes use model-world coordinates. Connector
+  options include optional independent `socketPositionMM`.
+- `inspect_enclosure`, `sample_enclosure`, `update_enclosure`; update takes
+  `baseId`, `lidId`, complete `parameters` and optional `dryRun`. Existing recipe
+  validation and generated-source preservation/refusals apply unchanged.
+- `get_bounds`, `get_source_diagnostics`, `get_geometry_diagnostics`. Source
+  diagnostics explicitly return `not_evaluated`. Evaluated diagnostics accept
+  `id`, optional `otherId` and `clearanceMM`; STL topology requires a marked part.
+  Topology describes the sampled exported mesh; clearance is approximate.
+- Explicit `primitive_bake`, `boolean_bake`, `array_bake` tools; no implicit Bake.
+
+Command tools use the command name with its dot replaced by underscore and accept
+its documented fields plus `expectedRevision`. Existing friendly primitive and
+transform tools remain compatible. `dry_run_changes` aliases `preview_changes`.
+Both and `apply_changes` now accept every safe command type in `commandFields` in
+`agent-schemas.mjs`, including grouping, flags, Booleans, arrays and assembly edits.
+Named references work in nested reference fields through the authoritative API.
+Results retain `changes.created/modified/deleted`, aliases and source-cache labels.
+Connector generation, part inspection, selection and enclosure recipes are excluded
+from batch schemas; connector and enclosure calls retain their own atomic engine
+transactions. No adapter transaction implementation was introduced.
+
+For example, append this to a batch after creating aliases `body` and `cutter`:
+
+```json
+{"command":{"type":"boolean.create","id":"$body","sourceId":"$cutter","operation":"difference"}}
+```
+
+Standalone equivalent (use actual IDs and the latest revision):
+
+```json
+{"expectedRevision":"LATEST_REVISION","id":"BODY_ID","sourceId":"CUTTER_ID","operation":"difference"}
+```
+
+Geometry queries and sampled inspection are read-only. `inspect_parts` additionally
+requires an exact revision; it uses the same bounded diagnostics path and can return
+primary-part topology too. Dry-runs still require editing permission. All mutations
+retain backend effective visibility/lock checks and explicit show/unlock recovery
+semantics. The bridge's existing authentication, origin checks, deadlines, size,
+cancellation and editor-lifetime controls are unchanged. Capability limits are
+admission ceilings, not guaranteed simultaneous capacity. No actual printer fit
+or physical Quest acceptance is claimed.

@@ -1,3 +1,9 @@
+### More modelling tools for local agents (2026-11-06)
+
+- Optional local MCP access now supports editable Booleans, arrays, groups, printable parts, connectors and enclosure updates.
+- Agents can inspect geometry, discover supported capabilities and preview or apply multi-command edits as one Undo action.
+- Browser approval and explicit editing permission remain required. Sampled geometry checks do not verify physical printer fit.
+
 ### Easier agent connections and more room to build (2026-11-06)
 
 - Configure the local MCP connection once; new development sessions are discovered automatically. Browser approval and editing permission stay under your control.
