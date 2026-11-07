@@ -90,9 +90,10 @@ Supported proposals are either a command batch or **one standalone enclosure rec
 It uses the same review/approval/apply lifecycle and the recipe's authoritative
 isolated dry-run and single transaction. Recipes cannot nest in command batches.
 Connectors remain standalone immediate Phase 7.3 tools, excluded from proposals.
-Separate operations require separate review; no cross-operation atomicity is claimed. Phase 7.2 associative face-relative
-cutouts, mounting patterns and constraints are still absent. Explicit Boolean cuts
-are supported; they do not follow resized faces automatically.
+Separate operations require separate review; no cross-operation atomicity is claimed. Phase 7.2 now adds standalone `feature-set` / `feature-remove` enclosure recipes
+for associative wall ports and explicit floor mounting patterns. These use the same
+immutable preview/approval/apply boundary. [Contracts and deferrals](PHASE_7_2_FEATURES.md).
+Arbitrary explicit Boolean cuts do not become associative automatically.
 
 Existing immediate write tools remain compatible and still require the write grant;
 the proposal tools provide additional per-plan consent. This is not an AI provider

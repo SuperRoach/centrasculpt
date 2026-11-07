@@ -1,3 +1,15 @@
+### Cleaner cutout and mounting controls (2026-11-07)
+
+- Feature fields are grouped into placement, position and size, with short wall names and a clear Preview / Apply sequence. Extra cutter reach is tucked under Advanced.
+- Mounting posts use numbered X/Z coordinate rows instead of a JSON text box. Round openings show a single diameter field.
+
+### Wall ports and floor mounting features that follow enclosure edits (2026-11-07)
+
+- Add rectangular or round wall openings in **Enclosure → Cutouts / Mounting Features**. Their named wall association follows enclosure size and wall/floor changes.
+- Add up to four mounting posts from your own centres and dimensions. Posts and bores remain editable live Boolean sources; no board specifications or printer tolerances are assumed.
+- Preview, apply or remove each feature with one Undo. Native saving, recovery, Project Library copies and optional local-agent proposals retain the association.
+- Attachment authoring is desktop-only; Quest can resize saved features with the existing enclosure workflow. Layer, sampling and export limits still apply; physical fit needs slicer and print checks.
+
 ### See what your local agent changed (2026-11-07)
 
 - Successful agent edits briefly outline the affected objects. Open the sparkle panel for recent changes and click **Show me** to find them.

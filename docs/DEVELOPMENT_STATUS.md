@@ -1,5 +1,167 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+2026-11-07 publication: user explicitly authorized committing and pushing Phase 7.2 associative enclosure features and the cutout/mounting editor cleanup. This supersedes the earlier no-commit notes for this work. Final cleanup check passed 1,620/1,620 tests; browser, hardware and physical-fit limits remain recorded below.
+
+## Cutout / mounting editor cleanup — 2026-11-07
+
+### 1. What changed
+
+Reorganised the desktop section as **Cutouts & mounting** with labelled feature/type
+pickers, short wall names, grouped placement/position/opening fields and shared mm
+headings. Round ports show one diameter. Mounting centres now use a one-to-four post
+count and numbered X/Z inputs. Advanced cutter reach is collapsed. Preview/Apply are
+primary; removal/cancellation are quiet contextual actions. Existing uncommitted
+Phase 7.2 work preserved; no commit/push/merge.
+
+### 2. Architectural decisions
+
+UI presentation stays over the existing staged feature definitions and transaction
+boundary. Numbered rows generate the same explicit centre tuples. A round diameter
+supplies equal width/height. Existing feature type is hidden while editing because
+shape/count conversions retain their existing backend refusal. The main enclosure
+Apply button is disabled during a feature preview, leaving one relevant Apply.
+
+### 3. Build and test results
+
+Final `npm run check` passed Biome, strict TS, production build and **1,620/1,620
+tests** (89.90 s test-command wall), including the final grid alignment refinement.
+Quick suite passed 21/21; diff whitespace passed. Evidence:
+`work/phase-7-2/ui-cleanup-final2.log`, `ui-cleanup-quick.log` and
+`cleaned-feature-editor.png`.
+
+### 4. Benchmarks and regressions
+
+No geometry or resource-limit change and no new performance benchmark. Actual in-app
+browser on a fresh normal-development port verified the new controls, short wall
+labels, round height removal, mounting count reducing visible coordinate rows,
+successful two-post staged preview, cancellation and unchanged Undo during staging.
+
+### 5. Known limitations and blockers
+
+Physical Quest/slicer acceptance remains pending as before. This is desktop authoring;
+the shared VR enclosure controls are unchanged. Compact sidebar content still scrolls.
+The older running dev tab can retain old UI code; open/reload the current build after
+saving work. No new physical-fit or source-preview topology claim.
+
+### 6. Next recommendations
+
+Use the numbered mounting rows and review Preview before Apply. Save before reloading
+an older editor tab. See [Phase 7.2 API/limits](PHASE_7_2_FEATURES.md) for coordinate
+semantics and unsupported geometry.
+
+
+## Phase 7.2 — associative wall cutouts and floor mounting features — 2026-11-07
+
+### 1. What changed
+
+Added named enclosure frames, rectangular/round wall openings and one-to-four explicit
+floor post/bore centres. Features retain mm intent and editable live Boolean sources,
+follow transformed Base roots, and reflow with confirmed enclosure width/depth/height,
+wall/floor updates. Base/Lid remain independent. Desktop Enclosure now exposes staged
+Cutouts / Mounting Features creation, complete-definition editing and removal with
+source outlines. Existing Quest enclosure resize/apply recomputes saved attachments;
+its subtitle identifies desktop authoring. Added optional local-only inspection,
+feature tools and separately approved standalone feature recipes. Initial active
+checkout `/Users/brettjames/development/vrappPOC` was clean; the supplied workspace
+folder itself is not a Git checkout. No commit, push or merge performed.
+
+### 2. Architectural decisions
+
+Intent lives in validated Base enclosure metadata, with source IDs and bounded typed
+definitions, not a parallel MCP graph. Attachment identity is its first source ID.
+Frames are named per part and introspectable in local mm and world pose/directions.
+Wall U is signed from horizontal centre, V above the inside floor; guaranteed
+through-wall cutters include explicit outward/inward margin and recompute depth.
+Posts use positive floor overlap and nested bore subtraction. Existing ordered
+modifiers, names, flags, hierarchy and primary recipe semantics are retained.
+Confirmed rebuild restores declared generated dimensions/poses; manual source edits
+remain editable until that rebuild. Unsupported/detached/baked feature structures
+refuse rather than silently losing association. Ordinary deletion of an associated
+source refuses; the feature removal transaction clears its intent and deletes all
+sources coherently. All preparation/publication uses the authoritative revision-
+guarded, abortable leased batch and rollback, with one logical Undo. Array-valued
+`sourceIds` now resolve aliases through that same boundary. No recipe nesting or
+mixed-operation atomicity is claimed. Native v19 only for attachment fields; missing
+fields in older formats mean no attachments. Recovery and Library duplicate share
+the codec; duplication explicitly remaps attachment source IDs. Strict native open
+rejects foreign/missing source membership and malformed anchors/definitions.
+
+### 3. Build and test results
+
+Baseline `npm run check`: Biome/types/build passed, **1,604 tests passed**, three
+existing 127.0.0.1 tests blocked by sandbox EPERM. After network permission, final
+`npm run check` passed Biome (existing non-fatal warnings retained), strict TS, Vite
+production build and **1,620/1,620 tests across 97 files**, zero failures/skips/
+cancellations (79.87 s test-command wall). Focused geometry **12/12** passed;
+focused enclosure/MCP run before added export cases **43/43** passed. Final full
+suite includes all added geometry, native/recovery and approved-proposal tests.
+Diff whitespace passed. Production JS scan found no `agent-browser`, `centra-agent`
+or `agent-access-status` markers; historical “Local agent access” release-note text
+is present and does not add networking.
+
+Standalone Playwright smoke could not launch host Chromium (SIGABRT/EPERM), even
+with permitted loopback. Supported in-app browser on isolated port 5202 verified
+ordinary enclosure staging/one Undo, discoverable feature fields/association,
+port preview with unchanged Undo, applied live cutter, and a depth resize retaining
+the front association. Actual read-only MCP inspection confirmed the resized cutter
+centre at Z=13.5 mm for the 30 mm outer depth and 3 mm wall. Official stdio SDK then
+verified a separately browser-approved feature edit, stable source ID, returned
+changed IDs and one Undo restoring U=0 from U=2. A first browser attempt correctly
+refused its 128 MiB dry-run source budget after accumulated display/history work;
+a delayed consent attempt expired without applying. A fresh fixture/consent completed.
+Final small UI styling/selection-retention and world-frame additions passed final
+host checks; the entire updated standalone browser script was not completed.
+Evidence: ignored `work/phase-7-2/` logs and `browser-association.png`.
+
+### 4. Benchmarks and regressions
+
+Deterministic SDF tests cover both opening shapes on all four walls, translated/
+rotated Base reflow, larger/smaller dimensions, wall/floor edits and through-wall
+samples. Tests retain identities, native bytes, order/disabled state, names and
+editable sources, one Undo/Redo, strict old tags/foreign anchors, actual recovery
+worker and remapped Library copies, cancellation/stale/locks/capacity refusals and
+four-post bores. Existing controller/handedness/Support/Cut regressions pass.
+No standalone frame-time/peak-RSS or physical Quest benchmark was run.
+
+Actual evaluated per-part **Fast STL** fixture (one wall cutout + two bored posts)
+passed: Base **200,518 triangles**, bounds **30 × 17 × 26 mm**, sampling **0.2 mm**;
+Lid **77,368 triangles**, bounds **30 × 7 × 26 mm**, sampling **0.5 mm**. Each has one
+component, zero boundary/non-manifold/inconsistent edges, zero degenerates/inverted
+components, unchanged native sources and no cutter shells. High-quality optimisation
+of this fixture hit the existing memory guard and refused; no limits were relaxed.
+The lid report correctly warns that 0.3 mm clearance is below its 0.5 mm spacing.
+
+### 5. Known limitations and blockers
+
+This is a narrow named-frame constraint implementation, not a general CAD solver.
+Centre offsets only; corner/floor/rim overlaps, rounded port corners, blind pockets,
+lid/floor ports, board-reference/edge constraints, automatic board data, underside/
+floating posts and feature type/count conversion are deferred. Mounting coordinates
+are supplied user data, never a confirmed board layout. Posts require zero floor
+offset, stop below the lip and have post bores rather than through-floor screw holes.
+Four posts use eight layers; a default enclosure plus starter and one cutout uses
+15 total. Sixteen layers, source/time/memory, 192³ and 600k STL triangle limits remain.
+Preview/history caches can prevent later dry-runs even below the layer cap. Native
+open refuses structurally invalid feature links; restore/Undo unsupported manual
+structural changes before saving/reflow. Ordinary source editing does not implicitly
+change the declared constraint. Source-cache/wire preview is not evaluated STL or
+physical-fit validation. Real slicer, printed clearances, material/shrinkage, board
+fit and Quest sustained interaction/performance remain unvalidated.
+
+### 6. Next recommendations
+
+Use the staged desktop workflow and save v19 projects with this app version. Inspect
+actual per-part STL reports, then slicer geometry and a printed tolerance coupon;
+0.3 mm intent may be below sampling resolution. Run the full updated Playwright
+smoke on a host that can launch Chromium and physical Quest acceptance for both
+hands/menu ownership/controller interruption. Extend VR attachment authoring and
+edge/board constraints only with explicit definitions and bounded geometry admission.
+Detailed API, frames, traversal/bore semantics and deferrals:
+[Phase 7.2 guide](PHASE_7_2_FEATURES.md). Optional adapter retains 127.0.0.1-only
+approval/write grants and per-plan consent; production remains free of agent
+networking. No cloud, WebMCP, Quest sync, QR pairing or commit/push authorization.
+
+
 ## Phase 7.4.1 — Show Me What Changed — 2026-11-07
 
 ### 1. What changed

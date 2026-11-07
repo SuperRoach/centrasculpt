@@ -72,3 +72,11 @@ Preserve **7.2 face-relative cutouts, board mounting patterns and named constrai
 The visible controls say **Enclosure**, **Name**, **Edit selected enclosure**, **Preview changes** and **Apply changes**. Opening the panel on a saved enclosure selects its existing base/lid pair automatically, including when a new project is loaded into an already open panel. Editing a field prepares a draft; Preview changes displays coloured source outlines at the new dimensions, including updates to independently moved/rotated parts. Apply changes rebuilds and displays the actual independent Boolean results with one Undo action.
 
 For an opening, make a box or cylinder, position it through the desired wall, select the enclosure Base or Lid, open **Live Boolean Shapes**, choose the cutter and **Subtract / Difference**. Retain the first cavity/lip operation and append the cut after it. Parent the cutter under the relevant part to move it with the part. Added operations, their IDs and cutters survive resizing, Undo/Redo and native persistence. Cutter placement remains explicit: resizing a wall does not move a port onto the new face automatically. Associative face-relative placement remains Phase 7.2.
+
+## Phase 7.2 follow-up — 2026-11-07
+
+[Associative wall cutouts and explicit floor mounting features](PHASE_7_2_FEATURES.md)
+now reflow with confirmed enclosure edits. Use the new desktop Cutouts / Mounting
+Features section; historical absolute cutters above are not automatically associated.
+Attachment projects write v19. Existing primary-source and extra-operation rebuild
+semantics remain; associated-source removal goes through the feature workflow.

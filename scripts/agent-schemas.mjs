@@ -94,6 +94,41 @@ const connector = z
     rotationRadians: vector,
   })
   .strict();
+const featureDefinition = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("cutout"),
+      name: z.string().trim().min(1).max(90),
+      anchor: z.enum([
+        "enclosure.base.wall.front",
+        "enclosure.base.wall.right",
+        "enclosure.base.wall.back",
+        "enclosure.base.wall.left",
+      ]),
+      shape: z.enum(["rectangle", "round"]),
+      uMm: number.min(-1000).max(1000),
+      vMm: number.min(-1000).max(1000),
+      widthMm: positive,
+      heightMm: positive,
+      insetMm: number.min(0).max(1000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("mounting"),
+      name: z.string().trim().min(1).max(90),
+      anchor: z.literal("enclosure.base.floor"),
+      centresMm: z
+        .array(z.tuple([number.min(-1000).max(1000), number.min(-1000).max(1000)]))
+        .min(1)
+        .max(4),
+      outerDiameterMm: positive,
+      boreDiameterMm: positive,
+      heightMm: positive,
+      floorOffsetMm: z.literal(0),
+    })
+    .strict(),
+]);
 export const commandFields = {
   "primitive.create": { unit, source },
   "primitive.update": { id, unit, source },
@@ -331,6 +366,18 @@ tools.propose_enclosure = {
       recipe: z.discriminatedUnion("type", [
         z.object({ type: z.literal("create"), parameters }).strict(),
         z.object({ type: z.literal("update"), baseId: id, lidId: id, parameters }).strict(),
+        z
+          .object({
+            type: z.literal("feature-set"),
+            baseId: id,
+            lidId: id,
+            definition: featureDefinition,
+            attachmentId: id.optional(),
+          })
+          .strict(),
+        z
+          .object({ type: z.literal("feature-remove"), baseId: id, lidId: id, attachmentId: id })
+          .strict(),
       ]),
     })
     .strict(),
@@ -345,6 +392,47 @@ for (const name of ["get_proposal", "cancel_proposal", "apply_approved_proposal"
         ? "Commit the exact browser-approved proposal once, as one Undo transaction. Cannot approve; stale plans reject."
         : "Inspect or cancel the current memory-only proposal.",
   };
+
+for (const name of ["enclosure_anchors", "list_enclosure_features", "get_enclosure_feature"])
+  tools[name] = {
+    schema: z
+      .object({
+        baseId: id,
+        lidId: id,
+        ...(name === "get_enclosure_feature" ? { attachmentId: id } : {}),
+      })
+      .strict(),
+    readOnly: true,
+    description:
+      "Inspect named enclosure frames or associative attachments. Local mm intent; physical fit unknown.",
+  };
+tools.set_enclosure_feature = {
+  schema: z
+    .object({
+      ...revision,
+      baseId: id,
+      lidId: id,
+      definition: featureDefinition,
+      attachmentId: id.optional(),
+      dryRun: z.boolean().optional(),
+    })
+    .strict(),
+  description:
+    "Create or update one associative wall cutout or explicit floor post pattern in one standalone atomic recipe. Omit attachmentId to create. Dry-run validates source caches only.",
+};
+tools.remove_enclosure_feature = {
+  schema: z
+    .object({
+      ...revision,
+      baseId: id,
+      lidId: id,
+      attachmentId: id,
+      dryRun: z.boolean().optional(),
+    })
+    .strict(),
+  description: "Remove an attachment and its generated sources atomically. Standalone only.",
+};
+
 export const requestSchema = z
   .object({
     name: z.enum(Object.keys(tools)),
@@ -355,6 +443,9 @@ export const isWrite = (name) =>
   ![
     "get_proposal",
     "cancel_proposal",
+    "enclosure_anchors",
+    "list_enclosure_features",
+    "get_enclosure_feature",
     "scene_summary",
     "list_objects",
     "get_object",

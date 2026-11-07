@@ -1,6 +1,7 @@
-import { Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
+import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
 import { partOwner } from "./assembly";
 import { previewAssembly } from "./assembly-tools";
+import { type FeatureDefinition, featurePlan, featureWorldPose } from "./enclosure-features";
 import { DEFAULT_ENCLOSURE, type EnclosureParameters, enclosurePlan } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI } from "./modelling-api";
@@ -38,6 +39,25 @@ export class EnclosureControls {
     editor: IndependentLayers;
     pair?: { base: string; lid: string };
   };
+  private featureStage?: {
+    revision: string;
+    editor: IndependentLayers;
+    pair: { base: string; lid: string };
+    definition?: FeatureDefinition;
+    attachmentId?: string;
+  };
+  get featureReady() {
+    this.sync();
+    return !!this.featureStage && this.featureStage.revision === this.layers().modellingRevision;
+  }
+  get selectedPair() {
+    this.sync();
+    return this.pair;
+  }
+  get attachments() {
+    if (!this.pair) return [];
+    return new ModellingAPI(this.layers()).enclosure.features(this.pair.base, this.pair.lid);
+  }
   readonly preview = new Group();
   constructor(
     readonly layers: () => IndependentLayers,
@@ -48,7 +68,10 @@ export class EnclosureControls {
   }
   get ready() {
     this.sync();
-    return !!this.staged && this.staged.revision === this.layers().modellingRevision;
+    return (
+      (!!this.staged && this.staged.revision === this.layers().modellingRevision) ||
+      (!!this.featureStage && this.featureStage.revision === this.layers().modellingRevision)
+    );
   }
   get mode() {
     return this.pair ? "Update" : "Create";
@@ -74,10 +97,15 @@ export class EnclosureControls {
       this.parameters = structuredClone(DEFAULT_ENCLOSURE);
     }
     this.project = p;
-    if (this.staged && this.staged.revision !== this.layers().modellingRevision) this.clearStage();
+    if (
+      (this.staged && this.staged.revision !== this.layers().modellingRevision) ||
+      (this.featureStage && this.featureStage.revision !== this.layers().modellingRevision)
+    )
+      this.clearStage();
   }
   private clearStage() {
     this.staged = undefined;
+    this.featureStage = undefined;
     this.preview.removeFromParent();
     for (const child of [...this.preview.children]) {
       const mesh = child as Mesh;
@@ -193,6 +221,9 @@ export class EnclosureControls {
         mesh.raycast = () => {};
         this.preview.add(mesh);
       }
+      if (pair)
+        for (const feature of result.value.features)
+          this.featureOutlines(feature.definition, parameters, editor, pair.base);
       editor.group.add(this.preview);
       this.feedback = `Preview: ${plan.outerDimensionsMm.join(" × ")} mm outside. Inside ${parameters.innerWidthMm} wide × ${parameters.innerDepthMm} deep × ${parameters.innerHeightMm} high. Lid gap ${parameters.lid.clearanceMm} mm per side. The coloured lines show the new size. Choose ${pair ? "Apply changes" : "Create enclosure"} to keep it.`;
     } catch (e) {
@@ -202,8 +233,117 @@ export class EnclosureControls {
       this.changed();
     }
   }
+  private featureOutlines(
+    definition: FeatureDefinition,
+    p: EnclosureParameters,
+    editor: IndependentLayers,
+    base: string,
+  ) {
+    const mm = editor.display.precision.millimetresPerUnit;
+    for (const def of featurePlan(p, definition)) {
+      const s = def.source;
+      const geometry =
+        s.kind === "box"
+          ? roundedBoxGeometry(s)
+          : s.kind === "cylinder"
+            ? new CylinderGeometry(s.diameter / 2, s.diameter / 2, s.height, 32)
+            : undefined;
+      if (!geometry) continue;
+      const mesh = new Mesh(
+        geometry,
+        new MeshBasicMaterial({
+          color: def.operation === "difference" ? 0xffbd70 : 0x70d5ba,
+          wireframe: true,
+          depthTest: false,
+          transparent: true,
+          opacity: 0.65,
+        }),
+      );
+      const pose = featureWorldPose(def, editor.project.layerStack.get(base).transform, mm);
+      mesh.position.set(...(pose.position.map((v) => v / mm) as [number, number, number]));
+      mesh.rotation.set(...pose.rotation, "XYZ");
+      mesh.scale.set(...(pose.scale.map((v) => v / mm) as [number, number, number]));
+      mesh.raycast = () => {};
+      this.preview.add(mesh);
+    }
+  }
+  async stageFeature(definition?: FeatureDefinition, attachmentId?: string) {
+    if (this.pending) return;
+    this.sync();
+    this.clearStage();
+    if (!this.pair) throw new Error("Edit an existing enclosure first.");
+    const editor = this.layers(),
+      api = new ModellingAPI(editor),
+      pair = { ...this.pair },
+      revision = api.revision;
+    this.pending = true;
+    this.abort = new AbortController();
+    this.feedback = "Preparing attachment preview…";
+    try {
+      const options = { expectedRevision: revision, dryRun: true, signal: this.abort.signal };
+      const result = definition
+        ? await api.enclosure.setFeature(pair.base, pair.lid, definition, options, attachmentId)
+        : await api.enclosure.removeFeature(pair.base, pair.lid, attachmentId ?? "", options);
+      if (!result.ok) throw new Error(result.error.message);
+      if (this.abort.signal.aborted || this.layers() !== editor || api.revision !== revision)
+        throw new Error("Preview cancelled or scene changed.");
+      this.featureStage = {
+        revision,
+        editor,
+        pair,
+        definition: definition ? structuredClone(definition) : undefined,
+        attachmentId,
+      };
+      if (definition) {
+        const p = api.enclosure.inspect(pair.base, pair.lid).parameters;
+        this.featureOutlines(definition, p, editor, pair.base);
+        editor.group.add(this.preview);
+      }
+      this.feedback = definition
+        ? `Preview ${definition.name} · ${definition.anchor}. Source outlines only; physical fit unknown. Apply changes to keep it.`
+        : "Preview removal: attachment sources will be deleted. Apply changes to keep it.";
+    } catch (e) {
+      this.feedback = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.pending = false;
+      this.changed();
+    }
+  }
   async confirm() {
     if (this.pending || !this.ready) return;
+    if (this.featureStage) {
+      const staged = this.featureStage;
+      this.clearStage();
+      this.pending = true;
+      this.abort = new AbortController();
+      try {
+        const api = new ModellingAPI(staged.editor),
+          options = { expectedRevision: staged.revision, signal: this.abort.signal };
+        const result = staged.definition
+          ? await api.enclosure.setFeature(
+              staged.pair.base,
+              staged.pair.lid,
+              staged.definition,
+              options,
+              staged.attachmentId,
+            )
+          : await api.enclosure.removeFeature(
+              staged.pair.base,
+              staged.pair.lid,
+              staged.attachmentId ?? "",
+              options,
+            );
+        if (!result.ok) throw new Error(result.error.message);
+        this.feedback = "Attachment applied. One Undo restores the previous model.";
+        await previewAssembly(staged.editor, this.abort.signal);
+      } catch (e) {
+        this.feedback = e instanceof Error ? e.message : String(e);
+      } finally {
+        this.pending = false;
+        this.changed();
+      }
+      return;
+    }
     const staged = this.staged!;
     this.clearStage();
     const api = new ModellingAPI(staged.editor);
@@ -279,7 +419,7 @@ export class EnclosureControls {
         ? `${tool.connectionId}:${tool.handedness}`
         : "";
     if (!current || (this.controllerOwner && current !== this.controllerOwner)) {
-      if (this.staged || this.pending) {
+      if (this.staged || this.featureStage || this.pending) {
         this.cancel();
         this.feedback = "Controller changed or tracking lost. Preview your changes again.";
         this.changed();
@@ -324,7 +464,7 @@ export class EnclosureControls {
       title: "ENCLOSURE",
       subtitle: this.field
         ? `${ENCLOSURE_FIELDS[this.field]} · millimetres`
-        : "Friction-fit lip · separate Base / Lid · no screws",
+        : "Separate Base / Lid · attachments follow resize · edit attachments on desktop",
       buttons,
       labels: [],
       footer: this.feedback,

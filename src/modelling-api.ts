@@ -454,6 +454,7 @@ export class ModellingAPI {
         "objectId",
         "parentId",
         "sourceId",
+        "sourceIds",
         "partId",
         "moving",
         "target",
@@ -466,7 +467,7 @@ export class ModellingAPI {
             ? aliases[value.slice(1)]
             : this.fail("not_found", `Unknown prior result ${value}.`);
         }
-        if (Array.isArray(value)) return value.map((v) => resolve(v));
+        if (Array.isArray(value)) return value.map((v) => resolve(v, key));
         if (value && typeof value === "object")
           return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolve(v, k)]));
         return value;

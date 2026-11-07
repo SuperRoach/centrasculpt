@@ -2,8 +2,8 @@
 
 Development proof of concept, 2026-11-06. Uses the official `@modelcontextprotocol/sdk`
 stdio server and Zod schemas. Phase 7.0 `ModellingAPI` and Phase 7.1 enclosure recipes
-remain the only modelling implementation. Phase 7.2 face-relative cutouts, mounting
-patterns and named constraints are not implemented.
+remain the only modelling implementation. Phase 7.2 now supplies bounded associative wall cutouts, explicit floor mounting
+patterns and named frames; see [feature tools and limits](PHASE_7_2_FEATURES.md).
 
 ## Start and connect
 
@@ -381,3 +381,11 @@ never actual access or proposal consent. Unchecking removes it; blocked storage
 falls back to read-only defaults. This preference is an exception to earlier
 statements that no agent UI preference is stored; native/recovery data are unchanged.
 Full guide: [Phase 7.4.1 feedback](PHASE_7_4_1_AGENT_FEEDBACK.md).
+
+## Phase 7.2 attachment tools — 2026-11-07
+
+Read-only `enclosure_anchors`, `list_enclosure_features`, `get_enclosure_feature`
+and standalone `set_enclosure_feature` / `remove_enclosure_feature` use the shared
+typed recipe. `propose_enclosure` accepts `feature-set` / `feature-remove` recipes
+with separate browser consent. Strict schemas, grants and loopback policy remain.
+Recipes stay outside mixed command batches. [Exact contracts](PHASE_7_2_FEATURES.md).

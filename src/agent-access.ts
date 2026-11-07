@@ -5,6 +5,7 @@ import {
   agentTransaction,
   describeAgentResult,
 } from "./agent-activity";
+import type { FeatureDefinition } from "./enclosure-features";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
 import {
@@ -43,7 +44,15 @@ export type AgentProposal = {
   steps: ModellingStep[];
   recipe?:
     | { type: "create"; parameters: EnclosureParameters }
-    | { type: "update"; baseId: string; lidId: string; parameters: EnclosureParameters };
+    | { type: "update"; baseId: string; lidId: string; parameters: EnclosureParameters }
+    | {
+        type: "feature-set";
+        baseId: string;
+        lidId: string;
+        definition: FeatureDefinition;
+        attachmentId?: string;
+      }
+    | { type: "feature-remove"; baseId: string; lidId: string; attachmentId: string };
   before: ObjectMetadata[];
   preview?: { ok: boolean; value?: BatchReport; [key: string]: unknown };
   result?: unknown;
@@ -53,6 +62,16 @@ function executeProposal(api: ModellingAPI, proposal: AgentProposal, options: Ba
   if (recipe?.type === "create") return api.enclosure.create(recipe.parameters, options);
   if (recipe?.type === "update")
     return api.enclosure.update(recipe.baseId, recipe.lidId, recipe.parameters, options);
+  if (recipe?.type === "feature-set")
+    return api.enclosure.setFeature(
+      recipe.baseId,
+      recipe.lidId,
+      recipe.definition,
+      options,
+      recipe.attachmentId,
+    );
+  if (recipe?.type === "feature-remove")
+    return api.enclosure.removeFeature(recipe.baseId, recipe.lidId, recipe.attachmentId, options);
   return api.batch(proposal.steps, options);
 }
 /** Memory-only, browser-owned consent. Never exposed as an MCP approval tool. */
@@ -287,6 +306,8 @@ export function agentExecutor(
             "part.inspect",
             "enclosure.create",
             "enclosure.update",
+            "enclosure.feature.set",
+            "enclosure.feature.remove",
             "geometry.diagnostics",
           ],
           limitations: [
@@ -294,10 +315,28 @@ export function agentExecutor(
             "Dry-runs validate source caches only.",
             "STL topology requires a printable part and describes the sampled mesh; clearance is approximate, physical fit unknown.",
             "Resource estimates exclude some JS/GPU/process peaks; 16 layers do not guarantee admission.",
-            "No Phase 7.2 face-relative constraints, remote access or project saves.",
+            "Attachments are standalone recipe transactions; no remote access or project saves.",
           ],
         },
       };
+    if (
+      ["enclosure_anchors", "list_enclosure_features", "get_enclosure_feature"].includes(job.name)
+    ) {
+      try {
+        const inspected = api.enclosure.inspect(a.baseId as string, a.lidId as string);
+        const value =
+          job.name === "enclosure_anchors"
+            ? inspected.anchors
+            : job.name === "get_enclosure_feature"
+              ? inspected.features.find((f) => f.sourceIds[0] === a.attachmentId)
+              : inspected.features;
+        return value === undefined
+          ? error("not_found", "Unknown attachment ID.")
+          : { ok: true, revision: api.revision, value };
+      } catch (e) {
+        return error("invalid_input", e instanceof Error ? e.message : "Invalid enclosure.");
+      }
+    }
     if (!canEdit()) return error("permission_denied", "Enable editing in Local agent access.");
     const options = { expectedRevision: a.expectedRevision as string, signal };
     if (options.expectedRevision !== api.revision)
@@ -396,6 +435,23 @@ export function agentExecutor(
           ...options,
           dryRun: job.name !== "apply_changes",
         });
+        break;
+      case "set_enclosure_feature":
+        result = await api.enclosure.setFeature(
+          a.baseId as string,
+          a.lidId as string,
+          a.definition as FeatureDefinition,
+          { ...options, dryRun: a.dryRun === true },
+          a.attachmentId as string | undefined,
+        );
+        break;
+      case "remove_enclosure_feature":
+        result = await api.enclosure.removeFeature(
+          a.baseId as string,
+          a.lidId as string,
+          a.attachmentId as string,
+          { ...options, dryRun: a.dryRun === true },
+        );
         break;
       case "update_enclosure":
         result = await api.enclosure.update(

@@ -3,6 +3,7 @@ import {
   type EnclosureControls,
   type EnclosureField,
 } from "./enclosure-controls";
+import { enclosureFeatureUI } from "./enclosure-feature-ui";
 export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: () => boolean) {
   const panel = document.createElement("details"),
     title = document.createElement("summary");
@@ -164,6 +165,7 @@ export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: (
   cancel.className = "enclosure-cancel";
   status.className = "enclosure-status";
   body.append(status);
+  const features = enclosureFeatureUI(tools, body, () => sync());
   function sync() {
     tools.sync();
     if (displayedProject !== tools.layers().project) {
@@ -183,7 +185,7 @@ export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: (
       inputs.some((i) => !i.value.trim() || !Number.isFinite(Number(i.value))) ||
       !name.value.trim();
     stage.disabled ||= invalid;
-    confirm.disabled = busy() || tools.pending || !tools.ready || invalid;
+    confirm.disabled = busy() || tools.pending || !tools.ready || tools.featureReady || invalid;
     confirm.textContent = tools.mode === "Update" ? "Apply changes" : "Create enclosure";
     const ready = tools.ready;
     newMode.setAttribute("aria-pressed", String(tools.mode === "Create"));
@@ -201,6 +203,7 @@ export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: (
       ? `${outer.map((v) => v.toLocaleString(undefined, { maximumFractionDigits: 2 })).join(" × ")} mm`
       : "—";
     status.textContent = tools.feedback;
+    features.sync();
   }
   panel.ontoggle = () => {
     if (panel.open) tools.openSelected();

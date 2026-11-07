@@ -459,3 +459,24 @@ header .brand { border: 0; padding: 4px 0; border-radius: 5px; }
 .enclosure-panel .enclosure-cancel{justify-self:start;margin:-6px 0 0;padding:0;border:0;background:transparent;color:#6d7b62;font-size:10px;min-height:24px;text-decoration:underline;text-underline-offset:3px}
 .enclosure-panel .enclosure-status{margin:0;font-size:10px;line-height:1.55;color:#77826d}
 .enclosure-panel button:focus-visible,.enclosure-panel input:focus-visible,.enclosure-panel summary:focus-visible{outline:2px solid #80966d;outline-offset:3px}
+
+/* Feature authoring uses the same compact field and action rhythm as Enclosure. */
+.enclosure-feature-panel{min-width:0;font-size:11px;border-top:1px solid #dce2d5;padding-top:12px}
+.enclosure-feature-body{display:grid;gap:12px;padding-top:12px;min-width:0}
+.enclosure-feature-body .feature-hint{margin:0;color:#78856d;font-size:10px;line-height:1.5}
+.enclosure-feature-body label{display:grid;grid-template-columns:minmax(0,1fr);justify-content:stretch;align-items:start;gap:6px;min-width:0;margin:0;color:#697660;font-size:10px}
+.enclosure-feature-body .feature-picker{display:grid;gap:10px}
+.enclosure-feature-panel .enclosure-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.enclosure-feature-body select,.enclosure-feature-body input[type=text]{width:100%;min-width:0;max-width:100%;box-sizing:border-box;margin:0;padding:8px 7px;border:1px solid #cfd8c5;border-radius:7px;background:#fff;font-size:12px}
+.enclosure-feature-body .enclosure-section>.feature-hint{margin-top:8px}
+.feature-centres{display:grid;gap:7px;margin-top:10px}
+.feature-centre-row{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;color:#78856d;font-size:10px}
+.enclosure-feature-body .feature-centre-row label>span{display:none}
+.enclosure-feature-body .feature-centre-row input{width:100%;min-width:0;margin:0;padding:8px 6px;border:1px solid #cfd8c5;border-radius:7px;background:#fff;font-size:12px;font-variant-numeric:tabular-nums}
+.feature-advanced>summary{font-size:10px;color:#78856d}
+.feature-advanced[open]>.enclosure-fields{margin:10px 0 7px}
+.feature-secondary{display:flex;justify-content:space-between;gap:10px}
+.enclosure-panel .feature-secondary button{padding:0;margin:0;border:0;background:transparent;min-height:24px;font-size:10px;color:#6d7b62;text-decoration:underline;text-underline-offset:3px}
+.enclosure-panel .feature-secondary .feature-remove{color:#986a5a}
+.feature-association{padding-top:8px;border-top:1px solid #e3e8dd}
+.enclosure-feature-body select:focus-visible{outline:2px solid #80966d;outline-offset:3px}

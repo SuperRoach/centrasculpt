@@ -286,6 +286,98 @@ try {
   assert((await call("get_hierarchy")).ok);
   assert((await call("undo", { expectedRevision: batch.revision })).ok);
   assert.equal((await call("scene_summary")).value.objects, before.value.objects);
+  // Phase 7.2: actual staged desktop authoring, native API reflow, approved attachment edit.
+  const enclosureParameters = {
+    units: "mm",
+    name: "Associative enclosure",
+    innerWidthMm: 24,
+    innerDepthMm: 20,
+    innerHeightMm: 14,
+    wallThicknessMm: 3,
+    floorThicknessMm: 3,
+    cornerRadiusMm: 4,
+    lid: { type: "friction-fit", clearanceMm: 0.3, lipDepthMm: 4, thicknessMm: 3 },
+  };
+  const enclosure = await call("create_enclosure", {
+    expectedRevision: (await call("scene_summary")).revision,
+    parameters: enclosureParameters,
+  });
+  assert(enclosure.ok, JSON.stringify(enclosure));
+  const pair = enclosure.value.partIds;
+  await page.locator(".enclosure-panel > summary").click();
+  await page.getByRole("button", { name: "Edit selected enclosure", exact: true }).click();
+  await page.getByText("Cutouts & mounting", { exact: true }).click();
+  await page.getByLabel("U from wall centre (mm)", { exact: true }).fill("1");
+  const beforeFeature = (await call("scene_summary")).revision;
+  await page.getByRole("button", { name: "Preview attachment", exact: true }).click();
+  await page.getByRole("button", { name: "Apply attachment", exact: true }).waitFor();
+  await waitUntil(
+    async () =>
+      await page.getByRole("button", { name: "Apply attachment", exact: true }).isEnabled(),
+    "Attachment preview not ready",
+  );
+  assert.equal((await call("scene_summary")).revision, beforeFeature);
+  await page.screenshot({ path: `${output}/browser-associative-preview.png` });
+  await page.getByRole("button", { name: "Apply attachment", exact: true }).click();
+  await waitUntil(async () => {
+    const r = await call("list_enclosure_features", { baseId: pair.base, lidId: pair.lid });
+    return r.ok && r.value.length === 1;
+  }, "Attachment did not commit");
+  await waitUntil(
+    async () => !(await call("scene_summary")).value?.busy,
+    "Attachment preview still busy",
+  );
+  const attachment = (await call("list_enclosure_features", { baseId: pair.base, lidId: pair.lid }))
+    .value[0];
+  const resized = await call("update_enclosure", {
+    expectedRevision: (await call("scene_summary")).revision,
+    baseId: pair.base,
+    lidId: pair.lid,
+    parameters: {
+      ...enclosureParameters,
+      innerDepthMm: 24,
+      wallThicknessMm: 3.5,
+      cornerRadiusMm: 4,
+    },
+  });
+  assert(resized.ok, JSON.stringify(resized));
+  const proposal = await call("propose_enclosure", {
+    expectedRevision: resized.revision,
+    title: "Move associated port",
+    description: "Keep the front wall association and move U to 2 mm.",
+    recipe: {
+      type: "feature-set",
+      baseId: pair.base,
+      lidId: pair.lid,
+      attachmentId: attachment.sourceIds[0],
+      definition: { ...attachment.definition, uMm: 2 },
+    },
+  });
+  if (proposal.ok) {
+    await page
+      .getByRole("button", { name: "Open local agent access", exact: true })
+      .click()
+      .catch(() => {});
+    await page.getByRole("button", { name: "Approve this exact plan", exact: true }).click();
+    const portApplied = await call("apply_approved_proposal", { proposalId: proposal.value.id });
+    assert(portApplied.ok, JSON.stringify(portApplied));
+    assert.equal(
+      (
+        await call("get_enclosure_feature", {
+          baseId: pair.base,
+          lidId: pair.lid,
+          attachmentId: attachment.sourceIds[0],
+        })
+      ).value.definition.uMm,
+      2,
+    );
+  } else {
+    assert.match(proposal.error.message, /128 MiB source budget/);
+    assert.equal((await call("scene_summary")).revision, resized.revision);
+  }
+  for (let i = 0; i < (proposal.ok ? 4 : 3); i++)
+    assert((await call("undo", { expectedRevision: (await call("scene_summary")).revision })).ok);
+  assert.equal((await call("scene_summary")).value.objects, before.value.objects);
   await client.close();
   client = undefined;
   await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor();
@@ -293,7 +385,7 @@ try {
   // Ordinary editor history remains functional after the MCP process exits.
   const redo = page.locator("#redo");
   await redo.click();
-  await page.getByText("Editable body", { exact: true }).first().waitFor();
+  await page.getByText("Associative enclosure Base", { exact: true }).first().waitFor();
   await page.screenshot({ path: `${output}/browser-disconnected-redo.png` });
   assert.deepEqual(pageErrors, []);
   await stop(server);

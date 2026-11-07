@@ -27,6 +27,8 @@ for (const name of [
   "agent-feedback",
   "agent-preferences",
   "enclosure-recipe",
+  "enclosure-features",
+  "enclosure-feature-ui",
   "enclosure-controls",
   "enclosure-ui",
   "object-array",

@@ -221,7 +221,7 @@ export function mountAgentAccess(
     if (p) {
       if (p.recipe) {
         const item = document.createElement("li");
-        item.textContent = `${p.recipe.type} enclosure · ${p.recipe.parameters.name} · standalone recipe transaction`;
+        item.textContent = `${p.recipe.type} enclosure · ${"parameters" in p.recipe ? p.recipe.parameters.name : "definition" in p.recipe ? p.recipe.definition.name : p.recipe.attachmentId} · standalone recipe transaction`;
         operations.append(item);
       }
       for (const step of p.steps) {

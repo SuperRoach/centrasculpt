@@ -970,3 +970,76 @@ test("agents create and stretch ellipsoids without affine scale, with preview/co
     layers.dispose();
   }
 });
+
+test("associative attachment schemas, read grants and separately approved recipe proposals use the authoritative transaction", async () => {
+  const { DEFAULT_ENCLOSURE } = await import("../work/test-build/enclosure-recipe.mjs");
+  const { isWrite } = await import("../scripts/agent-schemas.mjs");
+  const { layers, api } = createHeadlessEditor();
+  let editing = true;
+  const proposals = new AgentProposals();
+  const run = agentExecutor(
+    layers,
+    () => editing,
+    () => false,
+    () => {},
+    proposals,
+  );
+  const call = (name, args = {}) => run(job(name, args), signal());
+  try {
+    const created = await api.enclosure.create(DEFAULT_ENCLOSURE, {
+      expectedRevision: api.revision,
+    });
+    assert(created.ok);
+    const { base, lid } = created.value.partIds,
+      definition = {
+        kind: "cutout",
+        name: "Port",
+        anchor: "enclosure.base.wall.right",
+        shape: "round",
+        uMm: 0,
+        vMm: 5,
+        widthMm: 4,
+        heightMm: 4,
+        insetMm: 0,
+      };
+    const args = { baseId: base, lidId: lid, definition, expectedRevision: api.revision };
+    assert(validateCall({ name: "set_enclosure_feature", args }));
+    assert.throws(() =>
+      validateCall({
+        name: "set_enclosure_feature",
+        args: { ...args, definition: { ...definition, extra: 1 } },
+      }),
+    );
+    assert.equal(isWrite("enclosure_anchors"), false);
+    assert.equal(isWrite("list_enclosure_features"), false);
+    assert.equal(isWrite("set_enclosure_feature"), true);
+    editing = false;
+    assert((await call("enclosure_anchors", { baseId: base, lidId: lid })).ok);
+    assert.equal((await call("set_enclosure_feature", args)).error.code, "permission_denied");
+    editing = true;
+    const before = saveSculptProject(layers.project),
+      revision = api.revision;
+    const staged = await call("propose_enclosure", {
+      expectedRevision: revision,
+      title: "Add wall port",
+      description: "Named right wall opening",
+      recipe: { type: "feature-set", baseId: base, lidId: lid, definition },
+    });
+    assert(staged.ok, JSON.stringify(staged));
+    assert.equal(api.revision, revision);
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    const proposalId = staged.value.id;
+    assert.equal((await call("apply_approved_proposal", { proposalId })).ok, false);
+    assert(proposals.approve(layers, api.revision));
+    const applied = await call("apply_approved_proposal", { proposalId });
+    assert(applied.ok, JSON.stringify(applied));
+    const features = await call("list_enclosure_features", { baseId: base, lidId: lid });
+    assert.equal(features.value.length, 1);
+    const attachmentId = features.value[0].sourceIds[0];
+    assert((await call("get_enclosure_feature", { baseId: base, lidId: lid, attachmentId })).ok);
+    layers.undo();
+    assert.deepEqual(saveSculptProject(layers.project), before);
+  } finally {
+    layers.dispose();
+  }
+});

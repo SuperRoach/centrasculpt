@@ -2316,6 +2316,15 @@ export class IndependentLayers {
   }
   /** Undoable leaf deletion using the same retained-runtime hierarchy history as groups. */
   deleteObject(id: string): void {
+    if (
+      this.project.layerStack.layers.some(
+        (l) =>
+          l.id !== id && l.assemblyPart?.enclosure?.features?.some((f) => f.sourceIds.includes(id)),
+      )
+    )
+      throw new Error(
+        "Remove this attachment through Enclosure → Cutouts / Mounting Features first.",
+      );
     const stack = this.project.layerStack,
       h = stack.hierarchy,
       node = h.get(id);

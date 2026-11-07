@@ -1,6 +1,15 @@
 import { Vector3 } from "three";
 import { partMembers, partSources } from "./assembly";
 import { prepareComposite } from "./compositor";
+import {
+  type EnclosureFeature,
+  enclosureAnchors,
+  type FeatureDefinition,
+  featurePlan,
+  featureWorldPose,
+  validateFeatureLinks,
+  validateFeatures,
+} from "./enclosure-features";
 import type { IndependentLayers } from "./independent-layers";
 import type { BatchOptions, ModellingAPI, ModellingStep } from "./modelling-api";
 import type { PrimitiveSource } from "./parametric-primitive";
@@ -19,7 +28,11 @@ export type EnclosureParameters = {
   cornerRadiusMm: number;
   lid: { type: "friction-fit"; clearanceMm: number; lipDepthMm: number; thicknessMm: number };
 };
-export type EnclosureIntent = { role: "base" | "lid"; parameters: EnclosureParameters };
+export type EnclosureIntent = {
+  role: "base" | "lid";
+  parameters: EnclosureParameters;
+  features?: EnclosureFeature[];
+};
 export const DEFAULT_ENCLOSURE: EnclosureParameters = {
   units: "mm",
   name: "Enclosure",
@@ -126,9 +139,15 @@ export function validateEnclosure(value: unknown): EnclosureParameters {
   };
 }
 export function validateEnclosureIntent(value: unknown): EnclosureIntent {
-  const p = record(value, ["role", "parameters"]);
+  const p = record(value, ["role", "parameters", "features"]);
   if (p.role !== "base" && p.role !== "lid") throw new Error("Invalid enclosure part role.");
-  return { role: p.role, parameters: validateEnclosure(p.parameters) };
+  if (p.features !== undefined && p.role !== "base")
+    throw new Error("Attachments belong to the base part.");
+  return {
+    role: p.role,
+    parameters: validateEnclosure(p.parameters),
+    ...(p.features === undefined ? {} : { features: validateFeatures(p.features) }),
+  };
 }
 export function enclosurePlan(value: unknown) {
   const p = validateEnclosure(value),
@@ -259,6 +278,7 @@ export class EnclosureRecipes {
       throw new Error(
         "Enclosure cavity cutters changed; restore their operations before resizing.",
       );
+    validateFeatureLinks(stack, baseId);
     const primaryIds = new Set(Object.values(ids));
     const additionalMemberIds = [
       ...partMembers(stack, baseId),
@@ -268,6 +288,25 @@ export class EnclosureRecipes {
       revision: this.api.revision,
       ids,
       additionalMemberIds,
+      features: structuredClone(b.features ?? []),
+      anchors: enclosureAnchors(b.parameters).map((anchor) => {
+        const ownerId = anchor.id === "enclosure.lid.top" ? lidId : baseId;
+        const matrix = transformMatrix(stack.get(ownerId).transform),
+          mm = this.layers.display.precision.millimetresPerUnit;
+        return {
+          ...anchor,
+          ownerId,
+          units: "mm" as const,
+          worldOriginMm: new Vector3(...anchor.originMm)
+            .multiplyScalar(1 / mm)
+            .applyMatrix4(matrix)
+            .multiplyScalar(mm)
+            .toArray(),
+          worldNormal: new Vector3(...anchor.normal).transformDirection(matrix).toArray(),
+          worldU: new Vector3(...anchor.u).transformDirection(matrix).toArray(),
+          worldV: new Vector3(...anchor.v).transformDirection(matrix).toArray(),
+        };
+      }),
       additionalOperations: structuredClone({ base: cavity.slice(1), lid: lip.slice(1) }),
       ...enclosurePlan(b.parameters),
       accuracy: "analytical_intent_not_mesh_validation" as const,
@@ -370,10 +409,49 @@ export class EnclosureRecipes {
   ) {
     return this.apply(parameters, options, { baseId, lidId });
   }
+  anchors(baseId: string, lidId: string) {
+    return this.inspect(baseId, lidId).anchors;
+  }
+  features(baseId: string, lidId: string) {
+    return this.inspect(baseId, lidId).features;
+  }
+  async setFeature(
+    baseId: string,
+    lidId: string,
+    definition: FeatureDefinition,
+    options: BatchOptions,
+    attachmentId?: string,
+  ) {
+    try {
+      const old = this.inspect(baseId, lidId);
+      return this.apply(old.parameters, options, { baseId, lidId }, { definition, attachmentId });
+    } catch (e) {
+      return this.invalid(e);
+    }
+  }
+  async removeFeature(baseId: string, lidId: string, attachmentId: string, options: BatchOptions) {
+    try {
+      const old = this.inspect(baseId, lidId);
+      return this.apply(old.parameters, options, { baseId, lidId }, { attachmentId, remove: true });
+    } catch (e) {
+      return this.invalid(e);
+    }
+  }
+  private invalid(e: unknown) {
+    return {
+      ok: false as const,
+      revision: this.api.revision,
+      error: {
+        code: "invalid_input" as const,
+        message: e instanceof Error ? e.message : "Invalid feature.",
+      },
+    };
+  }
   private async apply(
     parameters: EnclosureParameters,
     options: BatchOptions,
     existing?: { baseId: string; lidId: string },
+    edit?: { definition?: FeatureDefinition; attachmentId?: string; remove?: boolean },
   ) {
     try {
       const plan = enclosurePlan(parameters),
@@ -383,6 +461,10 @@ export class EnclosureRecipes {
       const refs: Record<string, string> = {};
       const mm = this.layers.display.precision.millimetresPerUnit;
       for (const [key, def] of Object.entries(plan.sources)) {
+        if (edit && old) {
+          refs[key] = old.ids[key as keyof typeof old.ids];
+          continue;
+        }
         const id = old?.ids[key as keyof typeof old.ids];
         steps.push({
           as: key,
@@ -432,13 +514,114 @@ export class EnclosureRecipes {
             },
           });
       }
+      const features = structuredClone(old?.features ?? []);
+      const index = edit?.attachmentId
+        ? features.findIndex((f) => f.sourceIds[0] === edit.attachmentId)
+        : -1;
+      if (edit?.attachmentId && index < 0) throw new Error("Unknown attachment ID.");
+      if (edit?.remove) {
+        const [removed] = features.splice(index, 1);
+        steps.push({
+          command: {
+            type: "part.define",
+            objectId: old!.ids.base,
+            clearanceMM: p.lid.clearanceMm,
+            enclosure: { role: "base", parameters: p, ...(features.length ? { features } : {}) },
+          },
+        });
+        for (const id of [...removed.sourceIds].reverse())
+          steps.push({ command: { type: "object.delete", id } });
+      } else if (edit?.definition) {
+        const generated = featurePlan(p, edit.definition);
+        if (index >= 0) {
+          if (
+            features[index].sourceIds.length !== generated.length ||
+            features[index].definition.kind !== edit.definition.kind ||
+            (edit.definition.kind === "cutout" &&
+              features[index].definition.kind === "cutout" &&
+              edit.definition.shape !== features[index].definition.shape)
+          )
+            throw new Error("Changing feature type/count requires removing it first.");
+          features[index].definition = structuredClone(edit.definition);
+        } else
+          features.push({
+            sourceIds: generated.map((_, i) => `$attachment${i}`),
+            definition: structuredClone(edit.definition),
+          });
+      }
+      if (old)
+        for (const [fi, feature] of features.entries()) {
+          const generated = featurePlan(p, feature.definition);
+          const creating = feature.sourceIds[0].startsWith("$");
+          const root = this.layers.project.layerStack.get(old.ids.base).transform;
+          for (const [i, def] of generated.entries()) {
+            const id = feature.sourceIds[i];
+            if (!creating) {
+              const node = this.layers.project.layerStack.get(id);
+              if (
+                this.layers.project.layerStack.hierarchy.parent(id) !== old.ids.base ||
+                !node.primitive ||
+                node.array
+              )
+                throw new Error(
+                  "Attachment source was baked, arrayed or detached; restore it before editing the recipe.",
+                );
+              const target =
+                def.target === "base"
+                  ? this.layers.project.layerStack.get(old.ids.base)
+                  : this.layers.project.layerStack.get(feature.sourceIds[def.target]);
+              if (
+                !target.booleanModifiers?.some(
+                  (m) => m.sourceId === id && m.operation === def.operation,
+                )
+              )
+                throw new Error(
+                  "Attachment Boolean was removed or changed; restore it before editing the recipe.",
+                );
+            }
+            // Attachment-only edits leave other generated sources untouched.
+            if (edit && !creating && fi !== index) continue;
+            steps.push({
+              ...(creating ? { as: id.slice(1) } : {}),
+              command: creating
+                ? { type: "primitive.create", unit: "mm", source: def.source }
+                : { type: "primitive.update", id, unit: "mm", source: def.source },
+            });
+            steps.push({
+              command: {
+                type: "object.transform",
+                id,
+                unit: "mm",
+                transform: featureWorldPose(def, root, mm),
+              },
+            });
+            if (creating) {
+              steps.push({
+                command: { type: "object.rename", id, name: `${feature.definition.name} ${i + 1}` },
+              });
+              steps.push({ command: { type: "part.assign", objectId: id, partId: old.ids.base } });
+              steps.push({
+                command: {
+                  type: "boolean.create",
+                  id: def.target === "base" ? old.ids.base : feature.sourceIds[def.target],
+                  sourceId: id,
+                  operation: def.operation,
+                },
+              });
+            }
+          }
+        }
       for (const role of ["base", "lid"] as const)
         steps.push({
           command: {
             type: "part.define",
             objectId: refs[role],
             clearanceMM: p.lid.clearanceMm,
-            enclosure: { role, parameters: p },
+            enclosure: {
+              role,
+              parameters: p,
+              ...(role === "base" && features.length ? { features } : {}),
+            },
           },
         });
       if (!old)
@@ -470,7 +653,18 @@ export class EnclosureRecipes {
             value: {
               ...result.value,
               plan,
-              partIds: { base: result.value.aliases.base, lid: result.value.aliases.lid },
+              features: features.map((f) => ({
+                ...f,
+                sourceIds: f.sourceIds.map((id) =>
+                  id.startsWith("$") ? result.value.aliases[id.slice(1)] : id,
+                ),
+              })),
+              anchors: enclosureAnchors(p),
+              physicalFit: "unknown" as const,
+              partIds: {
+                base: old?.ids.base ?? result.value.aliases.base,
+                lid: old?.ids.lid ?? result.value.aliases.lid,
+              },
             },
           }
         : result;
