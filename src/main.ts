@@ -606,7 +606,7 @@ function chooseLayerMode(mode: EditorMode, fromXR = false): void {
             ? "Size Box · local X width · Y height · Z depth · centre scales all"
             : layers.active.layer.primitive.kind === "cylinder"
               ? "Size Cylinder · local Y height · X/Z diameter · centre scales all"
-              : "Size Sphere · drag any axis to change diameter"
+              : "Size primitive · local dimension handles · centre scales all"
           : `${mode} · ${layers.transformNode.name}`,
   );
 }
@@ -938,7 +938,7 @@ window.addEventListener("keydown", (event) => {
                 ? "Size Box · local X width · Y height · Z depth · centre scales all"
                 : layers.active.layer.primitive.kind === "cylinder"
                   ? "Size Cylinder · local Y height · X/Z diameter · centre scales all"
-                  : "Size Sphere · drag any axis to change diameter"
+                  : "Size primitive · local dimension handles · centre scales all"
               : `${mode} · ${layers.transformNode.name}`,
       );
       return;

@@ -116,3 +116,13 @@ MIME/header pixels/bytes and metadata, compares scene revision and object snapsh
 and retains numeric diagnostics where applicable. Outputs are ignored under
 `work/phase-7-4-2/`. It closes MCP and revokes the session when done. See the dated
 six-part status for actual final results. Physical Quest and print acceptance pending.
+
+## Desktop focus and pending evaluation (2026-11-07)
+
+Desktop focus interruption must not suspend Boolean evaluation: there is no XR
+frame to resume it. The XR controller lifecycle now applies evaluation suspension
+only during a real XR session and always releases it on exit, including after the
+last live operation is removed. A regression checks readiness without native-byte
+or history changes. Save an already open project before refreshing to load this
+fix. `render_pending` remains valid while display evaluation is actually unfinished
+or unavailable; capture never substitutes a stale image.

@@ -1,5 +1,216 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Primitive control cleanup — 2026-11-07
+
+### 1. What changed
+
+Tyre slider has whole-number steps, a separate readout and **0 = Torus / 100 = Tyre**
+endpoints. Shorter tip/base/ring labels reduce clutter; centreline semantics remain
+in the ring-radius tooltip. Existing uncommitted work is retained.
+
+### 2. Architectural decisions
+
+Presentation and UI rounding only; native/API tyre precision remains supported.
+Selected slider commits still use the existing source edit and one Undo boundary.
+
+### 3. Build and test results
+
+Final `npm run check` passed Biome, strict TS, production build and **1,651/1,651
+tests**, zero failures/skips/cancellations (86.23 s). Initial loopback-blocked run
+was repeated after permission. Evidence: `work/primitive-expansion/ui-cleanup-final-check.log`.
+Whitespace check passed.
+
+### 4. Benchmarks and regressions
+
+Existing primitive/tyre/native/history/agent suites pass; no geometry or performance
+change. No new tests added for this small presentation change.
+
+### 5. Known limitations
+
+Live browser and physical Quest visual acceptance were not performed in this cleanup.
+Existing sampling/export limitations remain unchanged.
+
+### 6. Next recommendations
+
+Try the shorter fields and whole-number tyre dial. Nothing committed or pushed.
+
+
+## Tyre profile and lighter primitive previews — 2026-11-07
+
+### 1. What changed
+
+Added Torus **Tyre shape · 0–100%** on desktop and Quest: round tube at zero,
+flatter tread/firmer shoulders at 100. Cone numeric tip entries clamp at zero.
+Sphere, cylinder, cone, capsule and torus placement wireframes use fewer segments;
+applied meshes retain full detail. All earlier uncommitted work is retained.
+
+### 2. Architectural decisions
+
+Optional dimensionless `tyre` changes the section from a circle to a rounded square,
+keeping outer diameter, hole and thickness fixed. At 100 the shoulder round-over
+radius is 15% of the tube radius. Analytic rounded-section distance, lathed source
+mesh and directional support agree. Physical-unit conversion and source scaling
+preserve the percentage. Ordinary API/batches/proposals, validation and history
+remain authoritative. Explicit tyre metadata requires native v21; old tags reject
+it, while absent metadata keeps the legacy round torus and v20 compatibility.
+
+### 3. Build and test results
+
+Final `npm run check` passed formatting, Biome lint, strict TypeScript, production
+build and **1,651/1,651 tests**, no failures/skips/cancellations (84.11 s command wall).
+Loopback permission enabled the MCP tests blocked in the preceding preview-only
+turn. Focused primitive tests **19/19**; primitive/agent subset **73/73**; quick
+**21/21**. Whitespace check passed. Evidence: `work/primitive-expansion/tyre-*.log`.
+
+### 4. Benchmarks and regressions
+
+Added profile 0/25/50/100 tests for exact round compatibility, retained dimensions,
+SDF/mesh agreement, outward normals and closed one-component topology. Regression
+covers percentage across cm/in/mm boundaries, source scaling, one Undo, native v21
+roundtrip/old-tag refusal, strict agent schema, reduced preview triangle counts and
+negative cone numeric input. No new hardware performance benchmark was run.
+
+### 5. Known limitations
+
+This is a solid tyre-like ring profile, without tread grooves or a hollow cavity.
+The final setting retains rounded shoulders. Sampled Booleans and exports still
+obey existing resolution, memory and topology admission; small round-overs can be
+below sample/printer resolution. Live browser slider feel and physical Quest
+acceptance were not tested in this follow-up. No new printability claim.
+
+### 6. Next recommendations
+
+Try **Primitives → Torus → Tyre shape**, with 50% for softer shoulders and 100% for
+firmer edges. Quest uses the matching percentage keypad field. See
+[parameter/native/export conventions](PRIMITIVE_EXPANSION.md). Nothing committed,
+pushed or implicitly Baked.
+
+
+## Primitive expansion — four more starting points — 2026-11-07
+
+### 1. What changed
+
+Added editable Cone, Capsule, Torus and Pyramid to desktop and Quest Primitives.
+Cone reuses the capped tapered cylinder, including a true zero-radius tip or a
+positive blunt end. The other three have typed source parameters, physical fields,
+source meshes, analytical distances and bounds. Initial checkout contained five
+uncommitted preview-fix files; preserved them. No commit, push or merge performed.
+
+### 2. Architectural decisions
+
+One canonical source/mesh pipeline serves display, previews and source exports;
+Booleans/arrays retain the existing analytic sampler and transaction admission.
+Capsule height is overall height; torus major radius is centreline radius, with
+an explicitly positive hole. Pyramid has a centred XZ footprint at −height/2 and
+apex at +height/2; width/depth can differ. Rotated asymmetric source bounds use
+independent directional supports. Capsule collapsed pole triangles are omitted.
+Native v20 is selected for new kinds or zero cylinder ends, including original
+parameters; older-tag new definitions reject. v1–19 remain readable. Existing
+ModellingAPI, batch dry-runs, strict MCP schemas/capabilities and approved proposals
+share stable IDs, revision/permission/consent guards and one transaction Undo.
+Tool Wheel, Cut, handedness, calibrated guides and dev/production gates are unchanged.
+
+### 3. Build and test results
+
+Baseline Biome/types/build passed; 1,628/1,632 tests passed, with four sandbox
+loopback EPERM failures. After loopback permission, full `npm run check` passed:
+**1,648/1,648 tests across 99 files**, zero failures/skips/cancellations, 107.29 s
+command wall. Formatting/lint, strict TypeScript and production build (1.80 s)
+passed; Biome reported 620 non-blocking warnings / 96 infos. Expansion regressions
+**16/16**, focused primitives/agents **70/70**, `test:agent` **18/18**, quick **21/21**.
+Final reviewed `npm run check` also passed **1,648/1,648**, 96.97 s command wall,
+including the tighter all-zero cylinder MCP schema and agent scaling/Undo for every
+new source. Final log: `final-reviewed-check.log`.
+Production JS scan found no agent-browser/centra-agent/preview-image endpoint markers.
+Whitespace check passed. Logs: `work/primitive-expansion/`.
+
+### 4. Benchmarks and regressions
+
+Tests cover signed distances/tips/hemispheres/hole/face normals, invalid dimensions,
+affine bounds, source topology and calibrated STL/GLB, v20/old tags, source edits,
+Undo/Redo, duplicates, actual recovery worker/Library remapping, transformed arrays,
+ordered Booleans, read-only consent/stale writes and disjoint Quest menu targets.
+Single Node v26.8.1 observations during full tests: 63³ analytic cache sampling
+Cone 15.88 ms, Capsule 10.49 ms, Torus 10.90 ms, Pyramid 44.83 ms; 1,953 generator
+yields each. These are CPU observations, not frame-time/peak-memory acceptance.
+Actual sampled two-copy arrays passed two closed components each, zero boundary,
+non-manifold/inconsistent edges, degenerates or inverted components: Cone 22,076
+triangles / 64³, Capsule 24,376 / 59³, Torus 27,984 / 68³, Pyramid 27,232 / 64³.
+STL encoding passed; evidence: `evaluated-report.json`.
+
+Actual in-app browser imported native v20 with four separate editable meshes;
+front/isometric/top `capture_scene_preview` PNGs passed official stdio MCP, unchanged
+revision/objects and read-only access. Visually inspected all angles, including the
+open torus hole. Desktop UI verified Cone creation, Pyramid/Capsule/Torus fields,
+torus tube editing and one-step Undo. Evidence: `four-*.png`, `visual-report.json`,
+`visual-smoke.log`. Standalone Playwright failed: expected browser revision missing;
+installed Chromium fallback aborted with SIGABRT/EPERM. It is not claimed passed.
+
+### 5. Known limitations
+
+Existing 16 layers, 192³, source/memory/sample and 600k STL triangle limits remain.
+Capsule aspect above 8:1 refuses; torus outer/tube aspect is bounded at 128:1.
+Thin tubes/holes request finer sampling and may hit existing quality refusal.
+33–63³ disposable source caches, sampled CSG/Bake and tessellated/Float32 export
+cannot promise preservation of mathematical tips or sub-resolution blunt ends.
+Export diagnostics and slicer checks remain necessary; no physical fit, minimum
+wall thickness or general printability guarantee. Physical Quest, printer and
+sustained GPU/peak-memory acceptance were not run. Root `read-the-docs-pls/` does
+not exist, so no public documentation site was created or edited.
+
+### 6. Next recommendations
+
+Try the four choices in Primitives; Quest uses **New primitive…** before placement.
+Use calibrated project-scale STL when exact mm sizes matter, then inspect the report
+and intended slicer. Run physical Quest acceptance for both hands and a printed
+thin-feature/tolerance coupon. See [primitive/API/native/export conventions](PRIMITIVE_EXPANSION.md).
+Nothing is implicitly Baked; publication still requires explicit authorization.
+
+
+## Desktop scene-preview pending fix — 2026-11-07
+
+### 1. What changed
+
+Fixed desktop focus interruption suspending the live Boolean compositor indefinitely,
+leaving the display at zero triangles / pending and `capture_scene_preview` returning
+`render_pending`. Existing uncommitted work was absent at task start; no commit or
+push performed for this fix.
+
+### 2. Architectural decisions
+
+XR controller suspension pauses Boolean evaluation only with an actual XR session.
+Releasing suspension works even when the last live operation was removed. Capture
+still refuses unfinished or unavailable display; no stale-image fallback, forced
+evaluation, SDF changes or persistence changes were introduced.
+
+### 3. Build and test results
+
+`npm run check` passed Biome, strict TypeScript, production Vite build and
+**1,629/1,629 tests** (88.28 s test wall time). Focused XR/controller, capture and
+live Boolean tests **46/46**; quick **21/21**. The added regression failed before
+the fix with tracking-unavailable evaluation, then passed. It checks native bytes,
+Undo count, repeated desktop interruption, real XR suspension and operation removal.
+Baseline formatting/types/build passed; baseline loopback tests were permission
+blocked. Final checks ran with loopback permission. Logs: `work/preview-pending-fix/`.
+
+### 4. Known limitations
+
+The existing open editor was inspected and its pending capture reproduced, but was
+not reloaded because its model has unsaved changes. No successful post-fix live
+browser capture is claimed. Actual evaluation delays/failures still correctly return
+`render_pending`; screenshots do not certify printability.
+
+### 5. Next steps
+
+Save the open project before refreshing to load the fix, reconnect the local agent
+if needed, allow Boolean evaluation to finish and retry the capture.
+
+### 6. Handover
+
+Changed `src/xr-controllers.ts` and its regression suite, plus these documentation
+notes. The open model, recovery data and editor history were not changed by the fix.
+Commit/push require explicit authorisation for this work.
+
 ## Phase 7.4.2 — agent visual inspection — 2026-11-07
 
 Publication authorisation: the user explicitly authorised committing and pushing

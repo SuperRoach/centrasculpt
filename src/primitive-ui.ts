@@ -2,7 +2,13 @@ import { radialGap } from "./array-spacing";
 import type { ModellingCommand } from "./modelling-api";
 import type { ArrayDefinition } from "./object-array";
 import type { PrimitiveSource } from "./parametric-primitive";
-import { PRIMITIVE_KINDS, primitiveFields, primitiveWorldDimensions } from "./parametric-primitive";
+import {
+  PRIMITIVE_CHOICES,
+  primitiveFieldLabel,
+  primitiveFields,
+  primitiveLabel,
+  primitiveWorldDimensions,
+} from "./parametric-primitive";
 import { toDisplay } from "./physical-units";
 import type { PrecisionField, PrecisionTools } from "./precision-tools";
 import type { PrimitiveTools } from "./primitive-tools";
@@ -80,7 +86,11 @@ export function primitiveUI(
   shapes.setAttribute("role", "group");
   shapes.setAttribute("aria-label", "New primitive type");
   body.append(shapes);
-  const icons = {
+  const icons: Record<string, string> = {
+    cone: '<path d="M16 3 4 25q12 8 24 0Z"/>',
+    capsule: '<rect x="8" y="2" width="16" height="28" rx="8"/>',
+    torus: '<ellipse cx="16" cy="16" rx="14" ry="10"/><ellipse cx="16" cy="16" rx="6" ry="4"/>',
+    pyramid: '<path d="m16 2-14 23 14 5 14-5ZM16 2v28M2 25l14-6 14 6"/>',
     box: '<path d="m16 3 12 7v13l-12 7-12-7V10Zm-12 7 12 7 12-7M16 17v13"/>',
     cylinder:
       '<ellipse cx="16" cy="7" rx="11" ry="4"/><path d="M5 7v18c0 5 22 5 22 0V7M5 25c0-5 22-5 22 0"/>',
@@ -88,7 +98,7 @@ export function primitiveUI(
       '<circle cx="16" cy="16" r="13"/><ellipse cx="16" cy="16" rx="6" ry="13"/><path d="M3 16c5 5 21 5 26 0"/>',
   };
   const shapeButtons = new Map<string, HTMLButtonElement>();
-  for (const kind of PRIMITIVE_KINDS) {
+  for (const kind of PRIMITIVE_CHOICES) {
     const b = button(shapes, kind[0].toUpperCase() + kind.slice(1), () => tools.select(kind));
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     icon.setAttribute("viewBox", "0 0 32 32");
@@ -486,16 +496,30 @@ export function primitiveUI(
     bakeArray.hidden = !activeArray;
     transformPanel.hidden = !selected;
     units.textContent = tools.settings.unit;
-    name.textContent = selected ? tools.layers().active.layer.name : `New ${tools.draft.kind}`;
+    name.textContent = selected
+      ? tools.layers().active.layer.name
+      : `New ${primitiveLabel(tools.draft)}`;
     for (const [kind, b] of shapeButtons)
-      b.setAttribute("aria-pressed", String(tools.draft.kind === kind));
-    create.textContent = `Create ${tools.draft.kind[0].toUpperCase() + tools.draft.kind.slice(1)}`;
+      b.setAttribute(
+        "aria-pressed",
+        String(
+          kind === "cone"
+            ? tools.draft.kind === "cylinder" && tools.draft.topDiameter === 0
+            : tools.draft.kind === kind &&
+                !(
+                  kind === "cylinder" &&
+                  tools.draft.kind === "cylinder" &&
+                  tools.draft.topDiameter === 0
+                ),
+        ),
+      );
+    create.textContent = `Create ${primitiveLabel(tools.draft)}`;
     result.hidden = editing && !selected;
     result.textContent = selected
       ? `${primitiveWorldDimensions(source, tools.layers().active.layer.transform)
           .map((v) => toDisplay(v, tools.settings).toFixed(2))
           .join(" × ")} ${tools.settings.unit} · physical bounds`
-      : `${source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
+      : `${source.kind === "torus" ? "Ring centreline radius · tube diameter · XZ ring, Y axis" : source.kind === "capsule" ? "Overall Y height ≥ diameter · hemispherical ends" : source.kind === "pyramid" ? "X width · Z depth · base −Y, apex +Y" : source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
     result.title = selected
       ? "Model-axis bounds include rotation, scale and parent transforms. Dimension fields edit local source parameters."
       : "Use Transform or Edit selected to position your new primitive.";
@@ -533,16 +557,28 @@ export function primitiveUI(
       if (field === "kind") continue;
       const row = document.createElement("label"),
         input = document.createElement("input");
-      row.textContent =
-        field === "topDiameter"
-          ? "Top diameter"
-          : field === "bottomDiameter"
-            ? "Bottom diameter"
-            : field[0].toUpperCase() + field.slice(1);
-      input.type = "number";
-      input.step = "any";
-      input.value = toDisplay(Number(value), tools.settings).toString();
-      input.setAttribute("aria-label", `${field} (${tools.settings.unit})`);
+      row.textContent = primitiveFieldLabel(field, source);
+      if (field === "majorRadius")
+        row.title = "Radius from the torus centre to the tube centreline";
+      input.type = field === "tyre" ? "range" : "number";
+      if (field === "tyre") {
+        input.max = "100";
+        row.className = "primitive-tyre-control";
+        row.textContent = "Tyre shape";
+        const output = document.createElement("output");
+        output.textContent = String(Math.round(Number(value)));
+        row.append(output);
+        input.title = "0 = Torus · 100 = Tyre";
+      }
+      input.min = "0";
+      input.step = field === "tyre" ? "1" : "any";
+      input.value = (
+        field === "tyre" ? Math.round(Number(value)) : toDisplay(Number(value), tools.settings)
+      ).toString();
+      input.setAttribute(
+        "aria-label",
+        `${field} (${field === "tyre" ? "%" : tools.settings.unit})`,
+      );
       input.disabled = blocked || (!!selected && !editable);
       input.onchange = () => {
         if (!input.value.trim()) {
@@ -550,6 +586,7 @@ export function primitiveUI(
           status.textContent = "Enter a dimension.";
           return;
         }
+        if (field === "topDiameter" && Number(input.value) < 0) input.value = "0";
         const work = tools.dimension(field, Number(input.value), !!selected);
         sync();
         void work.then(sync).catch((e) => {
@@ -566,14 +603,32 @@ export function primitiveUI(
             .then(sync)
             .catch(() => {});
         };
+      if (field === "tyre")
+        input.addEventListener("input", () => {
+          input.value = String(Math.round(Number(input.value)));
+          const output = row.querySelector("output");
+          if (output) output.textContent = input.value;
+        });
       input.onkeydown = (e) => {
         if (e.key === "Enter") input.blur();
         if (e.key === "Escape") {
-          input.value = toDisplay(Number(value), tools.settings).toString();
+          input.value = (
+            field === "tyre" ? Math.round(Number(value)) : toDisplay(Number(value), tools.settings)
+          ).toString();
           input.blur();
         }
       };
       row.append(input);
+      if (field === "tyre") {
+        const endpoints = document.createElement("span");
+        endpoints.className = "primitive-tyre-endpoints";
+        const start = document.createElement("span"),
+          end = document.createElement("span");
+        start.textContent = "0 = Torus";
+        end.textContent = "100 = Tyre";
+        endpoints.append(start, end);
+        row.append(endpoints);
+      }
       dimensions.append(row);
     }
   };

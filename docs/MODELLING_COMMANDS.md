@@ -162,3 +162,16 @@ A future secure local connector should bind one adapter to the current editor li
 `api.enclosure.create(parameters, BatchOptions)` and `update(baseId, lidId, parameters, BatchOptions)` expand into the same Phase 7.0 commands/leased transaction. Both support `dryRun`, exact revision and AbortSignal, returning structured errors or the batch report plus `partIds`, five source aliases and computed `plan`. No nested recipe command is added to batches. Inputs use explicit mm and a friction-fit lid; screw-on lids reject. `api.query({type:"enclosure.inspect",baseId,lidId})` returns saved parameters, source/part IDs, outer dimensions, nominal wall/floor, rim/lip mating surfaces and limitations. `enclosure.samples` is a detached four-section actual-SDF thickness approximation with uncertainty and physical fit unknown. Direct helpers and `withOuterDimensions` are also available.
 
 See [complete recipe semantics, typed example, native v16 and limitations](PHASE_7_1_ENCLOSURES.md). Run `npm run example:enclosure` for an editable native project and two independently validated mm STLs; `npm run benchmark:enclosure` records host timings. UI and headless paths use this same API. Native/recovery/Library metadata is authoritative; no MCP/transport is added. Roadmap: 7.2 face-relative cutouts/board mounting/named constraints; 7.3 secure local MCP; 7.4 agent plan-preview-apply.
+
+## Primitive expansion (2026-11-07)
+
+Cone uses the existing `cylinder` kind with `bottomDiameter > 0`, `topDiameter: 0`
+and `height`; a positive top gives a blunt end. New canonical source kinds are
+`capsule {diameter,height}` (overall height ≥ diameter),
+`torus {majorRadius,tubeDiameter}` (centreline radius > tube radius), and
+`pyramid {width,height,depth}` (centred base −Y, apex +Y).
+All complete definitions use the ordinary command, batch/dry-run and proposal guards.
+See [primitive conventions, native v20 and export limits](PRIMITIVE_EXPANSION.md).
+
+Torus also accepts dimensionless `tyre: 0–100` (round → firm shoulders), preserved
+through units and scaling. Explicit tyre metadata requires native v21.

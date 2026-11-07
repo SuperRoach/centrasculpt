@@ -6,6 +6,25 @@ const id = z.string().min(1).max(128);
 const unit = z.enum(["mm", "cm", "in"]);
 const vector = z.tuple([number, number, number]);
 const source = z.discriminatedUnion("kind", [
+  z
+    .object({ kind: z.literal("capsule"), diameter: positive, height: positive })
+    .strict()
+    .refine((s) => s.height >= s.diameter, "Overall height must be at least diameter"),
+  z
+    .object({
+      kind: z.literal("torus"),
+      majorRadius: positive,
+      tubeDiameter: positive,
+      tyre: number.min(0).max(100).optional(),
+    })
+    .strict()
+    .refine(
+      (s) => s.majorRadius > s.tubeDiameter / 2,
+      "Ring centreline radius must exceed tube radius",
+    ),
+  z
+    .object({ kind: z.literal("pyramid"), width: positive, height: positive, depth: positive })
+    .strict(),
   z.object({ kind: z.literal("box"), width: positive, height: positive, depth: positive }).strict(),
   z
     .object({
@@ -24,8 +43,8 @@ const source = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("cylinder"),
       diameter: positive.optional(),
-      topDiameter: positive.optional(),
-      bottomDiameter: positive.optional(),
+      topDiameter: number.min(0).max(10000).optional(),
+      bottomDiameter: number.min(0).max(10000).optional(),
       height: positive,
     })
     .strict()
@@ -33,6 +52,10 @@ const source = z.discriminatedUnion("kind", [
       (s) =>
         s.diameter !== undefined || (s.topDiameter !== undefined && s.bottomDiameter !== undefined),
       "Supply diameter or both topDiameter and bottomDiameter",
+    )
+    .refine(
+      (s) => Math.max(s.topDiameter ?? s.diameter ?? 0, s.bottomDiameter ?? s.diameter ?? 0) > 0,
+      "At least one cylinder end must be positive",
     ),
 ]);
 const transform = z.object({ position: vector, rotation: vector, scale: vector }).strict();
@@ -228,7 +251,7 @@ export const tools = {
   create_primitive: {
     schema: z.object({ ...revision, unit, source }).strict(),
     description:
-      "Create a box, sphere or cylinder in one Undo transaction. Requires browser editing permission.",
+      "Create a box, sphere/ellipsoid, cylinder (Cone: topDiameter 0), capsule, torus or pyramid in one Undo transaction. Requires browser editing permission.",
   },
   update_primitive: {
     schema: z.object({ ...revision, id, unit, source }).strict(),
@@ -279,7 +302,7 @@ export const tools = {
       .object({ ...revision, id, factors: z.tuple([positive, positive, positive]) })
       .strict(),
     description:
-      "Multiply local source dimensions, preserving pose/ID. Box XYZ independent; cylinder requires equal X/Z factors and preserves taper; sphere/ellipsoid XYZ independent. One Undo; no arbitrary affine deformation.",
+      "Multiply local source dimensions, preserving pose/ID. Box/pyramid XYZ independent; cylinder/capsule require equal X/Z factors; torus requires equal XYZ. Sphere/ellipsoid XYZ independent. One Undo; no arbitrary affine deformation.",
   },
   preview_changes: {
     schema: z.object(batch).strict(),

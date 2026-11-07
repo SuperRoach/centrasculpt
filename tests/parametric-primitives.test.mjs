@@ -838,7 +838,7 @@ test("tapered cylinder has exact cap/side distances, reversible taper and bounde
     [0, 0, 0],
   ])
     near(primitiveDistance(s, x, y, z), primitiveDistance(reversed, x, -y, z));
-  assert.throws(() => validatePrimitive({ ...s, topDiameter: 0 }));
+  assert.equal(validatePrimitive({ ...s, topDiameter: 0 }).topDiameter, 0);
   assert.throws(() => validatePrimitive({ ...s, bottomDiameter: Infinity }));
   const l = make();
   try {

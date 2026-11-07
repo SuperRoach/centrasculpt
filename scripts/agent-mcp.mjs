@@ -60,6 +60,10 @@ for (const [name, tool] of Object.entries(tools)) {
             featureAvailability: {
               ellipsoids: true,
               taperedCylinders: true,
+              cones: "canonical cylinder preset with zero topDiameter",
+              capsules: true,
+              tori: true,
+              pyramids: true,
               primitiveDimensionScaling: true,
               booleans: true,
               arrays: true,

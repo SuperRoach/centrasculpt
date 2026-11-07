@@ -129,10 +129,15 @@ export class XRControllers {
   };
   private suspendBoolean(value: boolean): void {
     const layers = this.options.layers?.();
+    if (!layers) return;
+    // Desktop blur/project interruptions have no XR frame to resume evaluation.
+    // Releasing a session pause must also work after its last live operation is removed.
+    const paused = value && this.session !== null;
     if (
-      layers?.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
+      !paused ||
+      layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
     )
-      layers.composite.setSuspended(value);
+      layers.composite.setSuspended(paused);
   }
   suspend(): void {
     this.suspendBoolean(true);

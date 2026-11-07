@@ -2,15 +2,17 @@ import {
   BoxGeometry,
   type BufferGeometry,
   type Camera,
-  CylinderGeometry,
   Group,
   Mesh,
   MeshBasicMaterial,
   type Scene,
-  SphereGeometry,
 } from "three";
 import type { InputOwnership } from "./interaction";
-import { type PrimitiveSource, primitiveDimensions } from "./parametric-primitive";
+import {
+  type PrimitiveSource,
+  primitiveDimensions,
+  primitivePreviewGeometry,
+} from "./parametric-primitive";
 import type { PrimitiveTools } from "./primitive-tools";
 import { scaledPrimitive, UniformTransformControls } from "./transform-tools";
 
@@ -133,25 +135,13 @@ export class PrimitiveDraftPreview {
     const geometryKey =
       draft.kind === "cylinder"
         ? `cylinder:${(draft.topDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}:${(draft.bottomDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}`
-        : draft.kind;
+        : ["capsule", "torus", "pyramid"].includes(draft.kind)
+          ? JSON.stringify(draft)
+          : draft.kind;
     if (this.kind !== geometryKey) {
       this.kind = geometryKey;
       this.mesh.geometry.dispose();
-      this.mesh.geometry =
-        this.tools.draft.kind === "box"
-          ? new BoxGeometry(1, 1, 1)
-          : this.tools.draft.kind === "cylinder"
-            ? new CylinderGeometry(
-                (this.tools.draft.topDiameter ?? this.tools.draft.diameter) /
-                  primitiveDimensions(this.tools.draft)[0] /
-                  2,
-                (this.tools.draft.bottomDiameter ?? this.tools.draft.diameter) /
-                  primitiveDimensions(this.tools.draft)[0] /
-                  2,
-                1,
-                48,
-              )
-            : new SphereGeometry(0.5, 48, 32);
+      this.mesh.geometry = primitivePreviewGeometry(draft);
     }
     if (!this.drag) {
       this.target.scale.setScalar(1);

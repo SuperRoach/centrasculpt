@@ -21,6 +21,7 @@ import { ARRAY_MAX_INSTANCES } from "./object-array";
 import { type PhysicalUnit, unitMM } from "./physical-units";
 import { MAX_PROJECT_LAYERS } from "./project";
 import type { Vec3 } from "./transform";
+import { scaledPrimitive } from "./transform-tools";
 
 export type AgentJob = {
   id: string;
@@ -282,6 +283,14 @@ export function agentExecutor(
         ok: true,
         revision: api.revision,
         value: {
+          primitives: {
+            kinds: ["box", "sphere", "cylinder", "capsule", "torus", "pyramid"],
+            cone: "cylinder with bottomDiameter > 0 and topDiameter 0; optional positive tip for blunt end",
+            torus:
+              "majorRadius is ring centreline radius; tubeDiameter is full tube diameter; tyre is dimensionless 0–100 (round to firm shoulders); Y axis",
+            capsule: "overall Y height >= diameter",
+            pyramid: "width X, depth Z, base at -height/2, apex at +height/2",
+          },
           limits: {
             layers: MAX_PROJECT_LAYERS,
             arrayInstances: ARRAY_MAX_INSTANCES,
@@ -296,7 +305,7 @@ export function agentExecutor(
             lengths: "explicit mm/cm/in; outputs mm",
             rotations: "XYZ radians; rotate_object degrees",
             scale:
-              "dimensionless; world-scale edits require equal XYZ. scale_primitive supports independent box dimensions and sphere/ellipsoid XYZ dimensions, plus cylinder axial/radial sizing.",
+              "dimensionless; world-scale edits require equal XYZ. scale_primitive supports independent box/pyramid/ellipsoid axes and cylinder/capsule axial/radial sizing; torus requires equal XYZ or explicit parameter updates.",
             arrays:
               "spacingModelUnits and pivot in explicit unit; radial radius set by source offset from pivot; no separate gap parameter",
             hierarchy: "raw transforms in model units; scene calibration applies",
@@ -349,40 +358,30 @@ export function agentExecutor(
         const source = object.value.primitive;
         if (!source) return error("unsupported", "Select an editable primitive.");
         const [x, y, z] = a.factors as Vec3;
-        if (source.kind === "cylinder" && Math.abs(x - z) > 1e-10)
+        if ((source.kind === "cylinder" || source.kind === "capsule") && Math.abs(x - z) > 1e-10)
           return error(
             "unsupported",
-            "Cylinder X/Z factors must match; elliptical cylinder ends are unsupported.",
+            "Cylinder/Capsule X/Z factors must match; elliptical ends are unsupported.",
           );
-        const next =
-          source.kind === "box"
-            ? {
-                ...source,
-                width: source.width * x,
-                height: source.height * y,
-                depth: source.depth * z,
-                ...(source.cornerRadius === undefined
-                  ? {}
-                  : { cornerRadius: source.cornerRadius * Math.min(x, z) }),
-              }
-            : source.kind === "sphere"
-              ? {
-                  ...source,
-                  width: (source.width ?? source.diameter) * x,
-                  height: (source.height ?? source.diameter) * y,
-                  depth: (source.depth ?? source.diameter) * z,
-                }
-              : {
-                  ...source,
-                  diameter: source.diameter * x,
-                  height: source.height * y,
-                  ...(source.topDiameter === undefined
-                    ? {}
-                    : { topDiameter: source.topDiameter * x }),
-                  ...(source.bottomDiameter === undefined
-                    ? {}
-                    : { bottomDiameter: source.bottomDiameter * x }),
-                };
+        if (source.kind === "torus" && (Math.abs(x - y) > 1e-10 || Math.abs(x - z) > 1e-10))
+          return error(
+            "unsupported",
+            "Torus scaling requires equal XYZ; update majorRadius and tubeDiameter explicitly.",
+          );
+        const local = layers.runtime(a.id as string).layer.primitive!;
+        let next: typeof local;
+        try {
+          const scaled = scaledPrimitive(local, [x, y, z], "XYZ"),
+            mm = layers.display.precision.millimetresPerUnit;
+          next = Object.fromEntries(
+            Object.entries(scaled).map(([k, v]) => [
+              k,
+              typeof v === "number" && k !== "tyre" ? Number((v * mm).toPrecision(15)) : v,
+            ]),
+          ) as typeof scaled;
+        } catch (e) {
+          return error("invalid_input", e instanceof Error ? e.message : "Invalid dimensions.");
+        }
         result = await api.batch(
           [{ command: { type: "primitive.update", id: a.id as string, unit: "mm", source: next } }],
           { ...options, preserveSelection: true },

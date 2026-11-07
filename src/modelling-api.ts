@@ -239,7 +239,7 @@ export class ModellingAPI {
     return Object.fromEntries(
       Object.entries(source).map(([k, v]) => [
         k,
-        k === "kind" ? v : typeof v === "number" ? v * factor : NaN,
+        k === "kind" || k === "tyre" ? v : typeof v === "number" ? v * factor : NaN,
       ]),
     ) as PrimitiveSource;
   }

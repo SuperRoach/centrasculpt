@@ -21,10 +21,10 @@ export function scaledPrimitive(
   if (!axes.length || ratios.length !== 3 || ratios.some((v) => !Number.isFinite(v) || v <= 0))
     throw new Error("Primitive size must be positive and finite.");
   const factor = (a: string) => ratios[["X", "Y", "Z"].indexOf(a)];
-  if (source.kind === "box")
+  if (source.kind === "box" || source.kind === "pyramid")
     return validatePrimitive({
       ...source,
-      ...(source.cornerRadius === undefined
+      ...(source.kind !== "box" || source.cornerRadius === undefined
         ? {}
         : { cornerRadius: source.cornerRadius * Math.min(ratios[0], ratios[2]) }),
       width: source.width * ratios[0],
@@ -46,6 +46,24 @@ export function scaledPrimitive(
       width: dimensions[0] * factors[0],
       height: dimensions[1] * factors[1],
       depth: dimensions[2] * factors[2],
+    });
+  }
+  if (source.kind === "capsule") {
+    const radial = axes.filter((a) => a !== "Y");
+    const r = radial.length ? radial.reduce((v, a) => v * factor(a), 1) ** (1 / radial.length) : 1;
+    return validatePrimitive({
+      ...source,
+      diameter: source.diameter * r,
+      height: source.height * (axes.includes("Y") ? ratios[1] : 1),
+    });
+  }
+  if (source.kind === "torus") {
+    const radial = axes.filter((a) => a !== "Y");
+    const r = radial.length ? radial.reduce((v, a) => v * factor(a), 1) ** (1 / radial.length) : 1;
+    return validatePrimitive({
+      ...source,
+      majorRadius: source.majorRadius * r,
+      tubeDiameter: source.tubeDiameter * (axes.includes("Y") ? ratios[1] : r),
     });
   }
   const radial = axes.filter((a) => a !== "Y");

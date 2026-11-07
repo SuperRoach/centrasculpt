@@ -557,3 +557,83 @@ test("automatic grip precedence and both release transitions work with either do
     layers.dispose();
   }
 });
+
+test("desktop focus interruption must not suspend pending live Boolean display or capture readiness", async () => {
+  const { createHeadlessEditor } = await import("../scripts/headless-enclosure.mjs");
+  const { layers, api } = createHeadlessEditor();
+  const rays = [new Group(), new Group()],
+    grips = [new Group(), new Group()];
+  const bridge = new XRControllers(
+    { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
+    new Group(),
+    new XRControllerRoles(),
+    undefined,
+    () => {},
+    { layers: () => layers },
+  );
+  try {
+    const made = await api.batch(
+      [
+        {
+          command: {
+            type: "object.flag",
+            id: layers.project.activeLayerId,
+            flag: "visible",
+            value: false,
+          },
+        },
+        {
+          as: "body",
+          command: {
+            type: "primitive.create",
+            unit: "mm",
+            source: { kind: "box", width: 30, height: 20, depth: 30 },
+          },
+        },
+        {
+          as: "hole",
+          command: {
+            type: "primitive.create",
+            unit: "mm",
+            source: { kind: "cylinder", diameter: 10, height: 30 },
+          },
+        },
+        {
+          command: {
+            type: "boolean.create",
+            id: "$body",
+            sourceId: "$hole",
+            operation: "difference",
+          },
+        },
+      ],
+      { expectedRevision: api.revision },
+    );
+    assert(made.ok, JSON.stringify(made));
+    layers.viewMode = "boolean";
+    layers.composite.setQuality(64);
+    const before = saveSculptProject(layers.project),
+      count = layers.undoCount;
+    bridge.suspend(); // Same path as desktop blur/visibility interruption, no XR session.
+    await layers.composite.flush();
+    assert.equal(layers.composite.pending, false);
+    assert(layers.composite.stats.triangles > 0);
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    assert.equal(layers.undoCount, count);
+    bridge.suspend();
+    await layers.composite.flush();
+    assert.equal(layers.composite.pending, false);
+    const session = new FakeSession();
+    bridge.start(session);
+    bridge.suspend();
+    await assert.rejects(layers.composite.flush(), /tracking/);
+    layers.setBooleanModifiers(made.value.aliases.body, []);
+    bridge.stop();
+    bridge.suspend();
+    await layers.composite.flush();
+    assert.equal(layers.composite.pending, false);
+  } finally {
+    bridge.dispose();
+    layers.dispose();
+  }
+});

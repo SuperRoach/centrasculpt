@@ -1,7 +1,27 @@
+### A tidier tyre dial (2026-11-07)
+
+- Tyre shape now uses whole numbers, a clear readout and **0 = Torus / 100 = Tyre** endpoints. New primitive dimension labels are shorter, with the ring-radius explanation tucked into a tooltip.
+
+### Round donut, firmer tyre (2026-11-07)
+
+- Torus now has **Tyre shape · 0–100%**: keep it round or add a flatter tread and firmer shoulders. Ring size and hole diameter stay put.
+- Curved primitive previews have fewer wireframe lines, making their silhouettes easier to read. Applied shapes keep their full detail.
+- Cone tip entries stop at zero. No inside-out horns, please.
+
+### Four more starting points (2026-11-07)
+
+- **Cone, Capsule, Torus and Pyramid** join Primitives on desktop and Quest. Tiny horn? Rounded handle? A respectable donut? Start with exact dimensions and keep editing them.
+- Cone tips can be sharp or blunt. Capsule height includes both rounded ends; torus fields clearly separate ring radius from tube diameter. Pyramid width, depth and height stay editable.
+- Native saves, recovery, Library copies and approved local-agent plans retain the sources. Thin features still need export and slicer checks; no surprise Bake.
+
 ### More room for export cleanup (2026-11-07)
 
 - Export memory now offers 256 MiB (default), 384 MiB and 512 MiB budgets. Choose a higher budget for larger Standard or High exports on devices with memory to spare; total browser memory can be higher.
 - Unified Boolean cleanup preserves winding across mesh chunks. Memory rejections show estimated and available workspace; triangle and topology limits still apply.
+
+### Scene previews recover after switching desktop focus (2026-11-07)
+
+- Fixed live Boolean evaluation staying paused after switching away from the desktop editor, which could leave agent scene captures stuck at `render_pending`.
 
 ### Visual inspection for local agents (2026-11-07)
 

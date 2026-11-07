@@ -8,7 +8,8 @@ import { arrayInstanceAngles, arrayInstanceScales } from "./object-array";
 import {
   primitiveDimensions,
   primitiveDistance,
-  primitiveWorldDimensions,
+  primitiveFeatureSize,
+  primitiveWorldBounds,
   validatePrimitive,
 } from "./parametric-primitive";
 import { sculptPaint } from "./sculpt-paint";
@@ -310,16 +311,10 @@ export function compositeLayout(
   let desiredStep = Infinity;
   for (const layer of visible) {
     const scale = uniformScale(layer.transform),
-      dimensions =
+      baseBounds =
         live && layer.primitive
-          ? primitiveWorldDimensions(layer.primitive, layer.transform)
-          : undefined,
-      baseBounds = dimensions
-        ? {
-            min: dimensions.map((d, i) => layer.transform.position[i] - d / 2),
-            max: dimensions.map((d, i) => layer.transform.position[i] + d / 2),
-          }
-        : layer.volume.worldBounds(layer.transform);
+          ? primitiveWorldBounds(layer.primitive, layer.transform)
+          : layer.volume.worldBounds(layer.transform);
     let bounds = baseBounds;
     const instanceScales = layer.array?.enabled ? arrayInstanceScales(layer.array) : [1],
       largestInstance = Math.max(...instanceScales),
@@ -371,10 +366,9 @@ export function compositeLayout(
     if (!analyticPrimitives || !live || !layer.primitive)
       desiredStep = Math.min(desiredStep, layer.volume.step * scale * smallestInstance);
     if (live && layer.primitive) {
-      const dimensions = primitiveDimensions(layer.primitive);
       desiredStep = Math.min(
         desiredStep,
-        (Math.min(...dimensions) * scale * smallestInstance) /
+        (primitiveFeatureSize(layer.primitive) * scale * smallestInstance) /
           (layer.primitive.kind === "box" && layer.primitive.cornerRadius !== undefined
             ? 6
             : analyticPrimitives

@@ -1,12 +1,10 @@
 import {
   BoxGeometry,
   type BufferGeometry,
-  CylinderGeometry,
   Group,
   type Matrix4,
   Mesh,
   MeshBasicMaterial,
-  SphereGeometry,
   Vector3,
 } from "three";
 import { AssemblyControls } from "./assembly-controls";
@@ -15,10 +13,13 @@ import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI, type ModellingCommand } from "./modelling-api";
 import type { ArrayDefinition } from "./object-array";
 import {
-  PRIMITIVE_KINDS,
+  PRIMITIVE_CHOICES,
+  type PrimitiveChoice,
   type PrimitiveSource,
   primitiveDimensions,
+  primitiveFieldLabel,
   primitiveFields,
+  primitivePreviewGeometry,
   primitiveWorldDimensions,
   validatePrimitive,
 } from "./parametric-primitive";
@@ -56,6 +57,7 @@ export class PrimitiveTools {
   private arrayScale = 100;
   private arrayOrientation: "rotate" | "retain" = "retain";
   private arrayMenu = false;
+  private typesMenu = false;
   constructor(
     readonly layers: () => IndependentLayers,
     private readonly changed: () => void = () => {},
@@ -75,16 +77,22 @@ export class PrimitiveTools {
   get settings() {
     return this.layers().display.precision;
   }
-  select(kind: PrimitiveSource["kind"]): void {
-    if (!PRIMITIVE_KINDS.includes(kind)) throw new Error("Unknown primitive type.");
+  select(kind: PrimitiveChoice): void {
+    if (!PRIMITIVE_CHOICES.includes(kind)) throw new Error("Unknown primitive type.");
     this.editing = false;
     const size = Math.max(...primitiveDimensions(this.draft));
     this.draft =
-      kind === "box"
+      kind === "box" || kind === "pyramid"
         ? { kind, width: size, height: size, depth: size }
-        : kind === "cylinder"
-          ? { kind, diameter: size, height: size }
-          : { kind, diameter: size };
+        : kind === "cone"
+          ? { kind: "cylinder", diameter: size, bottomDiameter: size, topDiameter: 0, height: size }
+          : kind === "capsule"
+            ? { kind, diameter: size / 2, height: size }
+            : kind === "torus"
+              ? { kind, majorRadius: size * 0.35, tubeDiameter: size * 0.3 }
+              : kind === "cylinder"
+                ? { kind, diameter: size, height: size }
+                : { kind, diameter: size };
     this.updatePreview();
   }
   begin(): void {
@@ -109,25 +117,7 @@ export class PrimitiveTools {
   }
   private updatePreview(): void {
     this.preview.geometry.dispose();
-    this.preview.geometry =
-      this.draft.kind === "box"
-        ? new BoxGeometry(1, 1, 1)
-        : this.draft.kind === "cylinder"
-          ? new CylinderGeometry(
-              (this.draft.kind === "cylinder"
-                ? (this.draft.topDiameter ?? this.draft.diameter)
-                : 1) /
-                primitiveDimensions(this.draft)[0] /
-                2,
-              (this.draft.kind === "cylinder"
-                ? (this.draft.bottomDiameter ?? this.draft.diameter)
-                : 1) /
-                primitiveDimensions(this.draft)[0] /
-                2,
-              1,
-              48,
-            )
-          : new SphereGeometry(0.5, 48, 32);
+    this.preview.geometry = primitivePreviewGeometry(this.draft);
     this.preview.scale.set(...primitiveDimensions(this.draft));
   }
   async create(position: Vec3 = [0, 0, 0]): Promise<void> {
@@ -164,7 +154,13 @@ export class PrimitiveTools {
       throw new Error("Unsupported primitive dimension.");
     const next = validatePrimitive({
       ...source,
-      [field]: fromDisplay(displayValue, this.settings),
+      [field]:
+        field === "tyre"
+          ? Math.round(displayValue)
+          : fromDisplay(
+              field === "topDiameter" ? Math.max(0, displayValue) : displayValue,
+              this.settings,
+            ),
     });
     if (edit)
       await this.run(async () => {
@@ -235,7 +231,10 @@ export class PrimitiveTools {
     if (tool.stick.available && Math.abs(tool.stick.y) > 0.25) {
       const factor = Math.exp(-tool.stick.y * dt);
       const next = Object.fromEntries(
-        Object.entries(this.draft).map(([k, v]) => [k, k === "kind" ? v : Number(v) * factor]),
+        Object.entries(this.draft).map(([k, v]) => [
+          k,
+          k === "kind" || k === "tyre" ? v : Number(v) * factor,
+        ]),
       );
       try {
         this.draft = validatePrimitive(next);
@@ -299,6 +298,11 @@ export class PrimitiveTools {
         add(`key:${key}`, key, i);
       add("apply", `Apply ${this.entry || "…"}`, 12);
       add("cancel-field", "Cancel", 13);
+    } else if (this.typesMenu) {
+      add("types-home", "‹ Primitives", 0);
+      PRIMITIVE_CHOICES.forEach((kind, i) => {
+        add(`type:${kind}`, `New ${kind[0].toUpperCase() + kind.slice(1)}`, i + 1);
+      });
     } else if (this.arrayMenu) {
       const active = this.layers().active.layer,
         array = active.array;
@@ -352,9 +356,7 @@ export class PrimitiveTools {
         !active.editable,
       );
     } else {
-      PRIMITIVE_KINDS.forEach((kind, i) => {
-        add(`type:${kind}`, `New ${kind}`, i);
-      });
+      add("types", "New primitive…", 0);
       add(
         this.placing ? "cancel" : "place",
         this.placing ? "Cancel placement" : "Place preview…",
@@ -369,15 +371,15 @@ export class PrimitiveTools {
         .forEach(([k, v], i) => {
           add(
             `field:${k}`,
-            `${this.source ? "Selected" : "New"} ${k} · ${toDisplay(Number(v), this.settings).toFixed(3)} ${this.settings.unit}`,
-            6 + i,
+            `${this.source ? "Selected" : "New"} ${primitiveFieldLabel(k, s)} · ${k === "tyre" ? Number(v).toFixed(0) : toDisplay(Number(v), this.settings).toFixed(3)} ${k === "tyre" ? "%" : this.settings.unit}`,
+            k === "tyre" ? 2 : 6 + i,
             !!this.source && !this.layers().active.layer.editable,
           );
         });
       add(
         "restore",
         "Restore initial dimensions",
-        12,
+        1,
         !this.source || !this.layers().active.layer.editable,
       );
       add("bake", "Bake to Sculpt Layer", 9, !this.source || !this.layers().active.layer.editable);
@@ -397,7 +399,7 @@ export class PrimitiveTools {
             )
               .map((v) => toDisplay(v, this.settings).toFixed(3))
               .join(" × ")} ${this.settings.unit} · fields are local`
-          : "Editable Box · Cylinder · Sphere · model physical scale",
+          : "Box · Cylinder · Sphere · Cone · Capsule · Torus · Pyramid",
       buttons,
       labels: [],
       footer: this.feedback,
@@ -461,8 +463,11 @@ export class PrimitiveTools {
     const a = id.slice(10);
     try {
       if (a.startsWith("type:")) {
-        this.select(a.slice(5) as PrimitiveSource["kind"]);
-      } else if (a === "edit") this.editing = true;
+        this.select(a.slice(5) as PrimitiveChoice);
+        this.typesMenu = false;
+      } else if (a === "types") this.typesMenu = true;
+      else if (a === "types-home") this.typesMenu = false;
+      else if (a === "edit") this.editing = true;
       else if (a === "place") this.begin();
       else if (a === "cancel") this.cancel();
       else if (a.startsWith("field:")) {

@@ -104,7 +104,7 @@ and `structuredContent`: `{ok:true, revision, value}` or
 
 Source dimensions must be positive, finite and at most 10,000 (in the specified
 unit); the engine applies its tighter physical/aspect/resource limits. The adapter
-exposes these three basic primitive schemas; rounded boxes remain available through
+also exposes capsule, torus and pyramid, plus zero-tip Cone via cylinder end parameters; rounded boxes remain available through
 the existing enclosure API/UI. Translations are world coordinates in the explicit
 unit, rotations XYZ radians, scale dimensionless. These do not move the VR workspace.
 
@@ -318,8 +318,7 @@ end diameters, for example `{ "kind":"cylinder", "topDiameter":10,
 +Y, bottom local −Y. Legacy `{kind:"cylinder",diameter,height}` still creates a straight
 cylinder. If `diameter` is supplied with one end override, the other end uses that
 legacy diameter. Inspection includes the resolved legacy fallback and explicit ends.
-All diameters remain positive and retain the engine's dimension/aspect/resource limits;
-zero-radius cone tips and elliptical ends are excluded. Use tapered sources as editable
+Either cylinder end diameter may be zero; at least one must be positive. Dimension/aspect/resource limits remain; elliptical ends are excluded. Use tapered sources as editable
 Boolean cutters for flared/countersunk openings.
 
 `scale_primitive({expectedRevision,id,factors:[x,y,z]})` multiplies local source
@@ -404,3 +403,21 @@ No write grant, source evaluation, view switch or additional background polling.
 Use with `get_geometry_diagnostics` and source accuracy labels. Screenshots cannot
 establish watertightness, exact dimensions or physical fit. Full contracts, resource
 limits, errors and repeatable smoke: [visual inspection guide](PHASE_7_4_2_VISUAL_INSPECTION.md).
+
+### Expanded primitives (2026-11-07)
+
+`create_primitive`, `update_primitive`, strict command/proposal batches and dry-runs
+accept `capsule {diameter,height}`, `torus {majorRadius,tubeDiameter}` and
+`pyramid {width,height,depth}` in explicit physical units. Capsule height is overall
+height ≥ diameter. Torus major radius is the ring centreline radius, not its outer
+radius; it must exceed half the tube diameter. Cone is the canonical cylinder preset
+`{kind:"cylinder",bottomDiameter:20,topDiameter:0,height:30}` in mm.
+`get_capabilities` includes these conventions. `scale_primitive` permits independent
+pyramid axes and capsule axial/radial sizing (X=Z); torus requires equal XYZ, with
+explicit parameter updates available. Same-kind edits preserve stable IDs and use
+existing revision, permission, consent and single-Undo transaction guards.
+See [full geometry/native/export contract](PRIMITIVE_EXPANSION.md).
+
+Torus `tyre` is an optional dimensionless 0–100 percentage, accepted by strict
+primitive/command/proposal schemas and preserved by `scale_primitive`. Zero retains
+the round torus; 100 creates firmer rounded shoulders. Native v21 stores the field.

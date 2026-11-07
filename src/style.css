@@ -480,3 +480,8 @@ header .brand { border: 0; padding: 4px 0; border-radius: 5px; }
 .enclosure-panel .feature-secondary .feature-remove{color:#986a5a}
 .feature-association{padding-top:8px;border-top:1px solid #e3e8dd}
 .enclosure-feature-body select:focus-visible{outline:2px solid #80966d;outline-offset:3px}
+
+.primitive-dimensions .primitive-tyre-control{grid-column:1 / -1;display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;margin-top:4px;padding-top:12px;border-top:1px solid #d7dfcf}
+.primitive-tyre-control output{font-variant-numeric:tabular-nums;font-weight:600;color:#405c2d}
+.primitive-tyre-control input[type=range]{grid-column:1 / -1;width:100%;margin:0;padding:0;accent-color:#7f956a}
+.primitive-tyre-endpoints{grid-column:1 / -1;display:flex;justify-content:space-between;font-size:11px;color:#697365;font-weight:400}

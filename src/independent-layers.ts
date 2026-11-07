@@ -1,15 +1,12 @@
 import {
-  BoxGeometry,
   BufferAttribute,
   type BufferGeometry,
   Color,
-  CylinderGeometry,
   Euler,
   Group,
   type Mesh,
   MeshStandardMaterial,
   Quaternion,
-  SphereGeometry,
   Vector3,
 } from "three";
 import { validateAssembly } from "./assembly";
@@ -50,7 +47,7 @@ import { PaintSurface, paintColours } from "./paint-surface";
 import {
   evaluatePrimitive,
   type PrimitiveSource,
-  roundedBoxGeometry,
+  primitiveGeometry,
   validatePrimitive,
 } from "./parametric-primitive";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
@@ -145,28 +142,12 @@ export class LayerRuntime {
     if (!this.mesher.pendingChunks && this.primitiveSource) {
       if (!this.primitiveGeometry) {
         const s = this.primitiveSource;
-        const indexed =
-          s.kind === "box"
-            ? s.cornerRadius === undefined
-              ? new BoxGeometry(s.width, s.height, s.depth)
-              : roundedBoxGeometry(s)
-            : s.kind === "cylinder"
-              ? new CylinderGeometry(
-                  (s.topDiameter ?? s.diameter) / 2,
-                  (s.bottomDiameter ?? s.diameter) / 2,
-                  s.height,
-                  96,
-                )
-              : new SphereGeometry(0.5, 96, 64).scale(
-                  s.width ?? s.diameter,
-                  s.height ?? s.diameter,
-                  s.depth ?? s.diameter,
-                );
+        const indexed = primitiveGeometry(s);
         this.primitiveGeometry = indexed.index ? indexed.toNonIndexed() : indexed.clone();
         indexed.dispose();
         const positions = this.primitiveGeometry.getAttribute("position");
         for (let i = 0; i < positions.array.length; i++)
-          if (Math.abs(positions.array[i]) < this.volume.extent * 1e-7) positions.array[i] = 0;
+          if (Math.abs(positions.array[i]) < this.volume.extent * 1e-14) positions.array[i] = 0;
       }
       this.surface.clear();
       this.surface.update([
@@ -3127,7 +3108,11 @@ export class IndependentLayers {
           : {
               ...(placement ? { transform: validateTransformEdit(placement, placement) } : {}),
               name: this.uniqueName(
-                source.kind === "tube" ? "Procedural Tube" : `Parametric ${source.kind}`,
+                source.kind === "tube"
+                  ? "Procedural Tube"
+                  : source.kind === "cylinder" && source.topDiameter === 0
+                    ? "Parametric Cone"
+                    : `Parametric ${source.kind}`,
               ),
               order: this.project.layerStack.layers.length,
               procedural: source.kind === "tube" ? source : undefined,
