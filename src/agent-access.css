@@ -6,7 +6,7 @@
 .agent-access-eyebrow{font-size:9px;letter-spacing:1.6px;color:#7a856f}
 .agent-access .agent-access-status{display:inline-flex;align-items:center;gap:7px;margin:16px 0 0;padding:4px 9px;border-radius:20px;background:#edf0e9;color:#65715e;font-size:11px}
 .agent-access-status::before{content:"";width:6px;height:6px;border-radius:50%;background:#9ca695}
-.agent-access[data-state=connected] .agent-access-status::before,.agent-access[data-state=editing] .agent-access-status::before{background:#668949}
+.agent-access[data-state=connected] .agent-access-status::before,.agent-access[data-state=editing] .agent-access-status::before{background:#00e64d}
 .agent-access[data-state=editing] .agent-access-status{background:#e4efd7;color:#405a2e}
 .agent-access[data-state=error] .agent-access-status{background:#f8eadd;color:#88572c}
 .agent-access[data-state=error] .agent-access-status::before{background:#bd8047}
@@ -37,11 +37,11 @@
 .agent-access-heading{padding-right:30px;margin-bottom:18px}
 .agent-access-launcher{position:fixed;bottom:18px;left:18px;z-index:10000;display:grid;place-items:center;width:42px;height:42px;padding:0;border:1px solid #cddbbb;border-radius:13px;background:#fafbf7;color:#526e3f;box-shadow:0 4px 16px #233c3a18;font:23px system-ui;cursor:pointer}
 .agent-access-launcher::after{content:"";position:absolute;right:5px;top:5px;width:6px;height:6px;border-radius:50%;background:#9ca695}
-.agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after{background:#668949}
+.agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after{background:#00e64d}
 .agent-access-launcher:focus-visible{outline:2px solid #80966d;outline-offset:3px}
 .agent-access .agent-access-status{top:23px;width:18px;height:18px;display:grid;place-items:center;overflow:hidden;white-space:nowrap;letter-spacing:0;gap:0;color:transparent}
 .agent-access .agent-access-status::before{flex:none}
-.agent-access[data-state=connected] .agent-access-status::before,.agent-access[data-state=editing] .agent-access-status::before{width:18px;height:18px;border-radius:0;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2364854a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8 12 3 3 5-6'/%3E%3C/svg%3E") center/18px no-repeat}
+.agent-access[data-state=connected] .agent-access-status::before,.agent-access[data-state=editing] .agent-access-status::before{width:18px;height:18px;border-radius:0;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2300b83d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8 12 3 3 5-6'/%3E%3C/svg%3E") center/18px no-repeat}
 
 .agent-proposal { max-height: 55vh; overflow: auto; border-top: 1px solid #758270; margin-top: 10px; }
 .agent-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; max-height: 32vh; overflow: auto; user-select: text; }
@@ -68,14 +68,18 @@
 /* Keep the floating panel independent of the responsive editor sidebar layout. */
 aside.agent-access { width: min(310px, calc(100vw - 36px)); min-width: 0; max-width: 310px; right: auto; }
 @media (max-width: 640px) { aside.agent-access { width: min(280px, calc(100vw - 24px)); max-width: 280px; left: 12px; padding: 16px; } }
-.agent-access-launcher::after { box-sizing: border-box; width: 6px; height: 6px; border: 1px solid #9ca695; background: transparent; }
-.agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after { border-color: #668949; background: #668949; }
+/* Centre the status ring on the smaller sparkle in the 20px launcher SVG. */
+.agent-access-launcher::after { box-sizing: border-box; top: 6px; right: 6.5px; width: 8px; height: 8px; border: 1px solid #9ca695; background: transparent; }
+.agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after { border-color: #00b83d; background: #00e64d; }
 .agent-access-launcher::after { transition: background-color 220ms ease, border-color 220ms ease; }
 @media (prefers-reduced-motion: reduce) { .agent-access-launcher::after { transition: none; } }
 .agent-history { margin-top: 12px; padding-top: 10px; border-top: 1px solid #d5ddce; }
 .agent-history h3 { margin: 0 0 8px; font: 600 12px system-ui, sans-serif; }
 .agent-history ol { margin: 0; padding: 0; list-style: none; max-height: 240px; overflow: auto; }
 .agent-history li { padding: 8px 0; border-top: 1px solid #e0e5d9; font-size: 11px; overflow-wrap: anywhere; }
+.agent-history-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.agent-history-heading strong { min-width: 0; }
+.agent-history-heading time { flex: none; white-space: nowrap; }
 .agent-history strong { display: block; font-size: 11px; font-weight: 500; }
 .agent-history time { font-size: 10px; color: #7a856f; }
 .agent-history details { margin-top: 4px; color: #65715e; }
@@ -86,3 +90,9 @@ aside.agent-access { width: min(310px, calc(100vw - 36px)); min-width: 0; max-wi
 .agent-history [role=status] { display: block; margin-top: 3px; font-size: 10px; color: #65715e; }
 .agent-access-remember { display: flex; align-items: center; gap: 7px; margin-top: 12px; font: 10px/1.4 system-ui, sans-serif; color: #65715e; letter-spacing: 0; text-transform: none; }
 .agent-access-remember input { width: 13px; height: 13px; margin: 0; flex: none; }
+
+.agent-access:not([data-state=connected]):not([data-state=editing]) .agent-access-status::before { box-sizing: border-box; width: 14px; height: 14px; border: 1.5px solid #9ca695; border-radius: 50%; background: transparent; }
+
+@keyframes agent-history-arrive { from { opacity: 0; } to { opacity: 1; } }
+.agent-history li[data-arriving=true] { animation: agent-history-arrive 240ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { .agent-history li[data-arriving=true] { animation: none; } }

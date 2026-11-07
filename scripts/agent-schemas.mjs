@@ -226,6 +226,8 @@ export const tools = {
     schema: z
       .object({
         expectedRevision: z.string().min(1).max(128).optional(),
+        objectId: id.optional(),
+        partId: id.optional(),
         viewpoint: z
           .enum(["front", "back", "left", "right", "top", "isometric"])
           .default("isometric"),
@@ -234,7 +236,7 @@ export const tools = {
       })
       .strict(),
     description:
-      "Read-only model-only PNG of current rendered visible geometry. Whole scene only. Boolean/array scenes require ready Boolean preview. Neutral untextured material; excludes references/UI/guides. Use with get_geometry_diagnostics; no fit or topology guarantee.",
+      "Read-only model-only PNG of current rendered visible geometry. Optional objectId or partId independently evaluates and isolates that hierarchy or printable part, including Booleans and arrays. Boolean/array scenes require ready Boolean preview. Neutral untextured material; excludes references/UI/guides. Use with get_geometry_diagnostics; no fit or topology guarantee.",
   },
   scene_summary: {
     schema: z.object({}).strict(),

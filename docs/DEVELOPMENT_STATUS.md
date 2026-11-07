@@ -1,3 +1,225 @@
+# Outline against studio background — 2026-11-08
+
+Confirmed and fixed missing silhouette edges over grey: the display-only studio
+skybox mesh entered OutlinePass's depth occluder render under an override material.
+It is now explicitly excluded only during the outline depth/mask pass and restored
+in finally. The normal scene still renders the background. Visually verified a
+continuous green top edge against grey as well as edges against the grid.
+Browser regression checks actual green pixels on the upper grey-backed silhouette.
+Browser integration passed; full checks **1,652/1,652 passed**, no failures/skips/
+cancellations (100.46 s), formatting/lint/types/build passed. Evidence:
+`/tmp/outline-background-check.log`, `/tmp/outline-background-regression.log`.
+No commit/push; existing scene and prior work preserved.
+
+# Wider silhouette border — 2026-11-08
+
+User requested thickness 12. OutlinePass now uses thickness 12, matching 12-tap
+blur sampling to avoid separated bands and increased edge strength to compensate
+for the wider filter. Visually inspected the fresh browser capture: wider smooth
+green silhouette border. Browser integration passed; final full check passed
+**1,652/1,652**, zero failures/skips/cancellations (109.78 s). Formatting, lint,
+strict TypeScript and production build passed. Evidence:
+`/tmp/agent-outline-12-final-check.log`, `/tmp/agent-outline-12-final-browser.log`.
+No commit/push; scene changes remain separate from presentation settings.
+
+# Compact agent history with arrival fade — 2026-11-08
+
+Activity title/outcome and timestamp share a flex row; long titles wrap while time
+remains visible. New stable activity IDs receive a 240 ms opacity fade. Existing
+IDs do not replay the fade when the list refreshes; clearing history resets this
+bounded presentation tracking. Reduced-motion disables animation. Project data,
+selection, permission and Undo behavior are unchanged. Visual layout checked at
+normal/wrapped title lengths. Browser CSS checks confirm only arriving rows animate
+and reduced-motion disables it. Full verification recorded below. Nothing committed
+or pushed; earlier changes preserved.
+
+# User browser ownership acceptance — 2026-11-08
+
+User verified in Chrome:
+- A connected editor prevents a second tab from connecting: “another editor is connected; revoke it first”.
+- Revoking A permits B to connect; A stays disconnected and its scene stays unchanged.
+- Closing owning tab B without explicit revocation permits A to reconnect, with its scene unchanged.
+
+These are user-reported manual browser passes, separate from automated checks.
+Revocation during in-flight capture, rejected proposals and Quest acceptance remain
+separate gates; no additional result is inferred from these checks.
+
+# Agent silhouette feedback — 2026-11-08
+
+Replaced Box3Helper activity boxes with a temporary screen-space OutlinePass over
+actual selected visible surface groups, using a green border with thickness 12 and compensated strength without
+glow or hidden edges. Hierarchy selections deduplicate their surface groups.
+Boolean view highlights the evaluated composed display instead of raw cutter
+shells. It is a composed-result highlight, not isolated per-operand geometry.
+The effect is desktop-only; ordinary rendering resumes when inactive or blocked.
+Six-second timing, reduced motion, blocked deferral and Show me replay remain.
+
+The renderer borrows authoritative surfaces and never changes source materials,
+geometry, selection or Undo. Temporary composer targets/passes dispose on clear,
+expiry, scene replacement and page cleanup. Pixel ratio is capped at 1.5 during
+feedback. Source bounding calculations remain only for explicit Show me framing.
+Focused feedback tests **6/6 passed**. Full `npm run check` passed formatting/lint, strict TypeScript, production build
+and **1,652/1,652 tests**, zero failures/skips/cancellations (98.03 s test wall).
+Browser integration passed after making the approval-panel wait deterministic;
+visually inspected the fresh browser screenshot showing a green silhouette edge
+and no bounding cage. Evidence: `/tmp/silhouette-check.log`,
+`/tmp/silhouette-browser2.log`, `work/phase-7-3/browser-created.png`.
+Whitespace check passed.
+Existing user tab must load updated code through a saved-project reload before
+this presentation change appears. No commit or push; prior work preserved.
+
+# Visible agent highlights — 2026-11-08
+
+Fixed feedback suppression after desktop blur: visual feedback no longer inherits
+the camera-input suspension guard. Capture permissions and capture busy guards
+remain unchanged. XR, active strokes/transforms, hidden documents and modelling
+operations still suppress feedback. Blocked highlights wait instead of being
+silently dropped. Brighter green bounds last six seconds, and Show me now frames
+and replays the highlight. Presentation remains separate from selection/history.
+
+Focused feedback regressions **6/6 passed**, including Show me replay and blocked
+feedback retention. Browser integration passed with a dispatched window blur before
+an agent rotation; visually inspected `work/phase-7-3/browser-created.png` showing
+the green box in the real viewport. Evidence: `/tmp/highlight-browser.log`,
+`/tmp/highlight-final-focused.log`. Final full results below.
+
+The existing user tab retains old code until a saved-project reload; a live rename
+to Agent highlight demo was executed, but no successful fixed-version demonstration
+in that tab is claimed. No reload or scene replacement was performed. No commit/push.
+
+# Restarted agent discovery — 2026-11-08
+
+Corrected the missing half of restart handling: after an approved connection drops,
+the existing tab checks the same-origin session endpoint with exponential backoff (1, 2, 4, 8, then at most 15 seconds). A new
+server token automatically opens Local agent access with **Agent server is back ·
+approve connection to reconnect**. The user no longer has to discover that manual
+retry is available. Fresh consent remains required; no background approval request
+is sent. Explicit revocation stops discovery, and page cleanup stops the loop.
+Existing scene, selection and Undo remain in the same editor. Discovery uses the
+existing endpoint origin/Host/header restrictions. The browser restart regression
+now requires this prompt to appear automatically before it clicks approval and
+compares scene/revision and the original page marker.
+
+Retry cadence now backs off exponentially to a 15-second cap and resets after
+successful connection. Browser restart/discovery regression passed with backoff;
+full backoff checks passed **1,652/1,652** (97.14 s). Evidence:
+`/tmp/reconnect-backoff-check.log`, `/tmp/reconnect-backoff-browser.log`.
+Approval UI removes the remembered-editing explanation, uses a bright green
+connected dot and a hollow disconnected ring. Full UI checks passed **1,652/1,652**, zero failures/skips/cancellations
+(93.67 s), with formatting/lint/types/build passing. Final hollow-ring CSS
+passed the applicable lint/whitespace checks. Evidence: `/tmp/agent-reconnect-ui-check.log`.
+No commit or push; all prior work preserved.
+
+# Agent restart without scene reload — 2026-11-08
+
+Agent development mode disables Vite HMR and serves a style-only Vite client
+(with app configuration initialization) so server restart cannot trigger a reload
+of an unsaved sculpture. Normal dev mode retains HMR. Approve connection discovers
+the current browser-only bridge credentials from a no-store, same-origin local
+endpoint, then explicitly approves the new session. No automatic reapproval or
+reuse of proposal consent. Existing disconnect reset cancels pending work and
+clears stale proposals; source scene/history remain owned by the same editor.
+
+Discovery requires the exact loopback Host, a custom request header, and rejects
+foreign Origin / cross-site Fetch Metadata; no CORS headers are supplied. This is
+agent-dev-only and does not expose the MCP bearer credential. Browser validates
+the discovered loopback address and token shape. Failed retries retain the scene
+and explain how to retry without reloading.
+
+Full `npm run check`: **1,652/1,652 passed**, no failures/skips/cancellations,
+91.89 s test wall on the final full rerun, formatting/lint/types/build passed. Browser regression records
+a window marker and object/revision snapshot across a real Vite stop/start, checks
+no access before renewed approval, and compares the scene after reconnect. It also
+checks discovery refuses missing headers and foreign origins. **Browser regression passed** with installed Chromium, including the real restart,
+unchanged scene/revision, preserved page marker, explicit renewed approval and
+forbidden discovery requests.
+Evidence: `/tmp/reconnect-final-check.log`, `/tmp/reconnect-browser-final.log`.
+
+Already-loaded pre-fix tabs require a one-time native save, updated-server reload
+and reopen to install this behavior. Agent-mode source edits now require deliberate
+reloads after saving. Nothing committed or pushed. Earlier cleanup/export work is
+preserved.
+
+# Phase 7.5 evaluated isolation follow-up — 2026-11-08
+
+Object and printable-part captures now evaluate disposable scoped geometry through
+`layerSources` / `partSources` and the existing independent Boolean/export pipeline.
+This preserves hierarchy transforms, private cutters and arrays, uses existing
+memory admission and does not evict desktop caches. The temporary composite,
+geometry and render targets are disposed on success and errors. All camera presets,
+auto framing, root ID/name, input IDs, mesh counts and bounds are retained.
+Mutually exclusive scope inputs, missing/hidden roots and invalid part membership
+refuse explicitly. No scene crop is presented as an isolated result.
+
+Focused preview tests: **9/9 passed**, including ray assertions for an empty Boolean
+through-hole and a real second array copy in both object and printable-part captures;
+native bytes and Undo count are unchanged. Existing cancellation, replacement,
+PNG size and renderer-state regressions remain passing.
+
+Browser reliability: installed Chromium fallback passed the complete smoke test.
+The previous approval timeout was a test toggle defect: the test closed an already
+open access panel. It now checks panel visibility and waits for awaiting-approval
+state before clicking. No consent or authentication relaxation. Default Playwright
+Chromium remains absent; use the installed executable override. Fresh scoped PNG
+browser smoke passed using installed Chromium 1234; visually inspected the isolated
+isometric PNG. Final full `npm run check` passed formatting/lint, strict TypeScript,
+production build and **1,652/1,652 tests**, no failures/skips/cancellations (95.71 s).
+Final focused MCP tests **27/27 passed** after the last assertion update. Evidence:
+`/tmp/phase75-final-evaluated.log`, `/tmp/phase75-final-focused.log`,
+`/tmp/phase75-scoped-browser.log`; images `work/phase-7-3/model-*.png`.
+Whitespace check passed.
+
+Reliability review: browser smoke verifies connection approval/read-only refusal,
+fresh approval after reload, editing preference persistence without implicit consent,
+proposal review/apply, stale revisions, one-step Undo, MCP disconnect, Vite shutdown
+and credential cleanup, normal startup and production isolation. Protocol tests
+verify conflicting-editor ownership, revocation, cancellation, editor replacement,
+stale/expired proposals, failed transaction rollback and PNG payload/session limits.
+Repeated Vite restart with an already-open tab, stale-tab takeover and rejection/
+revocation during a live browser capture still need dedicated browser acceptance;
+these are not claimed verified by the protocol suite. No application security defect
+was demonstrated in the passing tests.
+
+Earlier in-progress entries below are historical and superseded by this follow-up.
+No commit or push performed; recent export improvements remain intact. Export
+redesign remains deferred. Physical Quest and additional print acceptance pending.
+
+# Phase 7.5 cleanup in progress — 2026-11-08
+
+Initial Git status was clean at ef5ccca. Recent export reliability/memory changes
+(4697bda) are preserved. No export redesign, commit or push performed.
+
+Ordinary visible source objects support isolated capture via objectId, automatic
+framing/presets and ID/name/geometry metadata. Unsupported evaluated Boolean/array
+isolation and printable-part requests explicitly refuse; no scene crop substitutes
+for isolation. Whole-scene evaluated capture retains existing guards and permissions.
+The renderer, desktop camera, selection, native format and history paths are unchanged.
+A regression checks isolation metadata and explicit unsupported-scope failures.
+
+ROADMAP.md separates implementation from automated, browser, Quest and physical
+print acceptance, records one successful user enclosure/lid fit test, and defers
+sampling/meshing profiling, feature-preserving decimation, triangle estimates and
+modal export workflow with dimension/feature preservation.
+
+Verification: initial restricted runs failed local listen EPERM. Retried with
+permission. Browser default failed because Playwright headless Chromium 1254 is
+missing. Installed Chromium 1234 fallback ran but timed out at agent-smoke.mjs:377
+waiting for the exact-plan approval button. This is unresolved, not classified as
+a confirmed application defect or a passing lifecycle test. Visual smoke had no
+approved disposable session and failed its prerequisite. Do not weaken consent.
+Final `npm run check` passed formatting, lint, strict TypeScript, production build
+and **1,652/1,652 tests**, zero failures/skips/cancellations (126.39 s test wall).
+Evidence: `/tmp/phase75-verified.log`. Isolation regression passed. Whitespace
+check passed. Browser evidence: `/tmp/phase75-approved-browser.log` and
+`/tmp/phase75-fallback-browser.log`.
+
+Remaining: evaluated object and printable-part geometry isolation; investigate the
+browser proposal approval timeout; complete reload/restart, reconnect/revoke,
+active-tab/stale-session and editor-replacement browser acceptance. Existing tests
+cover protocol guards but do not replace these browser checks. Quest and new print
+acceptance were not performed. Next milestone: complete Phase 7.5 visual isolation
+and browser lifecycle acceptance before starting deferred export optimisation.
+
 # Development Status — Centra Sculpt / vrappPOC
 
 ## Primitive control cleanup — 2026-11-07
@@ -1939,3 +2161,22 @@ Desktop paint surface-miss validation: production build PASS; 52/52 paint tests 
 Snap feedback validation: strict TypeScript, production build and complete suite **1,316/1,316 PASS** (--test-concurrency=4); diff whitespace check passed. New guide cases cover left/right hands, origin transforms, snapped line/rotation angles, cancellation/release, unchanged source data and dimmed-but-clickable preference state. Existing Vite bundle-size advisory remains. No commit or push performed.
 
 2026-11-03 publication: user explicitly authorized committing and pushing Phase 6.0, radial Cut placement and Snap feedback, including a polished dated What’s New entry. This supersedes the earlier no-commit restriction for these changes. Physical Quest acceptance remains pending.
+
+Revocation follow-up: after the user revoked access, both `scene_summary` and a
+`create_primitive` attempt returned `agent_access: Approve connection in the active
+editor first.` No modelling command was admitted. This verifies disconnected read/
+write refusal, not revocation of an already-running capture.
+
+Read-only manual acceptance (2026-11-08): first attempt was invalid because the
+user had left Allow editing on; the admitted 10 mm test box was immediately undone.
+After the user corrected the switch, scene_summary succeeded, create_primitive
+returned `agent_access: Read-only connection. Enable editing in the browser.`,
+and the follow-up summary retained revision `72330570-7955-4dfd-bbf7-de1b05deea04:13`
+and four objects. Read-only read/write separation passed; no permission defect
+was demonstrated.
+
+Proposal rejection manual acceptance (2026-11-08): user rejected the staged
+rename proposal. get_proposal returned `rejected/error`; attempted application
+returned `permission_denied: Explicit browser proposal approval required.`
+The scene remained at revision `72330570-7955-4dfd-bbf7-de1b05deea04:13`, four
+objects, with Outline demo box 1 retaining its original name. Rejection passed.

@@ -9,6 +9,8 @@ export default defineConfig(async ({ command }) => {
     define: { __APP_VERSION__: JSON.stringify(version), __AGENT_ENABLED__: agent },
     server: {
       strictPort: true,
+      // Agent sessions preserve in-memory sculptures across server restarts.
+      hmr: agent ? false : undefined,
       fs: { deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/.certs/**", "**/*-key.*"] },
       host: agent ? "127.0.0.1" : "0.0.0.0",
       port: 5173,

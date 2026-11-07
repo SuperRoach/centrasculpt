@@ -45,6 +45,7 @@ export class StudioSkybox {
   readonly mesh = new Mesh(this.geometry, this.material);
   constructor() {
     this.mesh.name = "Studio skybox · display only";
+    this.mesh.userData.excludeFromAgentOutline = true;
     this.mesh.visible = false;
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -Infinity;

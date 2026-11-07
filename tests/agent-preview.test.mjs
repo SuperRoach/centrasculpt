@@ -424,6 +424,35 @@ test("capture uses actual evaluated Boolean subtraction and array display geomet
       "second array copy actually rendered",
     );
     assert.deepEqual(saveSculptProject(layers.project), before);
+    const body = layers.project.layerStack.layers.find((l) => l.array?.enabled);
+    for (const args of [{ objectId: body.id }, { partId: body.id }]) {
+      if (args.partId) body.assemblyPart = { clearanceMM: 0 };
+      const scopedRenderer = rendererMock();
+      const scopedBefore = saveSculptProject(layers.project);
+      const captured = await captureScenePreview(
+        scopedRenderer,
+        () => layers,
+        () => false,
+        { ...job(args), deadline: Date.now() + 10000 },
+        signal(),
+      );
+      assert(captured.ok, JSON.stringify(captured));
+      assert.equal(captured.value.geometry, "independently-evaluated-scope");
+      assert(Math.abs(captured.value.bounds.max[0] - captured.value.bounds.min[0] - 0.7) < 0.01);
+      const isolatedMeshes = scopedRenderer.scenes[0].meshes;
+      assert.equal(
+        new Raycaster(new Vector3(0, 1, 0), new Vector3(0, -1, 0)).intersectObjects(isolatedMeshes)
+          .length,
+        0,
+      );
+      assert(
+        new Raycaster(new Vector3(0.4, 1, 0), new Vector3(0, -1, 0)).intersectObjects(
+          isolatedMeshes,
+        ).length > 0,
+      );
+      assert.deepEqual(saveSculptProject(layers.project), scopedBefore);
+      assert.equal(layers.undoCount, history);
+    }
     assert.equal(layers.undoCount, history);
   } finally {
     layers.dispose();
@@ -488,4 +517,40 @@ test("hidden/empty surfaces, large scenes and render failures refuse and release
     layers.dispose();
     delete globalThis.document;
   }
+});
+
+test("isolated capture identifies the requested object, evaluates independently and refuses invalid parts", async () => {
+  const { layers } = await fixture();
+  canvasMock();
+  const renderer = rendererMock();
+  const id = layers.project.layerStack.layers.filter((l) => l.visible).at(-1).id;
+  const result = await captureScenePreview(
+    renderer,
+    () => layers,
+    () => false,
+    job({ objectId: id }),
+    signal(),
+  );
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.value.scope, "isolated-object");
+  assert.equal(result.value.object.id, id);
+  assert.deepEqual(result.value.visibleSourceIds, [id]);
+  const part = await captureScenePreview(
+    renderer,
+    () => layers,
+    () => false,
+    job({ partId: "part" }),
+    signal(),
+  );
+  assert.equal(part.ok, false);
+  layers.viewMode = "boolean";
+  const evaluated = await captureScenePreview(
+    renderer,
+    () => layers,
+    () => false,
+    job({ objectId: id }),
+    signal(),
+  );
+  assert.equal(evaluated.ok, true, JSON.stringify(evaluated));
+  assert.equal(evaluated.value.geometry, "independently-evaluated-scope");
 });

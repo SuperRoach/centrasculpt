@@ -126,3 +126,38 @@ last live operation is removed. A regression checks readiness without native-byt
 or history changes. Save an already open project before refreshing to load this
 fix. `render_pending` remains valid while display evaluation is actually unfinished
 or unavailable; capture never substitutes a stale image.
+
+## Phase 7.5 isolation
+
+`capture_scene_preview` accepts either `objectId` or `partId` (stable layer IDs).
+Object scope includes its hierarchy and required Boolean dependencies; printable
+part scope uses the same membership boundary as part export. Disposable evaluation
+includes Boolean cuts and arrays, independently of the desktop preview mode. Only
+the scoped result is rendered; no crop substitutes for isolation. Missing/hidden
+roots, invalid parts and unavailable evaluation return errors.
+
+All camera presets and automatic framing apply. Metadata identifies the root,
+visible input IDs, evaluated geometry, bounds and mesh/triangle counts. Sampling
+can omit small features; this image does not certify topology or fit. Evaluation
+shares export admission limits and can refuse under memory pressure. It does not
+evict desktop caches. Camera, selection, native data, history and permissions are
+preserved. Omit both IDs for the existing whole-scene display capture. PNG remains
+64–512 pixels per axis and at most 512 KiB.
+
+### Restarting dev:agent without losing the scene
+
+Agent mode disables automatic development reloads so a server restart leaves the
+in-memory sculpture intact. Once the server is running again, open Local agent
+access and click **Approve connection**. The existing tab discovers fresh local
+credentials and requires explicit approval; editing preference alone grants no
+access. Pending jobs/proposals are cancelled on disconnect. Manual reloads can
+still discard unsaved work. Normal development mode retains hot reload behavior.
+
+A tab loaded before this fix needs one saved-project reload to install it: save the
+native project first, reload after restarting the updated server, then reopen it.
+Agent-mode source changes likewise require a deliberate saved-project reload.
+
+After an approved connection drops, the tab checks for a restarted server with
+exponential backoff (1, 2, 4, 8, then at most 15 seconds). On discovering a new session it opens the approval panel automatically
+and reports **Agent server is back · approve connection to reconnect**. Approve to
+resume access. Explicit revocation disables this discovery. No reload is needed.

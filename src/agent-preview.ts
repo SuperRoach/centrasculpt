@@ -1,8 +1,10 @@
 import {
   AmbientLight,
   Box3,
+  BufferGeometry,
   Color,
   DirectionalLight,
+  Float32BufferAttribute,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -15,7 +17,11 @@ import {
   WebGLRenderTarget,
 } from "three";
 import type { AgentJob } from "./agent-access";
+import { layerSources, partSources } from "./assembly";
+import { prepareBooleanExport } from "./boolean-export";
 import type { IndependentLayers } from "./independent-layers";
+import { LayerStack, SculptProject } from "./layers";
+import { transformMatrix } from "./transform";
 
 export const PREVIEW_MAX_BYTES = 524288;
 export const previewDirections = {
@@ -92,6 +98,9 @@ export async function captureScenePreview(
       throw new Error("context_lost: WebGL is unavailable");
   };
   let target: WebGLRenderTarget | undefined;
+  let prepared: Awaited<ReturnType<typeof prepareBooleanExport>> | undefined;
+  const owned: BufferGeometry[] = [];
+  let inspectedIds: string[] | undefined;
   const material = new MeshStandardMaterial({ color: "#aebcb3", roughness: 0.72, metalness: 0 });
   const scene = new Scene(),
     model = new Group();
@@ -107,7 +116,8 @@ export async function captureScenePreview(
       (height as number) > 512 ||
       !(typeof viewpoint === "string" && Object.hasOwn(previewDirections, viewpoint)) ||
       Object.keys(job.args).some(
-        (k) => !["width", "height", "viewpoint", "expectedRevision"].includes(k),
+        (k) =>
+          !["width", "height", "viewpoint", "expectedRevision", "objectId", "partId"].includes(k),
       )
     )
       return fail(
@@ -121,11 +131,26 @@ export async function captureScenePreview(
         "render_pending",
         "Source meshing or assembly preview is active; no capture returned.",
       );
-    const composite = layers.viewMode === "boolean";
+    const { objectId, partId } = job.args;
+    if (
+      (objectId !== undefined && partId !== undefined) ||
+      (objectId !== undefined && typeof objectId !== "string") ||
+      (partId !== undefined && typeof partId !== "string")
+    )
+      return fail("invalid_input", "Choose one objectId or partId.");
+    const scopeId = (objectId ?? partId) as string | undefined;
+    const isolated =
+      scopeId === undefined
+        ? undefined
+        : layers.project.layerStack.layers.find((l) => l.id === scopeId);
+    if (scopeId !== undefined && (!isolated || !isolated.visible))
+      return fail("invalid_input", "Object is missing or hidden.");
+    const scoped = scopeId !== undefined;
+    const composite = !scoped && layers.viewMode === "boolean";
     const hasOperations = layers.project.layerStack.layers.some(
       (l) => l.booleanModifiers?.length || l.array?.enabled || l.operation !== "union",
     );
-    if (!composite && hasOperations)
+    if (!scoped && !composite && hasOperations)
       return fail(
         "not_evaluated",
         "Switch the editor to Boolean preview and wait for evaluation. Separate source surfaces would misrepresent live operations.",
@@ -141,11 +166,39 @@ export async function captureScenePreview(
         "render_pending",
         "Evaluated display is pending, failed or unavailable; no stale image returned.",
       );
-    const sources = composite
-      ? [layers.composite.group]
-      : layers.project.layerStack.layers
-          .filter((l) => l.visible)
-          .map((l) => layers.runtime(l.id).surface.group);
+    const isolatedGroup = new Group();
+    if (scoped) {
+      const inputs =
+        partId !== undefined
+          ? partSources(layers.project.layerStack, scopeId)
+          : layerSources(layers.project.layerStack, scopeId);
+      inspectedIds = inputs.filter((l) => l.visible).map((l) => l.id);
+      prepared = await prepareBooleanExport(
+        layers,
+        new SculptProject(new LayerStack(inputs), layers.project.settings),
+        signal,
+        false,
+      );
+      guard();
+      for (const source of prepared.sources)
+        for (const chunk of source.chunks) {
+          const geometry = new BufferGeometry();
+          owned.push(geometry);
+          geometry.setAttribute("position", new Float32BufferAttribute(chunk.positions, 3));
+          geometry.setAttribute("normal", new Float32BufferAttribute(chunk.normals, 3));
+          const mesh = new Mesh(geometry, material);
+          mesh.matrixAutoUpdate = false;
+          mesh.matrix.copy(transformMatrix(source.transform));
+          isolatedGroup.add(mesh);
+        }
+    }
+    const sources = scoped
+      ? [isolatedGroup]
+      : composite
+        ? [layers.composite.group]
+        : layers.project.layerStack.layers
+            .filter((l) => l.visible && (objectId === undefined || l.id === objectId))
+            .map((l) => layers.runtime(l.id).surface.group);
     let triangles = 0,
       meshes = 0;
     for (const source of sources) {
@@ -247,12 +300,24 @@ export async function captureScenePreview(
           projectId: layers.project.id,
           revision,
           capturedAt: new Date().toISOString(),
-          geometry: composite ? "evaluated-live-display" : "committed-source-surfaces",
+          geometry: scoped
+            ? "independently-evaluated-scope"
+            : composite
+              ? "evaluated-live-display"
+              : "committed-source-surfaces",
           renderState: "current",
-          scope: "all-visible-model-surfaces",
-          visibleSourceIds: layers.project.layerStack.layers
-            .filter((l) => l.visible)
-            .map((l) => l.id),
+          scope:
+            partId !== undefined
+              ? "isolated-printable-part"
+              : scoped
+                ? "isolated-object"
+                : "all-visible-model-surfaces",
+          object: isolated ? { id: isolated.id, name: isolated.name } : null,
+          visibleSourceIds:
+            inspectedIds ??
+            layers.project.layerStack.layers
+              .filter((l) => l.visible && (objectId === undefined || l.id === objectId))
+              .map((l) => l.id),
           millimetresPerModelUnit: layers.display.precision.millimetresPerUnit,
           camera: {
             projection: "orthographic",
@@ -267,7 +332,7 @@ export async function captureScenePreview(
           sampling: composite ? { ...layers.composite.stats } : null,
           warnings: [
             "Display sampling can omit fine features. Screenshots cannot establish watertightness, exact dimensions or physical fit. Use get_geometry_diagnostics.",
-            "References, textures, UI, guides and agent overlays excluded. Locked visible surfaces included. Per-object/part isolation is unsupported.",
+            "References, textures, UI, guides and agent overlays excluded. Locked visible surfaces included. Isolated captures evaluate only the requested object hierarchy or printable part and its Boolean dependencies.",
           ],
         },
       };
@@ -278,6 +343,8 @@ export async function captureScenePreview(
     const message = error instanceof Error ? error.message : String(error);
     return fail(message.split(":")[0], message);
   } finally {
+    prepared?.dispose();
+    for (const geometry of owned) geometry.dispose();
     target?.dispose();
     material.dispose();
     model.clear();

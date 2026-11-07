@@ -197,6 +197,7 @@ function syncView() {
 syncView();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
 camera.position.set(2.4, 1.7, 3.3);
+let renderAgentFeedback: (() => boolean) | undefined;
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -2354,8 +2355,18 @@ if (__AGENT_ENABLED__) {
       {
         renderer,
         scene,
+        camera,
+        installFeedbackRenderer: (render) => {
+          renderAgentFeedback = render;
+        },
         blocked: () =>
           renderer.xr.isPresenting || xrBlocked() || desktopStroke.active || !input.cameraEnabled,
+        feedbackBlocked: () =>
+          document.hidden ||
+          renderer.xr.isPresenting ||
+          xrBlocked() ||
+          desktopStroke.active ||
+          input.transforming,
         frame: (bounds) => {
           const target = controls.target.clone();
           controls.dispose();
@@ -3334,7 +3345,7 @@ renderer.setAnimationLoop((now, frame) => {
   syncViewportTools();
   transformPreview.sync(layers);
   layers.updateMaskOverlays();
-  renderer.render(scene, camera);
+  if (!renderAgentFeedback?.()) renderer.render(scene, camera);
   if (questCapture.active) {
     const time = performance.now();
     questCapture.tick(time, time - cpuStart, NaN, layers.pendingChunks);

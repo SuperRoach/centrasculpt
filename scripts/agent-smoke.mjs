@@ -47,21 +47,38 @@ async function stop(server) {
   server.child.kill("SIGTERM");
   await exited;
 }
-const server = start(true);
+let server = start(true);
 let browser, client, normal;
 try {
   await waitUntil(
     () => /Agent session: (.+session.json)/.test(server.text()) && server.text().includes("Local:"),
     `Agent Vite failed: ${server.text()}`,
   );
-  const sessionFile = server.text().match(/Agent session: (.+session.json)/)[1];
-  const session = JSON.parse(await readFile(sessionFile, "utf8"));
+  let sessionFile = server.text().match(/Agent session: (.+session.json)/)[1];
+  let session = JSON.parse(await readFile(sessionFile, "utf8"));
   browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  assert.equal(
+    (await fetch(`${origin}/__centra_agent_session`)).status,
+    403,
+    "discovery requires explicit request header",
+  );
+  assert.equal(
+    (
+      await fetch(`${origin}/__centra_agent_session`, {
+        headers: {
+          "X-Centra-Agent-Discovery": "1",
+          Origin: "https://untrusted.example",
+        },
+      })
+    ).status,
+    403,
+    "cross-origin discovery refused",
+  );
   await page.goto(origin);
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByRole("button", { name: "Approve connection", exact: true }).waitFor();
@@ -108,7 +125,9 @@ try {
     true,
   );
   await page.getByRole("button", { name: "Approve connection", exact: true }).click();
-  await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
+  await page.locator('#local-agent-panel[data-state="editing"]').waitFor({ state: "attached" });
+  if (await page.locator("#local-agent-panel").evaluate((node) => node.hidden))
+    await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   assert.equal(
     await page
       .getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true })
@@ -147,6 +166,7 @@ try {
   assert.equal((await call("scene_summary")).revision, revisionBeforeShow);
   assert.deepEqual((await call("get_object", { id })).value.worldTransform, poseBeforeShow);
 
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   const rotated = await call("rotate_object", {
     id,
     expectedRevision: moved.revision,
@@ -159,12 +179,48 @@ try {
       (await call("get_object", { id })).value.worldTransform.rotationRadians[1] - Math.PI / 6,
     ) < 1e-8,
   );
-  await page.screenshot({ path: `${output}/browser-created.png` });
+  const highlightedImage = await page.screenshot({ path: `${output}/browser-created.png` });
+  const upperBorderPixels = await page.evaluate(
+    async (bytes) => {
+      const bitmap = await createImageBitmap(
+        new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      // The box's upper silhouette is against studio grey, with no grid behind it.
+      const pixels = context.getImageData(700, 250, 150, 30).data;
+      let green = 0;
+      for (let i = 0; i < pixels.length; i += 4)
+        if (
+          pixels[i + 1] > 100 &&
+          pixels[i + 1] > pixels[i] * 1.25 &&
+          pixels[i + 1] > pixels[i + 2] * 1.1
+        )
+          green++;
+      return green;
+    },
+    [...highlightedImage],
+  );
+  assert(
+    upperBorderPixels > 50,
+    `visible green upper border against grey background: ${upperBorderPixels}`,
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event("pageshow")));
   const previewRevision = (await call("scene_summary")).revision;
   for (const viewpoint of ["front", "isometric"]) {
     const preview = await client.callTool({
       name: "capture_scene_preview",
-      arguments: { viewpoint, width: 384, height: 256, expectedRevision: previewRevision },
+      arguments: {
+        objectId: id,
+        viewpoint,
+        width: 384,
+        height: 256,
+        expectedRevision: previewRevision,
+      },
     });
     assert(preview.structuredContent.ok, JSON.stringify(preview.structuredContent));
     const image = preview.content.find((block) => block.type === "image");
@@ -370,11 +426,22 @@ try {
     },
   });
   if (proposal.ok) {
+    const openAccess = page.getByRole("button", {
+      name: "Open local agent access",
+      exact: true,
+    });
+    const accessPanel = page.locator("#local-agent-panel");
+    if (await accessPanel.evaluate((panel) => panel.hidden)) await openAccess.click();
     await page
-      .getByRole("button", { name: "Open local agent access", exact: true })
-      .click()
-      .catch(() => {});
-    await page.getByRole("button", { name: "Approve this exact plan", exact: true }).click();
+      .locator('.agent-proposal [role="status"]')
+      .filter({ hasText: "awaiting approval" })
+      .waitFor({ state: "visible", timeout: 5000 });
+    const approvePlan = page.getByRole("button", {
+      name: "Approve this exact plan",
+      exact: true,
+    });
+    assert.equal(await approvePlan.isEnabled(), true, "staged proposal needs browser approval");
+    await approvePlan.click();
     const portApplied = await call("apply_approved_proposal", { proposalId: proposal.value.id });
     assert(portApplied.ok, JSON.stringify(portApplied));
     assert.equal(
@@ -394,9 +461,58 @@ try {
   for (let i = 0; i < (proposal.ok ? 4 : 3); i++)
     assert((await call("undo", { expectedRevision: (await call("scene_summary")).revision })).ok);
   assert.equal((await call("scene_summary")).value.objects, before.value.objects);
+  const restartScene = await call("list_objects");
+  await page.evaluate(() => {
+    window.__centraRestartMarker = "preserve-scene";
+  });
+  await stop(server);
+  await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor({ state: "attached" });
+  await client.close();
+  server = start(true);
+  await waitUntil(
+    () => /Agent session: (.+session.json)/.test(server.text()) && server.text().includes("Local:"),
+    "Restarted agent Vite failed",
+  );
+  sessionFile = server.text().match(/Agent session: (.+session.json)/)[1];
+  session = JSON.parse(await readFile(sessionFile, "utf8"));
+  client = new Client({ name: "centra-restart-smoke", version: "1" });
+  await client.connect(
+    new StdioClientTransport({
+      command: process.execPath,
+      args: [resolve("scripts/agent-mcp.mjs")],
+      env: { ...process.env, CENTRA_AGENT_DISCOVERY_FILE: resolve(output, "smoke-session.json") },
+      stderr: "pipe",
+    }),
+  );
+  assert.equal((await call("scene_summary")).ok, false, "restart needs fresh approval");
+  await page
+    .getByText("Agent server is back · approve connection to reconnect", { exact: true })
+    .waitFor();
+  assert.equal(
+    await page.locator("#local-agent-panel").evaluate((node) => node.hidden),
+    false,
+    "restart offers approval automatically",
+  );
+  const panel = page.locator("#local-agent-panel");
+  if (await panel.evaluate((node) => node.hidden))
+    await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
+  await page.getByRole("button", { name: "Approve connection", exact: true }).click();
+  await page
+    .getByText("Connected · editing allowed", { exact: true })
+    .waitFor({ state: "attached" });
+  assert.equal(
+    await page.evaluate(() => window.__centraRestartMarker),
+    "preserve-scene",
+    "no page reload on restart",
+  );
+  assert.deepEqual(
+    await call("list_objects"),
+    restartScene,
+    "unsaved scene and revision survive restart",
+  );
   await client.close();
   client = undefined;
-  await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor();
+  await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor({ state: "attached" });
   assert.equal(await page.locator(".agent-history li").count(), 0);
   // Ordinary editor history remains functional after the MCP process exits.
   const redo = page.locator("#redo");

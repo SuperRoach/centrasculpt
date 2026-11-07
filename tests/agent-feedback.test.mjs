@@ -185,7 +185,7 @@ test("session history is detached, bounded to twenty and clears on editor lifeti
     other.layers.dispose();
   }
 });
-test("two-second presentation-only pulse supports multiple objects, reduced motion, source edits and owner replacement", async () => {
+test("six-second presentation-only pulse supports multiple objects, reduced motion, source edits and owner replacement", async () => {
   const f = fixture(),
     scene = new Scene(),
     other = createHeadlessEditor();
@@ -207,37 +207,39 @@ test("two-second presentation-only pulse supports multiple objects, reduced moti
       count = f.layers.undoCount,
       selected = f.layers.project.activeLayerId;
     feedback.highlight(f.entries[0]);
-    assert.equal(feedback.group.children.length, 2);
+    assert.equal(feedback.selectedObjects.length, 2);
     assert.equal(feedback.group.parent, scene);
     assert.deepEqual(new Raycaster().intersectObject(feedback.group, true), []);
-    const first = feedback.group.children[0].material.opacity;
+    const first = feedback.opacity;
     time = 500;
     feedback.tick();
-    assert.notEqual(feedback.group.children[0].material.opacity, first);
+    assert.notEqual(feedback.opacity, first);
     reduced = true;
     time = 1000;
     feedback.tick();
-    const fixed = feedback.group.children[0].material.opacity;
+    const fixed = feedback.opacity;
     time = 1500;
     feedback.tick();
-    assert.equal(feedback.group.children[0].material.opacity, fixed);
+    assert.equal(feedback.opacity, fixed);
     assert.deepEqual(saveSculptProject(f.layers.project), before);
     assert.equal(f.layers.undoCount, count);
     assert.equal(f.layers.project.activeLayerId, selected);
-    time = 2001;
+    time = 6001;
     assert.equal(feedback.tick(), false);
-    assert.equal(feedback.group.children.length, 0);
+    assert.equal(feedback.selectedObjects.length, 0);
     feedback.highlight({ ...f.entries[0], outcome: "failed" });
-    assert.equal(feedback.group.children.length, 0);
-    time = 3000;
+    assert.equal(feedback.selectedObjects.length, 0);
+    time = 7000;
     feedback.highlight(f.entries[0]);
     blocked = true;
-    feedback.tick();
+    feedback.highlight(f.entries[0]);
+    time += 7000;
+    assert(feedback.tick(), "blocked feedback waits rather than disappearing");
     assert.equal(feedback.group.visible, false);
     blocked = false;
     current = other.layers;
     assert.equal(feedback.tick(), false);
-    assert.equal(feedback.group.children.length, 0);
+    assert.equal(feedback.selectedObjects.length, 0);
   } finally {
     feedback.dispose();
     f.layers.dispose();
@@ -269,6 +271,7 @@ test("Show me frames visible affected objects, preserves bytes/history/selection
       selected = f.layers.project.activeLayerId;
     const bounds = agentVisibleBounds(f.layers, [id]);
     assert(feedback.show([id]).ok);
+    assert(feedback.selectedObjects.length > 0, "Show me replays the highlight");
     assert(camera.position.distanceTo(controls.target) > 0);
     assert.deepEqual(controls.target.toArray(), bounds.getCenter(new Vector3()).toArray());
     camera.updateMatrixWorld();

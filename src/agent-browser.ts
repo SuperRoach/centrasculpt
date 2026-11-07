@@ -1,5 +1,5 @@
 import "./agent-access.css";
-import credentials from "virtual:centra-agent";
+import initialCredentials from "virtual:centra-agent";
 import type { Box3, Object3D, WebGLRenderer } from "three";
 import { AgentActivityHistory } from "./agent-activity";
 import { AgentFeedback } from "./agent-feedback";
@@ -20,9 +20,13 @@ export function mountAgentAccess(
     renderer: WebGLRenderer;
     scene: Object3D;
     frame: (bounds: Box3) => void;
+    feedbackBlocked?: () => boolean;
+    installFeedbackRenderer?: (render: () => boolean) => void;
+    camera?: import("three").PerspectiveCamera;
     blocked: () => boolean;
   },
 ) {
+  let credentials = initialCredentials;
   const panel = document.createElement("aside");
   panel.className = "agent-access";
   panel.setAttribute("aria-label", "Local agent access (development)");
@@ -121,7 +125,7 @@ export function mountAgentAccess(
         viewport.scene,
         editor,
         () =>
-          viewport.blocked() ||
+          (viewport.feedbackBlocked ?? viewport.blocked)() ||
           blocked() ||
           editor().drawing ||
           editor().transforming ||
@@ -131,11 +135,14 @@ export function mountAgentAccess(
         viewport.frame,
       )
     : undefined;
+  if (feedback && viewport?.camera)
+    viewport.installFeedbackRenderer?.(() => feedback.render(viewport.renderer, viewport.camera!));
   let feedbackFrame = 0;
   const animateFeedback = () => {
     feedbackFrame = 0;
     if (feedback?.tick()) feedbackFrame = requestAnimationFrame(animateFeedback);
   };
+  let renderedHistoryIds = new Set<string>();
   const history = new AgentActivityHistory(() => {
     historyRows.replaceChildren();
     const entries = history.snapshot();
@@ -143,6 +150,7 @@ export function mountAgentAccess(
     for (const entry of entries) {
       const row = document.createElement("li");
       row.dataset.outcome = entry.outcome;
+      if (!renderedHistoryIds.has(entry.id)) row.dataset.arriving = "true";
       const description = document.createElement("strong");
       description.textContent = `${entry.description} · ${entry.outcome === "committed" ? "Applied" : "Failed"}`;
       const time = document.createElement("time");
@@ -162,7 +170,10 @@ export function mountAgentAccess(
         .map((object) => `${object.status} · ${object.name} · ${object.id}`)
         .join("\n");
       objects.append(objectLabel, ids);
-      row.append(description, time, objects);
+      const heading = document.createElement("div");
+      heading.className = "agent-history-heading";
+      heading.append(description, time);
+      row.append(heading, objects);
       const surviving = entry.objects
         .filter((object) => object.status !== "deleted")
         .map((object) => object.id);
@@ -174,11 +185,13 @@ export function mountAgentAccess(
         message.setAttribute("role", "status");
         show.onclick = () => {
           message.textContent = feedback.show(surviving).message;
+          if (!feedbackFrame) feedbackFrame = requestAnimationFrame(animateFeedback);
         };
         row.append(show, message);
       }
       historyRows.append(row);
     }
+    renderedHistoryIds = new Set(entries.map((entry) => entry.id));
   });
   history.sync(editor());
 
@@ -321,18 +334,50 @@ export function mountAgentAccess(
     panel.dataset.state = "disconnected";
     help.textContent =
       remember.checked && remembered === true
-        ? "Your editing choice will apply after you approve this connection."
+        ? ""
         : "Starts read-only. You can revoke access at any time.";
+  };
+  let reconnectWanted = false;
+  let discoveryBusy = false;
+  let nextDiscovery = 0;
+  let discoveryDelay = 1000;
+  let disposed = false;
+  const discoverSession = async () => {
+    const discovery = await fetch("/__centra_agent_session", {
+      headers: { "X-Centra-Agent-Discovery": "1" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!discovery.ok)
+      throw new Error(
+        "Agent server unavailable. Start dev:agent and try Approve connection again.",
+      );
+    const session = await discovery.json();
+    const address = new URL(session.url);
+    if (
+      address.protocol !== "http:" ||
+      address.hostname !== "127.0.0.1" ||
+      address.pathname !== "/" ||
+      typeof session.token !== "string" ||
+      !/^[a-f0-9]{64}$/.test(session.token)
+    )
+      throw new Error("Invalid local agent session.");
+    return session;
   };
   reset("Not connected");
   connect.onclick = async () => {
     connect.disabled = true;
     setStatus("Connecting…");
     try {
+      const session = await discoverSession();
+      credentials = session;
       const editing = remember.checked && remembered === true;
       await post("/approve", { editing });
       edit.checked = editing;
       approved = true;
+      reconnectWanted = true;
+      discoveryDelay = 1000;
+      nextDiscovery = 0;
       edit.disabled = false;
       connect.disabled = true;
       connect.hidden = true;
@@ -354,7 +399,7 @@ export function mountAgentAccess(
           ? `Open http://127.0.0.1:${location.port} to approve this local session.`
           : error instanceof Error && error.message !== "Failed to fetch"
             ? error.message
-            : "Cannot reach the local bridge. Restart dev:agent, then reload this editor.";
+            : "Cannot reach the local bridge. Start dev:agent, then click Approve connection again. Your scene stays open.";
     }
   };
   edit.onchange = async () => {
@@ -378,6 +423,7 @@ export function mountAgentAccess(
     }
   };
   revoke.onclick = () => {
+    reconnectWanted = false;
     reset("Access revoked. Ordinary editing remains available.");
     void post("/revoke").catch(() => {});
   };
@@ -389,6 +435,33 @@ export function mountAgentAccess(
       proposals.current = undefined;
       proposals.owner = undefined;
       proposals.notify();
+    }
+    if (
+      !approved &&
+      reconnectWanted &&
+      !discoveryBusy &&
+      !connect.disabled &&
+      Date.now() >= nextDiscovery
+    ) {
+      discoveryBusy = true;
+      nextDiscovery = Date.now() + discoveryDelay;
+      discoveryDelay = Math.min(15000, discoveryDelay * 2);
+      void discoverSession()
+        .then((session) => {
+          if (disposed || approved || !reconnectWanted || session.token === credentials.token)
+            return;
+          credentials = session;
+          discoveryDelay = 1000;
+          setStatus("Agent server is back · approve connection to reconnect");
+          help.textContent =
+            "Your scene is still open. Approve this new server session to reconnect.";
+          panel.hidden = false;
+          launcher.setAttribute("aria-expanded", "true");
+        })
+        .catch(() => {})
+        .finally(() => {
+          discoveryBusy = false;
+        });
     }
     if (!approved || polling) return;
     polling = true;
@@ -473,6 +546,8 @@ export function mountAgentAccess(
   window.addEventListener(
     "pagehide",
     () => {
+      disposed = true;
+      reconnectWanted = false;
       clearInterval(timer);
       reset("Disconnected");
       feedback?.dispose();

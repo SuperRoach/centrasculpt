@@ -1,3 +1,20 @@
+### Tidier agent activity (2026-11-08)
+
+- Recent changes places each action and its time on one row. New entries fade in briefly; existing entries stay steady, with reduced-motion preferences respected.
+
+### Clearer agent change highlights (2026-11-08)
+
+- Agent changes show a green silhouette border for six seconds, including when the visible editor loses focus. **Show me** frames the affected objects and replays their highlight.
+
+### Keep sculpting after an agent restart (2026-11-08)
+
+- Restarting `dev:agent` leaves your scene open. The tab detects the new server and opens the approval prompt automatically. Use **Local agent access → Approve connection** to connect to the new session without reloading. Fresh approval is still required.
+
+### Agent inspection cleanup (2026-11-08)
+
+- Local agents can request isolated object and printable-part previews, including evaluated Boolean cuts and arrays, with identity and geometry metadata.
+- Added a roadmap separating implementation from browser, Quest and print verification, including deferred export optimisation.
+
 ### A tidier tyre dial (2026-11-07)
 
 - Tyre shape now uses whole numbers, a clear readout and **0 = Torus / 100 = Tyre** endpoints. New primitive dimension labels are shorter, with the ring-radius explanation tucked into a tooltip.
