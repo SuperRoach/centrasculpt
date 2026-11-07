@@ -25,7 +25,7 @@ import {
   withExportMemory,
 } from "./assembly-tools";
 import { type ConnectorPlacement, ConnectorPlacer, placedConnector } from "./connector-placement";
-import { type ExportQuality, ExportWork } from "./export-mesh";
+import { EXPORT_MEMORY_LIMIT, type ExportQuality, ExportWork } from "./export-mesh";
 import type { IndependentLayers } from "./independent-layers";
 import { pickVisibleLayer } from "./layer-picking";
 import { ModellingAPI, type ModellingCommand, type PartMetadata } from "./modelling-api";
@@ -45,6 +45,7 @@ export class AssemblyControls {
     new PointsMaterial({ color: 0xff604d, size: 0.012, depthTest: false }),
   );
   exportQuality: ExportQuality = "fast";
+  exportMemoryLimit = EXPORT_MEMORY_LIMIT;
   open = false;
   partA = "";
   partB = "";
@@ -653,7 +654,13 @@ export class AssemblyControls {
             for (const [index, id] of parts.entries()) {
               this.feedback = `Exporting part ${index + 1} of ${parts.length}…`;
               this.changed();
-              const result = await exportPartSTL(l, id, exportSignal, this.exportQuality);
+              const result = await exportPartSTL(
+                l,
+                id,
+                exportSignal,
+                this.exportQuality,
+                this.exportMemoryLimit,
+              );
               new ExportWork(exportSignal, () => job === this.job && l === this.layers()).check();
               if (result.report.blocking.length)
                 throw new Error(`STL blocked: ${result.report.blocking.join(" ")}`);

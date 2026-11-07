@@ -1,3 +1,8 @@
+### More room for export cleanup (2026-11-07)
+
+- Export memory now offers 256 MiB (default), 384 MiB and 512 MiB budgets. Choose a higher budget for larger Standard or High exports on devices with memory to spare; total browser memory can be higher.
+- Unified Boolean cleanup preserves winding across mesh chunks. Memory rejections show estimated and available workspace; triangle and topology limits still apply.
+
 ### Visual inspection for local agents (2026-11-07)
 
 - Approved local agents can request model-only PNG views from six angles, with evaluated display geometry and sampling metadata.

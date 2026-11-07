@@ -1,7 +1,12 @@
 import { MeshBasicMaterial } from "three";
 import { BooleanComposite } from "./compositor";
 import type { ExportProgress } from "./export-mesh";
-import { compactPlanarSources, EXPORT_MEMORY_LIMIT, ExportWork } from "./export-mesh";
+import {
+  compactPlanarSources,
+  EXPORT_MEMORY_LIMIT,
+  EXPORT_MEMORY_MAX,
+  ExportWork,
+} from "./export-mesh";
 import type { IndependentLayers } from "./independent-layers";
 import type { SculptProject } from "./layers";
 
@@ -12,7 +17,10 @@ export async function prepareBooleanExport(
   signal?: AbortSignal,
   stl = true,
   progress?: (p: ExportProgress) => void,
+  memoryLimit = EXPORT_MEMORY_LIMIT,
 ) {
+  if (!Number.isFinite(memoryLimit) || memoryLimit <= 0 || memoryLimit > EXPORT_MEMORY_MAX)
+    throw new Error("Invalid export memory budget; maximum is 512 MiB.");
   const revision = layers.sourceRevision,
     current = () => layers.recoveryReady && layers.sourceRevision === revision,
     work = new ExportWork(signal, current, progress),
@@ -31,7 +39,7 @@ export async function prepareBooleanExport(
       colours: !stl,
     });
   composite.availableBytes = () =>
-    EXPORT_MEMORY_LIMIT - layers.trackedBytes - layers.composite.trackedBytes;
+    memoryLimit - layers.trackedBytes - layers.composite.trackedBytes;
   composite.paintBase = (layer) => layers.runtime(layer.id).paintSurface.base;
   const cancel = () => composite.dispose();
   signal?.addEventListener("abort", cancel, { once: true });
@@ -70,12 +78,15 @@ export async function prepareBooleanExport(
           layers.trackedBytes +
           layers.composite.trackedBytes +
           sources.length * 4096 <
-          EXPORT_MEMORY_LIMIT;
+          memoryLimit;
       const compact = direct
         ? { sources, removedTriangles: 0, maxPlanarDeviation: 0 }
         : await compactPlanarSources(
             sources,
-            EXPORT_MEMORY_LIMIT - layers.trackedBytes - composite.trackedBytes,
+            memoryLimit -
+              layers.trackedBytes -
+              layers.composite.trackedBytes -
+              composite.trackedBytes,
             work,
           );
       sources = compact.sources.map((source) => ({ ...source, current }));
@@ -100,7 +111,7 @@ export async function prepareBooleanExport(
       availableBytes: () =>
         Math.max(
           1,
-          EXPORT_MEMORY_LIMIT -
+          memoryLimit -
             layers.trackedBytes -
             layers.composite.trackedBytes -
             composite.trackedBytes -

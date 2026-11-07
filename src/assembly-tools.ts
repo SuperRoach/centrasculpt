@@ -2,7 +2,7 @@ import { Box3, Euler, Group, type Material, Quaternion, Vector3 } from "three";
 import { inspectFit, layerSources, partMembers, partSources } from "./assembly";
 import { prepareBooleanExport } from "./boolean-export";
 import { BooleanComposite, compositeLayout } from "./compositor";
-import { type ExportQuality, ExportWork } from "./export-mesh";
+import { EXPORT_MEMORY_LIMIT, type ExportQuality, ExportWork } from "./export-mesh";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerStack, newId, SculptProject } from "./layers";
 import { booleanRoots } from "./live-boolean";
@@ -300,11 +300,12 @@ export async function exportPartSTL(
   id: string,
   signal?: AbortSignal,
   quality: ExportQuality = "fast",
+  memoryLimit = EXPORT_MEMORY_LIMIT,
 ) {
   let previewWarning = "";
   const result = await withExportMemory(
     layers,
-    () => encodePartSTL(layers, id, signal, quality),
+    () => encodePartSTL(layers, id, signal, quality, memoryLimit),
     (message) => {
       previewWarning = message;
     },
@@ -316,13 +317,21 @@ async function encodePartSTL(
   id: string,
   signal: AbortSignal | undefined,
   quality: ExportQuality,
+  memoryLimit: number,
 ) {
   if (!layers.recoveryReady) throw new Error("Finish the current edit first.");
   const revision = layers.sourceRevision,
     current = () => layers.recoveryReady && layers.sourceRevision === revision;
   const sources = partSources(layers.project.layerStack, id);
   const project = new SculptProject(new LayerStack(sources), layers.project.settings);
-  const prepared = await prepareBooleanExport(layers, project, signal);
+  const prepared = await prepareBooleanExport(
+    layers,
+    project,
+    signal,
+    true,
+    undefined,
+    memoryLimit,
+  );
   try {
     const exported = prepared.sources;
     const work = new ExportWork(signal, current);

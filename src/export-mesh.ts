@@ -10,6 +10,14 @@ export const EXPORT_PRESETS = Object.freeze({
   },
 });
 export const EXPORT_MEMORY_LIMIT = 256 * 1024 * 1024;
+/** Temporary export workspace; editing and preview limits remain independent. */
+export const EXPORT_MEMORY_BUDGETS_MIB = [256, 384, 512] as const;
+export const EXPORT_MEMORY_MAX = 512 * 1024 * 1024;
+export function exportMemoryBudget(mib: number): number {
+  if (!EXPORT_MEMORY_BUDGETS_MIB.some((choice) => choice === mib))
+    throw new Error("Choose an export memory budget of 256, 384 or 512 MiB.");
+  return mib * 1024 * 1024;
+}
 export type ExportChunk = {
   positions: Float32Array;
   normals: Float32Array;
@@ -93,9 +101,13 @@ export function exportAdmission(
   }
   if (!corners) throw new Error("No surface to export.");
   const estimatedBytes = corners * EXPORT_PRESETS[quality].bytesPerCorner + sources.length * 4096;
-  if (corners / 3 > EXPORT_PRESETS[quality].maxTriangles || estimatedBytes > maxBytes)
+  if (corners / 3 > EXPORT_PRESETS[quality].maxTriangles)
     throw new Error(
-      `Export exceeds ${quality} memory/triangle safety limits. Choose Fast or export fewer layers; source sculpture kept.`,
+      `Too many triangles for ${quality} export (${corners / 3}; limit ${EXPORT_PRESETS[quality].maxTriangles}). Choose Fast or export fewer layers. Your model is unchanged.`,
+    );
+  if (estimatedBytes > maxBytes)
+    throw new Error(
+      `Not enough memory for ${quality} export. Needs about ${Math.ceil(estimatedBytes / 1048576)} MiB; ${Math.floor(maxBytes / 1048576)} MiB available. Increase export memory or choose Fast. Your model is unchanged.`,
     );
   return { corners, estimatedBytes };
 }
@@ -114,6 +126,7 @@ export async function optimiseExportMesh(
   source: ExportSource,
   quality: ExportQuality,
   work = new ExportWork(),
+  options: { preserveWinding?: boolean } = {},
 ): Promise<ExportMesh> {
   const corners = source.chunks.reduce((n, c) => n + c.positions.length / 3, 0),
     stats: ExportMeshStats = {
@@ -220,7 +233,12 @@ export async function optimiseExportMesh(
     }
   weld.clear();
   faces.clear();
-  let triangles = await orientMesh(indices, positions, normals, stats, work);
+  // A chunk is an open patch of a larger surface. Its gradient vote cannot choose
+  // the sign of the whole surface: small seam patches can have opposing normals.
+  // Boolean precompaction preserves the mesher's winding across chunk boundaries.
+  let triangles = options.preserveWinding
+    ? indices
+    : await orientMesh(indices, positions, normals, stats, work);
   if (quality === "high" && !painted)
     for (let pass = 0; pass < 3; pass++)
       triangles = await simplifyPlanar(positions, normals, triangles, source.step, stats, work);
@@ -546,7 +564,9 @@ export async function compactPlanarSources(
       for (let pass = 0; pass < 12; pass++) {
         work.check();
         exportAdmission([{ ...source, chunks: [chunk] }], "high", maxBytes - bytes);
-        const mesh = await optimiseExportMesh({ ...source, chunks: [chunk] }, "high", work),
+        const mesh = await optimiseExportMesh({ ...source, chunks: [chunk] }, "high", work, {
+            preserveWinding: true,
+          }),
           count = mesh.indices?.length ?? mesh.positions.length / 3,
           positions = new Float32Array(count * 3),
           normals = new Float32Array(count * 3);

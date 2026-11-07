@@ -781,7 +781,7 @@ export class BooleanComposite {
       layoutChanged = key !== JSON.stringify(this.layout);
     const full = this.full || layoutChanged || !this.volume;
     if (layout.resolution ** 3 * 8 > this.availableBytes())
-      throw new Error("Boolean preview exceeds the 256 MiB memory budget.");
+      throw new Error("Boolean evaluation exceeds the available memory budget.");
     if (layoutChanged || !this.volume) {
       this.mesher?.dispose();
       this.surface?.clear();
@@ -893,7 +893,7 @@ export class BooleanComposite {
       totalChunks = update.stats.totalChunks;
       triangles = update.triangles;
       if (this.trackedBytes > this.availableBytes())
-        throw new Error("Boolean preview exceeds the 256 MiB memory budget.");
+        throw new Error("Boolean evaluation exceeds the available memory budget.");
       if (triangles > 1_000_000) {
         this.group.visible = false;
         throw new Error(

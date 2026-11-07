@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MeshBasicMaterial } from "three";
+import { ExportBrowserWorker } from "../scripts/fixtures/node-export-worker.mjs";
 import { prepareBooleanExport } from "../work/test-build/boolean-export.mjs";
 import {
   BooleanComposite,
   compositeLayout,
   compositeSamplingStages,
 } from "../work/test-build/compositor.mjs";
+import { exportGlbAsync } from "../work/test-build/export-client.mjs";
+import { EXPORT_MEMORY_LIMIT, exportMemoryBudget } from "../work/test-build/export-mesh.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { LayerStack, SculptProject, SdfLayer } from "../work/test-build/layers.mjs";
+import { evaluatePrimitive } from "../work/test-build/parametric-primitive.mjs";
 import { saveSculptProject } from "../work/test-build/project.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { encodeSTL } from "../work/test-build/stl-export.mjs";
@@ -21,6 +25,95 @@ const settings = {
   hardness: 0.5,
   camera: { position: [2, 2, 3], target: [0, 0, 0] },
 };
+test("house unified STL preserves winding across compacted chunks and leaves source history intact", async () => {
+  const boxes = [
+    [[60, 40, 50], [0, -15, 0], 0],
+    [[42, 6, 46], [14, 15, 0], -35],
+    [[42, 6, 46], [-14, 15, 0], 35],
+    [[14, 26, 4], [0, -22.5, 27], 0],
+    ...[-18, 18].flatMap((x) => [
+      [[10, 12, 3], [x, -4, 27], 0],
+      [[1.5, 12, 2], [x, -4, 29.5], 0],
+      [[10, 1.5, 2], [x, -4, 29.5], 0],
+      [[12, 1.5, 4], [x, -10.75, 29.5], 0],
+    ]),
+  ];
+  const layers = boxes.map(([dimensions, position, angle], order) => {
+    const [width, height, depth] = dimensions.map((x) => x / 100),
+      primitive = { kind: "box", width, height, depth },
+      generator = evaluatePrimitive(primitive, 63, 1_000_000);
+    let result = generator.next();
+    while (!result.done) result = generator.next();
+    return new SdfLayer(result.value, {
+      order,
+      primitive,
+      transform: {
+        position: position.map((x) => x / 100),
+        rotation: [0, 0, (angle * Math.PI) / 180],
+        scale: [1, 1, 1],
+      },
+    });
+  });
+  const editor = new IndependentLayers(
+      new SculptProject(new LayerStack(layers), structuredClone(settings)),
+    ),
+    before = saveSculptProject(editor.project),
+    history = editor.undoCount;
+  try {
+    const prepared = await prepareBooleanExport(
+      editor,
+      editor.project,
+      undefined,
+      true,
+      undefined,
+      exportMemoryBudget(512),
+    );
+    try {
+      assert(prepared.removedTriangles > 0);
+      for (const mm of [100, 60]) {
+        const result = await encodeSTL(prepared.sources, "fast", prepared.availableBytes(), mm);
+        assert.deepEqual(result.report.blocking, []);
+        assert.equal(result.report.inconsistentEdges, 0);
+        assert.equal(result.report.boundaryEdges, 0);
+        assert.equal(result.report.nonManifoldEdges, 0);
+        assert.equal(result.report.degenerateTriangles, 0);
+        assert.equal(Math.max(...result.report.dimensions), mm);
+      }
+      const defaultAvailable =
+        prepared.availableBytes() - (exportMemoryBudget(512) - EXPORT_MEMORY_LIMIT);
+      for (const quality of ["standard", "high"])
+        await assert.rejects(
+          encodeSTL(prepared.sources, quality, defaultAvailable, 100),
+          /Not enough memory/,
+        );
+      const worker = globalThis.Worker;
+      globalThis.Worker = ExportBrowserWorker;
+      try {
+        for (const quality of ["standard", "high"]) {
+          const result = await exportGlbAsync(prepared.sources, quality, {
+            maxBytes: prepared.availableBytes(),
+            stlMM: 100,
+          });
+          assert.equal(result.backend, "worker");
+          assert.deepEqual(result.report.blocking, []);
+          assert.equal(result.report.boundaryEdges, 0);
+          assert.equal(result.report.nonManifoldEdges, 0);
+          assert.equal(Math.max(...result.report.dimensions), 100);
+          assert(result.estimatedBytes <= prepared.availableBytes());
+          if (quality === "high") assert(result.stats[0].planarRemoved > 0);
+        }
+      } finally {
+        globalThis.Worker = worker;
+      }
+      assert.deepEqual(saveSculptProject(editor.project), before);
+      assert.equal(editor.undoCount, history);
+    } finally {
+      prepared.dispose();
+    }
+  } finally {
+    editor.dispose();
+  }
+});
 function fixture(count = 12) {
   const sources = Array.from(
     { length: count },
@@ -99,6 +192,11 @@ test("twelve-source unified export keeps 192 resolution, reports stages and chan
     count = editor.undoCount,
     progress = [];
   try {
+    for (const limit of [NaN, Infinity, 0, -1, exportMemoryBudget(512) + 1])
+      await assert.rejects(
+        prepareBooleanExport(editor, editor.project, undefined, true, undefined, limit),
+        /memory budget/,
+      );
     const prepared = await prepareBooleanExport(editor, editor.project, undefined, true, (p) =>
       progress.push(p),
     );

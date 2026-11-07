@@ -8,8 +8,11 @@ import { ClayPathControls } from "../work/test-build/clay-path.mjs";
 import { ClayStrokeSession } from "../work/test-build/clay-stroke-session.mjs";
 import { exportGlbAsync } from "../work/test-build/export-client.mjs";
 import {
+  compactPlanarSources,
+  EXPORT_MEMORY_LIMIT,
   ExportWork,
   exportAdmission,
+  exportMemoryBudget,
   optimiseExportMesh,
 } from "../work/test-build/export-mesh.mjs";
 import { encodeExport } from "../work/test-build/glb-export.mjs";
@@ -79,6 +82,23 @@ function componentCount(g) {
 }
 const triangle = [0, 0, 0, 1, 0, 0, 0, 1, 0],
   up = [0, 0, 1, 0, 0, 1, 0, 0, 1];
+test("larger export budgets are opt-in, bounded and retain triangle safety limits", () => {
+  assert.equal(exportMemoryBudget(256), EXPORT_MEMORY_LIMIT);
+  assert.equal(exportMemoryBudget(384), 384 * 1024 ** 2);
+  assert.equal(exportMemoryBudget(512), 512 * 1024 ** 2);
+  for (const mib of [0, -1, NaN, Infinity, 1024, 257])
+    assert.throws(() => exportMemoryBudget(mib), /budget/);
+  const s = source(new Float32Array(220_000 * 9), new Float32Array(220_000 * 9));
+  assert.throws(() => exportAdmission([s], "high"), /Increase export memory/);
+  assert(
+    exportAdmission([s], "high", exportMemoryBudget(384)).estimatedBytes > EXPORT_MEMORY_LIMIT,
+  );
+  const oversized = source(new Float32Array(300_001 * 9), new Float32Array(300_001 * 9));
+  assert.throws(
+    () => exportAdmission([oversized], "high", exportMemoryBudget(512)),
+    /Too many triangles/,
+  );
+});
 const area = (r) => {
   let sum = 0;
   const t = r.indices ?? Uint32Array.from({ length: r.positions.length / 3 }, (_, i) => i),
@@ -119,6 +139,25 @@ test("welding crosses chunks but never quantises close disconnected thin surface
   assert.equal(r.stats.vertices, 6);
   assert.equal(r.stats.triangles, 2);
   assert.equal(r.stats.boundaryEdges, 6);
+});
+test("Boolean chunk compaction preserves seam winding when a patch gradient points inward", async () => {
+  const s = source([0, 0, 0, 1, 0, 0, 0, 1, 0], [0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  s.chunks.push({
+    positions: new Float32Array([1, 0, 0, 1, 1, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 0, -1, 0, 0, -1, 0, 0, -1]),
+  });
+  const before = s.chunks.map((c) => c.positions.slice());
+  const compact = await compactPlanarSources([s], 256 * 1024 ** 2);
+  for (let i = 0; i < before.length; i++) {
+    assert.deepEqual(compact.sources[0].chunks[i].positions, before[i]);
+    assert.deepEqual(s.chunks[i].positions, before[i]);
+  }
+  const { validatePrintMesh } = await import("../work/test-build/stl-export.mjs");
+  const report = await validatePrintMesh(
+    new Float32Array(compact.sources[0].chunks.flatMap((c) => [...c.positions])),
+  );
+  assert.equal(report.inconsistentEdges, 0);
+  assert.equal(report.boundaryEdges, 4);
 });
 for (const kind of ["sphere", "box", "triangular-prism", "pyramid"])
   test(`${kind}: all presets preserve dimensions, winding and closed topology; High planar error bounded`, async () => {
@@ -289,7 +328,7 @@ test("source guard rejects active/pending Move and source mutation; memory/trian
     assert.throws(() => c.exportSources(), /Finish/);
     c.endPreview(owner);
     const sources = c.exportSources();
-    assert.throws(() => exportAdmission(sources, "high", 1), /safety limits/);
+    assert.throws(() => exportAdmission(sources, "high", 1), /Not enough memory/);
     assert.throws(() => exportAdmission(sources, "fake"), /Invalid/);
     c.setActiveTransform({ ...identityTransform(), position: [0.1, 0, 0] });
     await assert.rejects(exportGlbAsync(sources, "standard"), /source changed/);

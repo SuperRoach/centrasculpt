@@ -30,7 +30,7 @@ import { LayerDisplayPreferences } from "./display-preferences";
 import { EditorToolState } from "./editor-tool-state";
 import { exportGlbAsync } from "./export-client";
 import type { ExportQuality, ExportSource } from "./export-mesh";
-import { EXPORT_MEMORY_LIMIT, exportAdmission } from "./export-mesh";
+import { exportAdmission, exportMemoryBudget } from "./export-mesh";
 import { IndependentLayers } from "./independent-layers";
 import type { EditorMode } from "./interaction";
 import { handleLayerDeleteShortcut, InputOwnership } from "./interaction";
@@ -1473,6 +1473,8 @@ projectFile.addEventListener("change", () => {
 });
 let exportAbort: AbortController | null = null;
 const cancelExport = document.querySelector<HTMLButtonElement>("#cancel-export")!;
+const exportMemory = document.querySelector<HTMLSelectElement>("#export-memory")!;
+const selectedExportMemory = () => exportMemoryBudget(Number(exportMemory.value));
 cancelExport.addEventListener("click", () => exportAbort?.abort());
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && exportAbort) {
@@ -1498,7 +1500,7 @@ function exportEstimate(): void {
     exportAdmission(
       layers.exportSources("visible", false),
       q,
-      Math.max(1, EXPORT_MEMORY_LIMIT - layers.trackedBytes),
+      Math.max(1, selectedExportMemory() - layers.trackedBytes),
     );
   } catch (error) {
     note = message(error);
@@ -1507,6 +1509,7 @@ function exportEstimate(): void {
     `Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;
 }
 document.getElementById("export-quality")!.addEventListener("change", exportEstimate);
+exportMemory.addEventListener("change", exportEstimate);
 
 async function exportSculpt(scope: "visible" | "selected" | "composite") {
   const format = exportFormat.value;
@@ -1517,6 +1520,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
   let stlMM = format === "stl" ? Number(printSize.value) : undefined;
   let calibratedLongestMM = 0;
   if (loadingProject || xrBlocked()) return;
+  const memoryLimit = selectedExportMemory();
   stop();
   if (
     format === "stl" &&
@@ -1526,6 +1530,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     const assembly = precision!.primitives.assembly;
     assembly.exportQuality = document.querySelector<HTMLSelectElement>("#export-quality")!
       .value as ExportQuality;
+    assembly.exportMemoryLimit = memoryLimit;
     if (scope === "selected") {
       const owner = partOwner(layers.project.layerStack, layers.project.activeLayerId);
       if (!owner) {
@@ -1615,6 +1620,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
                   `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% of stage`,
                 );
               },
+              memoryLimit,
             );
             sources = prepared.sources;
           } else sources = layers.exportSources(scope, stlMM === undefined);
@@ -1640,8 +1646,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
           const result = await exportGlbAsync(sources, quality, {
             signal,
             stlMM,
-            maxBytes:
-              prepared?.availableBytes() ?? Math.max(1, EXPORT_MEMORY_LIMIT - layers.trackedBytes),
+            maxBytes: prepared?.availableBytes() ?? Math.max(1, memoryLimit - layers.trackedBytes),
             progress: (p) => {
               exportFeedback.progress(p);
               exportMessage(
