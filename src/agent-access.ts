@@ -1,4 +1,10 @@
 import { Euler, Quaternion } from "three";
+import {
+  type AgentActivity,
+  agentObjects,
+  agentTransaction,
+  describeAgentResult,
+} from "./agent-activity";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
 import {
@@ -83,8 +89,16 @@ export function agentExecutor(
   blocked: () => boolean,
   changed: () => void,
   proposals = new AgentProposals(),
+  feedback?: (entry: AgentActivity, editor: IndependentLayers) => void,
 ) {
-  return async (job: AgentJob, signal: AbortSignal): Promise<unknown> => {
+  const notifyChanged = () => {
+    try {
+      changed();
+    } catch {
+      /* UI refresh cannot undo or invalidate a committed transaction. */
+    }
+  };
+  const execute = async (job: AgentJob, signal: AbortSignal): Promise<unknown> => {
     const layers = typeof editor === "function" ? editor() : editor;
     const api = new ModellingAPI(layers, canEdit);
     const error = (code: string, message: string) => ({
@@ -207,7 +221,7 @@ export function agentExecutor(
       p.result = result;
       p.state = result.ok ? "applied" : "rejected/error";
       proposals.notify();
-      if (result.ok) changed();
+      if (result.ok) notifyChanged();
       return result;
     }
     if (job.name === "scene_summary") return api.query({ type: "scene.summary" });
@@ -452,7 +466,68 @@ export function agentExecutor(
         result = await api.batch([{ command: { ...fields, type } as ModellingCommand }], options);
       }
     }
-    changed();
+    if (
+      (result as { ok?: boolean })?.ok &&
+      job.name !== "dry_run_changes" &&
+      job.name !== "preview_changes" &&
+      a.dryRun !== true
+    )
+      notifyChanged();
+    return result;
+  };
+  return async (job: AgentJob, signal: AbortSignal): Promise<unknown> => {
+    const owner = typeof editor === "function" ? editor() : editor;
+    if (!feedback || !agentTransaction(job.name, job.args)) return execute(job, signal);
+    const revision = new ModellingAPI(owner).revision;
+    let before: ReturnType<typeof agentObjects> = [],
+      captured = false;
+    try {
+      before = agentObjects(owner);
+      captured = true;
+    } catch {
+      /* Busy editor metadata may be unavailable. */
+    }
+    const title = job.name === "apply_approved_proposal" ? proposals.current?.title : undefined;
+    let result: unknown;
+    try {
+      result = await execute(job, signal);
+    } catch (e) {
+      result = {
+        ok: false,
+        error: { code: "operation_failed", message: e instanceof Error ? e.message : String(e) },
+      };
+    }
+    // Presentation failures must never change a committed modelling result.
+    try {
+      if ((typeof editor === "function" ? editor() : editor) === owner) {
+        const nextRevision = new ModellingAPI(owner).revision;
+        if (!(result as { ok?: boolean })?.ok || nextRevision !== revision) {
+          const entry = describeAgentResult(
+            job.name,
+            title,
+            before,
+            captured && (result as { ok?: boolean })?.ok ? agentObjects(owner) : before,
+            nextRevision,
+            result,
+          );
+          if (!captured) entry.objects = [];
+          else if (entry.outcome === "failed") {
+            const request = JSON.stringify(job.args);
+            entry.objects = before
+              .filter((object) => request.includes(JSON.stringify(object.id)))
+              .slice(0, 128)
+              .map((object) => ({
+                id: object.id.slice(0, 128),
+                name: object.name.slice(0, 128),
+                status: "unchanged",
+              }));
+          }
+          feedback(entry, owner);
+        }
+      }
+    } catch {
+      /* Detached feedback is best-effort; authoritative result remains intact. */
+    }
     return result;
   };
 }

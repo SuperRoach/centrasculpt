@@ -92,10 +92,34 @@ try {
     source: { kind: "box", width: 20, height: 30, depth: 40 },
   };
   assert.equal((await call("create_primitive", args)).ok, false, "read-only rejects writes");
+  await page
+    .getByRole("checkbox", { name: "Remember editing choice on this browser", exact: true })
+    .check();
   await page.getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true }).check();
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByText("Connected · editing allowed", { exact: true }).waitFor();
+  // Reload remembers only desired editing mode; connection still requires a fresh explicit click.
+  await page.reload();
+  await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true })
+      .isDisabled(),
+    true,
+  );
+  await page.getByRole("button", { name: "Approve connection", exact: true }).click();
+  await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true })
+      .isChecked(),
+    true,
+  );
+  assert.equal(await page.locator(".agent-history li").count(), 0);
+  args.expectedRevision = (await call("scene_summary")).revision;
   const made = await call("create_primitive", args);
+  await page.locator('.agent-history li[data-outcome="committed"]').first().waitFor();
+  assert.equal(await page.locator('.agent-history li[data-outcome="committed"]').count(), 1);
   assert(made.ok, JSON.stringify(made));
   const id = made.value.results[0].id;
   const object = await call("get_object", { id });
@@ -111,6 +135,18 @@ try {
   });
   assert(moved.ok, JSON.stringify(moved));
   await page.getByText(object.value.name, { exact: true }).first().waitFor();
+  await page.waitForTimeout(2200); // Commit pulse has expired; framing must move the camera, not geometry.
+  const canvasBefore = await page.locator("#viewport canvas").first().screenshot();
+  const revisionBeforeShow = (await call("scene_summary")).revision;
+  const poseBeforeShow = (await call("get_object", { id })).value.worldTransform;
+  const latestChange = page.locator('.agent-history li[data-outcome="committed"]').first();
+  await latestChange.getByRole("button", { name: "Show me", exact: true }).click();
+  await latestChange.getByText("Framed affected objects.", { exact: true }).waitFor();
+  const canvasAfter = await page.locator("#viewport canvas").first().screenshot();
+  assert(!canvasBefore.equals(canvasAfter), "Show me changes the desktop camera view");
+  assert.equal((await call("scene_summary")).revision, revisionBeforeShow);
+  assert.deepEqual((await call("get_object", { id })).value.worldTransform, poseBeforeShow);
+
   const rotated = await call("rotate_object", {
     id,
     expectedRevision: moved.revision,
@@ -146,6 +182,14 @@ try {
   const unmoved = await call("get_object", { id });
   assert((await call("undo", { expectedRevision: unmoved.revision })).ok);
   assert.equal((await call("scene_summary")).value.objects, before.value.objects);
+  const oldCreate = page
+    .locator('.agent-history li[data-outcome="committed"]')
+    .filter({ hasText: "Create primitive" })
+    .first();
+  await oldCreate.getByRole("button", { name: "Show me", exact: true }).click();
+  await oldCreate
+    .getByText("These objects are hidden, deleted or unavailable.", { exact: true })
+    .waitFor();
   const caps = await call("get_capabilities");
   assert(caps.ok);
   assert(caps.value.tools.includes("boolean_create"));
@@ -177,9 +221,16 @@ try {
     { command: { type: "part.assign", objectId: "$hole", partId: "$body" } },
   ];
   const revision = (await call("scene_summary")).revision;
+  const historyBeforePreview = await page
+    .locator('.agent-history li[data-outcome="committed"]')
+    .count();
   const preview = await call("dry_run_changes", { expectedRevision: revision, steps });
   assert(preview.ok, JSON.stringify(preview));
   assert.equal(preview.value.geometryValidation, "source_caches_only");
+  assert.equal(
+    await page.locator('.agent-history li[data-outcome="committed"]').count(),
+    historyBeforePreview,
+  );
   assert.equal((await call("scene_summary")).revision, revision);
   const proposed = await call("propose_changes", {
     expectedRevision: revision,
@@ -216,6 +267,17 @@ try {
     false,
   );
   assert(batch.ok, JSON.stringify(batch));
+  assert.equal(
+    await page.locator('.agent-history li[data-outcome="committed"]').count(),
+    historyBeforePreview + 1,
+  );
+  assert.equal(
+    await page
+      .locator('.agent-history li[data-outcome="committed"]')
+      .filter({ hasText: "Editable enclosure body" })
+      .count(),
+    1,
+  );
   const body = batch.value.aliases.body;
   assert.equal((await call("get_booleans", { id: body })).value[0].operation, "difference");
   const diagnostics = await call("get_geometry_diagnostics", { id: body });
@@ -227,6 +289,7 @@ try {
   await client.close();
   client = undefined;
   await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor();
+  assert.equal(await page.locator(".agent-history li").count(), 0);
   // Ordinary editor history remains functional after the MCP process exits.
   const redo = page.locator("#redo");
   await redo.click();
@@ -258,6 +321,8 @@ try {
       "Local agent access (development)",
       "centra-agent",
       "@modelcontextprotocol",
+      "Agent activity outlines",
+      "centra.agent.editing-choice",
     ])
       assert(
         !content.includes(marker),

@@ -364,3 +364,20 @@ The existing positive-dimension and 8:1 aspect/resource admission limits remain.
 Native `.form` v18 is used when source/original sphere axis overrides are present;
 older tags with those fields are refused. Ordinary spheres keep earlier versions.
 No new metadata is used for MCP access, consent or scaling history.
+
+
+## Phase 7.4.1 — recent changes and remembered editing choice
+
+Open the sparkle panel for Recent changes and Show me navigation after agent commits.
+The last 20 attempts are session-only, clearing on revocation/lost connection/editor
+replacement. Successful visible changes receive a two-second presentation outline;
+previews and failures do not. No additional MCP read or write tool is introduced.
+
+Remember editing choice on this browser is an optional desired-mode preference.
+Choose it beneath Allow editing, then set editing as desired. New connections still
+require Approve connection; that explicit click can restore the saved edit/read
+choice. The preference stores only `edit`/`read` locally for this browser origin,
+never actual access or proposal consent. Unchecking removes it; blocked storage
+falls back to read-only defaults. This preference is an exception to earlier
+statements that no agent UI preference is stored; native/recovery data are unchanged.
+Full guide: [Phase 7.4.1 feedback](PHASE_7_4_1_AGENT_FEEDBACK.md).

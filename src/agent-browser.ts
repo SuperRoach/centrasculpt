@@ -1,6 +1,13 @@
 import "./agent-access.css";
 import credentials from "virtual:centra-agent";
+import type { Box3, Object3D } from "three";
+import { AgentActivityHistory } from "./agent-activity";
+import { AgentFeedback } from "./agent-feedback";
+
+export { frameAgentBounds } from "./agent-feedback";
+
 import { type AgentJob, AgentProposals, agentExecutor } from "./agent-access";
+import { readAgentEditingPreference, saveAgentEditingPreference } from "./agent-preferences";
 import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI } from "./modelling-api";
 
@@ -8,6 +15,7 @@ export function mountAgentAccess(
   editor: () => IndependentLayers,
   blocked: () => boolean,
   changed: () => void,
+  viewport?: { scene: Object3D; frame: (bounds: Box3) => void; blocked: () => boolean },
 ) {
   const panel = document.createElement("aside");
   panel.className = "agent-access";
@@ -23,6 +31,7 @@ export function mountAgentAccess(
       <span><strong>Allow editing (includes Undo)</strong><small>Create and change objects in this scene.</small></span>
       <input type="checkbox" disabled><span class="agent-access-switch" aria-hidden="true"></span>
     </label>
+    <label class="agent-access-remember"><input type="checkbox" aria-label="Remember editing choice on this browser">Remember editing choice on this browser</label>
     <p class="agent-access-help"></p>
     <button class="agent-access-revoke" type="button" hidden>Revoke access</button>`;
   const status = panel.querySelector<HTMLParagraphElement>(".agent-access-status")!;
@@ -32,6 +41,25 @@ export function mountAgentAccess(
   // Keep the accessible name concise; supporting copy is a description.
   edit.setAttribute("aria-label", "Allow editing (includes Undo)");
   const revoke = panel.querySelector<HTMLButtonElement>(".agent-access-revoke")!;
+  const remember = panel.querySelector<HTMLInputElement>(".agent-access-remember input")!;
+  let storage: Storage | undefined;
+  try {
+    storage = window.localStorage;
+  } catch {
+    /* Storage blocked: connection still starts read-only. */
+  }
+  let remembered = storage ? readAgentEditingPreference(storage) : undefined;
+  remember.checked = remembered !== undefined;
+  const rememberChoice = () => {
+    const choice = remember.checked ? edit.checked : undefined;
+    if (!storage || !saveAgentEditingPreference(storage, choice)) {
+      remember.checked = false;
+      remembered = undefined;
+      help.textContent = "Browser storage is unavailable. Editing choice will not be remembered.";
+    } else remembered = choice;
+  };
+  remember.onchange = rememberChoice;
+
   const launcher = document.createElement("button");
   launcher.className = "agent-access-launcher";
   launcher.type = "button";
@@ -74,6 +102,80 @@ export function mountAgentAccess(
   let approved = false,
     running: AbortController | undefined;
   const client = crypto.randomUUID();
+  const historyPanel = document.createElement("section");
+  historyPanel.className = "agent-history";
+  historyPanel.setAttribute("aria-label", "Recent agent activity");
+  const historyHeading = document.createElement("h3");
+  historyHeading.textContent = "Recent changes";
+  const historyRows = document.createElement("ol");
+  historyPanel.append(historyHeading, historyRows);
+  panel.append(historyPanel);
+  const feedback = viewport
+    ? new AgentFeedback(
+        viewport.scene,
+        editor,
+        () =>
+          viewport.blocked() ||
+          blocked() ||
+          editor().drawing ||
+          editor().transforming ||
+          editor().modellingBusy ||
+          !editor().recoveryReady,
+        () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        viewport.frame,
+      )
+    : undefined;
+  let feedbackFrame = 0;
+  const animateFeedback = () => {
+    feedbackFrame = 0;
+    if (feedback?.tick()) feedbackFrame = requestAnimationFrame(animateFeedback);
+  };
+  const history = new AgentActivityHistory(() => {
+    historyRows.replaceChildren();
+    const entries = history.snapshot();
+    historyPanel.hidden = !entries.length;
+    for (const entry of entries) {
+      const row = document.createElement("li");
+      row.dataset.outcome = entry.outcome;
+      const description = document.createElement("strong");
+      description.textContent = `${entry.description} · ${entry.outcome === "committed" ? "Applied" : "Failed"}`;
+      const time = document.createElement("time");
+      time.dateTime = new Date(entry.time).toISOString();
+      time.textContent = new Date(entry.time).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const objects = document.createElement("details");
+      const objectLabel = document.createElement("summary");
+      objectLabel.textContent =
+        entry.error ||
+        entry.objects.map((object) => `${object.status}: ${object.name}`).join(" · ") ||
+        "No affected objects";
+      const ids = document.createElement("p");
+      ids.textContent = entry.objects
+        .map((object) => `${object.status} · ${object.name} · ${object.id}`)
+        .join("\n");
+      objects.append(objectLabel, ids);
+      row.append(description, time, objects);
+      const surviving = entry.objects
+        .filter((object) => object.status !== "deleted")
+        .map((object) => object.id);
+      if (entry.outcome === "committed" && surviving.length && feedback) {
+        const show = document.createElement("button");
+        show.type = "button";
+        show.textContent = "Show me";
+        const message = document.createElement("span");
+        message.setAttribute("role", "status");
+        show.onclick = () => {
+          message.textContent = feedback.show(surviving).message;
+        };
+        row.append(show, message);
+      }
+      historyRows.append(row);
+    }
+  });
+  history.sync(editor());
+
   const proposalPanel = document.createElement("section");
   proposalPanel.className = "agent-proposal";
   proposalPanel.setAttribute("aria-label", "Agent proposal");
@@ -170,6 +272,15 @@ export function mountAgentAccess(
     blocked,
     changed,
     proposals,
+    (entry, owner) => {
+      if (!approved || owner !== editor()) return;
+      if (history.sync(owner)) feedback?.clear();
+      history.add(entry);
+      if (entry.outcome === "committed") {
+        feedback?.highlight(entry);
+        if (!feedbackFrame) feedbackFrame = requestAnimationFrame(animateFeedback);
+      }
+    },
   );
   const post = async (path: string, data: object = {}) => {
     const response = await fetch(`${credentials.url}${path}`, {
@@ -186,6 +297,13 @@ export function mountAgentAccess(
   };
   const reset = (message: string) => {
     proposals.invalidate();
+    proposals.current = undefined;
+    proposals.owner = undefined;
+    proposals.notify();
+    history.clear();
+    feedback?.clear();
+    if (feedbackFrame) cancelAnimationFrame(feedbackFrame);
+    feedbackFrame = 0;
     approved = false;
     edit.checked = false;
     edit.disabled = true;
@@ -195,22 +313,33 @@ export function mountAgentAccess(
     connect.hidden = false;
     revoke.hidden = true;
     panel.dataset.state = "disconnected";
-    help.textContent = "Starts read-only. You can revoke access at any time.";
+    help.textContent =
+      remember.checked && remembered === true
+        ? "Your editing choice will apply after you approve this connection."
+        : "Starts read-only. You can revoke access at any time.";
   };
   reset("Not connected");
   connect.onclick = async () => {
     connect.disabled = true;
     setStatus("Connecting…");
     try {
-      await post("/approve", { editing: false });
+      const editing = remember.checked && remembered === true;
+      await post("/approve", { editing });
+      edit.checked = editing;
       approved = true;
       edit.disabled = false;
       connect.disabled = true;
       connect.hidden = true;
       revoke.hidden = false;
-      panel.dataset.state = "connected";
-      help.textContent = "Agents can inspect your scene. Editing is off.";
-      setStatus("Connected · read-only");
+      panel.dataset.state = editing ? "editing" : "connected";
+      help.textContent = editing
+        ? "Remembered editing choice applied. Plans still need separate approval."
+        : "Agents can inspect your scene. Editing is off.";
+      setStatus(editing ? "Connected · editing allowed" : "Connected · read-only");
+      if (editing) {
+        panel.hidden = true;
+        launcher.setAttribute("aria-expanded", "false");
+      }
     } catch (error) {
       reset("Connection needs attention");
       panel.dataset.state = "error";
@@ -223,6 +352,7 @@ export function mountAgentAccess(
     }
   };
   edit.onchange = async () => {
+    if (remember.checked) rememberChoice();
     proposals.invalidate();
     running?.abort();
     try {
@@ -247,6 +377,13 @@ export function mountAgentAccess(
   };
   let polling = false;
   const timer = setInterval(async () => {
+    if (history.sync(editor())) {
+      feedback?.clear();
+      proposals.invalidate();
+      proposals.current = undefined;
+      proposals.owner = undefined;
+      proposals.notify();
+    }
     if (!approved || polling) return;
     polling = true;
     const proposal = proposals.current;
@@ -296,6 +433,7 @@ export function mountAgentAccess(
     () => {
       clearInterval(timer);
       reset("Disconnected");
+      feedback?.dispose();
       void post("/revoke").catch(() => {});
     },
     { once: true },

@@ -1,5 +1,80 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 7.4.1 — Show Me What Changed — 2026-11-07
+
+### 1. What changed
+
+Added commit-only two-second source bounds outlines, a quiet 20-entry recent agent
+transaction list in the sparkle panel, and explicit Show me framing. Rows include
+time, descriptions, names/IDs/status and Applied/Failed outcomes; one batch is one
+row. Dry-run/staging cannot signal success. Added the user-requested opt-in Remember
+editing choice on this browser preference. Initial checkout was clean. User now
+explicitly authorises committing and pushing this phase and preference.
+
+### 2. Architectural decisions
+
+An optional adapter observer compares detached object metadata around authoritative
+results. New activity/feedback/preference modules are reached only through the
+existing development import gate. Box3Helper bounds outlines are independent,
+unpickable, disposable scene helpers; reduced motion keeps them static. Show me
+uses read-only bounds and the existing desktop OrbitControls camera, without changing
+selection, source transforms or history. Busy/stroke/XR guards prevent interference.
+No SDF engine, persistence format or modelling transaction changes. Feedback/refresh
+errors do not alter committed results. History is bounded to 20 rows/128 object
+summaries per row and clears with access/editor lifetime; no Undo claim is exposed.
+No new MCP recent-changes tool was needed. The explicit preference stores desired
+edit/read mode only, never credentials, actual grants or proposal consent. Fresh
+connection approval and separate proposal approval remain required.
+
+### 3. Build and test results
+
+Baseline check passed Biome/types/build and 1,598 tests; three existing localhost
+bridge tests were sandbox EPERM-blocked. After loopback permission, final full
+`npm run check` passed Biome, strict TypeScript, Vite production build and
+**1,607/1,607 tests across 96 files**, zero failures/skips/cancellations (86.39 s test
+command wall). Focused activity/agent run passed 22/22 before the additional preference
+test, which is included in the full suite. Quick suite passed 21/21. Production JS
+scan passed: no activity-outline, preference-key, activity-panel or agent-panel
+markers. Diff whitespace check passed. Evidence: `work/phase-7-4-1/`.
+
+Standalone Playwright Chromium could not launch under the sandbox (SIGABRT/EPERM).
+Actual in-app browser plus official stdio MCP verified batch grouping/one Undo,
+Show me framing with unchanged revision, no dry-run success row, stale/expired Failed
+rows, one Applied row for a separately browser-approved proposal, unavailable hidden
+targets, disconnect clearing and remembered editing across a fresh page with explicit
+approval still required. Full updated Playwright smoke was not completed; screenshots
+and accessible states were inspected in the supported browser alternative.
+
+### 4. Benchmarks and regressions
+
+No new headset/performance benchmark. Feedback is active for about two seconds and
+uses the existing bounds helper idiom. Host tests verify native bytes/history/selection
+unchanged by feedback/framing, multiple outlines, no picking, reduced-motion static
+opacity, lifetime expiry/owner replacement, hidden/deleted/blocked framing, detached
+20-row history and fail-safe observers. Read-only staging no longer invokes the UI
+change callback; failed writes do not trigger it. Production build retains the
+existing bundle-size advisory. Normal dev still uses its unchanged agent-free gate.
+
+### 5. Known limitations and blockers
+
+Bounds are conservative source previews, not evaluated CSG silhouettes. Empty or
+budget-refused bounds report unavailable. Large/complex targets can be hard to see
+behind other objects; Show me never hides unrelated objects. Activity is not an Undo
+stack and is deliberately not persisted or exposed through a new MCP tool. The saved
+desired editing mode is origin/profile specific, defaults off and gracefully fails
+when storage is blocked. Actual reduced-motion/XR/editor-replacement interruption
+variants were host-tested rather than exhaustively repeated in a physical browser
+or headset. The standalone Playwright launch blocker remains explicit.
+
+### 6. Next recommendations
+
+Use the sparkle icon to inspect Recent changes; click Show me for a deliberate
+camera move. Enable Remember editing choice if desired; revoke access independently
+of that preference. Run the updated complete Playwright smoke in an environment
+that can launch Chromium and perform physical Quest acceptance separately. Usage:
+[Phase 7.4.1](PHASE_7_4_1_AGENT_FEEDBACK.md). No new cloud/WebMCP/Quest synchronisation.
+
+
 2026-11-07 publication: user explicitly authorized committing and pushing Phase 7.4 proposals, quiet desktop agent controls, tapered cylinders, ellipsoids, staged full-resolution export and bounded STL validation with the 600,000-triangle ceiling. This supersedes earlier no-commit statements for these changes. Final verification passed 1,601/1,601 tests; browser failure-matrix, Quest and physical printing limitations recorded below remain.
 
 ## Bounded STL topology and 600k ceiling — 2026-11-06

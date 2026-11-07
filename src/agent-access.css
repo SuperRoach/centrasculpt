@@ -72,3 +72,17 @@ aside.agent-access { width: min(310px, calc(100vw - 36px)); min-width: 0; max-wi
 .agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after { border-color: #668949; background: #668949; }
 .agent-access-launcher::after { transition: background-color 220ms ease, border-color 220ms ease; }
 @media (prefers-reduced-motion: reduce) { .agent-access-launcher::after { transition: none; } }
+.agent-history { margin-top: 12px; padding-top: 10px; border-top: 1px solid #d5ddce; }
+.agent-history h3 { margin: 0 0 8px; font: 600 12px system-ui, sans-serif; }
+.agent-history ol { margin: 0; padding: 0; list-style: none; max-height: 240px; overflow: auto; }
+.agent-history li { padding: 8px 0; border-top: 1px solid #e0e5d9; font-size: 11px; overflow-wrap: anywhere; }
+.agent-history strong { display: block; font-size: 11px; font-weight: 500; }
+.agent-history time { font-size: 10px; color: #7a856f; }
+.agent-history details { margin-top: 4px; color: #65715e; }
+.agent-history summary { cursor: pointer; }
+.agent-history p { white-space: pre-line; font-size: 10px; }
+.agent-history li[data-outcome=failed] strong { color: #925f45; }
+.agent-access .agent-history button { width: auto; min-height: 26px; margin-top: 6px; padding: 4px 9px; font-size: 11px; }
+.agent-history [role=status] { display: block; margin-top: 3px; font-size: 10px; color: #65715e; }
+.agent-access-remember { display: flex; align-items: center; gap: 7px; margin-top: 12px; font: 10px/1.4 system-ui, sans-serif; color: #65715e; letter-spacing: 0; text-transform: none; }
+.agent-access-remember input { width: 13px; height: 13px; margin: 0; flex: none; }

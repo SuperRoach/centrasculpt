@@ -137,3 +137,17 @@ real in-app browser; existing recovery records were left untouched.
 Final host verification: Biome/strict TypeScript/Vite and 1,589/1,589 tests passed
 (`sparkle-check.log`); focused MCP tests 15/15 passed (`quiet-focused.log`). Expanded
 controls cap at 310 px, or 280 px on narrow viewports, with viewport edge clearance.
+
+
+## Phase 7.4.1 — visible commit feedback (2026-11-07)
+
+Successful commits now briefly outline visible affected objects. The sparkle panel
+keeps 20 session-only transaction attempts, with a Show me action to frame surviving
+visible objects. Preview/staging does not indicate success; rejected/stale/failed
+applies cannot highlight. One approved batch yields one activity row. No automatic
+camera movement or Undo-availability claim. Revocation/disconnect/editor replacement
+clears transient history and outlines. See [feedback and preference guide](PHASE_7_4_1_AGENT_FEEDBACK.md).
+
+The optional Remember editing choice on this browser stores desired edit/read mode
+only. It restores that choice after the next explicit connection approval; it never
+stores credentials, actual grants, activity or plan consent. Default remains off.

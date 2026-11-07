@@ -1,3 +1,9 @@
+### See what your local agent changed (2026-11-07)
+
+- Successful agent edits briefly outline the affected objects. Open the sparkle panel for recent changes and click **Show me** to find them.
+- Batches appear as one activity, with object names and results. Feedback stays separate from your sculpture and Undo history.
+- Optionally remember your editing choice on this browser; each new connection and proposed plan still needs its own approval.
+
 ### Larger STL exports with bounded validation (2026-11-06)
 
 - STL exports support up to 600,000 triangles when the memory budget allows. Topology checks use compact typed buffers and remain cancellable.

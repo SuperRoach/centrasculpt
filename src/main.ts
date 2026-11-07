@@ -2332,7 +2332,7 @@ enclosureControlsUI = enclosureUI(
   () => loadingProject || ui.modalOpen || xrBlocked(),
 );
 if (__AGENT_ENABLED__) {
-  void import("./agent-browser").then(({ mountAgentAccess }) => {
+  void import("./agent-browser").then(({ mountAgentAccess, frameAgentBounds }) => {
     mountAgentAccess(
       () => layers,
       () =>
@@ -2345,6 +2345,18 @@ if (__AGENT_ENABLED__) {
       () => {
         syncView();
         refresh();
+      },
+      {
+        scene,
+        blocked: () =>
+          renderer.xr.isPresenting || xrBlocked() || desktopStroke.active || !input.cameraEnabled,
+        frame: (bounds) => {
+          const target = controls.target.clone();
+          controls.dispose();
+          controls = createCameraControls();
+          controls.target.copy(target);
+          frameAgentBounds(camera, controls, bounds);
+        },
       },
     );
   });
