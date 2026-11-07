@@ -199,6 +199,20 @@ const parameters = z
   })
   .strict();
 export const tools = {
+  capture_scene_preview: {
+    schema: z
+      .object({
+        expectedRevision: z.string().min(1).max(128).optional(),
+        viewpoint: z
+          .enum(["front", "back", "left", "right", "top", "isometric"])
+          .default("isometric"),
+        width: number.int().min(64).max(512).default(384),
+        height: number.int().min(64).max(512).default(384),
+      })
+      .strict(),
+    description:
+      "Read-only model-only PNG of current rendered visible geometry. Whole scene only. Boolean/array scenes require ready Boolean preview. Neutral untextured material; excludes references/UI/guides. Use with get_geometry_diagnostics; no fit or topology guarantee.",
+  },
   scene_summary: {
     schema: z.object({}).strict(),
     description: "Inspect the approved active scene and its revision.",
@@ -446,6 +460,7 @@ export const isWrite = (name) =>
     "enclosure_anchors",
     "list_enclosure_features",
     "get_enclosure_feature",
+    "capture_scene_preview",
     "scene_summary",
     "list_objects",
     "get_object",

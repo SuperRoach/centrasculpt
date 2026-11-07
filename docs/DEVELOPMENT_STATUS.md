@@ -1,5 +1,94 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+## Phase 7.4.2 — agent visual inspection — 2026-11-07
+
+Publication authorisation: the user explicitly authorised committing and pushing
+Phase 7.4.2. This supersedes the implementation-time no-commit note below.
+
+### 1. What changed
+
+Added read-only `capture_scene_preview` to the optional local stdio MCP. It returns
+an actual browser-rendered model-only PNG image block with structured revision,
+project, measured bounds, camera, sampling and byte/pixel provenance. Six preset
+angles and bounded size; references, editor UI and agent overlays excluded. Clean
+active checkout was `/Users/brettjames/development/vrappPOC`; supplied workspace
+folder itself is empty. No commit, push or merge authorised or performed.
+
+### 2. Architectural decisions
+
+Reuses committed desktop Three.js geometry and the existing WebGLRenderer in a
+single disposable offscreen render with a separate orthographic camera and neutral
+untextured material/lights. Ready live Boolean/array display is captured rather
+than analytic source boxes; pending/stale/failed display refuses. No Node SDF
+renderer, view switching, forced evaluation, source-cache changes or new polling.
+Whole visible model only: monolithic evaluated display cannot isolate arbitrary
+source/part IDs truthfully. Binary PNG upload is a separate exact-owner/job,
+browser-token/origin authenticated route capped at 512 KiB. Existing JSON requests
+retain 64 KiB, one flight and 10/12/15 second deadlines. MCP response reads cap at
+768 KiB; image base64 is excluded from text/structuredContent. Capture needs browser
+connection approval, never an editing grant. Native/history/selection/materials,
+OrbitControls and consent remain unchanged; temporary resources/state restore in
+finally. Normal dev and production retain their agent-free gates.
+
+### 3. Build and test results
+
+Baseline Biome/types/build passed; 1,617 tests passed with three existing loopback
+tests sandbox EPERM-blocked. After loopback permission, final `npm run check` passed
+Biome (non-fatal existing/style warnings), strict TypeScript, Vite production build
+and **1,628/1,628 tests across 98 files**, zero failures/skips/cancellations
+(85.65 s test-command wall). New preview suite **8/8**; existing agent suite **18/18**;
+quick **21/21**. Production JS scan found no capture/preview-image/agent-browser/
+centra-agent markers. Diff whitespace check passed. Logs: `work/phase-7-4-2/`.
+
+Standalone full Playwright smoke remains blocked by host Chromium SIGABRT/EPERM;
+do not call it passed. Actual in-app browser plus official stdio SDK captured
+front/isometric/top PNG image blocks of a constructed through-hole/array fixture,
+verified MIME/header dimensions/bytes, unchanged scene revision/object snapshots
+and retained numeric diagnostics. Visually inspected model-only output confirms
+both copies and the actual through-hole without cutter shells/grid/UI. A fresh
+server is used for final verification because the older Vite process cached an
+earlier module. Initial final-smoke attempts after chat resumption lost the prior
+turn-scoped loopback grant; permission was renewed. The final disposable fixture
+uses ordinary native import and read-only MCP approval; no editing grant is needed.
+Fresh-server final smoke on isolated port 5287 passed all three 512 × 384 angles
+with orthographic camera provenance and successful numeric diagnostics. Its imported
+fixture displayed 73,064 triangles at 99³; no write grant was enabled. Evidence:
+`visual-smoke-final.log`, `smoke-report.json`, `smoke-{front,isometric,top}.png`.
+
+### 4. Benchmarks and regressions
+
+The initial actual display fixture had 269,948 triangles / 124 meshes at 186³;
+384² PNGs were 4,983 bytes front and 16,151 bytes isometric. This is observed output,
+not a general GPU latency/peak-memory benchmark. Host tests exercise actual
+compositor hole/array raycasts, framing at six directions and portrait/landscape
+aspects over tiny/large bounds, native/history/selection and renderer-state
+preservation, empty/hidden/large scenes, encoding cancellation/deadline/project
+replacement/oversize, context loss/XR/busy/stale and driver failure. Binary admission
+tests cover >64 KiB images, 512 KiB refusal, wrong credentials/origin/owner/job,
+repeat upload, malformed PNG, read-only permission, revocation and ordinary JSON
+limits. Existing disconnect/timeout/shutdown tests remain passing.
+
+### 5. Known limitations and blockers
+
+Whole-scene scope only; no object/part isolation, private references, guides or
+paint fidelity. Existing sampled display may omit fine features; capture never
+certifies watertightness, exact dimensions, enclosure intent reflow or physical fit.
+Declared Phase 7.2 intent remains distinct from manually edited live sources.
+Assembly previews, pending meshes, active XR and reserved editor interactions
+refuse. Synchronous bounded GPU render/read cannot be pre-empted; late results are
+discarded after return. Background browser throttling can expire the existing
+heartbeat. Full standalone browser failure matrix and physical Quest/printing,
+sustained GPU/resource acceptance remain pending. No new physical-fit claim.
+
+### 6. Next recommendations
+
+Use two angles with the same revision beside `get_geometry_diagnostics` and per-part
+export reports; inspect in the intended slicer and print a tolerance coupon. Run
+full Playwright smoke on a host that can launch Chromium and physical Quest
+acceptance separately. See [visual inspection workflow/contracts](PHASE_7_4_2_VISUAL_INSPECTION.md)
+and [local MCP setup](PHASE_7_3_LOCAL_MCP.md). No cloud/WebMCP/LAN/Quest sync.
+
+
 2026-11-07 publication: user explicitly authorized committing and pushing Phase 7.2 associative enclosure features and the cutout/mounting editor cleanup. This supersedes the earlier no-commit notes for this work. Final cleanup check passed 1,620/1,620 tests; browser, hardware and physical-fit limits remain recorded below.
 
 ## Cutout / mounting editor cleanup — 2026-11-07

@@ -40,7 +40,8 @@
     "dev:agent": "CENTRA_AGENT=1 vite --host 127.0.0.1",
     "mcp:agent": "node scripts/agent-mcp.mjs",
     "test:agent": "node scripts/test.mjs agent-access",
-    "test:agent:browser": "node scripts/agent-smoke.mjs"
+    "test:agent:browser": "node scripts/agent-smoke.mjs",
+    "test:agent:visual": "node scripts/agent-preview-smoke.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"

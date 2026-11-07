@@ -2347,6 +2347,7 @@ if (__AGENT_ENABLED__) {
         refresh();
       },
       {
+        renderer,
         scene,
         blocked: () =>
           renderer.xr.isPresenting || xrBlocked() || desktopStroke.active || !input.cameraEnabled,

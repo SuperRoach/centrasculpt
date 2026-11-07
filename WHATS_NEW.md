@@ -1,3 +1,9 @@
+### Visual inspection for local agents (2026-11-07)
+
+- Approved local agents can request model-only PNG views from six angles, with evaluated display geometry and sampling metadata.
+- Captures use a separate camera, exclude references and editor UI, and leave your sculpture, selection and Undo unchanged. Pending geometry returns a clear limitation.
+- Development-only, read-only access; screenshots help judge layout but cannot verify dimensions, watertightness or physical fit.
+
 ### Cleaner cutout and mounting controls (2026-11-07)
 
 - Feature fields are grouped into placement, position and size, with short wall names and a clear Preview / Apply sequence. Extra cutter reach is tucked under Advanced.

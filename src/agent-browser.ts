@@ -1,8 +1,9 @@
 import "./agent-access.css";
 import credentials from "virtual:centra-agent";
-import type { Box3, Object3D } from "three";
+import type { Box3, Object3D, WebGLRenderer } from "three";
 import { AgentActivityHistory } from "./agent-activity";
 import { AgentFeedback } from "./agent-feedback";
+import { captureScenePreview } from "./agent-preview";
 
 export { frameAgentBounds } from "./agent-feedback";
 
@@ -15,7 +16,12 @@ export function mountAgentAccess(
   editor: () => IndependentLayers,
   blocked: () => boolean,
   changed: () => void,
-  viewport?: { scene: Object3D; frame: (bounds: Box3) => void; blocked: () => boolean },
+  viewport?: {
+    renderer: WebGLRenderer;
+    scene: Object3D;
+    frame: (bounds: Box3) => void;
+    blocked: () => boolean;
+  },
 ) {
   const panel = document.createElement("aside");
   panel.className = "agent-access";
@@ -410,7 +416,43 @@ export function mountAgentAccess(
           () => controller.abort(),
           Math.max(0, job.deadline - Date.now()),
         );
-        void execute(job, controller.signal)
+        const operation = async () => {
+          if (job.name !== "capture_scene_preview") return execute(job, controller.signal);
+          if (!viewport)
+            return { ok: false, error: { code: "unavailable", message: "No desktop renderer." } };
+          const result = await captureScenePreview(
+            viewport.renderer,
+            editor,
+            () => blocked() || viewport.blocked(),
+            job,
+            controller.signal,
+          );
+          if (!result.ok) return result;
+          const { blob, ...metadata } = result;
+          if (!approved || controller.signal.aborted) throw new Error("Capture cancelled.");
+          const response = await fetch(
+            `${credentials.url}/preview-image?id=${encodeURIComponent(job.id)}&client=${encodeURIComponent(client)}`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${credentials.token}`,
+                "Content-Type": "image/png",
+              },
+              body: blob,
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(1500)]),
+            },
+          );
+          if (!response.ok) throw new Error("Preview upload refused or expired.");
+          if (
+            !approved ||
+            controller.signal.aborted ||
+            editor().project.id !== metadata.value.projectId ||
+            editor().modellingRevision !== metadata.revision
+          )
+            throw new Error("Capture cancelled: scene or connection changed during upload.");
+          return metadata;
+        };
+        void operation()
           .catch((error: Error) => ({
             ok: false,
             error: { code: "operation_failed", message: error.message },

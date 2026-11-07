@@ -23,6 +23,7 @@ for (const name of [
   "connector-placement",
   "modelling-api",
   "agent-access",
+  "agent-preview",
   "agent-activity",
   "agent-feedback",
   "agent-preferences",

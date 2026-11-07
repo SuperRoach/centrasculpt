@@ -49,6 +49,48 @@ export async function startAgentBridge({
       const browser = req.headers.authorization === `Bearer ${browserToken}`;
       if (!browser && req.headers.authorization !== `Bearer ${token}`)
         return send(401, fail("Invalid temporary credentials."));
+      if (req.url.startsWith("/preview-image?")) {
+        const query = new URL(req.url, "http://127.0.0.1").searchParams;
+        if (
+          !browser ||
+          !approved ||
+          owner !== query.get("client") ||
+          !pending ||
+          pending.job.name !== "capture_scene_preview" ||
+          pending.job.id !== query.get("id") ||
+          pending.image ||
+          pending.uploading ||
+          Date.now() >= pending.job.deadline ||
+          req.headers["content-type"] !== "image/png"
+        )
+          return send(403, fail("Preview upload is not authorised for this request."));
+        const request = pending;
+        request.uploading = true;
+        try {
+          const chunks = [];
+          let bytes = 0;
+          for await (const chunk of req) {
+            bytes += chunk.length;
+            if (bytes > 524288) return send(413, fail("Preview exceeds 512 KiB."));
+            chunks.push(chunk);
+          }
+          const png = Buffer.concat(chunks);
+          if (pending !== request || !approved || Date.now() >= request.job.deadline)
+            return send(409, fail("Preview expired."));
+          if (
+            png.length < 33 ||
+            !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+            png.toString("ascii", 12, 16) !== "IHDR" ||
+            png.readUInt32BE(16) !== request.job.args.width ||
+            png.readUInt32BE(20) !== request.job.args.height
+          )
+            return send(400, fail("Invalid PNG or dimensions."));
+          request.image = { data: png.toString("base64"), mimeType: "image/png", bytes };
+          return send(200, {});
+        } finally {
+          request.uploading = false;
+        }
+      }
       let body = "";
       for await (const chunk of req) {
         body += chunk;
@@ -82,6 +124,18 @@ export async function startAgentBridge({
         }
         if (req.url === "/result" && pending && pending.job.id === data.id) {
           clearTimeout(pending.timer);
+          if (pending.job.name === "capture_scene_preview" && data.result?.ok) {
+            const image = pending.image;
+            if (
+              !image ||
+              data.result.value?.bytes !== image.bytes ||
+              data.result.value?.mimeType !== image.mimeType ||
+              data.result.value?.width !== pending.job.args.width ||
+              data.result.value?.height !== pending.job.args.height
+            )
+              data.result = fail("Missing preview image or inconsistent metadata.");
+            else data.result.image = { data: image.data, mimeType: image.mimeType };
+          }
           pending.resolve(data.result);
           pending = null;
           return send(200, {});

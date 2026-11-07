@@ -389,3 +389,18 @@ and standalone `set_enclosure_feature` / `remove_enclosure_feature` use the shar
 typed recipe. `propose_enclosure` accepts `feature-set` / `feature-remove` recipes
 with separate browser consent. Strict schemas, grants and loopback policy remain.
 Recipes stay outside mixed command batches. [Exact contracts](PHASE_7_2_FEATURES.md).
+
+## Phase 7.4.2 visual inspection — 2026-11-07
+
+Read-only `capture_scene_preview({expectedRevision?,viewpoint?,width?,height?})`
+returns a model-only PNG **MCP image block** and structured provenance. Six preset
+angles, default 384², 64–512 pixels per edge, 512 KiB PNG maximum. Whole visible
+model only; neutral untextured material, no references, guides or UI. Uses current
+browser geometry and a separate camera; Boolean/array captures require a ready
+Boolean display. Pending/stale/busy/XR/context loss refuse without stale imagery.
+The 64 KiB JSON request limit is unchanged: one exact-owner/job authenticated binary
+PNG upload carries the image separately; capture HTTP responses cap at 768 KiB.
+No write grant, source evaluation, view switch or additional background polling.
+Use with `get_geometry_diagnostics` and source accuracy labels. Screenshots cannot
+establish watertightness, exact dimensions or physical fit. Full contracts, resource
+limits, errors and repeatable smoke: [visual inspection guide](PHASE_7_4_2_VISUAL_INSPECTION.md).

@@ -33,7 +33,26 @@ for (const [name, tool] of Object.entries(tools)) {
           { name, args },
           AbortSignal.any([extra.signal, AbortSignal.timeout(15000)]),
         );
-        result = await response.json();
+        if (name === "capture_scene_preview") {
+          const reader = response.body.getReader();
+          const chunks = [];
+          let bytes = 0;
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              bytes += value.byteLength;
+              if (bytes > 786432) {
+                await reader.cancel();
+                throw new Error("Preview response exceeds 768 KiB.");
+              }
+              chunks.push(Buffer.from(value));
+            }
+            result = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          } finally {
+            reader.releaseLock();
+          }
+        } else result = await response.json();
         if (name === "get_capabilities" && result.ok)
           Object.assign(result.value, {
             tools: Object.keys(tools),
@@ -48,6 +67,13 @@ for (const [name, tool] of Object.entries(tools)) {
               printableParts: true,
               enclosures: true,
               evaluatedDiagnostics: true,
+              scenePreview: {
+                scope: "whole-visible-model",
+                pixels: 262144,
+                maxEdge: 512,
+                maxPngBytes: 524288,
+                requiresReadyDisplay: true,
+              },
             },
           });
       } catch (error) {
@@ -59,8 +85,13 @@ for (const [name, tool] of Object.entries(tools)) {
           },
         };
       }
+      const image = result.image;
+      delete result.image;
       return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
+        content: [
+          { type: "text", text: JSON.stringify(result) },
+          ...(result.ok && image ? [{ type: "image", ...image }] : []),
+        ],
         structuredContent: result,
         isError: !result.ok,
       };

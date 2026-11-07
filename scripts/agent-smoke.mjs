@@ -1,7 +1,7 @@
 // Actual browser + stdio MCP smoke, isolated browser profile and configurable unused Vite port.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -160,6 +160,22 @@ try {
     ) < 1e-8,
   );
   await page.screenshot({ path: `${output}/browser-created.png` });
+  const previewRevision = (await call("scene_summary")).revision;
+  for (const viewpoint of ["front", "isometric"]) {
+    const preview = await client.callTool({
+      name: "capture_scene_preview",
+      arguments: { viewpoint, width: 384, height: 256, expectedRevision: previewRevision },
+    });
+    assert(preview.structuredContent.ok, JSON.stringify(preview.structuredContent));
+    const image = preview.content.find((block) => block.type === "image");
+    assert.equal(image.mimeType, "image/png");
+    const bytes = Buffer.from(image.data, "base64");
+    assert.equal(bytes.readUInt32BE(16), 384);
+    assert.equal(bytes.readUInt32BE(20), 256);
+    assert.equal(bytes.length, preview.structuredContent.value.bytes);
+    await writeFile(`${output}/model-${viewpoint}.png`, bytes);
+  }
+  assert.equal((await call("scene_summary")).revision, previewRevision);
   const updated = await call("update_primitive", {
     ...args,
     id,
@@ -415,6 +431,9 @@ try {
       "@modelcontextprotocol",
       "Agent activity outlines",
       "centra.agent.editing-choice",
+      "capture_scene_preview",
+      "preview-image",
+      "evaluated-live-display",
     ])
       assert(
         !content.includes(marker),
