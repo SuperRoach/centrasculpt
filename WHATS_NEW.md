@@ -1,3 +1,37 @@
+### Larger STL exports with bounded validation (2026-11-06)
+
+- STL exports support up to 600,000 triangles when the memory budget allows. Topology checks use compact typed buffers and remain cancellable.
+- Full-resolution Turtle export was verified at 365,994 triangles without reducing resolution. Its companion report retains shell and winding warnings for slicer inspection.
+
+### Full-detail Boolean export in stages (2026-11-06)
+
+- Unified Boolean export can evaluate larger scenes in stages while keeping the same grid and up to 192³ resolution. Shapes are combined in their original order, with one continuous final mesh.
+- Progress shows the evaluation stage and supports cancellation. Editable sources and Undo history remain untouched.
+- Memory and triangle limits still apply. Preview retains its smaller work limit; the old misleading “Array evaluation” error now identifies Boolean evaluation.
+
+### Stretch spheres into ellipsoids (2026-11-06)
+
+- Spheres now have independent width, height and depth. Drag an axis handle or edit dimensions to make elongated or flattened shapes.
+- Local agents can create, resize and preview ellipsoids. Booleans, STL/GLB export, Undo and native saving retain the stretched shape.
+- Ellipsoid projects use native format v18; ordinary spheres and earlier project formats remain supported.
+
+### Tapered cylinders and flexible primitive sizing (2026-11-06)
+
+- Cylinders now have separate top and bottom diameters, making tapered solids and cutters for flared openings. Both controls appear in Primitives and are available to local agents.
+- Agents can resize box width, height and depth independently, or scale cylinder height separately from its circular end diameters. Sources remain editable and changes support Undo.
+- Tapered projects use native format v17; use this app version to reopen them.
+
+### Quieter desktop agent controls (2026-11-06)
+
+- A small sparkle icon with a green connection dot replaces the open MCP panel. Click it to review proposed commands or manage access; incoming plans never open a popup or take focus.
+- Enabling editing collapses the controls. Each modelling plan still needs separate approval.
+
+### Review local agent plans before applying (2026-11-06)
+
+- Local agents can propose a multi-step model and show its additions, edits, deletions, object dimensions and exact commands before changing the scene.
+- Approve each plan separately in the desktop editor, or reject it and request a revision. Approved plans apply once with one Undo action; stale or expired plans are refused.
+- Preview checks source geometry, not final printability. Optional development MCP access only; Quest synchronisation remains deferred.
+
 ### More modelling tools for local agents (2026-11-06)
 
 - Optional local MCP access now supports editable Booleans, arrays, groups, printable parts, connectors and enclosure updates.

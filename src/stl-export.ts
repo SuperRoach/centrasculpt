@@ -26,7 +26,11 @@ export type PrintReport = {
 };
 /** Resolve exact collinear bridge faces after Float32 unit conversion.
  * Split the unique neighboring long edge at its existing middle vertex; never move or weld nearby points. */
-export async function stabilisePrintCoordinates(input: Float32Array, work = new ExportWork()) {
+export async function stabilisePrintCoordinates(
+  input: Float32Array,
+  work = new ExportWork(),
+  maxWorkspaceBytes = 32 * 1024 ** 2,
+) {
   let positions = input,
     repaired = 0;
   const key = (p: Float32Array, offset: number) => `${p[offset]},${p[offset + 1]},${p[offset + 2]}`;
@@ -43,6 +47,7 @@ export async function stabilisePrintCoordinates(input: Float32Array, work = new 
   for (let pass = 0; pass < 8; pass++) {
     const candidates = new Map<string, { face: number; middle: number[]; key: string }[]>(),
       targets = new Map<string, { face: number; edge: number; count: number }>();
+    let candidateCount = 0;
     for (let offset = 0; offset < positions.length; offset += 9) {
       if (offset % 4608 === 0)
         await work.pause("Stabilising STL precision", offset, positions.length);
@@ -63,6 +68,8 @@ export async function stabilisePrintCoordinates(input: Float32Array, work = new 
       if (!(t > 0 && t < 1)) continue;
       const id = edgeKey(key(positions, offset + a * 3), key(positions, offset + b * 3)),
         list = candidates.get(id) ?? [];
+      if (++candidateCount * 1024 > maxWorkspaceBytes)
+        throw new Error("STL precision stabilisation exceeds its bounded workspace. Source kept.");
       list.push({ face: offset, middle: points[m].toArray(), key: key(positions, offset + m * 3) });
       candidates.set(id, list);
     }
@@ -128,19 +135,51 @@ export async function stabilisePrintCoordinates(input: Float32Array, work = new 
   }
   return { positions, repaired };
 }
+/** Includes coordinate/copy/packing buffers and bounded typed topology workspace.
+ * Quality-specific admission still applies independently. */
+export const STL_VALIDATION_BYTES_PER_CORNER = 128;
+export const STL_VALIDATION_MAX_TRIANGLES = 600_000;
+async function sortedPrintIndices(
+  order: Uint32Array<ArrayBuffer>,
+  compare: (a: number, b: number) => number,
+  work: ExportWork,
+  stage: string,
+) {
+  let source = order,
+    target = new Uint32Array(order.length),
+    processed = 0;
+  const passes = Math.ceil(Math.log2(Math.max(1, order.length)));
+  for (let width = 1; width < order.length; width *= 2) {
+    for (let start = 0; start < order.length; start += 2 * width) {
+      const middle = Math.min(start + width, order.length),
+        end = Math.min(start + 2 * width, order.length);
+      let left = start,
+        right = middle;
+      for (let at = start; at < end; at++) {
+        target[at] =
+          left < middle && (right >= end || compare(source[left], source[right]) <= 0)
+            ? source[left++]
+            : source[right++];
+        if (++processed % 8192 === 0) await work.pause(stage, processed, order.length * passes);
+      }
+    }
+    [source, target] = [target, source];
+  }
+  return source;
+}
 /** Exact coordinate welding on the final Float32 STL coordinates. No hidden repair. */
 export async function validatePrintMesh(
   p: Float32Array,
   work = new ExportWork(),
 ): Promise<PrintReport> {
   if (!p.length || p.length % 9) throw new Error("Invalid print triangle buffer.");
-  if (p.length / 9 > 300_000)
-    throw new Error("Print validation limit is 300,000 triangles. Export selected parts.");
+  if (p.length / 9 > STL_VALIDATION_MAX_TRIANGLES)
+    throw new Error("Print validation limit is 600,000 triangles. Export selected parts.");
   const n = p.length / 9,
+    corners = n * 3,
     parent = Int32Array.from({ length: n }, (_, i) => i),
     volume = new Float64Array(n),
-    vertices = new Map<string, number>(),
-    edges = new Map<string, { count: number; direction: number; face: number }>(),
+    ids = new Uint32Array(corners),
     min = [Infinity, Infinity, Infinity],
     max = [-Infinity, -Infinity, -Infinity];
   let degenerate = 0;
@@ -153,57 +192,76 @@ export async function validatePrintMesh(
   };
   for (let f = 0; f < n; f++) {
     if (f % 512 === 0) await work.pause("Validating final STL topology", f, n);
-    const ids: number[] = [];
-    for (let k = 0; k < 3; k++) {
-      const offset = f * 9 + k * 3;
-      for (let a = 0; a < 3; a++) {
-        const v = p[offset + a];
-        if (!Number.isFinite(v)) throw new Error("Nonfinite print geometry.");
-        min[a] = Math.min(min[a], v);
-        max[a] = Math.max(max[a], v);
-      }
-      const key = `${p[offset]},${p[offset + 1]},${p[offset + 2]}`;
-      let id = vertices.get(key);
-      if (id === undefined) {
-        id = vertices.size;
-        vertices.set(key, id);
-      }
-      ids.push(id);
+    for (let k = 0; k < 9; k++) {
+      const value = p[f * 9 + k],
+        axis = k % 3;
+      if (!Number.isFinite(value)) throw new Error("Nonfinite print geometry.");
+      min[axis] = Math.min(min[axis], value);
+      max[axis] = Math.max(max[axis], value);
     }
     const a = new Vector3().fromArray(p, f * 9),
       b = new Vector3().fromArray(p, f * 9 + 3),
-      c = new Vector3().fromArray(p, f * 9 + 6),
-      normal = b.clone().sub(a).cross(c.clone().sub(a));
-    if (normal.lengthSq() === 0) degenerate++;
+      c = new Vector3().fromArray(p, f * 9 + 6);
+    if (b.clone().sub(a).cross(c.clone().sub(a)).lengthSq() === 0) degenerate++;
     volume[f] = a.dot(b.clone().cross(c)) / 6;
-    for (let k = 0; k < 3; k++) {
-      const a = ids[k],
-        b = ids[(k + 1) % 3],
-        key = a < b ? `${a},${b}` : `${b},${a}`,
-        e = edges.get(key);
-      if (e) {
-        e.count++;
-        e.direction += a < b ? 1 : -1;
-        parent[root(f)] = root(e.face);
-      } else edges.set(key, { count: 1, direction: a < b ? 1 : -1, face: f });
-    }
   }
+  let order = Uint32Array.from({ length: corners }, (_, i) => i);
+  const compareVertices = (a: number, b: number) =>
+    p[a * 3] - p[b * 3] || p[a * 3 + 1] - p[b * 3 + 1] || p[a * 3 + 2] - p[b * 3 + 2];
+  order = await sortedPrintIndices(order, compareVertices, work, "Indexing exact STL vertices");
+  let vertex = 0;
+  for (let i = 0; i < corners; i++) {
+    if (i % 8192 === 0) await work.pause("Welding exact STL coordinates", i, corners);
+    if (i && compareVertices(order[i - 1], order[i]) !== 0) vertex++;
+    ids[order[i]] = vertex;
+  }
+  // Each corner index also identifies the outgoing edge of its original triangle.
+  const next = (edge: number) => edge - (edge % 3) + ((edge + 1) % 3);
+  const lower = (edge: number) => Math.min(ids[edge], ids[next(edge)]);
+  const upper = (edge: number) => Math.max(ids[edge], ids[next(edge)]);
+  order = await sortedPrintIndices(
+    order,
+    (a, b) => lower(a) - lower(b) || upper(a) - upper(b),
+    work,
+    "Indexing STL continuity",
+  );
   let boundaryEdges = 0,
     nonManifoldEdges = 0,
     inconsistentEdges = 0;
-  for (const e of edges.values()) {
-    if (e.count === 1) boundaryEdges++;
-    else if (e.count !== 2) nonManifoldEdges++;
-    else if (e.direction !== 0) inconsistentEdges++;
+  for (let start = 0; start < corners; ) {
+    let end = start,
+      direction = 0;
+    const first = order[start],
+      a = lower(first),
+      b = upper(first),
+      face = Math.floor(first / 3);
+    while (end < corners && lower(order[end]) === a && upper(order[end]) === b) {
+      const edge = order[end++];
+      direction += ids[edge] < ids[next(edge)] ? 1 : -1;
+      parent[root(Math.floor(edge / 3))] = root(face);
+      if (end % 8192 === 0) await work.pause("Checking STL continuity", end, corners);
+    }
+    const count = end - start;
+    if (count === 1) boundaryEdges++;
+    else if (count !== 2) nonManifoldEdges++;
+    else if (direction !== 0) inconsistentEdges++;
+    start = end;
   }
-  const sums = new Map<number, number>();
+  const sums = new Float64Array(n),
+    seen = new Uint8Array(n);
+  let components = 0,
+    invertedComponents = 0;
   for (let f = 0; f < n; f++) {
     if (f % 2048 === 0) await work.pause("Checking connected solids", f, n);
     const r = root(f);
-    sums.set(r, (sums.get(r) ?? 0) + volume[f]);
+    if (!seen[r]) {
+      seen[r] = 1;
+      components++;
+    }
+    sums[r] += volume[f];
   }
+  for (let i = 0; i < n; i++) if (seen[i] && sums[i] < 0) invertedComponents++;
   const dimensions = max.map((v, i) => v - min[i]),
-    invertedComponents = [...sums.values()].filter((v) => v < 0).length,
     blocking: string[] = [],
     warnings: string[] = [];
   if (dimensions.some((d) => d <= 0)) blocking.push("Model has zero dimensions.");
@@ -215,9 +273,9 @@ export async function validatePrintMesh(
       `${invertedComponents} inward-oriented components (signed volume): inspect winding; intentional cavity shells are not classified.`,
     );
   if (boundaryEdges) warnings.push(`${boundaryEdges} open boundary edges: not watertight.`);
-  if (sums.size > 1)
+  if (components > 1)
     warnings.push(
-      `${sums.size} disconnected surfaces; nested shells and separate parts need slicer inspection.`,
+      `${components} disconnected surfaces; nested shells and separate parts need slicer inspection.`,
     );
   return {
     units: "mm",
@@ -227,7 +285,7 @@ export async function validatePrintMesh(
     nonManifoldEdges,
     inconsistentEdges,
     degenerateTriangles: degenerate,
-    components: sums.size,
+    components,
     invertedComponents,
     blocking,
     warnings,
@@ -248,7 +306,10 @@ export async function encodeSTL(
     throw new Error("Target longest dimension must be 0.1–10,000 mm.");
   const start = performance.now(),
     admission = exportAdmission(sources, quality, maxBytes);
-  if (admission.corners / 3 > 300_000 || admission.corners * 320 > maxBytes)
+  if (
+    admission.corners / 3 > STL_VALIDATION_MAX_TRIANGLES ||
+    admission.corners * STL_VALIDATION_BYTES_PER_CORNER > maxBytes
+  )
     throw new Error(
       "STL topology validation exceeds memory/triangle safety limits. Export selected parts.",
     );
@@ -289,7 +350,11 @@ export async function encodeSTL(
     }
     offset += chunk.length;
   }
-  const stable = await stabilisePrintCoordinates(p, work);
+  const stable = await stabilisePrintCoordinates(
+    p,
+    work,
+    Math.max(0, maxBytes - admission.corners * 96),
+  );
   const finalPositions = stable.positions;
   const report = await validatePrintMesh(finalPositions, work),
     data = new ArrayBuffer(84 + report.triangles * 50),
@@ -317,7 +382,10 @@ export async function encodeSTL(
     report,
     stats,
     milliseconds: performance.now() - start,
-    estimatedBytes: Math.max(admission.estimatedBytes, admission.corners * 320),
+    estimatedBytes: Math.max(
+      admission.estimatedBytes,
+      admission.corners * STL_VALIDATION_BYTES_PER_CORNER,
+    ),
     geometryBytes: p.byteLength,
     backend: "cooperative",
   };

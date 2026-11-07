@@ -7,8 +7,33 @@ const unit = z.enum(["mm", "cm", "in"]);
 const vector = z.tuple([number, number, number]);
 const source = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("box"), width: positive, height: positive, depth: positive }).strict(),
-  z.object({ kind: z.literal("sphere"), diameter: positive }).strict(),
-  z.object({ kind: z.literal("cylinder"), diameter: positive, height: positive }).strict(),
+  z
+    .object({
+      kind: z.literal("sphere"),
+      diameter: positive.optional(),
+      width: positive.optional(),
+      height: positive.optional(),
+      depth: positive.optional(),
+    })
+    .strict()
+    .refine(
+      (s) => s.diameter !== undefined || [s.width, s.height, s.depth].every((v) => v !== undefined),
+      "Supply diameter or width, height and depth",
+    ),
+  z
+    .object({
+      kind: z.literal("cylinder"),
+      diameter: positive.optional(),
+      topDiameter: positive.optional(),
+      bottomDiameter: positive.optional(),
+      height: positive,
+    })
+    .strict()
+    .refine(
+      (s) =>
+        s.diameter !== undefined || (s.topDiameter !== undefined && s.bottomDiameter !== undefined),
+      "Supply diameter or both topDiameter and bottomDiameter",
+    ),
 ]);
 const transform = z.object({ position: vector, rotation: vector, scale: vector }).strict();
 const name = z.string().trim().min(1).max(128);
@@ -163,7 +188,7 @@ export const tools = {
   transform_object: {
     schema: z.object({ ...revision, id, unit, transform }).strict(),
     description:
-      "Set world pose: position in explicit unit, rotation XYZ radians, scale dimensionless.",
+      "Set world pose: position in explicit unit, rotation XYZ radians. Scale changes require equal XYZ; non-uniform legacy scale can only be retained unchanged.",
   },
   create_enclosure: {
     schema: z.object({ ...revision, parameters, dryRun: z.boolean().optional() }).strict(),
@@ -198,7 +223,14 @@ export const tools = {
   scale_object: {
     schema: z.object({ ...revision, id, scale: z.tuple([positive, positive, positive]) }).strict(),
     description:
-      "Set absolute dimensionless world scale, preserving position/rotation. Requires editing permission.",
+      "Set absolute uniform world scale (equal XYZ), preserving position/rotation. Unequal XYZ is unsupported; use scale_primitive for independent box/ellipsoid dimensions or cylinder height/radius.",
+  },
+  scale_primitive: {
+    schema: z
+      .object({ ...revision, id, factors: z.tuple([positive, positive, positive]) })
+      .strict(),
+    description:
+      "Multiply local source dimensions, preserving pose/ID. Box XYZ independent; cylinder requires equal X/Z factors and preserves taper; sphere/ellipsoid XYZ independent. One Undo; no arbitrary affine deformation.",
   },
   preview_changes: {
     schema: z.object(batch).strict(),
@@ -279,6 +311,40 @@ tools.get_capabilities = {
   schema: z.object({}).strict(),
   description: "Read implemented tools, command support, conventions and resource limitations.",
 };
+tools.propose_changes = {
+  schema: z
+    .object({
+      ...batch,
+      title: z.string().trim().min(1).max(120),
+      description: z.string().trim().min(1).max(2000),
+    })
+    .strict(),
+  description:
+    "Stage an immutable multi-step proposal without changing source/history. Human must approve this exact proposal in the browser; expires in two minutes. Recipes/connectors excluded.",
+};
+tools.propose_enclosure = {
+  schema: z
+    .object({
+      ...revision,
+      title: z.string().trim().min(1).max(120),
+      description: z.string().trim().min(1).max(2000),
+      recipe: z.discriminatedUnion("type", [
+        z.object({ type: z.literal("create"), parameters }).strict(),
+        z.object({ type: z.literal("update"), baseId: id, lidId: id, parameters }).strict(),
+      ]),
+    })
+    .strict(),
+  description:
+    "Stage one standalone Phase 7.1 enclosure create/update transaction. Separate browser approval required; cannot nest in a command batch or combine with connectors.",
+};
+for (const name of ["get_proposal", "cancel_proposal", "apply_approved_proposal"])
+  tools[name] = {
+    schema: z.object({ proposalId: id }).strict(),
+    description:
+      name === "apply_approved_proposal"
+        ? "Commit the exact browser-approved proposal once, as one Undo transaction. Cannot approve; stale plans reject."
+        : "Inspect or cancel the current memory-only proposal.",
+  };
 export const requestSchema = z
   .object({
     name: z.enum(Object.keys(tools)),
@@ -287,6 +353,8 @@ export const requestSchema = z
   .strict();
 export const isWrite = (name) =>
   ![
+    "get_proposal",
+    "cancel_proposal",
     "scene_summary",
     "list_objects",
     "get_object",

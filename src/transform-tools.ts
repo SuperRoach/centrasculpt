@@ -31,14 +31,40 @@ export function scaledPrimitive(
       height: source.height * ratios[1],
       depth: source.depth * ratios[2],
     });
-  if (source.kind === "sphere")
+  if (source.kind === "sphere") {
+    const factors = ["X", "Y", "Z"].map((a) => (axes.includes(a) ? factor(a) : 1));
+    if (
+      source.width === undefined &&
+      source.height === undefined &&
+      source.depth === undefined &&
+      factors.every((v) => v === factors[0])
+    )
+      return validatePrimitive({ kind: "sphere", diameter: source.diameter * factors[0] });
+    const dimensions = primitiveDimensions(source);
     return validatePrimitive({
-      kind: "sphere",
-      diameter: source.diameter * axes.reduce((v, a) => v * factor(a), 1) ** (1 / axes.length),
+      ...source,
+      width: dimensions[0] * factors[0],
+      height: dimensions[1] * factors[1],
+      depth: dimensions[2] * factors[2],
     });
+  }
   const radial = axes.filter((a) => a !== "Y");
   return validatePrimitive({
     kind: "cylinder",
+    ...(source.topDiameter === undefined
+      ? {}
+      : {
+          topDiameter:
+            source.topDiameter *
+            (radial.length ? radial.reduce((v, a) => v * factor(a), 1) ** (1 / radial.length) : 1),
+        }),
+    ...(source.bottomDiameter === undefined
+      ? {}
+      : {
+          bottomDiameter:
+            source.bottomDiameter *
+            (radial.length ? radial.reduce((v, a) => v * factor(a), 1) ** (1 / radial.length) : 1),
+        }),
     diameter:
       source.diameter *
       (radial.length ? radial.reduce((v, a) => v * factor(a), 1) ** (1 / radial.length) : 1),

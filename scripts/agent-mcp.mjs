@@ -39,6 +39,9 @@ for (const [name, tool] of Object.entries(tools)) {
             tools: Object.keys(tools),
             batchCommandTypes: Object.values(commandTools),
             featureAvailability: {
+              ellipsoids: true,
+              taperedCylinders: true,
+              primitiveDimensionScaling: true,
               booleans: true,
               arrays: true,
               hierarchy: true,

@@ -379,3 +379,38 @@ test("precision cleanup preserves ambiguous geometry for rejection and supports 
   await assert.rejects(stabilisePrintCoordinates(input, new ExportWork(abort.signal)), /cancelled/);
   assert.deepEqual(input, precisionTetrahedron());
 });
+
+test("typed topology validates over 300k triangles with exact connectivity, winding and cancellable sorting", async () => {
+  const cube = source().chunks[0].positions,
+    copies = 25001,
+    p = new Float32Array(cube.length * copies);
+  for (let i = 0; i < copies; i++)
+    for (let j = 0; j < cube.length; j++)
+      p[i * cube.length + j] = cube[j] + (j % 3 === 0 ? i * 3 : 0);
+  const report = await validatePrintMesh(p);
+  assert.equal(report.triangles, 300012);
+  assert.equal(report.components, copies);
+  assert.equal(report.boundaryEdges, 0);
+  assert.equal(report.nonManifoldEdges, 0);
+  assert.equal(report.inconsistentEdges, 0);
+  assert.equal(report.invertedComponents, 0);
+  assert.equal(report.degenerateTriangles, 0);
+  const abort = new AbortController();
+  await assert.rejects(
+    validatePrintMesh(
+      p,
+      new ExportWork(
+        abort.signal,
+        () => true,
+        (p) => {
+          if (p.stage === "Indexing exact STL vertices") abort.abort();
+        },
+      ),
+    ),
+    /cancelled/i,
+  );
+});
+
+test("STL validation retains the explicit 600k triangle ceiling", async () => {
+  await assert.rejects(validatePrintMesh(new Float32Array(600001 * 9)), /600,000 triangles/);
+});

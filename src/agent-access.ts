@@ -2,10 +2,13 @@ import { Euler, Quaternion } from "three";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
 import {
+  type BatchOptions,
+  type BatchReport,
   ModellingAPI,
   type ModellingCommand,
   type ModellingQuery,
   type ModellingStep,
+  type ObjectMetadata,
 } from "./modelling-api";
 import { ARRAY_MAX_INSTANCES } from "./object-array";
 import { type PhysicalUnit, unitMM } from "./physical-units";
@@ -18,12 +21,68 @@ export type AgentJob = {
   name: string;
   args: Record<string, unknown>;
 };
+export type AgentProposal = {
+  id: string;
+  state:
+    | "preview computing"
+    | "awaiting approval"
+    | "approved"
+    | "applying"
+    | "applied"
+    | "rejected/error";
+  title: string;
+  description: string;
+  expectedRevision: string;
+  expiresAt: number;
+  steps: ModellingStep[];
+  recipe?:
+    | { type: "create"; parameters: EnclosureParameters }
+    | { type: "update"; baseId: string; lidId: string; parameters: EnclosureParameters };
+  before: ObjectMetadata[];
+  preview?: { ok: boolean; value?: BatchReport; [key: string]: unknown };
+  result?: unknown;
+};
+function executeProposal(api: ModellingAPI, proposal: AgentProposal, options: BatchOptions) {
+  const recipe = proposal.recipe;
+  if (recipe?.type === "create") return api.enclosure.create(recipe.parameters, options);
+  if (recipe?.type === "update")
+    return api.enclosure.update(recipe.baseId, recipe.lidId, recipe.parameters, options);
+  return api.batch(proposal.steps, options);
+}
+/** Memory-only, browser-owned consent. Never exposed as an MCP approval tool. */
+export class AgentProposals {
+  current?: AgentProposal;
+  owner?: IndependentLayers;
+  controller?: AbortController;
+  constructor(readonly notify: () => void = () => {}) {}
+  invalidate() {
+    this.controller?.abort();
+    if (this.current && this.current.state !== "applied") this.current.state = "rejected/error";
+    this.notify();
+  }
+  approve(editor: IndependentLayers, revision: string) {
+    const p = this.current;
+    if (
+      !p ||
+      p.state !== "awaiting approval" ||
+      this.owner !== editor ||
+      p.expectedRevision !== revision ||
+      Date.now() >= p.expiresAt ||
+      editor.modellingBusy
+    )
+      return false;
+    p.state = "approved";
+    this.notify();
+    return true;
+  }
+}
 /** Transport adapter only: all generation, admission, revision checks and history remain authoritative. */
 export function agentExecutor(
   editor: IndependentLayers | (() => IndependentLayers),
   canEdit: () => boolean,
   blocked: () => boolean,
   changed: () => void,
+  proposals = new AgentProposals(),
 ) {
   return async (job: AgentJob, signal: AbortSignal): Promise<unknown> => {
     const layers = typeof editor === "function" ? editor() : editor;
@@ -35,9 +94,122 @@ export function agentExecutor(
     });
     if (signal.aborted || Date.now() >= job.deadline)
       return error("cancelled", "Request expired or connection revoked.");
-    if (blocked() || layers.modellingBusy || !layers.recoveryReady)
+    if (
+      !["get_proposal", "cancel_proposal"].includes(job.name) &&
+      (blocked() || layers.modellingBusy || !layers.recoveryReady)
+    )
       return error("busy", "Finish the current editor operation first.");
     const a = job.args;
+    if (
+      [
+        "propose_changes",
+        "propose_enclosure",
+        "get_proposal",
+        "cancel_proposal",
+        "apply_approved_proposal",
+      ].includes(job.name)
+    ) {
+      const p = proposals.current;
+      if (job.name === "propose_changes" || job.name === "propose_enclosure") {
+        if (!canEdit())
+          return error("permission_denied", "Enable editing before staging a proposal.");
+        if (
+          p &&
+          ["preview computing", "awaiting approval", "approved", "applying"].includes(p.state)
+        )
+          return error("busy", "Cancel the existing proposal first.");
+        const proposal: AgentProposal = {
+          id: crypto.randomUUID(),
+          state: "preview computing",
+          title: a.title as string,
+          description: a.description as string,
+          expectedRevision: a.expectedRevision as string,
+          expiresAt: Date.now() + 120000,
+          steps: structuredClone((a.steps ?? []) as ModellingStep[]),
+          ...(job.name === "propose_enclosure"
+            ? { recipe: structuredClone(a.recipe as AgentProposal["recipe"]) }
+            : {}),
+          before: layers.project.layerStack.layers
+            .map((l) => api.objectMetadata(l.id))
+            .concat(
+              layers.project.layerStack.hierarchy.groups.map((g) => api.objectMetadata(g.id)),
+            ),
+        };
+        proposals.current = proposal;
+        proposals.owner = layers;
+        const controller = new AbortController();
+        proposals.controller = controller;
+        proposals.notify();
+        const preview = await executeProposal(api, proposal, {
+          expectedRevision: proposal.expectedRevision,
+          dryRun: true,
+          signal: AbortSignal.any([signal, controller.signal]),
+        });
+        proposal.preview = preview;
+        const currentEditor = typeof editor === "function" ? editor() : editor;
+        proposal.state =
+          preview.ok &&
+          !controller.signal.aborted &&
+          !signal.aborted &&
+          currentEditor === layers &&
+          api.revision === proposal.expectedRevision
+            ? "awaiting approval"
+            : "rejected/error";
+        proposals.notify();
+        return preview.ok && proposal.state === "awaiting approval"
+          ? { ok: true, revision: api.revision, value: structuredClone(proposal) }
+          : preview.ok
+            ? error("cancelled", "Proposal invalidated during staging.")
+            : preview;
+      }
+      if (!p || p.id !== a.proposalId) return error("not_found", "Unknown proposal.");
+      if (job.name === "cancel_proposal") {
+        proposals.invalidate();
+        return { ok: true, revision: api.revision, value: structuredClone(p) };
+      }
+      if (job.name === "get_proposal" && p.state === "applied" && proposals.owner === layers)
+        return { ok: true, revision: api.revision, value: structuredClone(p) };
+      if (
+        proposals.owner !== layers ||
+        p.expectedRevision !== api.revision ||
+        Date.now() >= p.expiresAt
+      ) {
+        proposals.invalidate();
+        return error(
+          "revision_conflict",
+          "Proposal expired or editor changed; submit a new proposal.",
+        );
+      }
+      if (job.name === "get_proposal")
+        return { ok: true, revision: api.revision, value: structuredClone(p) };
+      if (!canEdit()) return error("permission_denied", "Editing permission was revoked.");
+      if (p.state !== "approved")
+        return error("permission_denied", "Explicit browser proposal approval required.");
+      p.state = "applying";
+      proposals.notify();
+      const controller = new AbortController();
+      proposals.controller = controller;
+      const result = await executeProposal(api, p, {
+        expectedRevision: p.expectedRevision,
+        preserveSelection: true,
+        signal: AbortSignal.any([
+          signal,
+          controller.signal,
+          AbortSignal.timeout(Math.max(1, p.expiresAt - Date.now())),
+        ]),
+      });
+      if (result.ok)
+        Object.assign(result.value, {
+          inspection: [
+            ...new Set([...result.value.changes.created, ...result.value.changes.modified]),
+          ].map((id) => api.query({ type: "geometry.diagnostics", id })),
+        });
+      p.result = result;
+      p.state = result.ok ? "applied" : "rejected/error";
+      proposals.notify();
+      if (result.ok) changed();
+      return result;
+    }
     if (job.name === "scene_summary") return api.query({ type: "scene.summary" });
     if (job.name === "list_objects") return api.query({ type: "object.list" });
     if (job.name === "get_object") return api.query({ type: "object.get", id: a.id as string });
@@ -90,7 +262,8 @@ export function agentExecutor(
           units: {
             lengths: "explicit mm/cm/in; outputs mm",
             rotations: "XYZ radians; rotate_object degrees",
-            scale: "dimensionless",
+            scale:
+              "dimensionless; world-scale edits require equal XYZ. scale_primitive supports independent box dimensions and sphere/ellipsoid XYZ dimensions, plus cylinder axial/radial sizing.",
             arrays:
               "spacingModelUnits and pivot in explicit unit; radial radius set by source offset from pivot; no separate gap parameter",
             hierarchy: "raw transforms in model units; scene calibration applies",
@@ -117,6 +290,52 @@ export function agentExecutor(
       return error("revision_conflict", "Scene changed; inspect again before editing.");
     let result: unknown;
     switch (job.name) {
+      case "scale_primitive": {
+        const object = api.query({ type: "object.get", id: a.id as string });
+        if (!object.ok) return object;
+        const source = object.value.primitive;
+        if (!source) return error("unsupported", "Select an editable primitive.");
+        const [x, y, z] = a.factors as Vec3;
+        if (source.kind === "cylinder" && Math.abs(x - z) > 1e-10)
+          return error(
+            "unsupported",
+            "Cylinder X/Z factors must match; elliptical cylinder ends are unsupported.",
+          );
+        const next =
+          source.kind === "box"
+            ? {
+                ...source,
+                width: source.width * x,
+                height: source.height * y,
+                depth: source.depth * z,
+                ...(source.cornerRadius === undefined
+                  ? {}
+                  : { cornerRadius: source.cornerRadius * Math.min(x, z) }),
+              }
+            : source.kind === "sphere"
+              ? {
+                  ...source,
+                  width: (source.width ?? source.diameter) * x,
+                  height: (source.height ?? source.diameter) * y,
+                  depth: (source.depth ?? source.diameter) * z,
+                }
+              : {
+                  ...source,
+                  diameter: source.diameter * x,
+                  height: source.height * y,
+                  ...(source.topDiameter === undefined
+                    ? {}
+                    : { topDiameter: source.topDiameter * x }),
+                  ...(source.bottomDiameter === undefined
+                    ? {}
+                    : { bottomDiameter: source.bottomDiameter * x }),
+                };
+        result = await api.batch(
+          [{ command: { type: "primitive.update", id: a.id as string, unit: "mm", source: next } }],
+          { ...options, preserveSelection: true },
+        );
+        break;
+      }
       case "move_object":
       case "rotate_object":
       case "scale_object": {

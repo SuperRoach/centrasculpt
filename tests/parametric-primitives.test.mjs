@@ -41,8 +41,13 @@ const make = () => {
   return new IndependentLayers(createBaseProject(v, structuredClone(settings)));
 };
 const near = (a, b, e = 1e-5) => assert(Math.abs(a - b) < e, `${a} != ${b}`);
-for (const s of [box, cylinder, sphere]) {
-  test(`${s.kind} exact analytical inside, boundary, outside and finite SDF`, () => {
+for (const s of [
+  box,
+  cylinder,
+  sphere,
+  { kind: "sphere", diameter: 0.8, width: 0.8, height: 0.4, depth: 0.2 },
+]) {
+  test(`${s.width && s.kind === "sphere" ? "ellipsoid" : s.kind} exact analytical inside, boundary, outside and finite SDF`, () => {
     assert(primitiveDistance(s, 0, 0, 0) < 0);
     const [w, h, d] = primitiveDimensions(s);
     near(primitiveDistance(s, w / 2, 0, 0), 0);
@@ -51,7 +56,7 @@ for (const s of [box, cylinder, sphere]) {
     near(primitiveDistance(s, w / 2 + 0.2, 0, 0), 0.2);
     assert.throws(() => primitiveDistance(s, NaN, 0, 0));
   });
-  test(`${s.kind} dimensions, geometry, STL and GLB exclude preview handles`, async () => {
+  test(`${s.width && s.kind === "sphere" ? "ellipsoid" : s.kind} dimensions, geometry, STL and GLB exclude preview handles`, async () => {
     const l = make();
     try {
       const p = await l.regeneratePrimitive(s);
@@ -671,7 +676,7 @@ const previewFixture = (l) => {
 for (const [source, axis, ratios, expected] of [
   [box, "X", [2, 1, 1], [1, 0.6, 0.4]],
   [cylinder, "X", [2, 1, 1], [1, 0.6, 1]],
-  [sphere, "Y", [1, 1.5, 1], [0.75, 0.75, 0.75]],
+  [sphere, "Y", [1, 1.5, 1], [0.5, 0.75, 0.5]],
 ])
   test(`desktop ${source.kind} preview handles change source sizes without editing history or exports`, async () => {
     const l = make(),
@@ -814,5 +819,116 @@ test("switching projects during a draft drag clears ownership and never publishe
     tools.dispose();
     l.dispose();
     next.dispose();
+  }
+});
+
+test("tapered cylinder has exact cap/side distances, reversible taper and bounded native v17 persistence", async () => {
+  const s = { kind: "cylinder", diameter: 0.6, topDiameter: 0.3, bottomDiameter: 0.6, height: 0.6 };
+  assert.deepEqual(primitiveDimensions(s), [0.6, 0.6, 0.6]);
+  near(primitiveDistance(s, 0.225, 0, 0), 0);
+  near(primitiveDistance(s, 0.15, 0.3, 0), 0);
+  near(primitiveDistance(s, 0.3, -0.3, 0), 0);
+  assert(primitiveDistance(s, 0.25, 0.2, 0) > 0);
+  assert(primitiveDistance(s, 0.25, -0.2, 0) < 0);
+  near(primitiveDistance(s, 0, 0.4, 0), 0.1);
+  const reversed = { ...s, topDiameter: 0.6, bottomDiameter: 0.3 };
+  for (const [x, y, z] of [
+    [0.1, 0.2, 0.1],
+    [0.4, -0.4, 0],
+    [0, 0, 0],
+  ])
+    near(primitiveDistance(s, x, y, z), primitiveDistance(reversed, x, -y, z));
+  assert.throws(() => validatePrimitive({ ...s, topDiameter: 0 }));
+  assert.throws(() => validatePrimitive({ ...s, bottomDiameter: Infinity }));
+  const l = make();
+  try {
+    await l.regeneratePrimitive(s);
+    const bytes = saveSculptProject(l.project);
+    assert.equal(new DataView(bytes).getUint32(8, true), 17);
+    const opened = openSculptProject(bytes);
+    assert.deepEqual(opened.layerStack.active.primitive, s);
+    const wrongVersion = bytes.slice(0);
+    new DataView(wrongVersion).setUint32(8, 16, true);
+    assert.throws(() => openSculptProject(wrongVersion), /version 17/);
+    l.undo();
+    l.undo(true);
+    assert.deepEqual(l.active.layer.primitive, s);
+    const positions = l.active.primitiveGeometry?.getAttribute("position");
+    assert(positions);
+    let upper = 0,
+      lower = 0;
+    for (let i = 0; i < positions.count; i++) {
+      const r = Math.hypot(positions.getX(i), positions.getZ(i));
+      if (positions.getY(i) > 0.29) upper = Math.max(upper, r);
+      if (positions.getY(i) < -0.29) lower = Math.max(lower, r);
+    }
+    near(upper, 0.15);
+    near(lower, 0.3);
+  } finally {
+    l.dispose();
+  }
+});
+
+test("ellipsoid distances match surface normals, medial axes, symmetry and legacy sphere samples", () => {
+  const s = { kind: "sphere", diameter: 0.8, width: 0.8, height: 0.4, depth: 0.2 };
+  assert.deepEqual(primitiveDimensions(s), [0.8, 0.4, 0.2]);
+  near(primitiveDistance(s, 0, 0, 0), -0.1, 1e-12);
+  near(primitiveDistance(s, 0.5, 0, 0), 0.1, 1e-12);
+  near(primitiveDistance(s, 0, 0.3, 0), 0.1, 1e-12);
+  near(primitiveDistance(s, 0, 0, 0.2), 0.1, 1e-12);
+  for (const u of [
+    [1, 2, 3],
+    [1, 1, 0],
+    [0, 1, 1],
+    [1, 0, 0],
+  ]) {
+    const length = Math.hypot(...u),
+      unit = u.map((v) => v / length),
+      r = [0.4, 0.2, 0.1];
+    const surface = unit.map((v, i) => v * r[i]);
+    const normal = unit.map((v, i) => v / r[i]),
+      n = Math.hypot(...normal);
+    for (const offset of [-0.002, 0, 0.01]) {
+      const point = surface.map((v, i) => v + (offset * normal[i]) / n);
+      near(primitiveDistance(s, ...point), offset, 1e-10);
+      near(primitiveDistance(s, ...point.map((v) => -v)), offset, 1e-10);
+    }
+  }
+  near(primitiveDistance(s, 0.05, 0, 1e-30), primitiveDistance(s, 0.05, 0, 0), 1e-10);
+  const same = { kind: "sphere", diameter: 0.4, width: 0.4, height: 0.4, depth: 0.4 };
+  for (const point of [
+    [0, 0, 0],
+    [0.1, 0.2, 0.3],
+    [-0.4, 0, 0],
+  ])
+    assert.equal(
+      primitiveDistance(same, ...point),
+      primitiveDistance({ kind: "sphere", diameter: 0.4 }, ...point),
+    );
+  assert.throws(() => validatePrimitive({ ...s, width: 0 }));
+  assert.throws(() => validatePrimitive({ ...s, depth: 0.001 }));
+});
+
+test("ellipsoid geometry and native v18 preserve distinct axes through save, Undo and Redo", async () => {
+  const l = make(),
+    s = { kind: "sphere", diameter: 0.8, width: 0.8, height: 0.4, depth: 0.2 };
+  try {
+    await l.regeneratePrimitive(s);
+    const bytes = saveSculptProject(l.project);
+    assert.equal(new DataView(bytes).getUint32(8, true), 18);
+    assert.deepEqual(openSculptProject(bytes).layerStack.active.primitive, s);
+    const old = bytes.slice(0);
+    new DataView(old).setUint32(8, 17, true);
+    assert.throws(() => openSculptProject(old), /version 18/);
+    l.active.primitiveGeometry.computeBoundingBox();
+    const b = l.active.primitiveGeometry.boundingBox;
+    near(b.max.x - b.min.x, 0.8);
+    near(b.max.y - b.min.y, 0.4);
+    near(b.max.z - b.min.z, 0.2);
+    l.undo();
+    l.undo(true);
+    assert.deepEqual(l.active.layer.primitive, s);
+  } finally {
+    l.dispose();
   }
 });

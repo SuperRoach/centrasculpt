@@ -63,6 +63,7 @@ try {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(origin);
+  await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByRole("button", { name: "Approve connection", exact: true }).waitFor();
   client = new Client({ name: "centra-browser-smoke", version: "1" });
   await client.connect(
@@ -92,6 +93,7 @@ try {
   };
   assert.equal((await call("create_primitive", args)).ok, false, "read-only rejects writes");
   await page.getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true }).check();
+  await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByText("Connected · editing allowed", { exact: true }).waitFor();
   const made = await call("create_primitive", args);
   assert(made.ok, JSON.stringify(made));
@@ -179,7 +181,40 @@ try {
   assert(preview.ok, JSON.stringify(preview));
   assert.equal(preview.value.geometryValidation, "source_caches_only");
   assert.equal((await call("scene_summary")).revision, revision);
-  const batch = await call("apply_changes", { expectedRevision: revision, steps });
+  const proposed = await call("propose_changes", {
+    expectedRevision: revision,
+    steps,
+    title: "Editable enclosure body",
+    description:
+      "Create a body and cylindrical cutter, subtract the cutter, group and define a printable part.",
+  });
+  assert(proposed.ok, JSON.stringify(proposed));
+  const proposalId = proposed.value.id;
+  assert.equal((await call("scene_summary")).revision, revision);
+  assert.equal(
+    (await call("apply_approved_proposal", { proposalId })).error.code,
+    "permission_denied",
+  );
+  await page.getByRole("button", { name: "Reject proposal", exact: true }).click();
+  assert.equal((await call("apply_approved_proposal", { proposalId })).ok, false);
+  const replacement = await call("propose_changes", {
+    expectedRevision: revision,
+    steps,
+    title: "Editable enclosure body",
+    description: "Revised plan: create body, subtract cutter and group parts.",
+  });
+  assert(replacement.ok, JSON.stringify(replacement));
+  await page.getByRole("button", { name: "Approve this exact plan", exact: true }).click();
+  await page.screenshot({ path: `${output}/browser-proposal.png` });
+  const batch = await call("apply_approved_proposal", { proposalId: replacement.value.id });
+  assert.equal(
+    (await call("get_proposal", { proposalId: replacement.value.id })).value.state,
+    "applied",
+  );
+  assert.equal(
+    (await call("apply_approved_proposal", { proposalId: replacement.value.id })).ok,
+    false,
+  );
   assert(batch.ok, JSON.stringify(batch));
   const body = batch.value.aliases.body;
   assert.equal((await call("get_booleans", { id: body })).value[0].operation, "difference");

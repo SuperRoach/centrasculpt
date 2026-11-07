@@ -9,7 +9,7 @@ import { startAgentBridge } from "../scripts/agent-bridge.mjs";
 import { tools, validateCall } from "../scripts/agent-schemas.mjs";
 import { publishSession, readSession } from "../scripts/agent-session.mjs";
 import { createHeadlessEditor } from "../scripts/headless-enclosure.mjs";
-import { agentExecutor } from "../work/test-build/agent-access.mjs";
+import { AgentProposals, agentExecutor } from "../work/test-build/agent-access.mjs";
 import {
   MAX_PROJECT_LAYERS,
   openSculptProject,
@@ -561,6 +561,411 @@ test("expanded schemas and executor preserve editable stacks, arrays, hierarchy 
       parameters: { ...parameters, innerWidthMm: 26 },
     });
     assert(await call("inspect_enclosure", { baseId, lidId }));
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("proposals stage without native/history changes, require browser consent, apply once and undo once", async () => {
+  const { layers, api } = createHeadlessEditor();
+  let editing = true;
+  const proposals = new AgentProposals();
+  const run = agentExecutor(
+    layers,
+    () => editing,
+    () => false,
+    () => {},
+    proposals,
+  );
+  const call = (name, args) => run(job(name, args), signal());
+  try {
+    const before = saveSculptProject(layers.project);
+    const history = layers.undoCount;
+    const selected = layers.project.activeLayerId;
+    const args = {
+      expectedRevision: api.revision,
+      title: "Hollow body",
+      description: "Create two boxes and subtract the second.",
+      steps: [
+        { command: create, as: "body" },
+        { command: { ...create, source: { ...source, width: 10 } }, as: "cutter" },
+        {
+          command: {
+            type: "boolean.create",
+            id: "$body",
+            sourceId: "$cutter",
+            operation: "difference",
+          },
+        },
+      ],
+    };
+    const staged = await call("propose_changes", args);
+    assert(staged.ok, JSON.stringify(staged));
+    const proposalId = staged.value.id;
+    args.steps.length = 0;
+    assert.equal(proposals.current.steps.length, 3);
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    assert.equal(layers.undoCount, history);
+    assert.equal(
+      (await call("apply_approved_proposal", { proposalId })).error.code,
+      "permission_denied",
+    );
+    assert(proposals.approve(layers, api.revision));
+    assert.equal(proposals.approve(layers, api.revision), false);
+    editing = false;
+    assert.equal(
+      (await call("apply_approved_proposal", { proposalId })).error.code,
+      "permission_denied",
+    );
+    editing = true;
+    const applied = await call("apply_approved_proposal", { proposalId });
+    assert(applied.ok, JSON.stringify(applied));
+    assert.equal(layers.undoCount, history + 1);
+    assert.equal(layers.project.activeLayerId, selected);
+    assert.equal((await call("get_proposal", { proposalId })).value.state, "applied");
+    assert.equal((await call("apply_approved_proposal", { proposalId })).ok, false);
+    layers.undo();
+    assert.deepEqual(saveSculptProject(layers.project), before);
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("proposals reject cancellation, stale revision, expiry, editor replacement and invalid schemas", async () => {
+  const first = createHeadlessEditor(),
+    second = createHeadlessEditor();
+  let current = first.layers;
+  const proposals = new AgentProposals();
+  const run = agentExecutor(
+    () => current,
+    () => true,
+    () => false,
+    () => {},
+    proposals,
+  );
+  const propose = () =>
+    run(
+      job("propose_changes", {
+        expectedRevision: first.api.revision,
+        title: "Box",
+        description: "One box",
+        steps: [{ command: create }],
+      }),
+      signal(),
+    );
+  try {
+    let staged = await propose();
+    assert(staged.ok);
+    proposals.invalidate();
+    assert.equal(proposals.approve(current, first.api.revision), false);
+    assert.equal(
+      (await run(job("apply_approved_proposal", { proposalId: staged.value.id }), signal())).ok,
+      false,
+    );
+    staged = await propose();
+    assert(staged.ok);
+    proposals.current.expiresAt = 0;
+    assert.equal(proposals.approve(current, first.api.revision), false);
+    assert.equal(
+      (await run(job("get_proposal", { proposalId: staged.value.id }), signal())).error.code,
+      "revision_conflict",
+    );
+    staged = await propose();
+    assert(staged.ok);
+    await first.api.execute(create, { expectedRevision: first.api.revision });
+    assert.equal(proposals.approve(current, first.api.revision), false);
+    assert.equal(
+      (await run(job("apply_approved_proposal", { proposalId: staged.value.id }), signal())).error
+        .code,
+      "revision_conflict",
+    );
+    staged = await propose();
+    assert(staged.ok);
+    current = second.layers;
+    assert.equal(proposals.approve(current, second.api.revision), false);
+    assert.equal(
+      (await run(job("get_proposal", { proposalId: staged.value.id }), signal())).error.code,
+      "revision_conflict",
+    );
+    assert.throws(() =>
+      validateCall({
+        name: "propose_changes",
+        args: { expectedRevision: "x", title: "x", description: "x", steps: [], approved: true },
+      }),
+    );
+    assert.throws(() => validateCall({ name: "approve_proposal", args: {} }));
+  } finally {
+    first.layers.dispose();
+    second.layers.dispose();
+  }
+});
+
+test("proposal staging failures after partial work retain bytes; locked/hidden, busy and cancellation refuse safely", async () => {
+  const { layers, api } = createHeadlessEditor();
+  const proposals = new AgentProposals();
+  let busy = false,
+    editing = true;
+  const run = agentExecutor(
+    layers,
+    () => editing,
+    () => busy,
+    () => {},
+    proposals,
+  );
+  const make = (steps, sig = signal()) =>
+    run(
+      job("propose_changes", {
+        expectedRevision: api.revision,
+        title: "Safety test",
+        description: "Partial staging must roll back",
+        steps,
+      }),
+      sig,
+    );
+  try {
+    const original = saveSculptProject(layers.project),
+      count = layers.undoCount;
+    const failed = await make([
+      { command: create, as: "first" },
+      { command: { type: "object.delete", id: "missing" } },
+    ]);
+    assert.equal(failed.ok, false);
+    assert.deepEqual(saveSculptProject(layers.project), original);
+    assert.equal(layers.undoCount, count);
+    assert.equal(proposals.current.state, "rejected/error");
+    busy = true;
+    assert.equal((await make([{ command: create }])).error.code, "busy");
+    busy = false;
+    editing = false;
+    assert.equal((await make([{ command: create }])).error.code, "permission_denied");
+    editing = true;
+    const made = await api.execute(create, { expectedRevision: api.revision });
+    const id = made.value.id;
+    for (const flag of ["locked", "visible"]) {
+      await api.execute(
+        { type: "object.flag", id, flag, value: flag === "locked" },
+        { expectedRevision: api.revision },
+      );
+      const before = saveSculptProject(layers.project);
+      const denied = await make([{ command: { type: "object.rename", id, name: "Refused" } }]);
+      assert.equal(denied.error.code, "permission_denied");
+      assert.deepEqual(saveSculptProject(layers.project), before);
+      await api.execute(
+        { type: "object.flag", id, flag, value: flag !== "locked" },
+        { expectedRevision: api.revision },
+      );
+    }
+    const before = saveSculptProject(layers.project),
+      history = layers.undoCount;
+    const controller = new AbortController();
+    const pending = make(
+      [{ command: { ...create, source: { kind: "sphere", diameter: 60 } } }],
+      controller.signal,
+    );
+    proposals.invalidate();
+    controller.abort();
+    assert.equal((await pending).ok, false);
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    assert.equal(layers.undoCount, history);
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("standalone enclosure proposals stage and apply the retained recipe in one Undo, then revalidate updates", async () => {
+  const { layers, api } = createHeadlessEditor();
+  const proposals = new AgentProposals();
+  const run = agentExecutor(
+    layers,
+    () => true,
+    () => false,
+    () => {},
+    proposals,
+  );
+  const call = (name, args) => run(job(name, args), signal());
+  const parameters = {
+    units: "mm",
+    name: "Approved enclosure",
+    innerWidthMm: 24,
+    innerDepthMm: 20,
+    innerHeightMm: 14,
+    wallThicknessMm: 3,
+    floorThicknessMm: 3,
+    cornerRadiusMm: 4,
+    lid: { type: "friction-fit", clearanceMm: 0.3, lipDepthMm: 4, thicknessMm: 3 },
+  };
+  try {
+    const before = saveSculptProject(layers.project),
+      count = layers.undoCount;
+    const stage = await call(
+      "propose_enclosure",
+      validateCall({
+        name: "propose_enclosure",
+        args: {
+          expectedRevision: api.revision,
+          title: "Enclosure",
+          description: "Create a removable friction-fit lid",
+          recipe: { type: "create", parameters },
+        },
+      }).args,
+    );
+    assert(stage.ok, JSON.stringify(stage));
+    assert.equal(stage.value.preview.value.changes.created.length, 5);
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    assert.equal(layers.undoCount, count);
+    assert(proposals.approve(layers, api.revision));
+    const made = await call("apply_approved_proposal", { proposalId: stage.value.id });
+    assert(made.ok, JSON.stringify(made));
+    assert.equal(layers.undoCount, count + 1);
+    assert.equal(made.value.inspection.length, 5);
+    const { base, lid } = made.value.partIds;
+    const stagedUpdate = await call("propose_enclosure", {
+      expectedRevision: api.revision,
+      title: "Resize enclosure",
+      description: "Increase the inside width by two millimetres",
+      recipe: {
+        type: "update",
+        baseId: base,
+        lidId: lid,
+        parameters: { ...parameters, innerWidthMm: 26 },
+      },
+    });
+    assert(stagedUpdate.ok, JSON.stringify(stagedUpdate));
+    assert.equal(proposals.current.state, "awaiting approval");
+    assert(proposals.approve(layers, api.revision));
+    const updated = await call("apply_approved_proposal", { proposalId: stagedUpdate.value.id });
+    assert(updated.ok, JSON.stringify(updated));
+    assert.equal(layers.undoCount, count + 2);
+    layers.undo();
+    layers.undo();
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    assert.throws(() =>
+      validateCall({
+        name: "propose_changes",
+        args: {
+          expectedRevision: api.revision,
+          title: "No nesting",
+          description: "Recipe cannot nest",
+          steps: [{ command: { type: "enclosure.create", parameters } }],
+        },
+      }),
+    );
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("agents create tapered cylinders, scale source dimensions independently and retain legacy cylinders", async () => {
+  const { layers, api } = createHeadlessEditor();
+  const run = agentExecutor(
+    layers,
+    () => true,
+    () => false,
+    () => {},
+  );
+  const call = (name, args) => {
+    const parsed = validateCall({ name, args: { ...args, expectedRevision: api.revision } });
+    return run(job(parsed.name, parsed.args), signal());
+  };
+  try {
+    const made = await call("create_primitive", {
+      unit: "mm",
+      source: { kind: "cylinder", topDiameter: 10, bottomDiameter: 20, height: 30 },
+    });
+    assert(made.ok, JSON.stringify(made));
+    const id = made.value.results[0].id;
+    let object = api.objectMetadata(id);
+    assert.equal(object.primitive.topDiameter, 10);
+    assert.equal(object.primitive.bottomDiameter, 20);
+    const pose = object.worldTransform;
+    const scaled = await call("scale_primitive", { id, factors: [2, 0.5, 2] });
+    assert(scaled.ok, JSON.stringify(scaled));
+    object = api.objectMetadata(id);
+    assert.equal(object.primitive.topDiameter, 20);
+    assert.equal(object.primitive.bottomDiameter, 40);
+    assert.equal(object.primitive.height, 15);
+    assert.deepEqual(object.worldTransform, pose);
+    assert.equal(
+      (await call("scale_primitive", { id, factors: [2, 1, 3] })).error.code,
+      "unsupported",
+    );
+    const boxResult = await call("create_primitive", { unit: "mm", source });
+    const boxId = boxResult.value.results[0].id;
+    assert((await call("scale_primitive", { id: boxId, factors: [2, 1, 0.5] })).ok);
+    assert.deepEqual(api.objectMetadata(boxId).dimensionsMM, [40, 30, 20]);
+    layers.undo();
+    assert.deepEqual(api.objectMetadata(boxId).dimensionsMM, [20, 30, 40]);
+    assert.throws(() =>
+      validateCall({
+        name: "create_primitive",
+        args: {
+          expectedRevision: api.revision,
+          unit: "mm",
+          source: { kind: "cylinder", topDiameter: 10, height: 20 },
+        },
+      }),
+    );
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("agents create and stretch ellipsoids without affine scale, with preview/commit and Undo", async () => {
+  const { layers, api } = createHeadlessEditor();
+  const run = agentExecutor(
+    layers,
+    () => true,
+    () => false,
+    () => {},
+  );
+  const call = (name, args) => {
+    const v = validateCall({ name, args: { ...args, expectedRevision: api.revision } });
+    return run(job(v.name, v.args), signal());
+  };
+  try {
+    const made = await call("create_primitive", {
+      unit: "mm",
+      source: { kind: "sphere", width: 40, height: 20, depth: 10 },
+    });
+    assert(made.ok, JSON.stringify(made));
+    const id = made.value.results[0].id;
+    assert.deepEqual(api.objectMetadata(id).dimensionsMM, [40, 20, 10]);
+    const pose = api.objectMetadata(id).worldTransform;
+    const scaled = await call("scale_primitive", { id, factors: [1.5, 1, 2] });
+    assert(scaled.ok, JSON.stringify(scaled));
+    assert.deepEqual(api.objectMetadata(id).dimensionsMM, [60, 20, 20]);
+    assert.deepEqual(api.objectMetadata(id).worldTransform, pose);
+    layers.undo();
+    assert.deepEqual(api.objectMetadata(id).dimensionsMM, [40, 20, 10]);
+    const bytes = saveSculptProject(layers.project),
+      count = layers.undoCount;
+    const steps = [
+      {
+        command: {
+          type: "primitive.update",
+          id,
+          unit: "mm",
+          source: { kind: "sphere", width: 30, height: 20, depth: 10 },
+        },
+      },
+    ];
+    assert((await call("dry_run_changes", { steps })).ok);
+    assert.deepEqual(saveSculptProject(layers.project), bytes);
+    assert.equal(layers.undoCount, count);
+    assert((await call("apply_changes", { steps })).ok);
+    assert.deepEqual(api.objectMetadata(id).dimensionsMM, [30, 20, 10]);
+    layers.undo();
+    assert.deepEqual(saveSculptProject(layers.project), bytes);
+    assert.throws(() =>
+      validateCall({
+        name: "create_primitive",
+        args: {
+          expectedRevision: api.revision,
+          unit: "mm",
+          source: { kind: "sphere", width: 10, height: 20 },
+        },
+      }),
+    );
   } finally {
     layers.dispose();
   }

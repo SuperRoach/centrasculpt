@@ -19,6 +19,15 @@ export async function prepareBooleanExport(
     material = new MeshBasicMaterial(),
     composite = new BooleanComposite(project, material, 192, material, current, {
       analyticPrimitives: true,
+      stagedEvaluation: true,
+      samplingProgress: (completed, total, stage, stages) => {
+        work.check();
+        work.progress({
+          stage: `Evaluating Boolean · stage ${stage}/${stages} · 192³ maximum`,
+          completed,
+          total,
+        });
+      },
       colours: !stl,
     });
   composite.availableBytes = () =>

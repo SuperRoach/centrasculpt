@@ -31,7 +31,13 @@ The public command surface is `array.create`, `array.update`, `array.remove`, `a
 ## Safety and quality limits
 
 - Maximum 16 instances on one object; positive finite linear spacing up to 160 model units.
-- A derived compositor work estimate above 64 million sample operations is refused with a clear error. The implementation does not silently lower quality to fit.
+- Interactive preview/Bake retain the 64 million estimated source-sample work limit.
+  Unified export now opts into staged evaluation: spatial slabs each admit at most
+  64 million estimated source-sample operations, with a 256 million total-work ceiling.
+  The chosen grid/spacing remains unchanged (up to 192³), with one shared scalar field
+  and one final mesher. Memory/triangle limits still apply; quality is never silently
+  reduced to fit. This estimate includes ordinary layers as well as array instances;
+  the error now says Boolean evaluation rather than incorrectly implying an array.
 - Existing source, meshing, triangle, staging-memory and export limits still apply. Result tessellation is sampled SDF geometry rather than exact CAD; small print features require adequate source resolution.
 - Array source definitions remain editable through transforms/grouping and source parameter edits. Direct sculpting of a source with an array is refused; explicitly Bake first.
 - Nested arrays, arbitrary per-instance transforms and array-specific paint/mask overrides are unsupported. Source paint/mask data are retained; instances do not have independent paint/mask state.

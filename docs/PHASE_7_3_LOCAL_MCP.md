@@ -114,7 +114,7 @@ unique `as` identifiers match `[a-zA-Z][a-zA-Z0-9_]{0,63}`. An `id` may refer to
 earlier result as `$alias`. Preview IDs are provisional; apply the original commands,
 not the preview IDs. Preview currently also requires editing permission because
 the authoritative API gates dry-run. It validates source caches, not final evaluated
-Boolean topology or physical printability. This is not the future Phase 7.4 planner.
+Boolean topology or physical printability. For separately approved modelling plans, use the [Phase 7.4 proposal workflow](PHASE_7_4_AGENT_PROPOSALS.md).
 
 Example `apply_changes` arguments (replace the revision):
 
@@ -214,8 +214,8 @@ Run `npm uninstall --save-dev @modelcontextprotocol/sdk zod @playwright/test` to
 update dependencies/lockfile, then `npm run check`. No sculpting engine, command API,
 native codec or project schema needs modification.
 
-WebMCP, Quest synchronisation, pairing indicators, cloud relay and Phase 7.4 agent
-plan-preview-apply are future possibilities, not implemented features.
+WebMCP, Quest synchronisation, pairing indicators and cloud relay remain deferred.
+[Phase 7.4 proposals](PHASE_7_4_AGENT_PROPOSALS.md) add separate desktop consent for supported batches.
 
 Automatic discovery reads credentials afresh for every call, so an MCP process can
 remain running while Vite restarts. Browser approval still starts read-only each
@@ -289,3 +289,78 @@ semantics. The bridge's existing authentication, origin checks, deadlines, size,
 cancellation and editor-lifetime controls are unchanged. Capability limits are
 admission ceilings, not guaranteed simultaneous capacity. No actual printer fit
 or physical Quest acceptance is claimed.
+
+
+## Phase 7.4 plan tools — 2026-11-06
+
+See [proposal usage and exact limitations](PHASE_7_4_AGENT_PROPOSALS.md).
+`propose_changes` accepts `{expectedRevision,title,description,steps}` and returns
+an isolated preview plus proposal ID. `get_proposal`, `cancel_proposal`, and
+`apply_approved_proposal` accept only `{proposalId}`. Only the browser user can
+approve; no MCP tool can approve or edit retained commands. Editing means cancel
+and submit a revised plan, with a new preview and consent. Approval expires after
+two minutes and never overrides stale revision/editor identity or write permission.
+Recipes are supported through separately approved standalone `propose_enclosure`; connectors remain excluded from proposals. Ordinary immediate write tools
+retain their existing contracts.
+
+
+Desktop access now starts behind a small sparkle button in the lower-left corner.
+Click it to approve the connection or review a plan; the green dot indicates an
+approved connection. Incoming proposals never open the panel automatically. Enabling
+editing collapses it. Per-plan approval remains separate from the general write grant.
+
+
+## Tapered cylinders and source scaling — 2026-11-06
+
+Primitive create/update and command/proposal batches accept cylinders with independent
+end diameters, for example `{ "kind":"cylinder", "topDiameter":10,
+"bottomDiameter":20, "height":30 }` in the request's explicit unit. Top means local
++Y, bottom local −Y. Legacy `{kind:"cylinder",diameter,height}` still creates a straight
+cylinder. If `diameter` is supplied with one end override, the other end uses that
+legacy diameter. Inspection includes the resolved legacy fallback and explicit ends.
+All diameters remain positive and retain the engine's dimension/aspect/resource limits;
+zero-radius cone tips and elliptical ends are excluded. Use tapered sources as editable
+Boolean cutters for flared/countersunk openings.
+
+`scale_primitive({expectedRevision,id,factors:[x,y,z]})` multiplies local source
+dimensions in one Undo transaction and preserves pose. Boxes allow independent XYZ;
+cylinders allow independent axial Y and radial X/Z with X=Z, preserving both end
+radii proportionally; spheres/ellipsoids allow independent XYZ dimensions. This differs from `scale_object`,
+which sets world scale and retains the engine's uniform-transform edit restrictions.
+For an approved proposal, supply the desired dimensions through `primitive.update`;
+`scale_primitive` is a convenience immediate tool, not a new batch command type.
+
+Tapered source/original metadata writes native `.form` v17. Existing projects without
+those fields retain their earlier versions. Older apps refuse v17 rather than showing
+a straight cylinder with the wrong geometry. Current native open, recovery, Undo/Redo
+and source geometry use the same validated source contract.
+
+
+## Stretched spheres / ellipsoids — 2026-11-06
+
+The sphere source now supports independent local dimensions, including through strict
+primitive command schemas and approved proposal batches:
+
+```json
+{"kind":"sphere","width":40,"height":20,"depth":10}
+```
+
+The request still supplies explicit `unit`. Legacy `{kind:"sphere",diameter:20}`
+remains a round sphere with byte-compatible source sampling. Optional `diameter`
+is a fallback for unspecified dimensions; if it is absent, all three dimensions
+must be present. Returned validated metadata resolves the fallback diameter too.
+`scale_primitive({expectedRevision,id,factors:[1.5,1,2]})` stretches each local sphere
+axis independently while preserving pose and stable ID, with one Undo entry.
+Use `primitive.update` with explicit dimensions inside an approved plan. World
+`scale_object` edits still require uniform XYZ; source dimensional stretching is the
+supported path. This does not change arbitrary sculpt-layer/group affine scaling.
+
+Desktop Primitives and VR numeric fields show Width, Height and Depth for spheres;
+source Scale handles edit the individual local axis. Unequal dimensions are evaluated
+as an ellipsoid by a bounded 56-iteration closest-point distance solve, including
+centre/medial-axis cases. Geometry, directional support, conservative staging,
+STL/GLB exports and source-cache validation share the resulting source dimensions.
+The existing positive-dimension and 8:1 aspect/resource admission limits remain.
+Native `.form` v18 is used when source/original sphere axis overrides are present;
+older tags with those fields are refused. Ordinary spheres keep earlier versions.
+No new metadata is used for MCP access, consent or scaling history.

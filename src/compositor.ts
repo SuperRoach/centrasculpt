@@ -243,12 +243,35 @@ export function prepareCompositeColour(
 export function evaluateComposite(layers: readonly SdfLayer[], point: Point3): number {
   return prepareComposite(layers)(point.x, point.y, point.z);
 }
+/** Spatial slabs share one lattice and one final mesher: no independently meshed seams. */
+export function compositeSamplingStages(
+  resolution: number,
+  sourcesPerPoint: number,
+  budget = 64_000_000,
+) {
+  if (
+    !Number.isInteger(resolution) ||
+    resolution < 8 ||
+    resolution > 192 ||
+    !Number.isSafeInteger(sourcesPerPoint) ||
+    sourcesPerPoint < 1 ||
+    !Number.isSafeInteger(budget) ||
+    budget < resolution * resolution * sourcesPerPoint
+  )
+    throw new Error("Invalid Boolean sampling stage budget.");
+  const depth = Math.max(1, Math.floor(budget / (resolution * resolution * sourcesPerPoint)));
+  const stages: { minZ: number; maxZ: number }[] = [];
+  for (let minZ = 0; minZ < resolution; minZ += depth)
+    stages.push({ minZ, maxZ: Math.min(resolution - 1, minZ + depth - 1) });
+  return stages;
+}
 export type CompositeLayout = {
   resolution: number;
   extent: number;
   center: [number, number, number];
   desiredStep: number;
   capped: boolean;
+  samplingStages?: { minZ: number; maxZ: number }[];
 };
 /** One independent derived world grid. Sampling tries to match the finest world voxel,
  * but is bounded to 192³ (or a lower explicit quality cap). No source is converted. */
@@ -256,6 +279,7 @@ export function compositeLayout(
   layers: readonly SdfLayer[],
   cap = 192,
   analyticPrimitives = false,
+  stagedEvaluation = false,
 ): CompositeLayout {
   if (!Number.isInteger(cap) || cap < 8 || cap > 192)
     throw new Error("Composite resolution cap must be 8–192.");
@@ -407,14 +431,29 @@ export function compositeLayout(
     });
   const desired = Math.ceil((2 * extent) / desiredStep) + 1,
     resolution = Math.max(8, Math.min(cap, desired));
-  const instanceWork =
-    layers.reduce((sum, layer) => sum + (layer.array?.enabled ? layer.array.count : 1), 0) *
-    resolution ** 3;
-  if (instanceWork > 64_000_000)
+  const sourcesPerPoint = layers.reduce(
+    (sum, layer) => sum + (layer.array?.enabled ? layer.array.count : 1),
+    0,
+  );
+  const instanceWork = sourcesPerPoint * resolution ** 3;
+  if (stagedEvaluation && instanceWork > 256_000_000)
     throw new Error(
-      "Array evaluation exceeds the 64 million sample budget. Reduce instances or source bounds before preview/export.",
+      "Staged Boolean export exceeds the 256 million total source-sample work limit. Reduce source instances or bounds; resolution was not lowered.",
     );
-  return { resolution, extent, center, desiredStep, capped: desired > cap };
+  if (!stagedEvaluation && instanceWork > 64_000_000)
+    throw new Error(
+      "Boolean evaluation exceeds the 64 million sample budget. Reduce instances or source bounds for preview, or use staged unified export.",
+    );
+  return {
+    resolution,
+    extent,
+    center,
+    desiredStep,
+    capped: desired > cap,
+    ...(stagedEvaluation
+      ? { samplingStages: compositeSamplingStages(resolution, Math.max(1, sourcesPerPoint)) }
+      : {}),
+  };
 }
 export type CompositeStats = {
   samplingMs: number;
@@ -554,7 +593,12 @@ export class BooleanComposite {
     private cap = 192,
     private readonly exportMaterial: Material = material,
     private readonly sourceCurrent: () => boolean = () => true,
-    private readonly options: { analyticPrimitives?: boolean; colours?: boolean } = {},
+    private readonly options: {
+      analyticPrimitives?: boolean;
+      colours?: boolean;
+      stagedEvaluation?: boolean;
+      samplingProgress?: (completed: number, total: number, stage: number, stages: number) => void;
+    } = {},
   ) {
     this.group.name = "Boolean Preview";
   }
@@ -731,6 +775,7 @@ export class BooleanComposite {
         this.project.layerStack.compositionLayers,
         this.cap,
         this.options.analyticPrimitives,
+        this.options.stagedEvaluation,
       ),
       key = JSON.stringify(layout),
       layoutChanged = key !== JSON.stringify(this.layout);
@@ -785,7 +830,21 @@ export class BooleanComposite {
         const duration = performance.now() - batch;
         samplingMs += duration;
         maxSamplingSliceMs = Math.max(maxSamplingSliceMs, duration);
-        if (z % 4 === 0) {
+        const stages = layout.samplingStages;
+        const stageIndex = stages?.findIndex((stage) => z <= stage.maxZ) ?? 0;
+        const stageEnd = !!stages && z === stages[stageIndex].maxZ;
+        if (z % 4 === 0 || stageEnd) {
+          const currentStage = stages?.[stageIndex];
+          const stageOffset = currentStage ? currentStage.minZ * n * n : 0;
+          const stageTotal = currentStage
+            ? (currentStage.maxZ - currentStage.minZ + 1) * n * n
+            : n ** 3;
+          this.options.samplingProgress?.(
+            samples - stageOffset,
+            stageTotal,
+            stageIndex + 1,
+            stages?.length ?? 1,
+          );
           await yieldUI();
           this.syncMetadata();
           if (this.disposed || version !== this.version) {

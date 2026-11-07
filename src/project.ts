@@ -362,42 +362,60 @@ export function saveSculptProject(
   bytes.set(MAGIC);
   view.setUint32(
     8,
-    layers.some(
-      (l) =>
-        l.assemblyPart?.enclosure ||
-        (l.primitiveOriginal?.kind === "box" && l.primitiveOriginal.cornerRadius !== undefined) ||
-        (l.primitive?.kind === "box" && l.primitive.cornerRadius !== undefined),
+    layers.some((l) =>
+      [l.primitive, l.primitiveOriginal].some(
+        (s) =>
+          s?.kind === "sphere" &&
+          (s.width !== undefined || s.height !== undefined || s.depth !== undefined),
+      ),
     )
-      ? 16
-      : layers.some((l) => l.array?.scalePerItem !== undefined && l.array.scalePerItem !== 1)
-        ? 15
-        : layers.some((l) => l.assemblyPart)
-          ? 14
-          : layers.some((l) => l.array)
-            ? 13
-            : layers.some((l) => l.booleanModifiers?.length)
-              ? 12
-              : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
-                ? 11
-                : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some((l) =>
-                      project.layerStack.layers.some(
-                        (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
-                      ),
-                    )
-                  ? 10
-                  : assets.some((a) => a.mime === "model/stl")
-                    ? 9
-                    : hasPaint
-                      ? 8
-                      : project.layerStack.hierarchy.enabled
-                        ? 7
-                        : hasMasks
-                          ? 6
-                          : assets.length
-                            ? 5
-                            : layers.every((l) => isLegacyCubicGrid(l.volume))
-                              ? 3
-                              : 4,
+      ? 18
+      : layers.some((l) =>
+            [l.primitive, l.primitiveOriginal].some(
+              (s) =>
+                s?.kind === "cylinder" &&
+                (s.topDiameter !== undefined || s.bottomDiameter !== undefined),
+            ),
+          )
+        ? 17
+        : layers.some(
+              (l) =>
+                l.assemblyPart?.enclosure ||
+                (l.primitiveOriginal?.kind === "box" &&
+                  l.primitiveOriginal.cornerRadius !== undefined) ||
+                (l.primitive?.kind === "box" && l.primitive.cornerRadius !== undefined),
+            )
+          ? 16
+          : layers.some((l) => l.array?.scalePerItem !== undefined && l.array.scalePerItem !== 1)
+            ? 15
+            : layers.some((l) => l.assemblyPart)
+              ? 14
+              : layers.some((l) => l.array)
+                ? 13
+                : layers.some((l) => l.booleanModifiers?.length)
+                  ? 12
+                  : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
+                    ? 11
+                    : [...project.layerStack.layers, ...project.layerStack.hierarchy.groups].some(
+                          (l) =>
+                            project.layerStack.layers.some(
+                              (parent) => parent.id === project.layerStack.hierarchy.parent(l.id),
+                            ),
+                        )
+                      ? 10
+                      : assets.some((a) => a.mime === "model/stl")
+                        ? 9
+                        : hasPaint
+                          ? 8
+                          : project.layerStack.hierarchy.enabled
+                            ? 7
+                            : hasMasks
+                              ? 6
+                              : assets.length
+                                ? 5
+                                : layers.every((l) => isLegacyCubicGrid(l.volume))
+                                  ? 3
+                                  : 4,
     true,
   );
   view.setUint32(12, metadata.length, true);
@@ -455,9 +473,11 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     version !== 13 &&
     version !== 14 &&
     version !== 15 &&
-    version !== 16
+    version !== 16 &&
+    version !== 17 &&
+    version !== 18
   )
-    throw new Error("Unsupported project version. This app supports versions 1–16.");
+    throw new Error("Unsupported project version. This app supports versions 1–18.");
   const length = view.getUint32(12, true);
   if (length < 2 || length > 65536 || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
@@ -556,6 +576,23 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
       version < 16
     )
       throw new Error("Enclosure recipes and rounded prisms require project version 16.");
+    if (
+      version < 17 &&
+      [layer.primitive, layer.primitiveOriginal].some(
+        (s) =>
+          s?.kind === "cylinder" && (s.topDiameter !== undefined || s.bottomDiameter !== undefined),
+      )
+    )
+      throw new Error("Tapered cylinders require project version 17.");
+    if (
+      version < 18 &&
+      [layer.primitive, layer.primitiveOriginal].some(
+        (s) =>
+          s?.kind === "sphere" &&
+          (s.width !== undefined || s.height !== undefined || s.depth !== undefined),
+      )
+    )
+      throw new Error("Ellipsoids require project version 18.");
     if (layer.booleanModifiers?.length && version < 12)
       throw new Error("Live Booleans require project version 12.");
     if (layer.assemblyPart && version < 14)

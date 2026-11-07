@@ -2,7 +2,7 @@ import { radialGap } from "./array-spacing";
 import type { ModellingCommand } from "./modelling-api";
 import type { ArrayDefinition } from "./object-array";
 import type { PrimitiveSource } from "./parametric-primitive";
-import { PRIMITIVE_KINDS, primitiveWorldDimensions } from "./parametric-primitive";
+import { PRIMITIVE_KINDS, primitiveFields, primitiveWorldDimensions } from "./parametric-primitive";
 import { toDisplay } from "./physical-units";
 import type { PrecisionField, PrecisionTools } from "./precision-tools";
 import type { PrimitiveTools } from "./primitive-tools";
@@ -495,7 +495,7 @@ export function primitiveUI(
       ? `${primitiveWorldDimensions(source, tools.layers().active.layer.transform)
           .map((v) => toDisplay(v, tools.settings).toFixed(2))
           .join(" × ")} ${tools.settings.unit} · physical bounds`
-      : `${source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "Any axis changes diameter"} · drag handles to size, then Create`;
+      : `${source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
     result.title = selected
       ? "Model-axis bounds include rotation, scale and parent transforms. Dimension fields edit local source parameters."
       : "Use Transform or Edit selected to position your new primitive.";
@@ -529,11 +529,16 @@ export function primitiveUI(
     const legend = document.createElement("legend");
     legend.textContent = "Dimensions";
     dimensions.append(legend);
-    for (const [field, value] of Object.entries(source)) {
+    for (const [field, value] of Object.entries(primitiveFields(source))) {
       if (field === "kind") continue;
       const row = document.createElement("label"),
         input = document.createElement("input");
-      row.textContent = field[0].toUpperCase() + field.slice(1);
+      row.textContent =
+        field === "topDiameter"
+          ? "Top diameter"
+          : field === "bottomDiameter"
+            ? "Bottom diameter"
+            : field[0].toUpperCase() + field.slice(1);
       input.type = "number";
       input.step = "any";
       input.value = toDisplay(Number(value), tools.settings).toString();

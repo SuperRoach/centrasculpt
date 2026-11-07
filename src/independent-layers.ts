@@ -151,8 +151,17 @@ export class LayerRuntime {
               ? new BoxGeometry(s.width, s.height, s.depth)
               : roundedBoxGeometry(s)
             : s.kind === "cylinder"
-              ? new CylinderGeometry(s.diameter / 2, s.diameter / 2, s.height, 96)
-              : new SphereGeometry(s.diameter / 2, 96, 64);
+              ? new CylinderGeometry(
+                  (s.topDiameter ?? s.diameter) / 2,
+                  (s.bottomDiameter ?? s.diameter) / 2,
+                  s.height,
+                  96,
+                )
+              : new SphereGeometry(0.5, 96, 64).scale(
+                  s.width ?? s.diameter,
+                  s.height ?? s.diameter,
+                  s.depth ?? s.diameter,
+                );
         this.primitiveGeometry = indexed.index ? indexed.toNonIndexed() : indexed.clone();
         indexed.dispose();
         const positions = this.primitiveGeometry.getAttribute("position");

@@ -689,7 +689,7 @@ for (const spec of [
     source: { kind: "sphere", diameter: 0.2 },
     axis: "Y",
     scale: [1, 2, 1],
-    expected: { kind: "sphere", diameter: 0.4 },
+    expected: { kind: "sphere", diameter: 0.2, width: 0.2, height: 0.4, depth: 0.2 },
   },
   {
     source: { kind: "box", width: 0.4, height: 0.3, depth: 0.2 },
@@ -861,7 +861,9 @@ test("primitive Scale changes a live cutter outcome after release and keeps sour
     tools.controls.pointerUp(null);
     await tools.settled;
     assert.equal(c.undoCount, count + 1);
-    assert.equal(cutter.primitive.diameter, 0.1);
+    assert.equal(cutter.primitive.width, 0.1);
+    assert.equal(cutter.primitive.height, 0.05);
+    assert.equal(cutter.primitive.depth, 0.05);
     assert(prepareComposite(c.project.layerStack.compositionLayers)(0.04, 0, 0) > 0);
     assert.deepEqual(cutter.transform.scale, [1, 1, 1]);
     preview.sync(c);
@@ -872,7 +874,9 @@ test("primitive Scale changes a live cutter outcome after release and keeps sour
     c.undo();
     assert.equal(cutter.primitive.diameter, 0.05);
     c.undo(true);
-    assert.equal(cutter.primitive.diameter, 0.1);
+    assert.equal(cutter.primitive.width, 0.1);
+    assert.equal(cutter.primitive.height, 0.05);
+    assert.equal(cutter.primitive.depth, 0.05);
   } finally {
     tools.dispose();
     c.dispose();

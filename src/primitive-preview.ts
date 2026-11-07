@@ -129,14 +129,28 @@ export class PrimitiveDraftPreview {
       this.root.quaternion.identity();
       this.root.scale.setScalar(1);
     }
-    if (this.kind !== this.tools.draft.kind) {
-      this.kind = this.tools.draft.kind;
+    const draft = this.tools.draft;
+    const geometryKey =
+      draft.kind === "cylinder"
+        ? `cylinder:${(draft.topDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}:${(draft.bottomDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}`
+        : draft.kind;
+    if (this.kind !== geometryKey) {
+      this.kind = geometryKey;
       this.mesh.geometry.dispose();
       this.mesh.geometry =
-        this.kind === "box"
+        this.tools.draft.kind === "box"
           ? new BoxGeometry(1, 1, 1)
-          : this.kind === "cylinder"
-            ? new CylinderGeometry(0.5, 0.5, 1, 48)
+          : this.tools.draft.kind === "cylinder"
+            ? new CylinderGeometry(
+                (this.tools.draft.topDiameter ?? this.tools.draft.diameter) /
+                  primitiveDimensions(this.tools.draft)[0] /
+                  2,
+                (this.tools.draft.bottomDiameter ?? this.tools.draft.diameter) /
+                  primitiveDimensions(this.tools.draft)[0] /
+                  2,
+                1,
+                48,
+              )
             : new SphereGeometry(0.5, 48, 32);
     }
     if (!this.drag) {

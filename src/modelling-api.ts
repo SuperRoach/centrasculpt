@@ -17,6 +17,7 @@ import { type BooleanModifier, validateModifiers } from "./live-boolean";
 import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
 import { objectDimensions } from "./object-dimensions";
 import {
+  type PrimitiveInput,
   type PrimitiveSource,
   primitiveWorldDimensions,
   validatePrimitive,
@@ -58,8 +59,8 @@ export type ModellingCommand =
   | { type: "boolean.update"; id: string; modifiers: BooleanModifier[] }
   | { type: "boolean.remove"; id: string; modifierId: string }
   | { type: "boolean.bake"; id: string }
-  | { type: "primitive.create"; unit: PhysicalUnit; source: PrimitiveSource }
-  | { type: "primitive.update"; id: string; unit: PhysicalUnit; source: PrimitiveSource }
+  | { type: "primitive.create"; unit: PhysicalUnit; source: PrimitiveInput }
+  | { type: "primitive.update"; id: string; unit: PhysicalUnit; source: PrimitiveInput }
   | { type: "object.transform"; id: string; unit: PhysicalUnit; transform: VolumeTransform }
   | { type: "object.rename"; id: string; name: string }
   | { type: "primitive.bake"; id: string }
@@ -136,7 +137,12 @@ export type QueryValue<Q extends ModellingQuery> = Q extends { type: "enclosure.
                           : ObjectMetadata;
 /** `$alias` references resolve only to earlier results in this ordered batch. */
 export type ModellingStep = { command: ModellingCommand; as?: string };
-export type BatchOptions = { expectedRevision: string; signal?: AbortSignal; dryRun?: boolean };
+export type BatchOptions = {
+  expectedRevision: string;
+  signal?: AbortSignal;
+  dryRun?: boolean;
+  preserveSelection?: boolean;
+};
 export type BatchReport = {
   dryRun: boolean;
   results: { id: string }[];
@@ -229,7 +235,7 @@ export class ModellingAPI {
       status: this.layers.recoveryReady ? "ready" : "busy",
     };
   }
-  private convertSource(source: PrimitiveSource, factor: number): PrimitiveSource {
+  private convertSource(source: PrimitiveInput, factor: number): PrimitiveSource {
     return Object.fromEntries(
       Object.entries(source).map(([k, v]) => [
         k,
@@ -430,6 +436,8 @@ export class ModellingAPI {
         target = temporary;
       }
       const api = new ModellingAPI(target, this.canEdit);
+      const selectedBefore = target.project.activeLayerId;
+      const groupBefore = target.selectedGroupId;
       const calibration = target.display.precision.millimetresPerUnit;
       const beforeObjects = new Map(
         [...target.project.layerStack.layers, ...target.project.layerStack.hierarchy.groups].map(
@@ -483,7 +491,18 @@ export class ModellingAPI {
           (n) => api.objectMetadata(n.id),
         ),
       );
-      target.withModellingLease(owner, () => target.finishAssemblyTransaction(start));
+      target.withModellingLease(owner, () => {
+        if (options.preserveSelection) {
+          if (target.project.layerStack.layers.some((l) => l.id === selectedBefore))
+            target.select(selectedBefore);
+          if (
+            groupBefore &&
+            target.project.layerStack.hierarchy.groups.some((g) => g.id === groupBefore)
+          )
+            target.selectGroup(groupBefore);
+        }
+        target.finishAssemblyTransaction(start);
+      });
       checkpoint = undefined;
       target.releaseModellingLease(owner);
       owner = undefined;

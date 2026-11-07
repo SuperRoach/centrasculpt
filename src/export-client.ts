@@ -2,7 +2,12 @@ import type { ExportProgress, ExportQuality, ExportSource } from "./export-mesh"
 import { EXPORT_MEMORY_LIMIT, ExportWork, exportAdmission } from "./export-mesh";
 import type { GlbExportResult } from "./glb-export";
 import { encodeExport } from "./glb-export";
-import { encodeSTL, type PrintReport } from "./stl-export";
+import {
+  encodeSTL,
+  type PrintReport,
+  STL_VALIDATION_BYTES_PER_CORNER,
+  STL_VALIDATION_MAX_TRIANGLES,
+} from "./stl-export";
 
 let generation = 0;
 /** Snapshot committed mesher buffers cooperatively; never transfer/detach source data.
@@ -27,8 +32,8 @@ export async function exportGlbAsync(
     (!Number.isFinite(options.stlMM) ||
       options.stlMM < 0.1 ||
       options.stlMM > 10000 ||
-      admission.corners / 3 > 300_000 ||
-      admission.corners * 320 > maxBytes)
+      admission.corners / 3 > STL_VALIDATION_MAX_TRIANGLES ||
+      admission.corners * STL_VALIDATION_BYTES_PER_CORNER > maxBytes)
   )
     throw new Error(
       "STL target dimension or validation memory/triangle safety limit exceeded. Use 0.1–10,000 mm and export fewer parts.",

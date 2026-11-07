@@ -1,7 +1,7 @@
 import { Euler, Quaternion, Vector3, type Vector3Tuple } from "three";
 import type { ArrayDefinition } from "./object-array";
 import { arrayInstanceAngles, arrayInstanceScales } from "./object-array";
-import type { PrimitiveSource } from "./parametric-primitive";
+import { cylinderSupport, type PrimitiveSource } from "./parametric-primitive";
 import type { Bounds } from "./sdf";
 import type { VolumeTransform } from "./transform";
 import { uniformScale } from "./transform";
@@ -42,11 +42,17 @@ export function radialGap(
     const d = direction.clone();
     if (array.orientation === "rotate") d.applyAxisAngle(axis, -angle);
     d.applyQuaternion(inverse);
-    if (primitive?.kind === "sphere") return (primitive.diameter * scale) / 2;
-    if (primitive?.kind === "cylinder")
+    if (primitive?.kind === "sphere")
       return (
-        (scale * (primitive.diameter * Math.hypot(d.x, d.z) + primitive.height * Math.abs(d.y))) / 2
+        (scale *
+          Math.hypot(
+            (primitive.width ?? primitive.diameter) * d.x,
+            (primitive.height ?? primitive.diameter) * d.y,
+            (primitive.depth ?? primitive.diameter) * d.z,
+          )) /
+        2
       );
+    if (primitive?.kind === "cylinder") return scale * cylinderSupport(primitive, d.x, d.y, d.z);
     if (primitive?.kind === "box")
       return (
         (scale *

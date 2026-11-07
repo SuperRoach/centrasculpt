@@ -18,6 +18,7 @@ import {
   PRIMITIVE_KINDS,
   type PrimitiveSource,
   primitiveDimensions,
+  primitiveFields,
   primitiveWorldDimensions,
   validatePrimitive,
 } from "./parametric-primitive";
@@ -112,7 +113,20 @@ export class PrimitiveTools {
       this.draft.kind === "box"
         ? new BoxGeometry(1, 1, 1)
         : this.draft.kind === "cylinder"
-          ? new CylinderGeometry(0.5, 0.5, 1, 48)
+          ? new CylinderGeometry(
+              (this.draft.kind === "cylinder"
+                ? (this.draft.topDiameter ?? this.draft.diameter)
+                : 1) /
+                primitiveDimensions(this.draft)[0] /
+                2,
+              (this.draft.kind === "cylinder"
+                ? (this.draft.bottomDiameter ?? this.draft.diameter)
+                : 1) /
+                primitiveDimensions(this.draft)[0] /
+                2,
+              1,
+              48,
+            )
           : new SphereGeometry(0.5, 48, 32);
     this.preview.scale.set(...primitiveDimensions(this.draft));
   }
@@ -141,7 +155,12 @@ export class PrimitiveTools {
   }
   async dimension(field: string, displayValue: number, edit = true): Promise<void> {
     const source = edit ? this.source : this.draft;
-    if (!source || !(field in source) || field === "kind")
+    if (
+      !source ||
+      (!(field in primitiveFields(source)) &&
+        !(source.kind === "sphere" && field === "diameter")) ||
+      field === "kind"
+    )
       throw new Error("Unsupported primitive dimension.");
     const next = validatePrimitive({
       ...source,
@@ -157,7 +176,7 @@ export class PrimitiveTools {
       });
     else {
       this.draft = next;
-      this.preview.scale.set(...primitiveDimensions(this.draft));
+      this.updatePreview();
     }
   }
   async restoreOriginal(): Promise<void> {
@@ -220,7 +239,7 @@ export class PrimitiveTools {
       );
       try {
         this.draft = validatePrimitive(next);
-        this.preview.scale.set(...primitiveDimensions(this.draft));
+        this.updatePreview();
       } catch {
         /* Keep last valid size at limits. */
       }
@@ -345,7 +364,7 @@ export class PrimitiveTools {
 
       add("unit", `Units · ${this.settings.unit}`, 5);
       const s = this.source ?? this.draft;
-      Object.entries(s)
+      Object.entries(primitiveFields(s))
         .filter(([k]) => k !== "kind" && k !== "cornerRadius")
         .forEach(([k, v], i) => {
           add(

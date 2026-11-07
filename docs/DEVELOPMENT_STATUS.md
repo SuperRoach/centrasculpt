@@ -1,5 +1,369 @@
 # Development Status — Centra Sculpt / vrappPOC
 
+2026-11-07 publication: user explicitly authorized committing and pushing Phase 7.4 proposals, quiet desktop agent controls, tapered cylinders, ellipsoids, staged full-resolution export and bounded STL validation with the 600,000-triangle ceiling. This supersedes earlier no-commit statements for these changes. Final verification passed 1,601/1,601 tests; browser failure-matrix, Quest and physical printing limitations recorded below remain.
+
+## Bounded STL topology and 600k ceiling — 2026-11-06
+
+### 1. What changed
+
+Raised the shared STL client/encoder/topology ceiling to **600,000 triangles** as
+requested, retaining available-memory and quality checks. Replaced retained
+coordinate/edge string maps with cooperative typed-index sorting and typed
+connectivity buffers so larger full-resolution exports can actually fit. Saved
+Turtle successfully exports at 192³ with 365,994 triangles. Existing source changes
+preserved; no commit/push/merge.
+
+### 2. Architectural decisions
+
+Exact Float32 coordinate welding, undirected edge counts/directions, face-component
+unions, signed volume and diagnostics retain their existing semantics. Sorting
+and topology loops cooperate with cancellation/revision checks. Peak-pipeline
+admission estimates 128 bytes per corner rather than 320, independently of the
+quality preset; precision seam candidate storage is explicitly bounded. This is
+not simply removal of a memory guard. No resolution reduction, near-coordinate
+weld, hidden repair or winding changes. The new shared constant prevents client
+and worker limits diverging; non-STL/mesher limits remain separate.
+
+### 3. Build and test results
+
+Focused STL suite passed **24/24**, including >300k triangles with exact closed-box
+connectivity, components/winding and cancellation during sorting, plus immediate
+refusal at 600,001 triangles. Earlier topology/export/staged focused run passed
+43/43. Final `npm run check` passed Biome, strict TypeScript, Vite build and
+**1,601/1,601 tests across 95 files**, no failures/skips/cancellations (80.79 s
+test command wall). Evidence: `work/staged-export/final-600k-check.log`.
+
+Actual Chrome Turtle export completed staged evaluation but initially encountered
+the old STL validation guard. A read-only copy of the user's downloaded saved
+`/Users/brettjames/Downloads/turtle.form` then completed the updated full-resolution
+preparation and STL encoder successfully. Evidence: `turtle-export.log` and
+`Turtle-192-staged-report.json` in ignored `work/staged-export/`. Output is
+`Turtle-192-staged.stl`, longest dimension 100 mm matching the UI. Native source file
+was not modified. The final updated browser-worker retry has not been observed.
+
+### 4. Benchmarks and regressions
+
+Turtle retains 365,994 triangles after 47,234 exact planar-compaction removals,
+with the original 192³ grid. Validation reports zero boundary, non-manifold,
+inconsistent-winding and degenerate counts. No new general performance/peak RSS
+benchmark; the allowance remains an estimate, not a total process/GPU memory claim.
+Large typed-topology regression (300,012 triangles) and cancellation completed in
+about half a second in the focused host run. Existing full printing/export quality
+and geometry regressions remain required in the final all-check run.
+
+### 5. Known limitations and blockers
+
+Turtle's report identifies two surfaces and one inward-oriented component; cavity
+versus unintended shells is not classified. Inspect in the intended slicer; no
+physical-fit/printability guarantee. Available memory may refuse exports below
+600k, especially higher quality presets or large source scenes. The updated
+browser must load the new code before its earlier 300k guard changes. Turtle is
+confirmed saved/open; the earlier recovery-location question is resolved. No
+unrelated recovery checkpoint was restored or discarded.
+
+### 6. Next recommendations
+
+Use the generated Turtle STL/report for inspection, or load the updated editor
+(after saving) and retry the ordinary unified export. Keep full-resolution source
+sampling and final Float32 diagnostics together. See
+[staged export usage](STAGED_BOOLEAN_EXPORT.md).
+
+
+## Staged full-resolution unified Boolean export — 2026-11-06
+
+### 1. What changed
+
+Unified export now admits larger evaluation jobs in bounded Z stages on the same
+original grid, retaining up to 192³ resolution without lowering quality. Added
+stage sampling progress and corrected the misleading array-only error label.
+A twelve-source scene at 192³ now runs in two stages instead of refusing its
+84,934,656 estimated source samples. Sources, selection, native bytes and history
+are unchanged by export. Existing uncommitted work retained; no commit/push/merge.
+
+### 2. Architectural decisions
+
+The old limit is an estimated CPU source-evaluation quota, not a voxel allocation
+limit. Export alone opts into stages of at most 64 million estimated source-sample
+operations, with a 256 million overall ceiling. All stages use the same prepared
+ordered evaluator and scalar lattice; the ordinary mesher runs once afterwards.
+No separately meshed partitions, source batching/reordering, implicit Bake, changed
+spacing or intermediate Boolean approximations. Cooperative sampling/meshing yields
+and explicit stage boundaries keep revision/cancel checks active. Original 256 MiB
+memory and triangle admission remain. Preview/Bake retain their existing quota.
+
+### 3. Build and test results
+
+`npm run check` passed Biome, strict TypeScript, production Vite and **1,599/1,599
+tests across 95 files**, no failures/skips/cancellations (76.89 s test command wall).
+Evidence: `work/staged-export/check.log`. New focused suite **3/3** passed (5.19 s)
+including actual twelve-source 192³ two-stage STL preparation/encoding, exact scalar
+and mesh comparison for ordered subtraction/intersection, native/history preservation,
+cancellation, stale source edits and memory refusal. Quick suite passed 21/21.
+Stage coverage/work ceilings and retained total-work refusal are tested. Diff
+whitespace check passed.
+
+The user's active Chrome scene was inspected read-only through its already-approved
+5173 session after automatic discovery pointed at a different 5174 server. It had
+12 visible layers and no arrays. No native source or history mutation was requested.
+During the later browser check a dev reload warning was present; Cancel was clicked,
+but the observed page then showed the starter scene. Existing recovery was neither
+restored nor discarded. The user was asked for the saved .form/Project Library model
+so the intended scene can be restored. Do not claim that model's actual browser
+export was verified; the full-resolution export result is verified on the independent
+regression fixture. Saved files were not modified by this work.
+
+### 4. Benchmarks and regressions
+
+No production benchmark or new maximum-resolution claim. The twelve-source fixture
+completed its focused export/cancellation/stale/memory cases in about five seconds
+on the host, not a promise for complex scenes. More total CPU work is now admitted;
+ellipsoid solves and nested CSG can be significantly slower. Sampling progress is
+per stage and the engine still yields within each stage. Existing mesh cleanup,
+physical-size conversion, native persistence and source cancellation regressions pass.
+
+### 5. Known limitations and blockers
+
+This is staged work admission on one memory-bounded grid, not out-of-core meshing.
+The 192³ cap, memory, triangles and existing source-detail capping still apply.
+No automatic reduction in resolution. More than 256 million estimated source-sample
+operations still refuse. The estimate counts sources/array instances and is not an
+exact nested-operation CPU cost. Interactive preview/Bake may still refuse a scene
+that unified export can process. The later Turtle follow-up resolves the saved project location and completes a
+full-resolution saved-file export; unrelated recovery data remains untouched.
+
+### 6. Next recommendations
+
+Save/open the intended project, load the updated development code, then use the
+ordinary Export unified boolean button; sampling should show numbered stages.
+Cancellation remains available and source edits make the export stale. Guide:
+[staged Boolean export](STAGED_BOOLEAN_EXPORT.md). Test physical/slicer acceptance
+separately; this change does not certify printability.
+
+
+## Stretched spheres / ellipsoid primitives — 2026-11-06
+
+### 1. What changed
+
+Added independent sphere Width, Height and Depth in desktop/VR numeric fields and
+source-local Scale handles. Spheres become ellipsoids when their axis lengths differ.
+Local agents can create/update ellipsoids through ordinary commands or approved
+proposal batches and stretch them with `scale_primitive`. Existing uncommitted work
+was preserved. No commit, push or merge performed.
+
+### 2. Architectural decisions
+
+Kept kind `sphere` and legacy `diameter` as the fallback for unspecified dimensions;
+all three explicit axes may omit that fallback in typed/MCP input. Validated sources
+retain a resolved fallback diameter. Round-sphere distance sampling remains byte
+compatible. Ellipsoid signed distance uses a bounded 56-iteration closest-point
+multiplier solve, with a stable shifted interior parameter, geometric bracketing
+near singular poles, and the medial-axis branch for zero coordinates. This measures
+Euclidean distance numerically rather than approximating a sphere's radial distance.
+Source presentation/export geometry and exact directional support use all three axes.
+Source scaling preserves IDs/pose, keeps the affine transform uniform and uses the
+existing source regeneration/transaction path. Native format v18 is written only
+when source/original sphere axis overrides exist; invalid older tags reject.
+
+### 3. Build and test results
+
+Final `npm run check` passed Biome, strict TypeScript, Vite build and **1,596/1,596
+tests across 94 files**, zero failures/skips/cancellations (92.46 s test command wall).
+Evidence: `work/ellipsoids/check.log`. Focused geometry/transform run passed 68/68
+before adding the two ellipsoid export/analytic cases; all are included in the final
+suite. Focused MCP passed **17/17** (`work/ellipsoids/agent.log`); quick suite 21/21.
+
+Actual in-app browser verified Width/Height/Depth fields and a 100 × 50 × 50 mm
+ellipsoid wireframe. Official stdio MCP against that browser passed schema discovery,
+40 × 20 × 10 mm creation, independent source scaling to 60 × 20 × 20 mm, mm object
+inspection, two individual Undo operations and restoration of the original object
+count. Evidence: `work/ellipsoids/browser-mcp.log`. The UI showed zero Undo/two Redo
+and Base restored. Native v18/old-tag refusal, source geometry/STL/GLB topology and
+Undo/Redo are covered by host tests. Diff whitespace check passed.
+
+### 4. Benchmarks and regressions
+
+No headset or standalone performance benchmark. The numeric solve has bounded work
+but costs more per sample than round spheres. Existing admission, cancellation and
+sampling limits remain. Tests cover surface normals and signed offsets, axes/centre,
+medial-axis points and near-zero coordinates, symmetry, round-sphere compatibility,
+rendered axis extents, source cache/native round trips and exports. Updated old tests
+that expected a Y sphere handle to enlarge every axis: the desired behavior now
+stretches Y only. The live Boolean cutter test verifies its changed evaluated outcome
+and retained source fields during preview. Production isolation remains covered.
+
+### 5. Known limitations and blockers
+
+Positive local dimensions and existing 8:1 aspect/resource limits apply. This does
+not enable arbitrary non-uniform affine edits to sculpt layers or groups, nor
+elliptical cylinder ends. `scale_object` continues to require equal XYZ for world
+scale changes; agents use `scale_primitive` or `primitive.update` for ellipsoid axes.
+Earlier status entries describing unsupported ellipsoids are superseded by this
+entry. Physical printer fit and Quest acceptance remain unverified. There is no new
+provider, export service, networking surface or persistent agent metadata.
+
+### 6. Next recommendations
+
+Try Sphere with Width 40, Height 20 and Depth 10 mm, or ask an agent to create that
+source. Use local axis Scale handles or `scale_primitive` factors to stretch it.
+Inspect any manufacturing output in the intended slicer. Usage/examples are in the
+[local MCP guide](PHASE_7_3_LOCAL_MCP.md). The separately requested new-project agent
+operation remains outstanding; it was not implemented as part of primitive support.
+
+
+## Tapered cylinders and agent dimension scaling — 2026-11-06
+
+### 1. What changed
+
+Cylinders now expose independent positive top/bottom diameters and height in desktop
+and VR primitive fields, editable source geometry, draft previews, Booleans and local
+MCP primitive create/update/proposal batches. Added `scale_primitive` for source-local
+XYZ dimensional multiplication: independent box axes, independent cylinder axial and
+radial sizing. Existing working changes were retained. No commit/push/merge.
+
+### 2. Architectural decisions
+
+Legacy `diameter` remains the fallback for either unspecified cylinder end. Inputs
+with both explicit ends may omit it; validated sources resolve a fallback diameter.
+Top is local +Y, bottom −Y. The capped-frustum source uses exact Euclidean distance
+to the side segment and cap disks. Straight-cylinder sampling remains byte compatible.
+Visible/source export geometry uses matching top/bottom radii; directional support
+and rotated source dimensions account for unequal ends. Native files write v17 only
+when source/original end overrides are present; lower-version tagged new metadata
+rejects. Existing projects keep their previous versions. No sculpt lattice or affine
+transform contract changed. PrimitiveInput supports explicit ends in the typed API.
+
+### 3. Build and test results
+
+`npm run check` passed Biome, strict TypeScript, Vite production build and
+**1,591/1,591 tests across 94 files**, zero failures/skips/cancellations (90.45 s test
+command wall). Evidence: `work/primitive-taper/final-check.log`. Focused primitive
+suite **35/35** and MCP suite **16/16** passed; quick suite passed. Initial sandbox
+check had three loopback EPERM failures; rerun with loopback permission passed.
+The first focused run exposed unnecessary geometry recreation for box sizing;
+retained geometry reuse for untapered sizing and retested successfully.
+
+Actual in-app browser verified separate end fields and a 25/50 mm tapered draft.
+Official stdio MCP against that browser passed tool schema discovery, end-diameter
+creation without legacy diameter, tapered dimensional scaling, mm inspection and
+two individual Undo transactions restoring the original scene. Evidence:
+`work/primitive-taper/browser-mcp.log`; actual UI inspected. Existing recovery data
+in other test origins was left untouched. Diff whitespace check passed.
+
+### 4. Benchmarks and regressions
+
+No new performance/headset benchmark. Added source SDF/cap/side/reversed-taper,
+rendered radii, invalid input, native v17/old-tag refusal, Undo/Redo and agent sizing
+regressions. Full suite retains assembly, CSG, printing, export/recovery and primitive
+preview reuse coverage. Existing resource/aspect limits and bundle-size advisory
+remain. No printer-fit or physical Quest acceptance claim.
+
+### 5. Known limitations and blockers
+
+All end diameters remain positive; zero-tip cones and elliptical cylinder ends are
+not added. Source axis ratios retain 8:1 admission. `scale_primitive` requires equal
+X/Z for cylinders and equal XYZ for spheres. Boxes support independent dimensions.
+A stretched sphere is an ellipsoid and remains unsupported; this is a pre-existing
+source/transform limitation, verified against HEAD, not introduced by taper work.
+Existing world transform scale edits still require equal XYZ; unchanged legacy
+non-uniform transforms can be retained. MCP descriptions/capabilities now state this
+restriction explicitly. Agents should use `primitive.update` dimensions in proposals.
+General affine deformation, ellipsoids and a new-project MCP operation are not part
+of this implemented change; the earlier requested new-project capability remains
+outstanding. Quest and physical printer acceptance remain pending.
+
+### 6. Next recommendations
+
+Try a cylinder with topDiameter 10, bottomDiameter 20, height 30 mm as an editable
+Boolean cutter for a flared opening. Review final exported geometry in the intended
+slicer. Implement ellipsoid/source deformation support separately before advertising
+stretched spheres; do not relax the engine guard without matching CSG/export/cache
+support. Agent usage is in [local MCP guide](PHASE_7_3_LOCAL_MCP.md).
+
+
+## Phase 7.4 — Agent Plan, Preview & Apply — 2026-11-06
+
+### 1. What changed
+
+Added immutable, memory-only multi-command proposals and separately staged enclosure
+create/update proposals on the existing optional local MCP connection. Desktop review
+shows operations, additions/edits/deletes, affected IDs/names/source dimensions, exact
+commands and source-cache reports. A person explicitly approves each plan in the
+browser; MCP cannot approve. Apply executes the retained plan once with one Undo and
+post-commit object/source diagnostics. A small lower-left sparkle icon and green
+connection dot keep access unobtrusive; incoming proposals never open a panel or take
+focus. Click the icon for review or connection controls. Editing permission collapses
+the panel. Existing changes were preserved; no commit/push/merge.
+
+### 2. Architectural decisions
+
+Strict Zod schemas expose `propose_changes`, `propose_enclosure`, `get_proposal`,
+`cancel_proposal` and `apply_approved_proposal`. Batches and standalone recipes delegate
+to authoritative ModellingAPI transactions, staging, rollback and admission. Recipes
+and connectors cannot nest in batches; connectors are outside proposals. Consent is
+bound to the exact editor instance, opaque revision and memory-only browser session,
+with a two-minute lifetime. Changed revision/editor, expiry, revocation or lost access
+invalidates outstanding consent; no silent retry/rebase. Editing a proposal means
+cancel/resubmit/revalidate/reapprove. Added an opt-in batch selection-preservation
+option so surviving selections are restored before the one history entry closes.
+Normal dev and production import boundaries, ephemeral localhost/stdin auth, browser
+ownership and default read-only permission remain. No provider, persistent agent
+metadata, arbitrary file/code/export tools, cloud, WebMCP, LAN or Quest synchronisation.
+
+### 3. Build and test results
+
+Initial baseline passed Biome, strict TypeScript/build and 1,582 tests, with three
+loopback tests blocked by sandbox EPERM. After loopback permission, full checks passed
+1,588/1,588 tests across 94 files before the final standalone-recipe and UI refinements.
+Focused proposal/transport suite then passed 15/15, including standalone enclosure
+create/update with one Undo per transaction. Quick suite passed. Final verification for the sparkle presentation passed Biome, strict TypeScript,
+Vite build and **1,589/1,589 tests across 94 files**, no failures/skips/cancellations
+(83.76 s test command wall), recorded in `work/phase-7-4/sparkle-check.log`.
+The final responsive adjustment is CSS-only: panel maximum 310 px, 280 px on narrow
+viewports, independent of editor sidebar minimum widths.
+
+Actual supported in-app browser plus official stdio MCP verified a four-step
+box/cylinder/subtract/array proposal: unchanged scene revision/count and zero Undo
+while previewing, denial before consent, explicit test browser approval, actual IDs,
+three committed objects, duplicate refusal and one ordinary Undo back to Base.
+The quiet collapsed controls and automatic collapse after enabling editing were
+visually checked separately. The standalone Playwright Chromium launch was blocked
+by SIGABRT/EPERM; its updated script was not successfully completed in this sandbox.
+Logs are under ignored `work/phase-7-4/`; see the usage guide for the exact limits.
+
+### 4. Benchmarks and regressions
+
+No new geometry or headset performance benchmark. Existing limits, source-cache
+sampling and transaction cancellation remain authoritative. New host cases exercise
+byte/history preservation, immutable commands, explicit consent, duplicate apply,
+expiry, revision changes, editor replacement, permission/busy refusals, hidden/locked
+objects, cancellation and partial backend staging failure. Existing bridge tests
+cover authenticated loopback admission, ownership, deadlines and shutdown. No new
+success state is displayed before backend commit. Production remains agent-free.
+
+### 5. Known limitations and blockers
+
+Source previews/diagnostics do not establish final CSG topology, global wall thickness
+or physical printer fit. Geometry inspection retains its reported sampling limits.
+Preview IDs are provisional; committed IDs are returned separately. A lost response
+after commit requires inspection before any new operation. One in-flight bridge call
+means MCP cancel cannot overtake it; browser Reject/revoke and request cancellation
+abort cooperative work. Existing 10/12/15-second operation/bridge/client deadlines
+remain. No persistent proposal log or mutable approved-plan patch. Existing immediate
+write tools remain compatible and require the general editing grant.
+
+The complete requested browser failure matrix (tab close/restart/project recovery,
+slow generation and partial failures) was not repeated end-to-end in a browser;
+host/transport regressions cover the underlying primitives. Quest acceptance,
+physical printing and Phase 7.2 associative cutouts/mounting constraints remain deferred.
+
+### 6. Next recommendations
+
+Review a small plan via the sparkle icon, approve it deliberately, apply and exercise
+Undo. Run the updated full Playwright MCP smoke outside the Chromium launch sandbox,
+then complete the broader browser interruption matrix before treating this local
+POC as release acceptance. Usage: [Phase 7.4 guide](PHASE_7_4_AGENT_PROPOSALS.md).
+
+
 ## Phase 7.3.1 — expanded local MCP modelling — 2026-11-06
 
 ### 1. What changed
