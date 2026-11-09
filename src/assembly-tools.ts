@@ -301,11 +301,13 @@ export async function exportPartSTL(
   signal?: AbortSignal,
   quality: ExportQuality = "fast",
   memoryLimit = EXPORT_MEMORY_LIMIT,
+  summary?: (dimensionsMM: number[]) => Promise<void>,
+  resolution: 192 | 256 = 192,
 ) {
   let previewWarning = "";
   const result = await withExportMemory(
     layers,
-    () => encodePartSTL(layers, id, signal, quality, memoryLimit),
+    () => encodePartSTL(layers, id, signal, quality, memoryLimit, summary, resolution),
     (message) => {
       previewWarning = message;
     },
@@ -318,6 +320,8 @@ async function encodePartSTL(
   signal: AbortSignal | undefined,
   quality: ExportQuality,
   memoryLimit: number,
+  summary?: (dimensionsMM: number[]) => Promise<void>,
+  resolution: 192 | 256 = 192,
 ) {
   if (!layers.recoveryReady) throw new Error("Finish the current edit first.");
   const revision = layers.sourceRevision,
@@ -331,6 +335,7 @@ async function encodePartSTL(
     true,
     undefined,
     memoryLimit,
+    resolution,
   );
   try {
     const exported = prepared.sources;
@@ -348,6 +353,7 @@ async function encodePartSTL(
         }
     const size = box.getSize(point);
     const targetMM = Math.max(size.x, size.y, size.z) * layers.display.precision.millimetresPerUnit;
+    await summary?.(size.toArray().map((n) => n * layers.display.precision.millimetresPerUnit));
     const result = await encodeSTL(
       exported,
       quality,

@@ -46,6 +46,8 @@ export class AssemblyControls {
   );
   exportQuality: ExportQuality = "fast";
   exportMemoryLimit = EXPORT_MEMORY_LIMIT;
+  exportResolution: 192 | 256 = 192;
+  exportSummary?: (dimensionsMM: number[]) => Promise<void>;
   open = false;
   partA = "";
   partB = "";
@@ -660,6 +662,8 @@ export class AssemblyControls {
                 exportSignal,
                 this.exportQuality,
                 this.exportMemoryLimit,
+                this.exportSummary,
+                this.exportResolution,
               );
               new ExportWork(exportSignal, () => job === this.job && l === this.layers()).check();
               if (result.report.blocking.length)

@@ -253,7 +253,7 @@ export function compositeSamplingStages(
   if (
     !Number.isInteger(resolution) ||
     resolution < 8 ||
-    resolution > 192 ||
+    resolution > 256 ||
     !Number.isSafeInteger(sourcesPerPoint) ||
     sourcesPerPoint < 1 ||
     !Number.isSafeInteger(budget) ||
@@ -282,8 +282,9 @@ export function compositeLayout(
   analyticPrimitives = false,
   stagedEvaluation = false,
 ): CompositeLayout {
-  if (!Number.isInteger(cap) || cap < 8 || cap > 192)
-    throw new Error("Composite resolution cap must be 8–192.");
+  const exportLayout = analyticPrimitives && stagedEvaluation;
+  if (!Number.isInteger(cap) || cap < 8 || cap > (exportLayout ? 256 : 192))
+    throw new Error("Composite resolution cap must be 8–192, or up to 256 for staged export.");
   const live = layers.some((l) => l.booleanModifiers?.length || l.array?.enabled);
   const reachable = new Set<string>();
   const visit = (l: SdfLayer) => {
@@ -304,7 +305,12 @@ export function compositeLayout(
             l.procedural ||
             !l.volume.getDenseView() ||
             l.volume.getDenseView()!.some((v) => v < 0))
-        : l.visible,
+        : l.visible &&
+          (!exportLayout ||
+            l.primitive ||
+            l.procedural ||
+            !l.volume.getDenseView() ||
+            l.volume.getDenseView()!.some((v) => v < 0)),
     ),
     min = [Infinity, Infinity, Infinity],
     max = [-Infinity, -Infinity, -Infinity];
@@ -312,7 +318,7 @@ export function compositeLayout(
   for (const layer of visible) {
     const scale = uniformScale(layer.transform),
       baseBounds =
-        live && layer.primitive
+        (live || exportLayout) && layer.primitive
           ? primitiveWorldBounds(layer.primitive, layer.transform)
           : layer.volume.worldBounds(layer.transform);
     let bounds = baseBounds;
@@ -363,9 +369,9 @@ export function compositeLayout(
         ],
       };
     }
-    if (!analyticPrimitives || !live || !layer.primitive)
+    if (!analyticPrimitives || (!live && !exportLayout) || !layer.primitive)
       desiredStep = Math.min(desiredStep, layer.volume.step * scale * smallestInstance);
-    if (live && layer.primitive) {
+    if ((live || exportLayout) && layer.primitive) {
       desiredStep = Math.min(
         desiredStep,
         (primitiveFeatureSize(layer.primitive) * scale * smallestInstance) /
@@ -780,7 +786,14 @@ export class BooleanComposite {
       this.mesher?.dispose();
       this.surface?.clear();
       this.group.clear();
-      this.volume = new SDFVolume(layout.resolution, layout.extent, false);
+      this.volume = new SDFVolume(
+        layout.resolution,
+        layout.extent,
+        false,
+        undefined,
+        undefined,
+        !!this.options.analyticPrimitives && !!this.options.stagedEvaluation,
+      );
       this.mesher = new IncrementalMesher(this.volume);
       this.surface = new ChunkSurface(this.material);
       this.group.add(this.surface.group);
@@ -891,7 +904,7 @@ export class BooleanComposite {
       if (triangles > 1_000_000) {
         this.group.visible = false;
         throw new Error(
-          "Boolean preview exceeds 1,000,000 triangles. Reduce composite quality or source complexity.",
+          "Boolean evaluation exceeds 1,000,000 intermediate triangles. Reduce source complexity or export fewer parts.",
         );
       }
       await yieldUI();

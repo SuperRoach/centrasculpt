@@ -6,7 +6,7 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { startAgentBridge } from "../scripts/agent-bridge.mjs";
-import { tools, validateCall } from "../scripts/agent-schemas.mjs";
+import { capabilityRegistry, tools, validateCall } from "../scripts/agent-schemas.mjs";
 import { publishSession, readSession } from "../scripts/agent-session.mjs";
 import { createHeadlessEditor } from "../scripts/headless-enclosure.mjs";
 import { AgentProposals, agentExecutor } from "../work/test-build/agent-access.mjs";
@@ -392,7 +392,35 @@ test("official stdio MCP process drives the active authoritative editor and shut
   const client = new Client({ name: "centra-test", version: "1" });
   try {
     await client.connect(transport);
-    assert.equal((await client.listTools()).tools.length, Object.keys(tools).length);
+    const listed = (await client.listTools()).tools;
+    assert.equal(listed.length, Object.keys(tools).length);
+    assert.deepEqual(
+      listed.map((tool) => tool.name).sort(),
+      Object.keys(tools).sort(),
+      "official stdio tools/list matches executable adapter registrations",
+    );
+    for (const name of [
+      "propose_changes",
+      "propose_enclosure",
+      "apply_approved_proposal",
+      "transform_object",
+      "update_primitive",
+      "scale_primitive",
+      "boolean_create",
+      "array_create",
+      "preview_changes",
+      "apply_changes",
+      "get_bounds",
+      "get_geometry_diagnostics",
+      "capture_scene_preview",
+    ]) {
+      const listedTool = listed.find((tool) => tool.name === name);
+      assert(listedTool?.description, `${name} is described in official tools/list`);
+      assert(listedTool.inputSchema?.type === "object", `${name} publishes its schema`);
+    }
+    const previewSchema = listed.find((tool) => tool.name === "capture_scene_preview").inputSchema;
+    assert(previewSchema.properties.objectId);
+    assert(previewSchema.properties.partId);
     assert((await client.callTool({ name: "scene_summary", arguments: {} })).isError);
     await post(bridge, "/approve", { client: "editor", editing: true }, true);
     async function call(name, args) {
@@ -408,6 +436,15 @@ test("official stdio MCP process drives the active authoritative editor and shut
     }
     const summary = await call("scene_summary", {});
     assert.equal(summary.value.projectId, layers.project.id);
+    const capabilities = await call("get_capabilities", {});
+    assert.deepEqual(capabilities.value.tools.sort(), Object.keys(tools).sort());
+    assert.deepEqual(capabilities.value.featureAvailability, capabilityRegistry);
+    assert.equal(
+      capabilities.value.featureAvailability.scenePreview.scopes.includes("object-hierarchy"),
+      true,
+    );
+    assert.equal(capabilities.value.adapter.sessionId.length > 0, true);
+    assert.equal(capabilities.value.adapter.buildVersion.length > 0, true);
     const made = await call("create_primitive", {
       expectedRevision: summary.revision,
       source,
@@ -1041,5 +1078,53 @@ test("associative attachment schemas, read grants and separately approved recipe
     assert.deepEqual(saveSculptProject(layers.project), before);
   } finally {
     layers.dispose();
+  }
+});
+
+test("HTTP LAN origins without randomUUID retain cryptographic proposal and activity IDs", async () => {
+  const previous = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
+  Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+  let layers;
+  try {
+    const editor = createHeadlessEditor();
+    layers = editor.layers;
+    const proposals = new AgentProposals(),
+      activity = [];
+    const run = agentExecutor(
+      layers,
+      () => true,
+      () => false,
+      () => {},
+      proposals,
+      (entry) => activity.push(entry),
+    );
+    const staged = await run(
+      job("propose_changes", {
+        expectedRevision: editor.api.revision,
+        title: "LAN origin",
+        description: "One measured primitive",
+        steps: [{ command: create }],
+      }),
+      signal(),
+    );
+    assert(staged.ok, JSON.stringify(staged));
+    assert.match(
+      staged.value.id,
+      /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/,
+    );
+    assert(proposals.approve(layers, editor.api.revision));
+    const applied = await run(
+      job("apply_approved_proposal", { proposalId: staged.value.id }),
+      signal(),
+    );
+    assert(applied.ok, JSON.stringify(applied));
+    assert.equal(layers.undoCount, 1);
+    assert.equal(activity.length, 1);
+    assert.match(activity[0].id, /^[a-f0-9-]{36}$/);
+    assert.notEqual(activity[0].id, staged.value.id);
+  } finally {
+    layers?.dispose();
+    if (previous) Object.defineProperty(crypto, "randomUUID", previous);
+    else delete crypto.randomUUID;
   }
 });

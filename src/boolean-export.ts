@@ -10,6 +10,11 @@ import {
 import type { IndependentLayers } from "./independent-layers";
 import type { SculptProject } from "./layers";
 
+export type ExportResolution = 192 | 256;
+export function exportResolution(value: number): ExportResolution {
+  if (value !== 192 && value !== 256) throw new Error("Choose export resolution 192³ or 256³.");
+  return value;
+}
 /** Independent export cache: analytic primitives need no sampling from their dense caches. */
 export async function prepareBooleanExport(
   layers: IndependentLayers,
@@ -18,20 +23,22 @@ export async function prepareBooleanExport(
   stl = true,
   progress?: (p: ExportProgress) => void,
   memoryLimit = EXPORT_MEMORY_LIMIT,
+  resolution: ExportResolution = 192,
 ) {
   if (!Number.isFinite(memoryLimit) || memoryLimit <= 0 || memoryLimit > EXPORT_MEMORY_MAX)
     throw new Error("Invalid export memory budget; maximum is 512 MiB.");
+  exportResolution(resolution);
   const revision = layers.sourceRevision,
     current = () => layers.recoveryReady && layers.sourceRevision === revision,
     work = new ExportWork(signal, current, progress),
     material = new MeshBasicMaterial(),
-    composite = new BooleanComposite(project, material, 192, material, current, {
+    composite = new BooleanComposite(project, material, resolution, material, current, {
       analyticPrimitives: true,
       stagedEvaluation: true,
       samplingProgress: (completed, total, stage, stages) => {
         work.check();
         work.progress({
-          stage: `Evaluating Boolean · stage ${stage}/${stages} · 192³ maximum`,
+          stage: `Evaluating Boolean · stage ${stage}/${stages} · ${resolution}³ maximum`,
           completed,
           total,
         });
@@ -52,6 +59,7 @@ export async function prepareBooleanExport(
     work.check();
     await composite.flush();
     work.check();
+    const evaluatedResolution = composite.stats!.resolution;
     let sources = composite.exportSources(),
       ownedBytes = 0;
     let removedTriangles = 0,
@@ -105,6 +113,7 @@ export async function prepareBooleanExport(
     }
     return {
       sources,
+      resolution: evaluatedResolution,
       dispose,
       removedTriangles,
       maxPlanarDeviation,

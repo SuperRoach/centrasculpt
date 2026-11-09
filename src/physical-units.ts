@@ -109,10 +109,10 @@ export function measurementValue(points: Vec3[], settings: PrecisionSettings): s
   return `${((a.angleTo(c) * 180) / Math.PI).toFixed(2)}°`;
 }
 /** Same transformed model-space input bounds used by STL sizing; no navigation matrices. */
-export function physicalExportLongestMM(
+export function physicalExportDimensionsMM(
   sources: readonly import("./export-mesh").ExportSource[],
   millimetresPerUnit: number,
-): number {
+): number[] {
   finitePositive(millimetresPerUnit);
   const min = new Vector3(Infinity, Infinity, Infinity),
     max = new Vector3(-Infinity, -Infinity, -Infinity),
@@ -131,7 +131,7 @@ export function physicalExportLongestMM(
   const longest = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
   if (!Number.isFinite(longest) || longest <= 0)
     throw new Error("No physical dimensions available for this export scope.");
-  return longest * millimetresPerUnit;
+  return [max.x - min.x, max.y - min.y, max.z - min.z].map((n) => n * millimetresPerUnit);
 }
 /** glTF coordinates are metres. Apply project calibration once, including translated origins. */
 export function physicalGLBSources(
@@ -148,4 +148,33 @@ export function physicalGLBSources(
       scale: source.transform.scale.map((v) => v * factor) as Vec3,
     },
   }));
+}
+
+export function physicalExportLongestMM(
+  sources: readonly import("./export-mesh").ExportSource[],
+  millimetresPerUnit: number,
+): number {
+  return Math.max(...physicalExportDimensionsMM(sources, millimetresPerUnit));
+}
+/** Explicit export intent, never inferred from geometry. Legacy/new sessions start at 1:1. */
+export function exportSizing(
+  dimensionsMM: number[],
+  mode: "actual" | "target" = "actual",
+  targetMM = 200,
+) {
+  if (
+    dimensionsMM.length !== 3 ||
+    dimensionsMM.some((n) => !Number.isFinite(n) || n < 0) ||
+    Math.max(...dimensionsMM) <= 0
+  )
+    throw new Error("Invalid export dimensions.");
+  if (mode !== "actual" && mode !== "target") throw new Error("Choose an export sizing mode.");
+  if (mode === "target" && (!Number.isFinite(targetMM) || targetMM < 0.1 || targetMM > 10000))
+    throw new Error("Target longest dimension must be 0.1–10,000 mm.");
+  const scale = mode === "actual" ? 1 : targetMM / Math.max(...dimensionsMM);
+  return {
+    scale,
+    dimensionsMM: dimensionsMM.map((n) => n * scale),
+    longestMM: Math.max(...dimensionsMM) * scale,
+  };
 }

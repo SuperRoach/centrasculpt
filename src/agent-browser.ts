@@ -1,3 +1,4 @@
+import { newId } from "./layers";
 import "./agent-access.css";
 import initialCredentials from "virtual:centra-agent";
 import type { Box3, Object3D, WebGLRenderer } from "three";
@@ -111,7 +112,7 @@ export function mountAgentAccess(
   };
   let approved = false,
     running: AbortController | undefined;
-  const client = crypto.randomUUID();
+  const client = newId();
   const historyPanel = document.createElement("section");
   historyPanel.className = "agent-history";
   historyPanel.setAttribute("aria-label", "Recent agent activity");
@@ -356,7 +357,7 @@ export function mountAgentAccess(
     const address = new URL(session.url);
     if (
       address.protocol !== "http:" ||
-      address.hostname !== "127.0.0.1" ||
+      address.hostname !== location.hostname ||
       address.pathname !== "/" ||
       typeof session.token !== "string" ||
       !/^[a-f0-9]{64}$/.test(session.token)
@@ -395,8 +396,8 @@ export function mountAgentAccess(
       reset("Connection needs attention");
       panel.dataset.state = "error";
       help.textContent =
-        location.hostname !== "127.0.0.1"
-          ? `Open http://127.0.0.1:${location.port} to approve this local session.`
+        location.hostname !== "127.0.0.1" && location.hostname !== "localhost"
+          ? `Open the printed dev:agent address (${location.hostname}) to approve this local session.`
           : error instanceof Error && error.message !== "Failed to fetch"
             ? error.message
             : "Cannot reach the local bridge. Start dev:agent, then click Approve connection again. Your scene stays open.";

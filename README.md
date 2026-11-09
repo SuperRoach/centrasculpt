@@ -43,7 +43,7 @@ Run this instead of the normal development command:
 npm run dev:agent
 ```
 
-1. Open the exact **http://127.0.0.1:5173** origin printed in the terminal. `localhost` and LAN addresses do not match the agent session.
+1. Open the machine `.local` hostname printed in the terminal, the LAN IP shown by Vite if Windows cannot resolve `.local`, or `http://127.0.0.1:5173/` on the Mac itself. The editor and temporary bridge accept those addresses.
 2. Configure your MCP client to launch `node` with the **absolute path** to `scripts/agent-mcp.mjs` as its argument. The adapter discovers the running session automatically.
 3. In the editor's **Local agent access (development)** panel, choose **Approve connection**. Access starts read-only. Enable **Allow editing (includes Undo)** when you want the assistant to make changes.
 

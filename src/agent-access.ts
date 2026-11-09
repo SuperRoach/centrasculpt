@@ -8,6 +8,7 @@ import {
 import type { FeatureDefinition } from "./enclosure-features";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
+import { newId } from "./layers";
 import {
   type BatchOptions,
   type BatchReport,
@@ -153,7 +154,7 @@ export function agentExecutor(
         )
           return error("busy", "Cancel the existing proposal first.");
         const proposal: AgentProposal = {
-          id: crypto.randomUUID(),
+          id: newId(),
           state: "preview computing",
           title: a.title as string,
           description: a.description as string,

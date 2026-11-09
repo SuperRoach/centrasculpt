@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { version } from "./package.json";
+import { lanHostnames } from "./scripts/hostnames.mjs";
 
 // Benchmarks, tests and generated reports must not reload an unsaved browser sculpture.
 export default defineConfig(async ({ command }) => {
@@ -12,9 +13,9 @@ export default defineConfig(async ({ command }) => {
       // Agent sessions preserve in-memory sculptures across server restarts.
       hmr: agent ? false : undefined,
       fs: { deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/.certs/**", "**/*-key.*"] },
-      host: agent ? "127.0.0.1" : "0.0.0.0",
+      host: "0.0.0.0",
       port: 5173,
-      allowedHosts: ["bretts-macbook-pro.local"],
+      allowedHosts: [...new Set(["bretts-macbook-pro.local", ...lanHostnames])],
       watch: {
         ignored: ["**/work/**", "**/outputs/**", "**/tests/**", "**/scripts/**", "**/.certs/**"],
       },

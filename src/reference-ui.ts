@@ -20,7 +20,7 @@ export function referenceUI(
   details.className = "precision-settings";
   details.id = "reference-panel";
   details.innerHTML =
-    "<summary>REFERENCES · IMAGES / STL</summary><p>PNG/JPEG/STL · six assets · STL up to 100,000 triangles/file, 200,000 total · 6 MiB/file · 12 MiB total · 8.8 megapixels. Workspace anchors follow navigation, sculpture anchors also turn with the sculpture.</p>";
+    "<summary>REFERENCES · IMAGES / STL</summary><p>PNG/JPEG/STL · six assets · STL up to 100,000 triangles/file, 200,000 total · 6 MiB/file · 12 MiB total · 8.8 megapixels. STL references are centred and normalised to a display size; original file coordinates have unspecified units and are not calibrated project dimensions. Workspace anchors follow navigation, sculpture anchors also turn with the sculpture.</p>";
   const picker = document.createElement("input");
   picker.type = "file";
   picker.accept = "image/png,image/jpeg,.stl";

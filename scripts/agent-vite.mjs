@@ -1,5 +1,6 @@
 import { startAgentBridge } from "./agent-bridge.mjs";
 import { publishSession } from "./agent-session.mjs";
+import { lanHostnames, machineLocalHostname } from "./hostnames.mjs";
 
 export function agentPlugin() {
   let bridge;
@@ -9,10 +10,15 @@ export function agentPlugin() {
     apply: "serve",
     async configureServer(server) {
       const origin = `http://127.0.0.1:${server.config.server.port}`;
-      bridge = await startAgentBridge({ origin });
+      const editorOrigin = `http://${machineLocalHostname}:${server.config.server.port}`;
+      bridge = await startAgentBridge({
+        origin,
+        host: "0.0.0.0",
+        allowedHostnames: lanHostnames,
+      });
       unpublish = await publishSession(bridge.sessionFile);
       console.info(
-        `\nAgent session: ${bridge.sessionFile}\nOpen ${origin} and approve Local agent access.\n`,
+        `\nAgent session: ${bridge.sessionFile}\nOpen ${editorOrigin} or the LAN IP shown by Vite and approve Local agent access. This editor and its temporary agent bridge are reachable on your local network.\n`,
       );
       // Vite's client still opens a reload socket with hmr:false. Agent mode
       // serves only its style helpers, preserving the unsaved editor across restarts.
@@ -37,12 +43,31 @@ export function agentPlugin() {
         `);
       });
       server.middlewares.use("/__centra_agent_session", (req, res) => {
-        const expectedHost = new URL(origin).host;
+        let requestHost;
+        let requestOrigin;
+        try {
+          requestHost = new URL(`http://${req.headers.host}`);
+        } catch {
+          requestHost = null;
+        }
+        try {
+          if (req.headers.origin) requestOrigin = new URL(req.headers.origin);
+        } catch {
+          requestOrigin = null;
+        }
+        const requestHostname = requestHost?.hostname;
+        const expectedOrigin = `http://${requestHostname}:${server.config.server.port}`;
+        const validHost =
+          requestHost?.port === `${server.config.server.port}` &&
+          lanHostnames.includes(requestHostname);
+        const validOrigin =
+          !req.headers.origin ||
+          (requestOrigin?.origin === expectedOrigin && requestOrigin.hostname === requestHostname);
         if (
           req.method !== "GET" ||
-          req.headers.host !== expectedHost ||
+          !validHost ||
+          !validOrigin ||
           req.headers["x-centra-agent-discovery"] !== "1" ||
-          (req.headers.origin && req.headers.origin !== origin) ||
           (req.headers["sec-fetch-site"] && req.headers["sec-fetch-site"] !== "same-origin")
         ) {
           res.statusCode = 403;
@@ -51,7 +76,12 @@ export function agentPlugin() {
         }
         res.setHeader("Cache-Control", "no-store");
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ url: bridge.url, token: bridge.browserToken }));
+        res.end(
+          JSON.stringify({
+            url: bridge.urlForHostname(requestHostname),
+            token: bridge.browserToken,
+          }),
+        );
       });
       const current = bridge;
       server.httpServer.once("close", () => {

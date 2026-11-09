@@ -2,13 +2,18 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { chromium } from "@playwright/test";
 
 const port = Number(process.env.AGENT_SMOKE_PORT ?? 5197);
-const origin = `http://127.0.0.1:${port}`;
+const hostnameValue = hostname().toLowerCase();
+const machineLocalHostname = hostnameValue.endsWith(".local")
+  ? hostnameValue
+  : `${hostnameValue}.local`;
+const origin = `http://${machineLocalHostname}:${port}`;
 const output = "work/phase-7-3";
 await mkdir(output, { recursive: true });
 const waitUntil = async (check, message) => {
@@ -22,7 +27,7 @@ const waitUntil = async (check, message) => {
 function start(agent) {
   const child = spawn(
     process.execPath,
-    ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", `${port}`],
+    ["node_modules/vite/bin/vite.js", "--host", "0.0.0.0", "--port", `${port}`],
     {
       env: {
         ...process.env,
@@ -48,7 +53,7 @@ async function stop(server) {
   await exited;
 }
 let server = start(true);
-let browser, client, normal;
+let browser, client, normal, smokePage;
 try {
   await waitUntil(
     () => /Agent session: (.+session.json)/.test(server.text()) && server.text().includes("Local:"),
@@ -60,6 +65,13 @@ try {
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  smokePage = page;
+  page.on("console", (entry) => {
+    if (entry.type() === "error") console.error("Browser console:", entry.text());
+  });
+  page.on("requestfailed", (request) =>
+    console.error("Browser request:", request.url(), request.failure()?.errorText),
+  );
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   assert.equal(
@@ -358,6 +370,188 @@ try {
   assert((await call("get_hierarchy")).ok);
   assert((await call("undo", { expectedRevision: batch.revision })).ok);
   assert.equal((await call("scene_summary")).value.objects, before.value.objects);
+  // Phase 7.5.1: actual holder challenge through published tools/list and browser consent.
+  const holderRevision = (await call("scene_summary")).revision;
+  const holderHistory = await page.locator('.agent-history li[data-outcome="committed"]').count();
+  const nearMM = (actual, expected, tolerance = 1e-9) => {
+    assert.equal(actual.length, expected.length);
+    expected.forEach((value, axis) => {
+      assert(
+        Math.abs(actual[axis] - value) <= tolerance,
+        `${JSON.stringify(actual)} differs from ${JSON.stringify(expected)} mm`,
+      );
+    });
+  };
+  const holderSteps = [
+    {
+      as: "body",
+      command: {
+        type: "primitive.create",
+        unit: "mm",
+        source: { kind: "box", width: 90, height: 20, depth: 40 },
+      },
+    },
+    {
+      command: {
+        type: "object.transform",
+        id: "$body",
+        unit: "mm",
+        transform: { position: [0, 13, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      },
+    },
+    {
+      as: "base",
+      command: {
+        type: "primitive.create",
+        unit: "mm",
+        source: { kind: "box", width: 110, height: 16, depth: 50 },
+      },
+    },
+    {
+      command: {
+        type: "object.transform",
+        id: "$base",
+        unit: "mm",
+        transform: { position: [0, 4, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      },
+    },
+  ];
+  for (const [index, x] of [-24, 0, 24].entries()) {
+    const alias = `slot${index + 1}`;
+    holderSteps.push(
+      {
+        as: alias,
+        command: {
+          type: "primitive.create",
+          unit: "mm",
+          source: { kind: "box", width: 8, height: 22, depth: 14 },
+        },
+      },
+      {
+        command: {
+          type: "object.transform",
+          id: `$${alias}`,
+          unit: "mm",
+          transform: { position: [x, 13, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+        },
+      },
+    );
+  }
+  holderSteps.push(
+    { command: { type: "boolean.create", id: "$body", sourceId: "$base", operation: "union" } },
+    ...[1, 2, 3].map((index) => ({
+      command: {
+        type: "boolean.create",
+        id: "$body",
+        sourceId: `$slot${index}`,
+        operation: "difference",
+      },
+    })),
+  );
+  const holder = await call("propose_changes", {
+    expectedRevision: holderRevision,
+    title: "90 mm three-slot holder with 110 mm base",
+    description:
+      "Create a 90 × 20 × 40 mm editable body, three 8 × 22 × 14 mm cutters at X −24/0/+24 mm, and a 110 × 16 × 50 mm wider base at Y 4 mm. Union the base, subtract each cutter, then inspect evaluated bounds and front/isometric captures.",
+    steps: holderSteps,
+  });
+  assert(holder.ok, JSON.stringify(holder));
+  assert.equal(
+    (await call("scene_summary")).revision,
+    holderRevision,
+    "staging leaves scene unchanged",
+  );
+  assert.equal(
+    (await call("list_objects")).value.length,
+    before.value.objects,
+    "no staged objects appear in editor",
+  );
+  assert.equal(
+    await page.locator('.agent-history li[data-outcome="committed"]').count(),
+    holderHistory,
+  );
+  await page.getByRole("button", { name: "Approve this exact plan", exact: true }).click();
+  const appliedHolder = await call("apply_approved_proposal", { proposalId: holder.value.id });
+  assert(appliedHolder.ok, JSON.stringify(appliedHolder));
+  assert.equal(
+    await page.locator('.agent-history li[data-outcome="committed"]').count(),
+    holderHistory + 1,
+  );
+  assert.equal((await call("scene_summary")).value.objects, before.value.objects + 5);
+  const holderIds = appliedHolder.value.aliases;
+  assert.deepEqual(Object.keys(holderIds).sort(), ["base", "body", "slot1", "slot2", "slot3"]);
+  const bodyObject = await call("get_object", { id: holderIds.body });
+  nearMM(bodyObject.value.dimensionsMM, [90, 20, 40]);
+  const baseObject = await call("get_object", { id: holderIds.base });
+  nearMM(baseObject.value.dimensionsMM, [110, 16, 50]);
+  for (const [index, x] of [-24, 0, 24].entries()) {
+    const cutter = await call("get_object", { id: holderIds[`slot${index + 1}`] });
+    nearMM(cutter.value.dimensionsMM, [8, 22, 14]);
+    nearMM(cutter.value.worldTransform.positionMM, [x, 13, 0]);
+  }
+  const holderBooleans = await call("get_booleans", { id: holderIds.body });
+  assert.deepEqual(
+    holderBooleans.value.map(({ sourceId, operation }) => [sourceId, operation]),
+    [
+      [holderIds.base, "union"],
+      [holderIds.slot1, "difference"],
+      [holderIds.slot2, "difference"],
+      [holderIds.slot3, "difference"],
+    ],
+  );
+  const evaluatedRevision = (await call("scene_summary")).revision;
+  const bounds = await call("get_bounds", { id: holderIds.body });
+  assert(bounds.ok, JSON.stringify(bounds));
+  const evaluated = await call("get_geometry_diagnostics", { id: holderIds.body });
+  assert(evaluated.ok, JSON.stringify(evaluated));
+  assert.equal(
+    evaluated.value.topologyAccuracy,
+    "unsupported",
+    "non-print-part diagnostics report their limit",
+  );
+  let measuredBounds;
+  for (const viewpoint of ["front", "isometric"]) {
+    const preview = await client.callTool({
+      name: "capture_scene_preview",
+      arguments: {
+        objectId: holderIds.body,
+        viewpoint,
+        width: 384,
+        height: 256,
+        expectedRevision: evaluatedRevision,
+      },
+    });
+    assert(preview.structuredContent.ok, JSON.stringify(preview.structuredContent));
+    assert.equal(preview.structuredContent.revision, evaluatedRevision);
+    const image = preview.content.find((block) => block.type === "image");
+    assert.equal(image.mimeType, "image/png");
+    const png = Buffer.from(image.data, "base64");
+    assert.equal(png.readUInt32BE(16), 384);
+    assert.equal(png.readUInt32BE(20), 256);
+    assert.equal(png.length, preview.structuredContent.value.bytes);
+    assert.equal(preview.structuredContent.value.revision, evaluatedRevision);
+    const currentBounds = preview.structuredContent.value.bounds;
+    const scaleToMm = preview.structuredContent.value.millimetresPerModelUnit;
+    const evaluatedBoundsMM = [currentBounds.min, currentBounds.max].map((point) =>
+      point.map((coordinate) => coordinate * scaleToMm),
+    );
+    nearMM(evaluatedBoundsMM[0], [-55, -4, -25], 1e-4);
+    nearMM(evaluatedBoundsMM[1], [55, 23, 25], 1e-4);
+    if (measuredBounds) assert.deepEqual(currentBounds, measuredBounds);
+    measuredBounds = currentBounds;
+    await writeFile(`${output}/holder-${viewpoint}.png`, png);
+  }
+  assert.equal((await call("scene_summary")).revision, evaluatedRevision);
+  const holderUndo = await call("undo", { expectedRevision: evaluatedRevision });
+  assert(holderUndo.ok, JSON.stringify(holderUndo));
+  assert.equal((await call("scene_summary")).value.objects, before.value.objects);
+  assert.equal(
+    await page.locator('.agent-history li[data-outcome="committed"]').count(),
+    holderHistory + 2,
+    "proposal apply and Undo each append a committed activity; Undo does not erase session history",
+  );
+  assert.equal((await call("get_object", { id: holderIds.body })).error.code, "not_found");
+  assert.equal((await call("get_capabilities")).value.limits.layers, 16);
   // Phase 7.2: actual staged desktop authoring, native API reflow, approved attachment edit.
   const enclosureParameters = {
     units: "mm",
@@ -559,6 +753,19 @@ try {
   console.log(
     "PASS: real browser startup, stdio MCP, approval/read-only, live scene, visible box creation/transform/editor row/mm dimensions, update/stale revision, Undo restores original scene, MCP disconnect/ordinary Redo, Vite shutdown/credential cleanup, normal startup, production isolation.",
   );
+} catch (error) {
+  if (smokePage) {
+    console.error(
+      "Agent panel:",
+      await smokePage
+        .locator("#local-agent-panel")
+        .textContent({ timeout: 1000 })
+        .catch(() => "unavailable"),
+    );
+    await smokePage.screenshot({ path: `${output}/smoke-failure.png` }).catch(() => {});
+  }
+  console.error("Agent server:", server.text().slice(-4000));
+  throw error;
 } finally {
   await client?.close();
   await browser?.close();

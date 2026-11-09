@@ -3,15 +3,20 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import packageMetadata from "../package.json" with { type: "json" };
 import { isWrite, validateCall } from "./agent-schemas.mjs";
 
 export async function startAgentBridge({
   origin = "http://127.0.0.1:5173",
   port = 0,
   timeout = 12000,
+  host = "127.0.0.1",
+  allowedHostnames = [new URL(origin).hostname],
 } = {}) {
   const token = randomBytes(32).toString("hex"),
-    browserToken = randomBytes(32).toString("hex");
+    browserToken = randomBytes(32).toString("hex"),
+    sessionId = randomUUID();
+  const buildVersion = packageMetadata.version;
   let approved = false,
     editing = false,
     owner = null,
@@ -33,12 +38,20 @@ export async function startAgentBridge({
       res.end(JSON.stringify(value));
     };
     try {
+      let requestOrigin;
+      try {
+        requestOrigin = new URL(req.headers.origin);
+      } catch {
+        requestOrigin = null;
+      }
       if (
-        req.headers.host !== `127.0.0.1:${server.address().port}` ||
-        req.headers.origin !== origin
+        requestOrigin?.protocol !== "http:" ||
+        requestOrigin.port !== new URL(origin).port ||
+        !allowedHostnames.includes(requestOrigin.hostname) ||
+        req.headers.host !== `${requestOrigin.hostname}:${server.address().port}`
       )
         return send(403, fail("Wrong host or origin."));
-      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Origin", requestOrigin.origin);
       res.setHeader("Vary", "Origin");
       if (req.method === "OPTIONS") {
         res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
@@ -103,10 +116,15 @@ export async function startAgentBridge({
         if (req.url === "/approve") {
           if (owner && owner !== data.client)
             return send(409, fail("Another editor is connected. Revoke it first."));
+          const newConnection = !approved || owner !== data.client;
           owner = data.client;
           approved = true;
           editing = data.editing === true;
           heartbeat = Date.now();
+          if (newConnection)
+            console.info(
+              `[centra-agent] Browser connected from ${req.headers.origin ?? "unknown origin"} (${editing ? "editing enabled" : "read-only"}).`,
+            );
           if (!editing && pending && isWrite(pending.job.name))
             revoke("Editing permission revoked.");
           return send(200, { approved, editing });
@@ -177,18 +195,24 @@ export async function startAgentBridge({
   server.headersTimeout = 10000;
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", resolve);
+    server.listen(port, host, resolve);
   });
-  const url = `http://127.0.0.1:${server.address().port}`;
+  const url = `http://${new URL(origin).hostname}:${server.address().port}`;
   const directory = await mkdtemp(join(tmpdir(), "centra-agent-"));
   const sessionFile = join(directory, "session.json");
-  await writeFile(sessionFile, JSON.stringify({ url, token, origin }), { mode: 0o600 });
+  await writeFile(sessionFile, JSON.stringify({ url, token, origin, sessionId, buildVersion }), {
+    mode: 0o600,
+  });
   const watchdog = setInterval(() => {
     if (approved && Date.now() - heartbeat > 2500) revoke("Editor disconnected.");
   }, 500);
   let closing;
   return {
     url,
+    urlForHostname(name) {
+      if (!allowedHostnames.includes(name)) throw new Error("Host is not allowed.");
+      return `http://${name}:${server.address().port}`;
+    },
     token,
     browserToken,
     sessionFile,

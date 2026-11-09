@@ -1,4 +1,5 @@
 import type { IndependentLayers } from "./independent-layers";
+import { newId } from "./layers";
 import { ModellingAPI, type ObjectMetadata } from "./modelling-api";
 
 export type AgentChange = {
@@ -86,7 +87,7 @@ export function describeAgentResult(
       if (!next.has(o.id)) objects.push({ id: o.id, name: o.name, status: "deleted" });
   }
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     time: Date.now(),
     description: (title || actions[name] || name.replaceAll("_", " ")).slice(0, 160),
     outcome: r?.ok ? "committed" : "failed",

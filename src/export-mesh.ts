@@ -1,3 +1,4 @@
+import { simplifyPlanarPatches } from "./planar-patches";
 import type { VolumeTransform } from "./transform";
 export type ExportQuality = "fast" | "standard" | "high";
 export const EXPORT_PRESETS = Object.freeze({
@@ -50,6 +51,8 @@ export type ExportMeshStats = {
   flipped: number;
   planarRemoved: number;
   maxPlanarDeviation: number;
+  /** Conservative source-coordinate deviation bound for whole-region reconstruction only. */
+  planarPatchDeviationBound: number;
   boundaryEdges: number;
   nonManifoldEdges: number;
   inconsistentEdges: number;
@@ -138,6 +141,7 @@ export async function optimiseExportMesh(
       flipped: 0,
       planarRemoved: 0,
       maxPlanarDeviation: 0,
+      planarPatchDeviationBound: 0,
       boundaryEdges: 0,
       nonManifoldEdges: 0,
       inconsistentEdges: 0,
@@ -239,9 +243,19 @@ export async function optimiseExportMesh(
   let triangles = options.preserveWinding
     ? indices
     : await orientMesh(indices, positions, normals, stats, work);
-  if (quality === "high" && !painted)
+  if (quality === "high" && !painted) {
+    if (!options.preserveWinding) {
+      const patches = await simplifyPlanarPatches(positions, normals, triangles, work, {
+        step: source.step,
+        transform: source.transform,
+      });
+      triangles = patches.triangles;
+      stats.planarRemoved += patches.removed;
+      stats.planarPatchDeviationBound = patches.maxDeviation;
+    }
     for (let pass = 0; pass < 3; pass++)
       triangles = await simplifyPlanar(positions, normals, triangles, source.step, stats, work);
+  }
   // Compact unused vertices and normalise a single consistent normal per welded position.
   const remap = new Int32Array(positions.length / 3);
   remap.fill(-1);

@@ -78,3 +78,27 @@ validation refusal; the final saved-file test uses the same updated preparation
 and STL encoder and completed successfully. No claim that the final browser worker
 retry was observed. Regression coverage includes >300k exact topology and sorting
 cancellation, plus refusal at 600,001 triangles.
+
+## Phase 7.5.2 sizing update
+
+Desktop export now starts at explicit **Keep actual project dimensions (1:1)**.
+**Scale longest side to target** starts at 200 mm; 100 mm remains deliberate.
+Both STL (mm) and GLB (m) honour that selection. Exact evaluated XYZ bounds,
+export XYZ dimensions, scale and quality appear before encoding. Historical
+100 mm observations above describe the previous selected target, not current default.
+See [export correctness](PHASE_7_5_2_EXPORT_CORRECTNESS.md) for geometry findings,
+reference normalisation, assembly behaviour and regression coverage.
+
+## Optional 256³ and tighter export bounds — 2026-11-09
+
+The export panel now selects a maximum of192³ (default) or256³ (extra detail).
+Staged analytic exports use exact primitive bounds, omit provably empty dense
+layers from layout and use analytic primitive feature spacing. Sparse bounds stay
+conservative. Preview/Bake/native resolutions remain unchanged.
+
+256³ needs128 MiB for scalar/scratch alone. Existing memory budgets,64M stage/256M
+total work and final quality/600k STL limits still apply. Intermediate meshing
+remains bounded at1M triangles for both export and preview. Denser scenes
+can refuse final admission and are never silently resampled coarser. The historical
+house acceptance above used the old padded layout; with tighter bounds its denser
+output now hits the unchanged intermediate meshing ceiling. See the [current findings](PHASE_7_5_2_EXPORT_CORRECTNESS.md).

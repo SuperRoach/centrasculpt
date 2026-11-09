@@ -1,3 +1,270 @@
+# Handoff — export correctness/detail and agent workflows — 2026-11-09
+
+**Ready for software handoff.** User authorised commit/push for the complete current
+checkout, including the preserved Phase 7.5.1 MCP workflow/hostname work alongside
+Phase 7.5.2 export changes. Earlier in-progress or restricted-run entries below
+are historical and superseded by this verification.
+
+Delivered: explicit 1:1 / 200 mm target sizing for STL/GLB, evaluated dimensions/scale
+summary, tighter export bounds, 192³ default / 256³ optional staged export, whole
+planar-region High simplification including bounded oblique planes, physical
+patch-deviation reporting, clear failure/interruption causes and exports surviving
+focus changes. Source/native bytes, Undo, output units and admission guards remain.
+
+Final `npm run check` passed format/lint, strict TypeScript, production build and
+**1,667/1,667 tests**, no failures/skips/cancellations (81.22 s test wall). Agent
+focused tests 19/19 passed. Final browser checks all passed with installed Chromium:
+- Export worker STL/GLB sizing, axis/oblique cube reduction, physical deviation
+  report, checked topology, unchanged Undo and injected failure status.
+- High export survives blur/simulated hidden state; Cancel/Escape and application
+  interruptions remain distinct.
+- HTTP machine-hostname MCP approval/read-only/editing, official stdio tool discovery,
+  proposals, exact holder Boolean graph, scoped front/isometric captures and bounds,
+  one-Undo scene restoration, restart/shutdown and production isolation. Visually
+  inspected the fresh holder isometric PNG.
+
+Handoff review exposed a real HTTP-LAN UUID compatibility issue: browser
+`crypto.randomUUID` is secure-context-only, while three agent ID callsites lacked
+the existing `newId` fallback. They now use cryptographic `getRandomValues` through
+that shared helper; server authentication/approval rules are unchanged. The browser
+holder fixture now respects the 8:1 aspect limit (110 × 16 × 50 base at Y 4), allows only
+numeric float noise in mm bounds, and correctly expects apply/Undo to append to
+session activity. No product limits were relaxed to make the fixture pass.
+
+Evidence: `/tmp/centra-handoff-final-check.log`,
+`/tmp/centra-handoff-lan-focused.log`, `/tmp/centra-handoff-agent-browser.log`,
+`/tmp/centra-handoff-export-browser.log`, `/tmp/centra-handoff-lifecycle-browser.log`.
+Existing lint warnings/bundle advisory remain. Generated work/meshes, user projects
+and recovery data are ignored and excluded from Git. Connected editor was not
+reloaded or edited during handoff checks. Remote was fetched; main matched origin
+before the handoff commit. No force push or merge is needed.
+
+Remaining acceptance: Quest/OS-freeze and memory/RSS profiling, broader physical
+fit/print checks and client-cached tool-list acceptance. A denser detailed-house
+fixture can hit the unchanged intermediate triangle guard; no silent resolution
+downgrade. Curved feature-preserving decimation, performance improvements,
+triangle estimates and modal redesign remain separate future work.
+
+# Arbitrary-plane High export — 2026-11-09
+
+Implemented connected oblique-region reconstruction with a single fixed-plane
+validation, bounded Float32 round-off allowance, strict local/transformed bounds,
+unchanged retained coordinates and existing hole/seam/topology protections.
+Existing axis-aligned/local-pass tolerances, quality/admission, source and lifecycle
+guards stay active. Whole-region deviation stats and physical STL report bound are
+separate from SDF sampling/local cleanup. See
+[implementation and evidence](ARBITRARY_PLANE_EXPORT.md).
+
+Rotated holder reconstruction: axis-only reference88,396/127,976 → arbitrary
+83,882/116,276 triangles at192³/256³, unchanged checked bounds/topology, vertex
+coordinates, pocket probes and native bytes/Undo. Browser rotated cube169,480 →
+92,440, matching bounds/Undo and valid checked report. Focused encoding/quality/
+patch tests27/27 passed, including physical-MM reporting. Browser algorithm pass
+preceded the last report-field addition; no later browser result is implied.
+
+The elevated full-check request was declined. Full sandbox `npm run check` passed
+formatting/lint, strict TypeScript and production build; **1,662/1,666 tests passed**
+(79.31 s wall), with four connector tests blocked by `listen EPERM 127.0.0.1`.
+Failures are three `agent-access` local-bridge cases and one `agent-preview` binary
+route server case. No geometry tests failed; no failures are silently skipped.
+Evidence: `/tmp/oblique-sandbox-check.log`, `/tmp/oblique-final-focused.log`.
+Final format/whitespace checks passed. No elevated retry was attempted.
+No approval retry/bypass, commit/push, connected-editor change or recovery write.
+
+# Confirmed unintended export cancellation fixed — 2026-11-09
+
+Disposable browser reproduced focus-loss cancellation without Cancel. Shared
+lifecycle handler aborted export for blur/hidden events; outcome formatter labelled
+any aborted signal as user-requested. Export now continues through those events,
+while interactive edit/Bake/library/recovery handling is unchanged. Navigation,
+freeze, application errors and disposal still abort with explicit cause; only
+Cancel/Escape carry the user reason. Actual failures win cancellation races.
+
+Fixed real-browser High unified export survives blur and simulated hidden-state
+events, retains Undo and downloads; explicit Cancel/Escape and application-error
+classification pass. Source guards, native format, dimensions and limits unchanged.
+Connected user project was inspected read-only; no reload or edits performed.
+Logs: `/tmp/export-lifecycle-baseline.log`, `/tmp/export-lifecycle-browser.log`.
+Final `npm run check` passed formatting/lint, strict TypeScript, production build
+and **1,663/1,663 tests**, zero failures/skips/cancellations (89.06 s test wall).
+Focused outcome/recovery tests17/17 passed. Evidence: `/tmp/export-lifecycle-check.log`,
+`/tmp/export-lifecycle-focused.log`. Whitespace check passed.
+No commit or push; prior work preserved.
+
+# Whole planar-region High export — 2026-11-09
+
+Implemented conservative exact axis-aligned patch reconstruction in High, with
+hole loops, boundary restoration and edge/area validation. Crease normal bands,
+paint, unsupported regions, independent sources and all admission limits remain.
+No vertex displacement, source Bake, native-format change or additional export UI.
+See [implementation and evidence](PLANAR_EXPORT_SIMPLIFICATION.md).
+
+Holder reconstruction: previous High87,204/125,816 triangles at192³/256³ becomes
+79,566/110,420 (8.76%/12.24% reduction). Checked encoded dimensions, pocket depths,
+topology, original vertices, native bytes and Undo preserved. Complete optimiser
+stage0.78/1.04 s in single Node runs, not full-export/browser/Quest guarantees.
+
+Focused quality/staged/resolution/patch regressions31/31 passed; the new patch
+fixtures cover concavity, holes, seams, paint, cancellation, malformed inputs and
+real STL/GLB geometry. Final `npm run check` passed formatting/lint, strict
+TypeScript, production build and **1,662/1,662 tests**, zero failures/skips/
+cancellations (81.98 s test wall). Real browser worker cube exports retained
+300 mm bounds and Undo, Fast29,292 →High18,132 triangles (38.10% reduction).
+Existing sizing/GLB/error-status browser checks passed. Logs:
+`/tmp/planar-patches-final-check.log`, `/tmp/planar-patches-browser.log`.
+Whitespace check passed. Existing
+uncommitted work and user project/recovery data preserved. No commit or push.
+
+# Planar efficiency benchmark — 2026-11-09
+
+Benchmarked current Fast/High and additional global planar passes on a disposable
+holder reconstruction. At 192³:89,018 /87,204 /81,954 triangles; at 256³:129,168
+/125,816 /115,152. Candidate reduces High by6.02% /8.48%, with7.27 /10.66 s global
+compaction in single Node observations. Encoded dimensions, checked topology,
+original vertex coordinates, pocket-depth rays and native bytes/Undo are preserved.
+
+Current High already runs three global planar one-ring passes after exact welding;
+chunk-only preparation was not the complete explanation. Extra passes give modest
+benefit, so no application optimisation change was made. Whole-planar-patch boundary/
+hole reconstruction needs a separate measured implementation. See
+[benchmark evidence](PLANAR_EXPORT_BENCHMARK.md). Full `npm run check` passed
+formatting/lint, strict TypeScript, build and **1,658/1,658 tests**, zero failures,
+skips or cancellations (84.24 s test wall); log `/tmp/planar-efficiency-check.log`.
+Whitespace check passed. No application changes, commits, pushes or user-project writes.
+
+# Clear export failure status — 2026-11-09
+
+Export failures now say `Export failed during <stage>: <underlying reason>` with
+error styling and an alert role. Requested cancellation is separate, and an actual
+error wins over a simultaneous Cancel signal. Last progress stage is retained;
+source-change messages remain explicit. Earlier successful Fast retry did not prove
+the cause of the user's separate planar-optimisation failure; that cause is unconfirmed.
+Geometry, limits, native bytes and Undo behaviour are unchanged.
+
+Final `npm run check` passed formatting/lint, strict TypeScript, build and
+**1,658/1,658 tests**, zero failures/skips/cancellations (84.62 s test wall).
+Disposable browser worker fault passed actual stage/cause/alert UI assertions and
+existing STL/GLB sizing checks. The first browser attempt missed Vite's worker query
+string; the corrected matcher passed. Evidence: `/tmp/export-failure-check.log`,
+`/tmp/export-failure-browser.log`, `work/phase-7-5-2/browser-failure.png`.
+No commit/push or user project/recovery write. Shortened export sizing labels also
+passed the preceding 1,656-test full check (`/tmp/export-sizing-wording-check.log`).
+
+# Tighter export bounds and optional 256³ — 2026-11-09
+
+Implemented export-only exact primitive bounds and empty dense-layer exclusion,
+with conservative sparse occupancy. Analytic primitive feature spacing no longer
+inherits padded cache resolution. Export panel offers 192³ default / 256³ optional
+maximum for evaluated Boolean STL/GLB and printable-part STL, with actual evaluated
+resolution in the summary. Viewport/Bake/native schema and editable resolutions
+remain unchanged. No user project or recovery write, commit or push.
+
+Production-module holder reconstruction: old 192³ spacing 3.373 mm; new 192³ 2.406 mm;
+new 256³ 1.793 mm. New STLs retain 450 × 59 × 70 mm and zero checked topology errors;
+89,018/129,168 triangles. This replay uses queried source dimensions/poses and
+assumes named slot cutters subtract; it is not native-byte-identical user data.
+
+All existing admission limits are retained: 64M/stage, 256M total sample work,
+1M intermediate triangles, selected memory budget, quality ceilings and 600k STL
+validation. A trial larger intermediate allowance was removed because the detailed
+house still exceeded final admission. With tighter sampling that fixture now
+explicitly refuses at the original intermediate guard, preserving native bytes/Undo;
+it is not represented as a successful export. This is a documented density trade-off.
+
+Focused full 256³ tests pass STL topology/dimensions, GLB metre reload, unchanged
+native bytes/Undo, memory/work refusal and cancellation. Browser default 192³ and
+selected 256³ Unified Boolean path, summary and actual STL/GLB downloads passed;
+fresh screenshot inspected. Final `npm run check` passed formatting, lint, strict
+TypeScript, production build and **1,656/1,656 tests**, zero failures/skips/cancellations
+(87.79 s test wall). Evidence: `/tmp/export256-final-check.log`,
+`/tmp/export256-browser.log`, `/tmp/export256-resolution-final.log` and ignored
+`work/phase-7-5-2/browser-summary.png`. Whitespace check passed.
+See PHASE_7_5_2_EXPORT_CORRECTNESS.md for implementation/evidence and limits.
+
+# Export 256³ feasibility investigation — 2026-11-09
+
+Read-only holder dimensions replayed in disposable experimental modules. Valid
+192³/256³ STLs retained dimensions/topology; spacing improved 3.373→2.513 mm,
+tracked derived storage 61.10→140.78 MiB, single-run time 10.18→20.45 s.
+Confirmed wasted layout space from empty dense layers and primitive cache bounds;
+experimental tighter bounds reached 2.406 mm at192³ and 2.174 mm at212³.
+256 export-only cap is feasible with allocation/guard changes and unchanged safety
+admission; not implemented in application. Explicit rounding remains separate.
+Native project revision unchanged. Dimension replay assumes named cutters subtract,
+not a native-byte clone. See PHASE_7_5_2_EXPORT_CORRECTNESS.md for evidence and limits.
+Only ignored experimental code and documentation changed in this follow-up; no
+application check rerun is claimed beyond the preceding 1,654-test implementation run.
+
+# Phase 7.5.2 — Export scale and geometry correctness — 2026-11-09
+
+Confirmed sizing root cause: unchecked physical-scale control plus 100 mm STL
+target silently overrode calibrated dimensions. Explicit session sizing now starts
+at 1:1, target mode starts at 200 mm, and both STL/GLB honour the selected scale.
+Measured evaluated scope/export bounds, scale and quality appear before encoding.
+Native schema, geometry and Undo are untouched by export. Printable-part STL stays
+1:1; target mode explicitly directs whole-assembly scaling to Unified Boolean.
+
+No confirmed raw-primitive export regression: shared SDF evaluator uses analytic
+live primitives and committed sculpt fields, ordered hard CSG and transformed arrays.
+Sharp CSG is not implicit clay blending; sampling and shading can facet surfaces.
+Specific original-holder appearance remains unresolved without its source file.
+See [investigation and verification](PHASE_7_5_2_EXPORT_CORRECTNESS.md).
+
+Initial baseline formatting/lint/types/build passed; four local-listen tests failed
+with sandbox EPERM. Final unrestricted `npm run check` passed formatting, lint, strict TypeScript,
+production build and **1,654/1,654 tests**, zero failures/skips/cancellations
+(152.49 s test wall). Mixed organic/three-slot holder passes evaluated-field,
+actual STL hole, GLB reload/normal and unchanged native-byte/Undo assertions.
+Real browser controls/workers passed selected and Unified Boolean 1:1, 200/100 mm
+STL coordinate checks and independent GLB metre bounds. Screenshot inspected.
+Evidence: `/tmp/phase752-final-check.log`, `/tmp/phase752-browser.log`,
+`work/phase-7-5-2/browser-summary.png` and downloaded mesh files. Existing uncommitted Phase 7.5.1 work preserved.
+No commit, push, project/recovery write or modal redesign.
+
+# Phase 7.5.1 — Agent Workflow & Tool Discoverability — 2026-11-08
+
+### 1. What changed
+
+Initial audit found the requested editing, batch/proposal, Boolean, array and
+preview tools in the official stdio schema inventory. It also found that the MCP
+adapter's hard-coded `get_capabilities.featureAvailability.scenePreview` incorrectly
+said whole-scene only, while `capture_scene_preview` published `objectId` and
+`partId`. Replaced the duplicate availability map with a shared registry and added
+build/session identity plus explicit refresh/reconnect guidance. Task-oriented tool
+descriptions and a canonical holder guide document separate browser approval,
+aliases, exact mm transforms, one-Undo batches and post-edit inspection.
+
+### 2. Architectural decisions
+
+`tools/list` schemas remain generated from the existing strict Zod registry; no
+duplicate modelling tools were added. `get_capabilities` exposes names from that
+same live registry and a random session ID/build version, never credentials. MCP
+stdio operation errors keep structured codes and advise inspection before retrying
+uncertain writes. The browser bridge, proposal approval, revision checks, permissions,
+transaction handling and production isolation are unchanged. Browser approval is
+simulated only by a separate explicit browser click in the controlled E2E harness.
+
+### 3. Build and test results
+
+Verification in progress.
+
+### 4. Benchmarks and regressions
+
+Verification in progress.
+
+### 5. Known limitations and blockers
+
+Repository-side tests can inspect official stdio `tools/list`; they cannot inspect a
+separate Codex or Cursor client's cached/filtered tool inventory. Refresh/reconnect
+guidance and build/session identity now make that distinction diagnosable. Quest
+hardware acceptance remains separate.
+
+### 6. Handover
+
+Run official stdio schema/capability parity tests, then the installed-Chromium real
+browser holder challenge and full `npm run check`. Record captures under ignored
+`work/phase-7-3/`; do not commit/push. Export UI and geometry engine are out of scope.
+
 # Outline against studio background — 2026-11-08
 
 Confirmed and fixed missing silhouette edges over grey: the display-only studio
@@ -1251,7 +1518,7 @@ Try the compact controls locally; hover the indicator for connection details and
 
 ### 1. What changed
 
-Implemented an optional development-only stdio MCP server using the official SDK and strict Zod tool schemas. Codex/Cursor can inspect the approved active browser scene, list/get stable objects and mm dimensions, create/update basic primitives, transform objects, create Phase 7.1 enclosures, dry-run supported batches, apply one-action transactions and Undo. `npm run dev` starts ordinary Vite without agent access; `npm run dev:agent` explicitly starts loopback Vite and a temporary authenticated loopback browser bridge. The MCP client starts the separate stdio process using the printed session-file path. A browser panel requires connection approval, defaults to read-only, and offers explicit editing permission and revocation. Full setup/tool contracts/errors/removal: [local MCP guide](PHASE_7_3_LOCAL_MCP.md).
+Implemented an optional development-only stdio MCP server using the official SDK and strict Zod tool schemas. Codex/Cursor can inspect the approved active browser scene, list/get stable objects and mm dimensions, create/update basic primitives, transform objects, create Phase 7.1 enclosures, dry-run supported batches, apply one-action transactions and Undo. `npm run dev` starts ordinary Vite without agent access; `npm run dev:agent` starts Vite and a temporary authenticated browser bridge reachable by the machine's `.local` hostname. The MCP client starts the separate stdio process using the printed session-file path. A browser panel requires connection approval, defaults to read-only, and offers explicit editing permission and revocation. Full setup/tool contracts/errors/removal: [local MCP guide](PHASE_7_3_LOCAL_MCP.md).
 
 Reviewed the current Phase 7.0 command/query/transaction implementation, Phase 7.1 recipes, package scripts, Vite configuration and this status before editing. Phase 7.2 face-relative cutouts/mounting/named constraints remain unimplemented. Active checkout `/Users/brettjames/development/vrappPOC`, starting HEAD `b7a7b5b`; initial Git status was clean. The Documents workspace is empty. No commit, push or merge performed.
 
@@ -1259,7 +1526,7 @@ Reviewed the current Phase 7.0 command/query/transaction implementation, Phase 7
 
 Transport and permissions live in removable `scripts/agent-*.mjs`, `src/agent-access.ts` and `src/agent-browser.ts`; the modelling engine, commands, history and codecs are unchanged. Browser writes call existing `ModellingAPI.batch` / `api.enclosure.create`; Undo calls the authoritative editor history. The adapter resolves the current editor on every request, including after native project replacement. Existing revisions, leases, admission, cooperative cancellation, locks/visibility, calibration and history remain authoritative. Supported batches are deliberately limited to primitive create/update and object transform. Dry-run is source-cache staging with provisional IDs and currently requires the existing API's editing grant. There is no new agent planner or final mesh certification.
 
-The bridge binds only `127.0.0.1`, validates exact Host and configured local Origin, and uses distinct random 256-bit browser/MCP bearer credentials. MCP credentials are in a private temporary directory / mode-0600 session file; the browser credential comes from a dev-only virtual module. Approval/write grants are memory-only. One approved browser tab, one in-flight operation, 64 KiB bodies, 64-command batches, 10-second browser deadline, 12-second bridge timeout and 15-second MCP HTTP timeout. Heartbeat expires after 2.5 seconds. Revocation/disconnect/timeout drops queued work and aborts cooperative operations; expired results cannot execute new work. Production replaces the agent enable constant with false, eliminating the browser module. SDK/Zod/Playwright are development dependencies. No agent metadata or credentials are stored in native `.form` files, no manual-save tool is exposed, and normal recovery/autosave follows ordinary editor changes.
+The bridge listens on all interfaces for LAN access but validates a current machine hostname or private LAN IP and the matching browser Origin, and uses distinct random 256-bit browser/MCP bearer credentials. MCP credentials are in a private temporary directory / mode-0600 session file; the browser credential comes from a dev-only virtual module. Approval/write grants are memory-only. One approved browser tab, one in-flight operation, 64 KiB bodies, 64-command batches, 10-second browser deadline, 12-second bridge timeout and 15-second MCP HTTP timeout. Heartbeat expires after 2.5 seconds. Revocation/disconnect/timeout drops queued work and aborts cooperative operations; expired results cannot execute new work. Production replaces the agent enable constant with false, eliminating the browser module. SDK/Zod/Playwright are development dependencies. No agent metadata or credentials are stored in native `.form` files, no manual-save tool is exposed, and normal recovery/autosave follows ordinary editor changes.
 
 ### 3. Build and test results
 

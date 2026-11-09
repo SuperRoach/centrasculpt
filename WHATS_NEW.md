@@ -1,3 +1,41 @@
+### Simplify tilted flat surfaces (2026-11-09)
+
+- High export now simplifies eligible planar regions at arbitrary orientations, retaining hole boundaries, seam vertices and local/world bounds.
+- A small bounded Float32 round-off allowance is reported separately from sampling error. Curved regions, crease transitions and paint remain protected.
+
+### Exports continue when you switch windows (2026-11-09)
+
+- Switching apps or hiding the tab no longer cancels an export. Cancel and Escape still stop it deliberately.
+- Automatic interruptions show their cause and are no longer labelled as a user cancellation.
+
+### Fewer triangles on flat surfaces (2026-11-09)
+
+- High-quality exports now simplify whole exact planar regions across mesh chunks, preserving hole boundaries, seams and sharp edges.
+- Painted surfaces and curved detail retain their existing geometry. Fast and Standard are unchanged.
+
+### Clearer export failures (2026-11-09)
+
+- Failed exports now say **Export failed**, show the processing stage and underlying reason, and announce an error. Requested cancellation is labelled separately; real failures are retained even if Cancel is pressed at the same time.
+
+### More detailed Boolean exports (2026-11-09)
+
+- Boolean exports use tighter primitive bounds and ignore empty dense layers when choosing the sampling area.
+- Choose **Default · up to 192³** or **Extra detail · up to 256³** for Boolean and printable-part exports. The summary reports the actual evaluated resolution.
+- Dimensions, intentional sharp edges and clearances are preserved. Denser results still need to fit the selected memory and final triangle limits.
+
+### Export sizing and correctness — Phase 7.5.2 (2026-11-09)
+
+- Export sizing starts at explicit 1:1 project dimensions. Casual target mode starts at 200 mm; deliberate 100 mm remains available.
+- STL and GLB share sizing intent, with measured scope/export dimensions, scale and quality shown before encoding.
+- Reference STL normalisation is labelled as display sizing. Hard Boolean edges remain intentional; no automatic smoothing or clearance changes.
+
+### Easier local-agent tool discovery (2026-11-08)
+
+- Machine-hostname HTTP connections now use the existing cryptographic UUID fallback for agent client, proposal and activity IDs.
+
+- `get_capabilities` now reports the same scoped-preview support published in MCP `tools/list`, plus the adapter build and current session identity with reconnect guidance.
+- A new holder workflow example shows exact dimensions/transforms, three editable slot cutters, Booleans, browser-approved proposals, evaluated bounds, scoped previews and one Undo.
+
 ### Tidier agent activity (2026-11-08)
 
 - Recent changes places each action and its time on one row. New entries fade in briefly; existing entries stay steady, with reduced-motion preferences respected.

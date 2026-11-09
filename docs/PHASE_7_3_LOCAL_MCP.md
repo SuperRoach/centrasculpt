@@ -9,10 +9,13 @@ patterns and named frames; see [feature tools and limits](PHASE_7_2_FEATURES.md)
 
 1. Run `npm install` in the repository (Node 22+ recommended).
 2. Normal editing: `npm run dev`. No bridge or MCP process starts.
-3. Agent editing: `npm run dev:agent`. This starts Vite on **127.0.0.1:5173** and a
-   second loopback-only bridge on an OS-assigned port. If 5173 is already occupied,
+3. Agent editing: `npm run dev:agent`. This starts Vite on **0.0.0.0:5173** and a
+   second bridge on an OS-assigned port, reachable through the machine's `.local`
+   hostname or its private LAN IP; `localhost` and `127.0.0.1` also work on the Mac itself.
+   Both LAN addresses are available to devices on your local network. If 5173 is already occupied,
    stop that server yourself or use `npm run dev:agent -- --port 5197`. The exact
-   matching browser origin is printed. `localhost`, HTTPS and LAN addresses do not match.
+   matching browser origin is printed. If using the LAN IP, use the same IP for the
+   editor page; HTTPS and other machines' addresses do not match the agent origin.
 4. Configure the MCP client once with the adapter script path below. The server discovers
    the current session automatically through ignored `work/agent-session.json`.
    Credentials still rotate on every startup; no session path needs copying.
@@ -31,6 +34,8 @@ Only one browser tab owns the bridge at a time. Revoke the original tab before
 approving another. Multiple MCP clients share the one approved session; this POC
 does not offer separate identities or grants per client. Only one request is admitted
 at a time. This is local developer access, not an internet or multi-user security boundary.
+The development editor and temporary bridge are reachable by devices on the local
+network. Approve only a browser session you control and stop the server when finished.
 
 ## Codex
 
@@ -94,6 +99,14 @@ and `structuredContent`: `{ok:true, revision, value}` or
 | `apply_changes` | `{steps:[{command, as?:alias}]}`; one logical Undo transaction |
 | `undo` | no additional fields; undoes the editor's last action, including user actions |
 
+For the canonical read → batch/proposal → browser approval → apply → bounds,
+diagnostics and scoped-capture workflow, see the [Phase 7.5.1 agent guide](PHASE_7_5_1_AGENT_WORKFLOWS.md).
+The guide includes the automated 90 × 40 × 20 mm holder body, three slot cutters
+and wider-base example. `tools/list` is the executable schema source; call
+`get_capabilities` after connecting to compare its tool inventory, build and
+session identity. If these disagree with the MCP panel, refresh/restart the
+client's MCP connection. Codex/Cursor cache behavior is client-owned.
+
 `unit` is `mm`, `cm` or `in`. `source` is a strict union:
 
 ```json
@@ -156,9 +169,18 @@ the same revision-checked transaction. Rotate `by` composes a quaternion in worl
 For a multi-step single Undo transaction, use `apply_changes` with full `object.transform`
 commands.
 
+`apply_changes` accepts strict commands for primitive creation/update, exact
+world transforms, Boolean modifiers, linear/radial arrays, hierarchy and parts.
+Use `as` aliases for created IDs and `$alias` references for dependent commands.
+`propose_changes` stages this same supported command batch for separate approval
+in the active browser. Proposal application cannot approve itself and produces
+one Undo entry. `propose_enclosure` is a separate standalone recipe, not a nested
+batch operation.
+
 ## Boundaries and errors
 
-- The HTTP bridge binds **only 127.0.0.1** and verifies exact Host and configured
+- The HTTP bridge verifies a current machine hostname or private LAN IP and the matching
+  configured
   browser Origin. It requires distinct random 256-bit browser and MCP bearer tokens.
   The browser token is delivered by a dev-only virtual module; MCP credentials are
   written only to a private temporary directory with a mode-0600 session file.
@@ -386,7 +408,8 @@ Full guide: [Phase 7.4.1 feedback](PHASE_7_4_1_AGENT_FEEDBACK.md).
 Read-only `enclosure_anchors`, `list_enclosure_features`, `get_enclosure_feature`
 and standalone `set_enclosure_feature` / `remove_enclosure_feature` use the shared
 typed recipe. `propose_enclosure` accepts `feature-set` / `feature-remove` recipes
-with separate browser consent. Strict schemas, grants and loopback policy remain.
+with separate browser consent. Strict schemas and grants remain; the local bridge is
+available through the machine's `.local` hostname on the LAN.
 Recipes stay outside mixed command batches. [Exact contracts](PHASE_7_2_FEATURES.md).
 
 ## Phase 7.4.2 visual inspection — 2026-11-07

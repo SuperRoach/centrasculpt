@@ -1,10 +1,15 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { commandTools, tools } from "./agent-schemas.mjs";
+import { capabilityRegistry, commandTools, tools } from "./agent-schemas.mjs";
 import { readSession } from "./agent-session.mjs";
 
 const sessionPath = process.argv[2];
 let lastSession;
+const { version: buildVersion } = JSON.parse(
+  await readFile(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+);
 const post = async (path, body, signal) => {
   const session = path === "/disconnect" ? lastSession : await readSession(sessionPath);
   if (!session) return;
@@ -20,7 +25,7 @@ const post = async (path, body, signal) => {
     signal,
   });
 };
-const server = new McpServer({ name: "centra-sculpt-local", version: "0.1.0" });
+const server = new McpServer({ name: "centra-sculpt-local", version: buildVersion });
 for (const [name, tool] of Object.entries(tools)) {
   server.registerTool(
     name,
@@ -53,39 +58,29 @@ for (const [name, tool] of Object.entries(tools)) {
             reader.releaseLock();
           }
         } else result = await response.json();
-        if (name === "get_capabilities" && result.ok)
+        if (name === "get_capabilities" && result.ok) {
+          const session = await readSession(sessionPath);
           Object.assign(result.value, {
             tools: Object.keys(tools),
             batchCommandTypes: Object.values(commandTools),
-            featureAvailability: {
-              ellipsoids: true,
-              taperedCylinders: true,
-              cones: "canonical cylinder preset with zero topDiameter",
-              capsules: true,
-              tori: true,
-              pyramids: true,
-              primitiveDimensionScaling: true,
-              booleans: true,
-              arrays: true,
-              hierarchy: true,
-              printableParts: true,
-              enclosures: true,
-              evaluatedDiagnostics: true,
-              scenePreview: {
-                scope: "whole-visible-model",
-                pixels: 262144,
-                maxEdge: 512,
-                maxPngBytes: 524288,
-                requiresReadyDisplay: true,
-              },
+            featureAvailability: capabilityRegistry,
+            adapter: {
+              name: "centra-sculpt-local",
+              version: buildVersion,
+              buildVersion: session.buildVersion ?? buildVersion,
+              sessionId: session.sessionId ?? "unknown",
+              reconnect:
+                "After a server restart, reconnect/restart this MCP process and approve the new session in the active editor. Refresh the MCP tool list if schema changes are absent.",
             },
           });
+        }
       } catch (error) {
         result = {
           ok: false,
           error: {
             code: "disconnected",
-            message: `Local bridge unavailable: ${error.message}. Start dev:agent and approve the connection.`,
+            message:
+              "Local bridge unavailable or request interrupted. Start/restart dev:agent, refresh or reconnect this MCP server, then approve the current session in the active editor. Before retrying any write, call scene_summary and inspect the target: a response may have been lost after the editor committed the transaction.",
           },
         };
       }

@@ -22,6 +22,8 @@ export type PrintReport = {
   warnings: string[];
   unsupported: string[];
   precisionRetriangulations?: number;
+  /** Whole planar-region reconstruction phase only; excludes SDF sampling/local cleanup. */
+  planarPatchDeviationMM?: number;
   effectiveResolutionMM?: number;
 };
 /** Resolve exact collinear bridge faces after Float32 unit conversion.
@@ -317,7 +319,8 @@ export async function encodeSTL(
     stats: GlbExportResult["stats"] = [],
     min = [Infinity, Infinity, Infinity],
     max = [-Infinity, -Infinity, -Infinity];
-  let count = 0;
+  let count = 0,
+    patchDeviation = 0;
   for (const source of sources) {
     const mesh = await optimiseExportMesh(source, quality, work),
       matrix = transformMatrix(validateTransform(mesh.transform)),
@@ -334,6 +337,10 @@ export async function encodeSTL(
         max[a] = Math.max(max[a], x);
       }
     }
+    patchDeviation = Math.max(
+      patchDeviation,
+      mesh.stats.planarPatchDeviationBound * Math.max(...mesh.transform.scale),
+    );
     chunks.push(p);
     count += p.length;
     stats.push(mesh.stats);
@@ -363,6 +370,7 @@ export async function encodeSTL(
   bytes.set(new TextEncoder().encode("Centra Sculpt | units=mm | inspect companion print report"));
   view.setUint32(80, report.triangles, true);
   if (stable.repaired) report.precisionRetriangulations = stable.repaired;
+  if (patchDeviation > 0) report.planarPatchDeviationMM = patchDeviation * factor;
   const a = new Vector3(),
     b = new Vector3(),
     c = new Vector3();

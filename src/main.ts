@@ -2,12 +2,13 @@ import whatsNew from "../WHATS_NEW.md?raw";
 import { partOwner } from "./assembly";
 import { restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
 import { assemblyUI } from "./assembly-ui";
-import { prepareBooleanExport } from "./boolean-export";
+import { exportResolution, prepareBooleanExport } from "./boolean-export";
 import { enclosureUI } from "./enclosure-ui";
 import { createExportFeedback } from "./export-feedback";
 import { exportFilename } from "./export-filename";
+import { exportFailure, exportInterruption } from "./export-outcome";
 import { questCapture } from "./performance-capture";
-import { physicalExportLongestMM, physicalGLBSources } from "./physical-units";
+import { exportSizing, physicalExportDimensionsMM, physicalGLBSources } from "./physical-units";
 import { PrecisionTools, selectionDimensions } from "./precision-tools";
 import { precisionUI } from "./precision-ui";
 import { PrimitiveDraftPreview } from "./primitive-preview";
@@ -1475,12 +1476,21 @@ projectFile.addEventListener("change", () => {
 let exportAbort: AbortController | null = null;
 const cancelExport = document.querySelector<HTMLButtonElement>("#cancel-export")!;
 const exportMemory = document.querySelector<HTMLSelectElement>("#export-memory")!;
+const exportResolutionControl = document.querySelector<HTMLSelectElement>("#export-resolution")!;
+exportResolutionControl.addEventListener("change", () => {
+  if (precision)
+    precision.primitives.assembly.exportResolution = exportResolution(
+      Number(exportResolutionControl.value),
+    );
+  clearPreparedExport();
+  exportSummary.textContent = `Boolean export maximum: ${exportResolutionControl.value}³. Exact dimensions and evaluation resolution appear before encoding.`;
+});
 const selectedExportMemory = () => exportMemoryBudget(Number(exportMemory.value));
-cancelExport.addEventListener("click", () => exportAbort?.abort());
+cancelExport.addEventListener("click", () => exportAbort?.abort("user"));
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && exportAbort) {
     event.preventDefault();
-    exportAbort.abort();
+    exportAbort.abort("user");
   }
 });
 function exportEstimate(): void {
@@ -1528,10 +1538,18 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     scope !== "composite" &&
     layers.project.layerStack.layers.some((l) => l.assemblyPart)
   ) {
+    if (printSizing.value !== "actual") {
+      exportMessage(
+        "Printable parts retain calibrated assembly dimensions. Choose 1:1, or Unified Boolean to scale the whole assembly together.",
+        true,
+      );
+      return;
+    }
     const assembly = precision!.primitives.assembly;
     assembly.exportQuality = document.querySelector<HTMLSelectElement>("#export-quality")!
       .value as ExportQuality;
     assembly.exportMemoryLimit = memoryLimit;
+    assembly.exportResolution = exportResolution(Number(exportResolutionControl.value));
     if (scope === "selected") {
       const owner = partOwner(layers.project.layerStack, layers.project.activeLayerId);
       if (!owner) {
@@ -1559,6 +1577,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
       exportFeedback.stop();
       loadingProject = false;
       ui.projectBusy(false);
+      printSize.disabled = printSizing.value === "actual";
       refresh();
     }
     return;
@@ -1586,6 +1605,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
   cancelExport.style.visibility = "visible";
   exportFeedback.start();
   exportMessage("Preparing sculpture…");
+  let exportStage = "preparation";
   try {
     await recovery?.settle();
     if (signal.aborted) throw new Error("Export cancelled.");
@@ -1616,12 +1636,14 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
               signal,
               stlMM !== undefined,
               (p) => {
+                exportStage = p.stage;
                 exportFeedback.progress(p);
                 exportMessage(
                   `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% of stage`,
                 );
               },
               memoryLimit,
+              exportResolution(Number(exportResolutionControl.value)),
             );
             sources = prepared.sources;
           } else sources = layers.exportSources(scope, stlMM === undefined);
@@ -1630,25 +1652,34 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
               ...source,
               chunks: source.chunks.map(({ positions, normals }) => ({ positions, normals })),
             }));
-          if (stlMM !== undefined) {
-            calibratedLongestMM = physicalExportLongestMM(
+          const actualDimensions = physicalExportDimensionsMM(
+            sources,
+            display.precision.millimetresPerUnit,
+          );
+          calibratedLongestMM = Math.max(...actualDimensions);
+          const sizing = exportSizing(
+            actualDimensions,
+            printSizing.value === "actual" ? "actual" : "target",
+            Number(printSize.value),
+          );
+          const qualityName = document.querySelector<HTMLSelectElement>("#export-quality")!.value;
+          exportSummary.textContent = `${scope === "composite" ? "Unified evaluated SDF" : scope} · ${printSizing.value === "actual" ? "Actual size (1:1)" : "Scale to target"} · Actual ${actualDimensions.map((n) => n.toFixed(3)).join(" × ")} mm → Export ${sizing.dimensionsMM.map((n) => n.toFixed(3)).join(" × ")} mm · ${sizing.scale.toFixed(6)}× · ${qualityName}${prepared ? ` · evaluated ${prepared.resolution}³ · max ${exportResolutionControl.value}³` : " · committed surface"}`;
+          await paint();
+          if (stlMM !== undefined) stlMM = sizing.longestMM;
+          else
+            sources = physicalGLBSources(
               sources,
-              display.precision.millimetresPerUnit,
+              display.precision.millimetresPerUnit * sizing.scale,
             );
-            if (printUsePhysical.checked) {
-              stlMM = calibratedLongestMM;
-              printSize.value = String(stlMM);
-            }
-          }
-          if (stlMM === undefined)
-            sources = physicalGLBSources(sources, display.precision.millimetresPerUnit);
           const quality = document.querySelector<HTMLSelectElement>("#export-quality")!
             .value as ExportQuality;
+          exportStage = "mesh encoding";
           const result = await exportGlbAsync(sources, quality, {
             signal,
             stlMM,
             maxBytes: prepared?.availableBytes() ?? Math.max(1, memoryLimit - layers.trackedBytes),
             progress: (p) => {
+              exportStage = p.stage;
               exportFeedback.progress(p);
               exportMessage(
                 `${p.stage} · ${Math.round((100 * p.completed) / Math.max(1, p.total))}% of stage · Cancel available`,
@@ -1682,11 +1713,16 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
           if (stlMM !== undefined) {
             const report = result.report!;
             printReport.textContent = [
-              `${printUsePhysical.checked ? "Project physical scale" : "Target size override"} · calibrated scope longest ${calibratedLongestMM.toFixed(3)} mm · export ${(stlMM / calibratedLongestMM).toFixed(6)}× project scale`,
+              `${printSizing.value === "actual" ? "Project physical scale" : "Target size override"} · calibrated scope longest ${calibratedLongestMM.toFixed(3)} mm · export ${(stlMM / calibratedLongestMM).toFixed(6)}× project scale`,
               `Physical size: ${report.dimensions.map((n) => n.toFixed(3)).join(" × ")} mm`,
               ...(report.effectiveResolutionMM === undefined
                 ? []
                 : [`Boolean evaluation spacing: ${report.effectiveResolutionMM.toFixed(4)} mm`]),
+              ...(report.planarPatchDeviationMM === undefined
+                ? []
+                : [
+                    `Whole-region pass round-off bound: ${report.planarPatchDeviationMM.toPrecision(3)} mm (sampling and local cleanup excluded)`,
+                  ]),
               `${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`,
               `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,
               `Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,
@@ -1728,7 +1764,8 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
       (warning) => exportMessage(warning, true),
     );
   } catch (error) {
-    exportMessage(`${message(error)} Source sculpture kept.`, !signal.aborted);
+    const failure = exportFailure(error, exportStage, signal.aborted, signal.reason);
+    exportMessage(failure.text, failure.error);
   } finally {
     exportFeedback.stop();
     exportAbort = null;
@@ -1736,6 +1773,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     loadingProject = false;
     syncView();
     ui.projectBusy(false);
+    printSize.disabled = printSizing.value === "actual";
     syncTransformUI();
   }
 }
@@ -1756,23 +1794,23 @@ printSize.id = "print-size";
 printSize.type = "number";
 printSize.min = "0.1";
 printSize.max = "10000";
-printSize.value = "100";
+printSize.value = "200";
 printSize.step = "0.1";
-const printUsePhysical = document.createElement("input");
-printUsePhysical.type = "checkbox";
-printUsePhysical.id = "print-use-physical-scale";
+const printSizing = document.createElement("select");
+printSizing.id = "export-sizing";
+printSizing.innerHTML =
+  '<option value="actual">Actual size (1:1)</option><option value="target">Scale to target</option>';
+printSize.disabled = true;
 const printPhysicalLabel = document.createElement("label");
-printPhysicalLabel.append(
-  printUsePhysical,
-  document.createTextNode("Use project physical scale for this export scope"),
-);
+printPhysicalLabel.append(document.createTextNode("Export sizing "), printSizing);
 const printLabel = document.createElement("label");
-printLabel.textContent = "Target longest dimension (mm)";
+printLabel.textContent = "Longest side (mm)";
 printLabel.append(printSize);
 printLabel.append(
   document.createTextNode(" · aspect ratio locked · overrides project physical calibration"),
 );
 const projectPrintSize = document.createElement("button");
+projectPrintSize.disabled = true;
 projectPrintSize.textContent = "Use selected physical size";
 projectPrintSize.onclick = () => {
   try {
@@ -1792,16 +1830,22 @@ projectPrintSize.onclick = () => {
   }
 };
 printLabel.append(projectPrintSize);
-printUsePhysical.onchange = () => {
-  printSize.disabled = printUsePhysical.checked;
-  projectPrintSize.disabled = printUsePhysical.checked;
+printSizing.onchange = () => {
+  printSize.disabled = printSizing.value === "actual";
+  projectPrintSize.disabled = printSizing.value === "actual";
+  clearPreparedExport();
+  exportSummary.textContent = `Sizing: ${printSizing.selectedOptions[0].textContent}. Exact evaluated bounds will be measured before encoding.`;
   exportMessage(
-    printUsePhysical.checked
+    printSizing.value === "actual"
       ? "Export uses this scope’s calibrated physical dimensions. Target sizing is disabled."
       : "Export uses the target longest dimension, overriding project physical scale.",
   );
 };
 document.getElementById("export-selected")!.before(printPhysicalLabel, printLabel);
+const exportSummary = document.createElement("p");
+exportSummary.id = "export-summary";
+exportSummary.textContent =
+  "Sizing: Actual size (1:1). Exact evaluated bounds and export dimensions appear here before encoding.";
 const exportResult = document.createElement("div");
 exportResult.id = "export-result";
 const exportStatus = document.createElement("p");
@@ -1809,7 +1853,7 @@ exportStatus.setAttribute("role", "status");
 const printDownload = document.createElement("a");
 printDownload.id = "export-download";
 printDownload.style.visibility = "hidden";
-exportResult.append(exportStatus, printDownload, cancelExport);
+exportResult.append(exportSummary, exportStatus, printDownload, cancelExport);
 const exportFeedback = createExportFeedback(exportResult);
 document.getElementById("export-boolean")!.after(exportResult);
 cancelExport.hidden = false;
@@ -1818,6 +1862,7 @@ let preparedExportURL: string | null = null;
 function exportMessage(text: string, error = false) {
   exportStatus.textContent = text;
   exportStatus.classList.toggle("error", error);
+  exportStatus.setAttribute("role", error ? "alert" : "status");
 }
 function clearPreparedExport() {
   if (preparedExportURL) URL.revokeObjectURL(preparedExportURL);
@@ -1859,8 +1904,8 @@ printPanel.append(printReport);
 document.getElementById("export-boolean")!.parentElement!.append(printPanel);
 mountWhatsNew(printPanel, whatsNew);
 function syncExportFormat() {
-  printLabel.hidden = exportFormat.value !== "stl";
-  printPhysicalLabel.hidden = exportFormat.value !== "stl";
+  printLabel.hidden = false;
+  printPhysicalLabel.hidden = false;
   printPanel.hidden = exportFormat.value !== "stl";
   clearPreparedExport();
 }
@@ -2312,6 +2357,11 @@ primitivesUI = primitiveUI(
     source: () => transformTools?.primitivePreview,
   },
 );
+precision.primitives.assembly.exportSummary = async (dimensions) => {
+  const bounds = dimensions.map((n) => n.toFixed(3)).join(" × ");
+  exportSummary.textContent = `Printable part · Actual size (1:1) · Actual ${bounds} mm → Export ${bounds} mm · 1.000000× · ${precision!.primitives.assembly.exportQuality} · max ${precision!.primitives.assembly.exportResolution}³`;
+  await paint();
+};
 precision.primitives.assembly.onExport = (result) => {
   const name = result.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   download(new Blob([result.data], { type: "model/stl" }), `${name}.stl`);
@@ -3075,12 +3125,13 @@ entryRecoveryEnter.addEventListener("click", () => {
   entryRecoveryDialog.close();
   void xrExperience!.session.enter();
 });
-function interruptSession(_reason: string): void {
+function interruptSession(reason: string): void {
   primitivePreview?.cancel();
   libraryAbort.abort();
   libraryAbort = new AbortController();
   recovery?.cancelJob();
-  exportAbort?.abort();
+  const interruption = exportInterruption(reason);
+  if (interruption) exportAbort?.abort(interruption);
   bakeAbort?.abort();
   xrExperience?.controllers.suspend();
   desktopStroke.cancel();
@@ -3125,7 +3176,7 @@ import.meta.hot?.dispose(() => {
   lifecycle.dispose();
   recovery?.dispose();
   projectBrowser.store.close();
-  exportAbort?.abort();
+  exportAbort?.abort(new Error("The editor was updated or disposed."));
   bakeAbort?.abort();
   xrExperience?.controllers.suspend();
 });

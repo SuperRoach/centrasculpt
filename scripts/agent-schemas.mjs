@@ -236,33 +236,37 @@ export const tools = {
       })
       .strict(),
     description:
-      "Read-only model-only PNG of current rendered visible geometry. Optional objectId or partId independently evaluates and isolates that hierarchy or printable part, including Booleans and arrays. Boolean/array scenes require ready Boolean preview. Neutral untextured material; excludes references/UI/guides. Use with get_geometry_diagnostics; no fit or topology guarantee.",
+      "Read-only PNG at one revision. Omit scope IDs for the visible scene; set exactly one objectId or partId for an independently evaluated hierarchy/printable part, including Booleans and arrays. Choose front/isometric to inspect layout. Compare returned bounds/revision with get_bounds and get_geometry_diagnostics; images do not prove dimensions, topology or fit. Requires ready evaluated display for Boolean/array scenes.",
   },
   scene_summary: {
     schema: z.object({}).strict(),
-    description: "Inspect the approved active scene and its revision.",
+    description:
+      "Start every task here. Read the approved editor's stable project/revision, object count, units and busy state before choosing queries or edits.",
   },
   list_objects: {
     schema: z.object({}).strict(),
-    description: "List stable IDs, transforms and physical dimensions (mm).",
+    description:
+      "Read all objects: stable IDs, names, world transforms, source dimensions in mm, hierarchy, visibility, Boolean modifiers and arrays. Use IDs or earlier batch aliases in later calls.",
   },
   get_object: {
     schema: z.object({ id }).strict(),
-    description: "Inspect one object by stable ID; dimensions are mm.",
+    description:
+      "Read one stable object ID: source dimensions in mm, world pose, Boolean/array state and parent/part. Does not edit.",
   },
   create_primitive: {
     schema: z.object({ ...revision, unit, source }).strict(),
     description:
-      "Create a box, sphere/ellipsoid, cylinder (Cone: topDiameter 0), capsule, torus or pyramid in one Undo transaction. Requires browser editing permission.",
+      "Create one editable box, sphere/ellipsoid, cylinder/cone, capsule, torus or pyramid in mm/cm/in. For several related objects use apply_changes or stage them with propose_changes; aliases return stable output IDs. Requires browser editing permission; one call is one Undo.",
   },
   update_primitive: {
     schema: z.object({ ...revision, id, unit, source }).strict(),
-    description: "Update an existing primitive, preserving its ID. Requires editing permission.",
+    description:
+      "Change an existing primitive's source dimensions while preserving its stable ID. Requires editing permission; one call is one Undo.",
   },
   transform_object: {
     schema: z.object({ ...revision, id, unit, transform }).strict(),
     description:
-      "Set world pose: position in explicit unit, rotation XYZ radians. Scale changes require equal XYZ; non-uniform legacy scale can only be retained unchanged.",
+      "Set exact world position (explicit mm/cm/in), XYZ rotation (radians) and scale. For multi-object work put object.transform commands in one apply_changes/proposal. Uniform scale changes only; use scale_primitive for supported source-dimension scaling.",
   },
   create_enclosure: {
     schema: z.object({ ...revision, parameters, dryRun: z.boolean().optional() }).strict(),
@@ -309,12 +313,12 @@ export const tools = {
   preview_changes: {
     schema: z.object(batch).strict(),
     description:
-      "Isolated source-cache dry-run; provisional IDs, no scene/history changes. Requires editing permission under the existing API. Not final mesh certification.",
+      "Dry-run 1–64 supported commands at an exact revision. Checks isolated source caches and returns provisional IDs; scene and Undo remain unchanged. Requires editing permission. For final evaluated bounds/geometry, apply then query; this is not a mesh certification.",
   },
   apply_changes: {
     schema: z.object(batch).strict(),
     description:
-      "Apply 1–64 ordered supported commands as one Undo transaction; $alias references earlier results. Requires browser editing permission and current revision.",
+      "Apply 1–64 ordered commands atomically as one Undo transaction. Give creation steps `as` aliases and refer to earlier results as `$alias`; create/update primitives, set exact transforms, add Boolean modifiers and configure arrays in the same batch. Requires browser editing permission and current revision. For separate human review use propose_changes, then wait for browser approval and call apply_approved_proposal.",
   },
   undo: {
     schema: z.object(revision).strict(),
@@ -341,7 +345,7 @@ export const queryTools = {
 for (const [tool, type] of Object.entries(commandTools))
   tools[tool] = {
     schema: z.object({ ...revision, ...commandFields[type] }).strict(),
-    description: `Execute ${type} through the authoritative engine. Requires editing permission; explicit Bake only.`,
+    description: `Apply ${type} through the authoritative engine. Use apply_changes for several commands and one Undo, or propose_changes for a separately reviewed plan. Requires browser editing permission; Bake is explicit only.`,
   };
 for (const [tool, type] of Object.entries(queryTools))
   tools[tool] = {
@@ -356,7 +360,7 @@ for (const [tool, type] of Object.entries(queryTools))
               : {},
       )
       .strict(),
-    description: `Read ${type}; source bounds are conservative, not evaluated topology.`,
+    description: `Read ${type}. Use after scene_summary and edits to inspect stable IDs, Boolean/array state or conservative source bounds; evaluated mesh diagnostics are a separate query.`,
   };
 tools.dry_run_changes = tools.preview_changes;
 tools.create_connector = {
@@ -373,7 +377,7 @@ tools.get_geometry_diagnostics = {
     .object({ id, otherId: id.optional(), clearanceMM: number.nonnegative().max(1000).optional() })
     .strict(),
   description:
-    "Evaluate printable-part STL topology and optional sampled clearance; bounded, cancellable, physical fit unknown.",
+    "After editing, evaluate printable-part STL topology and optional sampled clearance. Bounded and cancellable; query bounds and capture front/isometric at the same revision too. Physical fit remains unknown.",
 };
 tools.update_enclosure = {
   schema: z
@@ -383,7 +387,8 @@ tools.update_enclosure = {
 };
 tools.get_capabilities = {
   schema: z.object({}).strict(),
-  description: "Read implemented tools, command support, conventions and resource limitations.",
+  description:
+    "Read the live adapter/build/session identity, registered tools, feature availability, limits and reconnect steps. Run after connecting or restarting; compare with tools/list to detect a stale client schema.",
 };
 tools.propose_changes = {
   schema: z
@@ -394,7 +399,7 @@ tools.propose_changes = {
     })
     .strict(),
   description:
-    "Stage an immutable multi-step proposal without changing source/history. Human must approve this exact proposal in the browser; expires in two minutes. Recipes/connectors excluded.",
+    "Stage an immutable 1–64 command batch without changing scene/history. Use stable aliases, exact dimensions/transforms and Boolean/array commands; inspect the rendered review, then wait for the user to approve this exact plan in the browser before apply_approved_proposal. Expires in two minutes; enclosure recipes/connectors cannot be mixed into this batch. One apply is one Undo.",
 };
 tools.propose_enclosure = {
   schema: z
@@ -421,14 +426,14 @@ tools.propose_enclosure = {
     })
     .strict(),
   description:
-    "Stage one standalone Phase 7.1 enclosure create/update transaction. Separate browser approval required; cannot nest in a command batch or combine with connectors.",
+    "Stage one standalone Phase 7.1 enclosure recipe. Separate browser approval required; it cannot nest in apply_changes/propose_changes or combine with connector commands.",
 };
 for (const name of ["get_proposal", "cancel_proposal", "apply_approved_proposal"])
   tools[name] = {
     schema: z.object({ proposalId: id }).strict(),
     description:
       name === "apply_approved_proposal"
-        ? "Commit the exact browser-approved proposal once, as one Undo transaction. Cannot approve; stale plans reject."
+        ? "Commit the exact browser-approved proposal once as one Undo transaction. This tool cannot approve. Stale, changed or expired plans reject; inspect scene state before making a new proposal."
         : "Inspect or cancel the current memory-only proposal.",
   };
 
@@ -470,6 +475,32 @@ tools.remove_enclosure_feature = {
     })
     .strict(),
   description: "Remove an attachment and its generated sources atomically. Standalone only.",
+};
+
+// One source of truth for get_capabilities and the live tools/list adapter.
+export const capabilityRegistry = {
+  scenePreview: {
+    scopes: ["whole-visible-scene", "object-hierarchy", "printable-part"],
+    objectId:
+      "Independently evaluates an object hierarchy and its required Boolean dependencies/arrays.",
+    partId: "Independently evaluates printable-part membership, including Booleans/arrays.",
+    viewpoints: ["front", "back", "left", "right", "top", "isometric"],
+    maxEdge: 512,
+    maxPngBytes: 524288,
+    requiresReadyDisplay: true,
+  },
+  exactPrimitiveTransforms: true,
+  primitiveDimensionScaling: true,
+  booleans: ["union", "difference", "intersect"],
+  arrays: ["linear", "radial"],
+  batchCommands: Object.values(commandTools),
+  batchLimits: { minCommands: 1, maxCommands: 64, oneUndo: true, aliases: true },
+  proposal: {
+    available: true,
+    requiresSeparateBrowserApproval: true,
+    maxAgeSeconds: 120,
+    standaloneRecipesAndConnectors: false,
+  },
 };
 
 export const requestSchema = z

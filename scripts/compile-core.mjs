@@ -51,6 +51,8 @@ for (const name of [
   "transform-preview",
   "whats-new",
   "export-filename",
+  "export-outcome",
+  "planar-patches",
   "stl",
   "stl-export",
   "performance-capture",

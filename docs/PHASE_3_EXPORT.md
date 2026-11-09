@@ -84,3 +84,30 @@ Quest 3 acceptance checklist:
 5. Validate/open the resulting GLBs externally and inspect normals, component count, closed topology and dimensions. Compare Fast/Standard/High actual size/count; High should keep curved detail when no safe planar simplification exists.
 
 **Recommended Phase 3.4:** layer-by-layer / streaming export to lift current memory admission limits, measured browser/Quest memory accounting and physical acceptance, then optional curved-mesh simplification only with a bidirectional surface-error bound, feature/boundary constraints and topology preservation. Consider an immersive export/download workflow separately. Retain SDF authority and source guards.
+
+## Phase 7.5.2 sizing update
+
+Desktop export now starts at explicit **Keep actual project dimensions (1:1)**.
+**Scale longest side to target** starts at 200 mm; 100 mm remains deliberate.
+Both STL (mm) and GLB (m) honour that selection. Exact evaluated XYZ bounds,
+export XYZ dimensions, scale and quality appear before encoding. Historical
+100 mm observations above describe the previous selected target, not current default.
+See [export correctness](PHASE_7_5_2_EXPORT_CORRECTNESS.md) for geometry findings,
+reference normalisation, assembly behaviour and regression coverage.
+
+### Resolution maximum for evaluated exports
+
+Choose192³ (default) or256³ in the Boolean export resolution selector. It applies
+to staged Boolean STL/GLB and printable-part STL. The summary shows actual grid
+resolution; committed-layer exports retain their source surface. Tighter analytic
+bounds improve sampling efficiency. Higher resolution preserves sharp design intent
+and remains subject to existing memory and final triangle admission. See
+[the current export guide](PHASE_7_5_2_EXPORT_CORRECTNESS.md).
+
+## Whole planar-region simplification in High
+
+High now includes conservative exact planar-region reconstruction across prepared
+chunks, preserving directed hole/perimeter edges and all seam vertices. Fast and
+Standard remain unchanged. It does not move vertices, smooth edges or relax memory/
+triangle limits. Supported planes, bounds and actual holder/browser verification
+are documented in [the planar export guide](PLANAR_EXPORT_SIMPLIFICATION.md).

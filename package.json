@@ -37,7 +37,7 @@
     "check": "npm run format:check && npm run lint && npm run check:types && npm run build && npm run test:full",
     "example:enclosure": "node scripts/recipe-enclosure.mjs",
     "benchmark:enclosure": "node scripts/benchmark-enclosure.mjs",
-    "dev:agent": "CENTRA_AGENT=1 vite --host 127.0.0.1",
+    "dev:agent": "CENTRA_AGENT=1 vite --host 0.0.0.0",
     "mcp:agent": "node scripts/agent-mcp.mjs",
     "test:agent": "node scripts/test.mjs agent-access",
     "test:agent:browser": "node scripts/agent-smoke.mjs",

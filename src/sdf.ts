@@ -57,6 +57,7 @@ export class SDFVolume implements VolumeStore {
     initializeSphere = true,
     layout?: DenseLatticeLayout,
     allocate: DenseAllocator = (n) => new Float32Array(n),
+    derivedExport = false,
   ) {
     if (
       !Number.isInteger(resolution) ||
@@ -74,7 +75,10 @@ export class SDFVolume implements VolumeStore {
       this.minimum.length !== 3 ||
       !this.shape.every((n) => Number.isSafeInteger(n) && n >= 3 && n <= 512) ||
       !this.minimum.every((n) => Number.isSafeInteger(n) && Math.abs(n) <= 1000000) ||
-      this.shape.reduce((a, b) => a * b, 1) > 2 * 192 ** 3
+      this.shape.reduce((a, b) => a * b, 1) >
+        (derivedExport && !initializeSphere && !layout && resolution <= 256
+          ? 256 ** 3
+          : 2 * 192 ** 3)
     )
       throw new Error("Dense lattice allocation exceeds supported limits.");
     if (layout && !this.minimum.every((v, a) => v <= 0 && v + this.shape[a] >= resolution))
