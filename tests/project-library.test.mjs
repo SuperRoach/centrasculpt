@@ -684,3 +684,21 @@ test("library edit times use friendly minutes and hours, then calendar dates aft
     new Date(now - 86400_000).toLocaleDateString(),
   );
 });
+
+test("thumbnail open targets its own project and keeps the unsaved changes prompt", async () => {
+  const f = fixture();
+  try {
+    const a = await put(f.s, "First"),
+      b = await put(f.s, "Thumbnail target");
+    await f.b.refresh();
+    f.b.selected = a.id;
+    await f.b.activate(`library:open:${b.id}`);
+    assert.equal(f.opens(), 0);
+    assert.equal(f.b.confirmation, "replace");
+    await f.b.activate("library:discard-replace");
+    assert.equal(f.opens(), 1);
+    assert.equal(f.b.current.id, b.id);
+  } finally {
+    f.s.close();
+  }
+});

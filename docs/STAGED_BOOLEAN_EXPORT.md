@@ -102,3 +102,19 @@ remains bounded at1M triangles for both export and preview. Denser scenes
 can refuse final admission and are never silently resampled coarser. The historical
 house acceptance above used the old padded layout; with tighter bounds its denser
 output now hits the unchanged intermediate meshing ceiling. See the [current findings](PHASE_7_5_2_EXPORT_CORRECTNESS.md).
+
+## Phase 7.5.4c
+
+Evaluated STL chunk compaction now uses the verified exact fast path. Dense staged
+SDF evaluation and all geometry/admission guards remain. The current grid choices
+are up to 192³ or 256³, introduced after this document’s original measurements.
+See [production validation and fallback](PHASE_7_5_4C_EXPORT_INTEGRATION.md).
+
+## Interactive preview work budget
+
+The layer-view cache can now lower its display resolution to stay within its
+existing 64M source-sample budget, explicitly reporting the actual preview grid
+and “Reduced detail”. It accounts for visible roots, enabled modifier references
+and array instances. This display-only policy does not change staged export's
+selected cap/admission or source/project data. See the latest Development Status
+for nine/ten-layer Lens validation.

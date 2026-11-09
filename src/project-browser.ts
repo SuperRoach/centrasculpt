@@ -188,6 +188,11 @@ export class ProjectBrowser {
         this.selected = null;
         return;
       }
+      if (action.startsWith("open:")) {
+        const record = this.records.find((r) => r.id === action.slice(5));
+        if (record) await this.replace(() => this.open(record));
+        return;
+      }
       if (action.startsWith("select:")) {
         this.selected = action.slice(7);
         return;

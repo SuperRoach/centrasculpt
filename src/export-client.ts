@@ -1,3 +1,5 @@
+import type { CurvedReductionOptions } from "./export-decimation";
+import { validateCurvedReduction } from "./export-decimation";
 import type { ExportProgress, ExportQuality, ExportSource } from "./export-mesh";
 import { EXPORT_MEMORY_LIMIT, ExportWork, exportAdmission } from "./export-mesh";
 import type { GlbExportResult } from "./glb-export";
@@ -20,8 +22,13 @@ export async function exportGlbAsync(
     maxBytes?: number;
     progress?: (p: ExportProgress) => void;
     stlMM?: number;
+    curvedReduction?: CurvedReductionOptions;
   } = {},
 ): Promise<GlbExportResult & { report?: PrintReport }> {
+  if (options.curvedReduction) {
+    validateCurvedReduction(options.curvedReduction);
+    if (options.stlMM === undefined) throw new Error("Curved reduction is available for STL only.");
+  }
   const signal = options.signal ?? new AbortController().signal,
     maxBytes = options.maxBytes ?? EXPORT_MEMORY_LIMIT,
     current = () => sources.every((s) => !s.current || s.current()),
@@ -75,7 +82,7 @@ export async function exportGlbAsync(
   if (typeof Worker === "undefined")
     return options.stlMM === undefined
       ? encodeExport(copies, quality, maxBytes, work)
-      : encodeSTL(copies, quality, maxBytes, options.stlMM, work);
+      : encodeSTL(copies, quality, maxBytes, options.stlMM, work, options.curvedReduction);
   const snapshotMs = performance.now() - snapshotStart,
     workerStart = performance.now();
   const id = ++generation,
@@ -131,7 +138,14 @@ export async function exportGlbAsync(
         ]),
       );
       worker.postMessage(
-        { id, sources: copies, quality, maxBytes, stlMM: options.stlMM },
+        {
+          id,
+          sources: copies,
+          quality,
+          maxBytes,
+          stlMM: options.stlMM,
+          curvedReduction: options.curvedReduction,
+        },
         transfer,
       );
     });

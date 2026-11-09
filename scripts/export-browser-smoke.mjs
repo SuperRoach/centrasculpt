@@ -8,10 +8,18 @@ import { readGlb } from "./fixtures/export-node.mjs";
 
 const server = spawn(
   process.execPath,
-  ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "5199", "--strictPort"],
+  [
+    "node_modules/vite/bin/vite.js",
+    ...(process.env.EXPORT_SMOKE_PRODUCTION === "1" ? ["preview"] : []),
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "5199",
+    "--strictPort",
+  ],
   { stdio: "ignore" },
 );
-let browser;
+let browser, page;
 try {
   await mkdir("work/phase-7-5-2", { recursive: true });
   for (let i = 0; i < 100; i++) {
@@ -21,10 +29,10 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   }
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await page.goto("http://127.0.0.1:5199");
   await page.locator("#open-export").click();
-  await page.locator("#export-sizing").waitFor();
+  await page.locator("#export-actual-size").waitFor();
   await page.locator("#export-advanced").evaluate((el) => {
     el.open = true;
   });
@@ -32,11 +40,11 @@ try {
   assert.equal(await page.locator("#export-dialog").isVisible(), false);
   assert.equal(await page.evaluate(() => document.activeElement?.id), "open-export");
   await page.locator("#open-export").click();
-  await page.locator("#export-quality-slider").press("ArrowRight");
+  await page.locator("#export-quality").selectOption("standard");
   assert.equal(await page.locator("#export-quality").inputValue(), "standard");
   assert.match(await page.locator("#export-estimate").textContent(), /uncertainty/);
   // Open containing details panels without relying on their current presentation defaults.
-  await page.locator("#export-sizing").evaluate((el) => {
+  await page.locator("#export-actual-size").evaluate((el) => {
     for (let p = el.parentElement; p; p = p.parentElement)
       if (p.tagName === "DETAILS") p.open = true;
   });
@@ -52,12 +60,12 @@ try {
     ["glb", 100],
   ]) {
     await page.locator("#export-format").selectOption(format);
-    await page.locator("#export-sizing").selectOption(target === null ? "actual" : "target");
+    await page.locator("#export-actual-size").setChecked(target === null);
     if (target !== null) await page.locator("#print-size").fill(String(target));
     await page.locator("#export-resolution").selectOption(scope === "composite" ? "256" : "192");
-    const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator(scope === "composite" ? "#export-boolean" : "#export-selected").click();
     await page.locator("#export-download").waitFor({ state: "visible", timeout: 120000 });
+    const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-download").click();
     const file = await download;
     if (scope === "composite")
@@ -128,15 +136,15 @@ try {
     boxCounts = [];
   await page.locator("#open-export").click();
   await page.locator("#export-format").selectOption("stl");
-  await page.locator("#export-sizing").selectOption("actual");
+  await page.locator("#export-actual-size").setChecked(true);
   await page.locator("#export-memory").selectOption("512");
   if (!(await page.locator("#export-dialog").isVisible()))
     await page.locator("#open-export").click();
   for (const quality of ["fast", "high"]) {
     await page.locator("#export-quality").selectOption(quality);
-    const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-boolean").click();
     await page.locator("#export-download").waitFor({ state: "visible", timeout: 120000 });
+    const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-download").click();
     const file = await download,
       path = `work/phase-7-5-2/browser-planar-${quality}.stl`;
@@ -179,9 +187,9 @@ try {
     await page.locator("#open-export").click();
   for (const quality of ["fast", "high"]) {
     await page.locator("#export-quality").selectOption(quality);
-    const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-boolean").click();
     await page.locator("#export-download").waitFor({ state: "visible", timeout: 120000 });
+    const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-download").click();
     const file = await download,
       path = `work/phase-7-5-2/browser-oblique-${quality}.stl`;
@@ -225,14 +233,16 @@ try {
     `Real browser oblique cube: Fast ${tilted[0].count}, High ${tilted[1].count}; matching bounds/Undo, recorded plane bound ${report.repairs[0].planarPatchDeviationBound}.`,
   );
   // Exercise a real worker failure response in this disposable test profile.
-  await page.route("**/src/export-worker.ts*", (route) =>
-    route.fulfill({
-      contentType: "application/javascript",
-      body: `self.onmessage = ({data}) => {
+  await page.route(
+    /\/(?:src\/export-worker\.ts|assets\/export-worker-[^/]+\.js)(?:\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        contentType: "application/javascript",
+        body: `self.onmessage = ({data}) => {
       self.postMessage({id:data.id,progress:{stage:"Optimising planar regions",completed:1,total:2}});
       self.postMessage({id:data.id,error:"Injected planar optimisation failure: memory budget exceeded."});
     };`,
-    }),
+      }),
   );
   await page.locator("#export-selected").click();
   const failure = page.locator("#export-result [role=alert]");
@@ -251,6 +261,19 @@ try {
   console.log(
     "Real browser UI / worker STL 1:1, STL 200 mm, STL 100 mm and metre-calibrated GLB downloads passed.",
   );
+} catch (error) {
+  if (page) {
+    await page
+      .screenshot({ path: "work/phase-7-5-2/browser-unexpected-failure.png" })
+      .catch(() => {});
+    console.error(
+      await page
+        .locator("#export-result")
+        .textContent()
+        .catch(() => "Page unavailable"),
+    );
+  }
+  throw error;
 } finally {
   await browser?.close();
   server.kill("SIGTERM");

@@ -1,4 +1,6 @@
 import { Vector3 } from "three";
+import type { CurvedReductionOptions, CurvedReductionReport } from "./export-decimation";
+import { validateCurvedReduction } from "./export-decimation";
 import {
   type ExportQuality,
   type ExportSource,
@@ -25,6 +27,7 @@ export type PrintReport = {
   /** Whole planar-region reconstruction phase only; excludes SDF sampling/local cleanup. */
   planarPatchDeviationMM?: number;
   effectiveResolutionMM?: number;
+  curvedReduction?: CurvedReductionReport;
 };
 /** Resolve exact collinear bridge faces after Float32 unit conversion.
  * Split the unique neighboring long edge at its existing middle vertex; never move or weld nearby points. */
@@ -303,9 +306,11 @@ export async function encodeSTL(
   maxBytes: number,
   targetMM: number,
   work = new ExportWork(),
+  curvedReduction?: CurvedReductionOptions,
 ): Promise<GlbExportResult & { report: PrintReport }> {
   if (!Number.isFinite(targetMM) || targetMM < 0.1 || targetMM > 10000)
     throw new Error("Target longest dimension must be 0.1–10,000 mm.");
+  if (curvedReduction) validateCurvedReduction(curvedReduction);
   const start = performance.now(),
     admission = exportAdmission(sources, quality, maxBytes);
   if (
@@ -366,16 +371,39 @@ export async function encodeSTL(
     work,
     Math.max(0, maxBytes - admission.corners * 96),
   );
-  const finalPositions = stable.positions;
-  const report = await validatePrintMesh(finalPositions, work),
-    data = new ArrayBuffer(84 + report.triangles * 50),
+  let finalPositions = stable.positions;
+  let report = await validatePrintMesh(finalPositions, work);
+  let decimationMs = 0,
+    curvedWorkspace = 0;
+  if (curvedReduction) {
+    const start = performance.now();
+    const { reduceCurvedSTL } = await import("./curved-decimation");
+    const reduced = await reduceCurvedSTL(
+      finalPositions,
+      report,
+      curvedReduction,
+      Math.max(0, maxBytes - admission.estimatedBytes),
+      work,
+      validatePrintMesh,
+    );
+    finalPositions = reduced.positions;
+    report = { ...reduced.topology, curvedReduction: reduced.report };
+    if (reduced.report.status === "applied")
+      report.unsupported = [
+        ...report.unsupported,
+        "Curved reduction uses sampled checks, not a global surface-error, wall-thickness or mating-fit guarantee.",
+      ];
+    curvedWorkspace = reduced.report.workspaceBytes ?? 0;
+    decimationMs = performance.now() - start;
+  }
+  const data = new ArrayBuffer(84 + report.triangles * 50),
     bytes = new Uint8Array(data),
     view = new DataView(data);
   bytes.set(new TextEncoder().encode("Centra Sculpt | units=mm | inspect companion print report"));
   view.setUint32(80, report.triangles, true);
   if (stable.repaired) report.precisionRetriangulations = stable.repaired;
   if (patchDeviation > 0) report.planarPatchDeviationMM = patchDeviation * factor;
-  const validationMs = performance.now() - validationStart,
+  const validationMs = performance.now() - validationStart - decimationMs,
     encodingStart = performance.now();
   const a = new Vector3(),
     b = new Vector3(),
@@ -393,15 +421,20 @@ export async function encodeSTL(
   work.check();
   return {
     data,
-    timings: { optimiserMs, validationMs, encodingMs: performance.now() - encodingStart },
+    timings: {
+      optimiserMs,
+      validationMs,
+      ...(curvedReduction ? { decimationMs } : {}),
+      encodingMs: performance.now() - encodingStart,
+    },
     report,
     stats,
     milliseconds: performance.now() - start,
     estimatedBytes: Math.max(
-      admission.estimatedBytes,
+      admission.estimatedBytes + curvedWorkspace,
       admission.corners * STL_VALIDATION_BYTES_PER_CORNER,
     ),
-    geometryBytes: p.byteLength,
+    geometryBytes: curvedReduction ? finalPositions.byteLength : p.byteLength,
     backend: "cooperative",
   };
 }

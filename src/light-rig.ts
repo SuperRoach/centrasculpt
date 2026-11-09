@@ -20,6 +20,7 @@ import {
   Vector3,
 } from "three";
 import { defaultLighting, LIGHT_IDS, type LightId, type LightingSettings } from "./lighting";
+import type { RenderStyle } from "./render-style";
 import type { XRControllerState } from "./xr-input";
 
 const HANDLE_COLOURS = ["#ffd08a", "#8ddcff", "#e4b7ff"];
@@ -80,6 +81,7 @@ export class LightRig {
     fill: DirectionalLight,
     private readonly ambient: HemisphereLight,
     private readonly centre?: () => Vector3,
+    private readonly renderStyle: () => RenderStyle = () => "normal",
   ) {
     this.original = [key, fill].map((l) => ({
       parent: l.parent,
@@ -264,6 +266,10 @@ export class LightRig {
     }
     const custom = s.enabled || inspection.enabled;
     this.ambient.intensity = custom ? (inspection.enabled ? 0.25 : 0.65) : this.ambientIntensity;
+    // Reflection styles already receive diffuse illumination from the studio environment.
+    // Reduce the additional rig illumination without modifying saved light settings.
+    const reflective = this.renderStyle() !== "normal";
+    if (reflective) this.ambient.intensity *= 0.3;
     for (let i = 0; i < 3; i++) {
       const l = this.lights[i],
         p = s.lights[LIGHT_IDS[i]];
@@ -299,6 +305,7 @@ export class LightRig {
         l.color.setHex(o.colour);
         l.intensity = o.intensity;
       } else l.intensity = 0;
+      if (reflective) l.intensity *= 0.6;
       const icon = this.icons[i];
       icon.group.position.fromArray(p.position);
       this.target.fromArray(p.target);

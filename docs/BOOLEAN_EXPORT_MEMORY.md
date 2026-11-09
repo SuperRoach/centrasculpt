@@ -42,3 +42,9 @@ or process RSS. This does not establish memory suitability on Quest or phones.
   triangle ceiling. Boolean preparation rejects budgets above 512 MiB before
   creating export resources.
 - The desktop panel was inspected with High quality and 512 MiB selected.
+
+## Phase 7.5.4c
+
+The exact STL compactor now avoids unused local reports and per-corner views.
+Budgets and refusal policy remain unchanged; lower wall time does not imply lower
+peak RSS. See [integration evidence and original-path rollback](PHASE_7_5_4C_EXPORT_INTEGRATION.md).

@@ -11,7 +11,7 @@ self.onmessage = async ({ data: d }) => {
       ),
       result = await (d.stlMM === undefined
         ? encodeExport(d.sources, d.quality, d.maxBytes, work)
-        : encodeSTL(d.sources, d.quality, d.maxBytes, d.stlMM, work));
+        : encodeSTL(d.sources, d.quality, d.maxBytes, d.stlMM, work, d.curvedReduction));
     result.backend = "worker";
     self.postMessage({ id: d.id, result }, { transfer: [result.data] });
   } catch (error) {

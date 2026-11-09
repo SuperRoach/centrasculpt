@@ -695,7 +695,16 @@ export class IndependentLayers {
     readonly display = new LayerDisplayPreferences(),
     deferMesh = false,
   ) {
-    this.composite = new BooleanComposite(project, this.compositeMaterial, 192, this.neutral);
+    this.composite = new BooleanComposite(
+      project,
+      this.compositeMaterial,
+      192,
+      this.neutral,
+      () => true,
+      {
+        boundedPreview: true,
+      },
+    );
     this.composite.availableBytes = () => 256 * 1024 ** 2 - this.trackedBytes;
     if (project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled))
       this.viewMode = "boolean";

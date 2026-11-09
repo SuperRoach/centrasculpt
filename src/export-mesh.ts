@@ -131,6 +131,17 @@ export async function optimiseExportMesh(
   work = new ExportWork(),
   options: { preserveWinding?: boolean } = {},
 ): Promise<ExportMesh> {
+  return optimiseMesh(source, quality, work, options);
+}
+
+// The chunk-only caller consumes geometry and planar deviation, never the local
+// continuity counts. Public mesh reports always calculate their edge statistics.
+async function optimiseMesh(
+  source: ExportSource,
+  quality: ExportQuality,
+  work: ExportWork,
+  options: { preserveWinding?: boolean; optimisedChunks?: boolean },
+): Promise<ExportMesh> {
   const corners = source.chunks.reduce((n, c) => n + c.positions.length / 3, 0),
     stats: ExportMeshStats = {
       inputTriangles: corners / 3,
@@ -253,8 +264,13 @@ export async function optimiseExportMesh(
       stats.planarRemoved += patches.removed;
       stats.planarPatchDeviationBound = patches.maxDeviation;
     }
-    for (let pass = 0; pass < 3; pass++)
+    for (let pass = 0; pass < 3; pass++) {
+      const previousCount = triangles.length;
       triangles = await simplifyPlanar(positions, normals, triangles, source.step, stats, work);
+      // Every accepted one-ring removes two faces. Equal counts mean identical
+      // triangles and unchanged positions/normals: another pass cannot help.
+      if (options.optimisedChunks && triangles.length === previousCount) break;
+    }
   }
   // Compact unused vertices and normalise a single consistent normal per welded position.
   const remap = new Int32Array(positions.length / 3);
@@ -270,7 +286,8 @@ export async function optimiseExportMesh(
     if (id < 0) {
       id = outP.length / 3;
       remap[old] = id;
-      outC.push(colours[old * 3], colours[old * 3 + 1], colours[old * 3 + 2]);
+      if (!options.optimisedChunks || painted)
+        outC.push(colours[old * 3], colours[old * 3 + 1], colours[old * 3 + 2]);
       outP.push(positions[old * 3], positions[old * 3 + 1], positions[old * 3 + 2]);
       const length = Math.hypot(normals[old * 3], normals[old * 3 + 1], normals[old * 3 + 2]);
       if (length < 1e-12) throw new Error("Export source has an undefined surface normal.");
@@ -283,7 +300,7 @@ export async function optimiseExportMesh(
     outI[i] = id;
   }
   const edges = new Map<string, { count: number; direction: number }>();
-  for (let i = 0; i < outI.length; i += 3) {
+  for (let i = 0; !options.optimisedChunks && i < outI.length; i += 3) {
     if (i % 6144 === 0) await work.pause("Checking continuity", i, outI.length);
     for (let k = 0; k < 3; k++) {
       const a = outI[i + k],
@@ -565,6 +582,7 @@ export async function compactPlanarSources(
   sources: readonly ExportSource[],
   maxBytes: number,
   work = new ExportWork(),
+  optimisedChunks = true,
 ): Promise<{ sources: ExportSource[]; removedTriangles: number; maxPlanarDeviation: number }> {
   const output: ExportSource[] = [];
   let bytes = 0,
@@ -578,8 +596,9 @@ export async function compactPlanarSources(
       for (let pass = 0; pass < 12; pass++) {
         work.check();
         exportAdmission([{ ...source, chunks: [chunk] }], "high", maxBytes - bytes);
-        const mesh = await optimiseExportMesh({ ...source, chunks: [chunk] }, "high", work, {
+        const mesh = await optimiseMesh({ ...source, chunks: [chunk] }, "high", work, {
             preserveWinding: true,
+            optimisedChunks,
           }),
           count = mesh.indices?.length ?? mesh.positions.length / 3,
           positions = new Float32Array(count * 3),
@@ -587,6 +606,13 @@ export async function compactPlanarSources(
         for (let i = 0; i < count; i++) {
           if (i % 2048 === 0) await work.pause("Preparing compact Boolean surface", i, count);
           const index = (mesh.indices?.[i] ?? i) * 3;
+          if (optimisedChunks) {
+            for (let axis = 0; axis < 3; axis++) {
+              positions[i * 3 + axis] = mesh.positions[index + axis];
+              normals[i * 3 + axis] = mesh.normals[index + axis];
+            }
+            continue;
+          }
           positions.set(mesh.positions.subarray(index, index + 3), i * 3);
           normals.set(mesh.normals.subarray(index, index + 3), i * 3);
         }

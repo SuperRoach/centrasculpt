@@ -1,9 +1,14 @@
 import whatsNew from "../WHATS_NEW.md?raw";
 import { partOwner } from "./assembly";
-import { restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
+import { partBounds, restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
 import { assemblyUI } from "./assembly-ui";
-import { exportResolution, prepareBooleanExport } from "./boolean-export";
+import { exportNeedsEvaluation, exportResolution, prepareBooleanExport } from "./boolean-export";
+import { frameAgentBounds } from "./desktop-navigation";
+import { DesktopPreviewPerformance } from "./desktop-preview-performance";
+import { bindDesktopSavePress } from "./desktop-save-press";
 import { enclosureUI } from "./enclosure-ui";
+import type { CurvedReductionOptions } from "./export-decimation";
+import { CURVED_TOLERANCES, curvedReductionSummary } from "./export-decimation";
 import { mountExportDialog } from "./export-dialog";
 import { exportCountEstimate } from "./export-estimate";
 import { createExportFeedback } from "./export-feedback";
@@ -186,6 +191,7 @@ const shapeLibraryUI = createShapeLibraryUI(
   () => toggleGhostRotation("translate"),
 );
 const transformPreview = new TransformPreview();
+const previewPerformance = new DesktopPreviewPerformance();
 let booleanPreview = false,
   lastCompositePoll = 0;
 function syncView() {
@@ -194,8 +200,11 @@ function syncView() {
     layers.viewMode,
     layers.composite.pending ? undefined : layers.composite.stats?.triangles,
   );
-  if (!booleanPreview) ui.compositeInfo("");
-  transformPreview.sync(layers);
+  if (!booleanPreview) {
+    ui.compositeInfo("");
+    ui.compositeBusy(false);
+  }
+  transformPreview.sync(layers, !xrBlocked());
 }
 syncView();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
@@ -225,6 +234,41 @@ function createCameraControls() {
   return orbit;
 }
 let controls = createCameraControls();
+function frameSelected() {
+  if (
+    loadingProject ||
+    ui.modalOpen ||
+    xrBlocked() ||
+    desktopStroke.active ||
+    input.transforming ||
+    input.referenceEditing ||
+    layers.transforming ||
+    precision?.active ||
+    precision?.primitives.placing ||
+    primitivePreview?.active
+  )
+    return;
+  try {
+    const node = layers.transformNode;
+    const bounds = partBounds(layers, node.id, true);
+    if (
+      bounds.isEmpty() ||
+      ![...bounds.min.toArray(), ...bounds.max.toArray()].every(Number.isFinite)
+    )
+      return;
+    // Recreate controls to clear any remaining orbit/pan damping before framing.
+    const target = controls.target.clone();
+    controls.dispose();
+    controls = createCameraControls();
+    controls.target.copy(target);
+    frameAgentBounds(camera, controls, bounds);
+    ui.status(`Framed ${node.name}`);
+  } catch (error) {
+    ui.toast(message(error));
+  }
+}
+document.getElementById("frame-selected")!.addEventListener("click", frameSelected);
+
 const cameraViews = ["Perspective", "Top", "Side", "Bottom"] as const;
 let cameraView = 0;
 const cameraViewButton = document.querySelector<HTMLButtonElement>("#cycle-camera-view")!;
@@ -531,7 +575,10 @@ function placePointerShape(): boolean {
   if (!shapeGhost.model.followPointer) return true;
   raycaster.setFromCamera(pointer, camera);
   const meshes: THREE.Object3D[] = [];
-  (booleanPreview ? layers.composite.group : layers.group).traverseVisible((object) => {
+  (booleanPreview && layers.composite.group.visible
+    ? layers.composite.group
+    : layers.group
+  ).traverseVisible((object) => {
     if (object instanceof THREE.Mesh) meshes.push(object);
   });
   const hit = raycaster.intersectObjects(meshes, false)[0];
@@ -848,6 +895,18 @@ window.addEventListener("keydown", (event) => {
     )
   )
     return;
+  if (
+    event.code === "Period" &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !event.repeat
+  ) {
+    event.preventDefault();
+    frameSelected();
+    return;
+  }
   if (input.referenceEditing && !event.metaKey && !event.ctrlKey && !event.altKey) {
     const mode = ({ w: "translate", e: "rotate", r: "scale" } as const)[
       event.key.toLowerCase() as "w" | "e" | "r"
@@ -973,7 +1032,7 @@ function syncRenderStyle(): void {
   }
   scene.environment = style !== "normal" ? studioEnvironment!.texture : null;
   renderer.toneMapping = style !== "normal" ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-  renderer.toneMappingExposure = style !== "normal" ? 0.9 : 1;
+  renderer.toneMappingExposure = style === "glossy" ? 0.45 : style === "matte" ? 0.55 : 1;
   ui.renderStyle(style);
 }
 function setRenderStyle(style: RenderStyle): void {
@@ -1108,11 +1167,10 @@ document.getElementById("composition-mode")!.addEventListener("click", (event) =
   layers.composite.syncMetadata();
   const s = layers.composite.stats;
   ui.compositeInfo(
-    booleanPreview
-      ? s && !layers.composite.pending
-        ? `${s.resolution}³ cached Boolean preview · ${s.triangles.toLocaleString()} triangles${s.capped ? " · Quality capped; fine detail may be lost." : ""}`
-        : "Preparing Boolean preview…"
-      : "",
+    booleanPreview ? (s && !layers.composite.pending ? "Preview ready" : "Updating preview…") : "",
+    s
+      ? `Boolean preview · ${s.resolution}³${s.capped ? " · Reduced detail" : ""}`
+      : "Updating preview…",
   );
 });
 document.getElementById("composite-quality")!.addEventListener("change", (event) => {
@@ -1331,9 +1389,13 @@ document.getElementById("cut-apply")!.addEventListener("click", (event) => {
       button.disabled = false;
     });
 });
-document
-  .getElementById("header-save")!
-  .addEventListener("click", () => document.getElementById("save-project")!.click());
+const disposeSavePress = bindDesktopSavePress(
+  document.querySelector<HTMLButtonElement>("#header-save")!,
+  () => document.getElementById("save-project")!.click(),
+  () => {
+    void projectBrowser.activate("library:download-current");
+  },
+);
 document.getElementById("new-project")!.addEventListener("click", () => {
   if (loadingProject || xrBlocked() || ui.modalOpen || !layers.recoveryReady) return;
   stop();
@@ -1496,9 +1558,7 @@ window.addEventListener("keydown", (event) => {
   }
 });
 function exportEstimate(): void {
-  const evaluated = layers.project.layerStack.layers.some(
-    (l) => l.booleanModifiers?.length || l.array?.enabled,
-  );
+  const evaluated = exportNeedsEvaluation(layers.project, "visible", exportFormat.value === "stl");
   const count = layers.project.layerStack.layers.reduce(
     (n, l) => n + (l.visible ? layers.runtime(l.id).triangles : 0),
     0,
@@ -1518,6 +1578,16 @@ exportMemory.addEventListener("change", () => {
   exportEstimate();
 });
 
+function selectedCurvedReduction(): CurvedReductionOptions | undefined {
+  if (
+    exportFormat.value !== "stl" ||
+    !document.querySelector<HTMLInputElement>("#export-curved")?.checked
+  )
+    return;
+  const index = Number(document.querySelector<HTMLInputElement>("#export-curved-tolerance")!.value);
+  return { toleranceMM: CURVED_TOLERANCES[index] };
+}
+
 async function exportSculpt(scope: "visible" | "selected" | "composite") {
   const format = exportFormat.value;
   if (format !== "stl" && format !== "glb") {
@@ -1528,6 +1598,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
   let calibratedLongestMM = 0;
   if (loadingProject || xrBlocked()) return;
   const memoryLimit = selectedExportMemory();
+  const curvedReduction = selectedCurvedReduction();
   stop();
   if (
     format === "stl" &&
@@ -1537,6 +1608,13 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     if (printSizing.value !== "actual") {
       exportMessage(
         "Printable parts retain calibrated assembly dimensions. Choose 1:1, or Unified Boolean to scale the whole assembly together.",
+        true,
+      );
+      return;
+    }
+    if (curvedReduction) {
+      exportMessage(
+        "Printable parts stay exact. Turn off curved reduction, or choose Unified Boolean for an experimental combined mesh.",
         true,
       );
       return;
@@ -1625,12 +1703,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             )
           )
             throw new Error("Choose visible Boolean result export for scenes with live modifiers.");
-          if (
-            scope === "composite" ||
-            layers.project.layerStack.layers.some(
-              (l) => l.booleanModifiers?.length || l.array?.enabled,
-            )
-          ) {
+          if (exportNeedsEvaluation(layers.project, scope, stlMM !== undefined)) {
             exportMessage("Preparing a memory-bounded Boolean export…");
             prepared = await prepareBooleanExport(
               layers,
@@ -1648,7 +1721,11 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
               exportResolution(Number(exportResolutionControl.value)),
             );
             sources = prepared.sources;
-          } else sources = layers.exportSources(scope, stlMM === undefined);
+          } else
+            sources = layers.exportSources(
+              scope === "selected" ? "selected" : "visible",
+              stlMM === undefined,
+            );
           if (stlMM !== undefined)
             sources = sources.map((source) => ({
               ...source,
@@ -1665,7 +1742,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             Number(printSize.value),
           );
           const qualityName = document.querySelector<HTMLSelectElement>("#export-quality")!.value;
-          exportSummary.textContent = `${scope === "composite" ? "Unified evaluated SDF" : scope} · ${printSizing.value === "actual" ? "Actual size (1:1)" : "Scale to target"} · Actual ${actualDimensions.map((n) => n.toFixed(3)).join(" × ")} mm → Export ${sizing.dimensionsMM.map((n) => n.toFixed(3)).join(" × ")} mm · ${sizing.scale.toFixed(6)}× · ${qualityName}${prepared ? ` · evaluated ${prepared.resolution}³ · max ${exportResolutionControl.value}³` : " · committed surface"}`;
+          exportSummary.textContent = `${scope === "composite" ? "Unified evaluated SDF" : prepared ? `${scope} · evaluated SDF` : scope} · ${printSizing.value === "actual" ? "Actual size (1:1)" : "Scale to target"} · Actual ${actualDimensions.map((n) => n.toFixed(3)).join(" × ")} mm → Export ${sizing.dimensionsMM.map((n) => n.toFixed(3)).join(" × ")} mm · ${sizing.scale.toFixed(6)}× · ${qualityName}${prepared ? ` · evaluated ${prepared.resolution}³ · max ${exportResolutionControl.value}³` : " · committed surface"}`;
           await paint();
           if (stlMM !== undefined) stlMM = sizing.longestMM;
           else
@@ -1679,6 +1756,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
           const result = await exportGlbAsync(sources, quality, {
             signal,
             stlMM,
+            curvedReduction,
             maxBytes: prepared?.availableBytes() ?? Math.max(1, memoryLimit - layers.trackedBytes),
             progress: (p) => {
               exportStage = p.stage;
@@ -1747,6 +1825,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
                     `Whole-region pass round-off bound: ${report.planarPatchDeviationMM.toPrecision(3)} mm (sampling and local cleanup excluded)`,
                   ]),
               `${report.triangles.toLocaleString()} triangles · ${report.components} connected surfaces`,
+              ...(report.curvedReduction ? [curvedReductionSummary(report.curvedReduction)] : []),
               `Open edges: ${report.boundaryEdges} · Non-manifold edges: ${report.nonManifoldEdges} · Winding conflicts: ${report.inconsistentEdges}`,
               `Degenerate triangles: ${report.degenerateTriangles} · Inward surfaces: ${report.invertedComponents}`,
               ...report.blocking.map((s) => "BLOCKED: " + s),
@@ -1771,6 +1850,8 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
                 ),
                 filename.replace(/\.stl$/i, "-print-report.json"),
               );
+            if (report.curvedReduction)
+              exportSummary.textContent += ` · ${curvedReductionSummary(report.curvedReduction)}`;
             if (report.warnings.length) {
               exportMessage(`Review print warnings, then download ${filename}.`);
             } else {
@@ -1896,7 +1977,7 @@ exportResult.append(
   printableDownloads,
   exportProfileDetails,
 );
-const exportFeedback = createExportFeedback(exportResult);
+const exportFeedback = createExportFeedback(exportResult, (busy) => ui.activity("export", busy));
 document.getElementById("export-boolean")!.after(exportResult);
 cancelExport.hidden = false;
 cancelExport.style.visibility = "hidden";
@@ -1960,6 +2041,8 @@ printPanel.append(printReport);
 document.getElementById("export-boolean")!.parentElement!.append(printPanel);
 mountWhatsNew(printPanel, whatsNew);
 mountExportDialog(exportEstimate, () => loadingProject || xrBlocked());
+for (const id of ["export-curved", "export-curved-tolerance"])
+  document.getElementById(id)!.addEventListener("input", () => clearPreparedExport());
 const markedPartsExport = document.createElement("button");
 markedPartsExport.id = "export-marked-parts";
 markedPartsExport.textContent = "Marked printable parts · STL";
@@ -1978,12 +2061,13 @@ markedPartsExport.onclick = () => {
 document.getElementById("export-boolean")!.after(markedPartsExport);
 function syncExportFormat() {
   printLabel.hidden = printSizing.value === "actual";
-  printPhysicalLabel.hidden = false;
+  printPhysicalLabel.hidden = true;
   printPanel.hidden = exportFormat.value !== "stl";
   clearPreparedExport();
 }
 exportFormat.addEventListener("change", () => {
   syncExportFormat();
+  exportEstimate();
   exportMessage(
     `${exportFormat.value.toUpperCase()} selected. Choose current layer, all layers, or unified boolean.`,
   );
@@ -2243,6 +2327,7 @@ const lighting = new LightRig(
       .applyMatrix4(xrRig.sculptureRoot.matrix)
       .applyMatrix4(xrRig.turntable.group.matrix);
   },
+  () => display.renderStyle,
 );
 const worldUI = worldSettingsUI(
   () => display,
@@ -2617,6 +2702,7 @@ const projectBrowser = new ProjectBrowser(
         starterPresentation,
     ready: () => !loadingProject && layers.recoveryReady,
     changed: () => {
+      ui.activity("library", projectBrowser.busy);
       renderProjectBrowser();
       if (!projectBrowser.busy) {
         layers.project.name = projectBrowser.name;
@@ -2910,7 +2996,7 @@ xrExperience = new XRExperience(
 void xrExperience.check();
 const recoveryPanel = document.getElementById("recovery-slot")!;
 recoveryPanel.innerHTML =
-  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><label for="recovery-selection">RECOVERY CHECKPOINT</label><select id="recovery-selection" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details id="session-resources"><summary>Session resource estimates</summary><output id="stability-status"></output></details></section>';
+  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><select id="recovery-selection" aria-label="Recovery checkpoint" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details id="session-resources"><summary>Session resource estimates</summary><output id="stability-status"></output></details></section>';
 document
   .querySelector("main > aside")!
   .append(
@@ -2971,7 +3057,7 @@ function updateSaveIndicator(): void {
   });
   button.disabled = loadingProject || xrBlocked() || ui.modalOpen || !layers.recoveryReady;
   const label = SAVE_LABELS[state],
-    title = `${label}${projectBrowser.error ? " · " + projectBrowser.status : manualSaveError ? " · " + manualSaveError : recovery?.warning ? " · " + recovery.warning : ""} · Click to save project`;
+    title = `${label}${projectBrowser.error ? " · " + projectBrowser.status : manualSaveError ? " · " + manualSaveError : recovery?.warning ? " · " + recovery.warning : ""} · Click to save · Hold to download .form`;
   if (button.dataset.state !== state) {
     button.dataset.state = state;
     document.getElementById("header-save-status")!.textContent = label;
@@ -2984,7 +3070,11 @@ function updateSaveIndicator(): void {
 function updateRecoveryUI(): void {
   if (!recovery) return;
   updateSaveIndicator();
-  recoveryStatus.textContent = recovery.status();
+  const status = recovery.status();
+  if (recoveryStatus.textContent !== status) recoveryStatus.textContent = status;
+  recoveryStatus.title = recovery.lastSuccess
+    ? `Last local save: ${new Date(recovery.lastSuccess).toLocaleString()}`
+    : "";
   recoveryStatus.hidden =
     !recovery.warning &&
     (recovery.blocked ||
@@ -3273,6 +3363,7 @@ const recoveryTimer = setInterval(() => {
   }
 }, 500);
 import.meta.hot?.dispose(() => {
+  disposeSavePress();
   primitivePreview?.dispose();
   clearInterval(recoveryTimer);
   snapArrow.removeFromParent();
@@ -3302,9 +3393,15 @@ new ResizeObserver(resizeDesktop).observe(ui.viewport);
 refresh();
 let previous = performance.now();
 function pollComposite(now: number): void {
+  ui.compositeBusy(
+    booleanPreview &&
+      !layers.composite.failed &&
+      (layers.composite.interactionActive || layers.composite.pending || layers.composite.busy),
+  );
   if (
     booleanPreview &&
-    (!layers.transforming ||
+    (!xrBlocked() ||
+      !layers.transforming ||
       layers.project.layerStack.layers.some(
         (l) => l.booleanModifiers?.length || l.array?.enabled,
       )) &&
@@ -3316,7 +3413,7 @@ function pollComposite(now: number): void {
     const job = layers.composite.tick();
     if (job)
       ui.compositeInfo(
-        "Preview pending · updates after a short pause. Brushes still target the selected source layer.",
+        layers.composite.interactionActive ? "Updating (fast)" : "Updating preview…",
       );
     if (job)
       void job
@@ -3328,7 +3425,12 @@ function pollComposite(now: number): void {
           }
           if (changed && s)
             ui.compositeInfo(
-              `${s.resolution}³ · voxel ${s.step.toFixed(4)} world · SAMPLE ${s.samplingMs.toFixed(1)} ms · MESH ${s.meshingMs.toFixed(1)} ms · ${s.chunks}/${s.totalChunks} chunks${s.capped ? " · Quality capped; fine detail may be lost." : ""}`,
+              layers.composite.interactionActive
+                ? "Updating (fast)"
+                : layers.composite.pending
+                  ? "Updating preview…"
+                  : "Preview ready",
+              `Boolean preview · ${s.resolution}³${s.capped ? " · Reduced detail" : ""}`,
             );
         })
         .catch((error) => {
@@ -3366,16 +3468,23 @@ renderer.setAnimationLoop((now, frame) => {
     if (frame && renderer.xr.isPresenting) xrExperience!.frame(now, frame);
     if (!xrExperience!.controllers.grab?.active && !xrExperience!.controllers.layerGrab?.active)
       pollComposite(now);
-    transformPreview.sync(layers);
+    transformPreview.sync(layers, !xrBlocked());
     layers.updateMaskOverlays();
     renderer.render(scene, camera);
     xrExperience!.finishFrame(performance.now() - cpuStart);
     return;
   }
   xrExperience?.refreshButton();
+  layers.composite.setInteractiveQuality(
+    previewPerformance.observeFrame(
+      now - previous,
+      document.visibilityState === "visible" && !loadingProject && !ui.modalOpen,
+    ),
+  );
   const dt = Math.min((now - previous) / 1000, 0.05);
   previous = now;
   if (input.cameraEnabled) controls.update();
+  transformPreview.sync(layers, true);
   const runtime = layers.active;
   if (desktopStroke.phase === "committing")
     try {
@@ -3400,7 +3509,9 @@ renderer.setAnimationLoop((now, frame) => {
   ) {
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObject(
-      booleanPreview ? layers.composite.group : runtime.surface.group,
+      booleanPreview && layers.composite.group.visible
+        ? layers.composite.group
+        : runtime.surface.group,
       true,
     )[0];
     cursor.visible = !!hit;
@@ -3504,7 +3615,7 @@ renderer.setAnimationLoop((now, frame) => {
   shapeGhost.sync(loadingProject || ui.modalOpen || xrBlocked());
   shapeLibraryUI.refresh();
   syncViewportTools();
-  transformPreview.sync(layers);
+  transformPreview.sync(layers, !xrBlocked());
   layers.updateMaskOverlays();
   if (!renderAgentFeedback?.()) renderer.render(scene, camera);
   if (questCapture.active) {

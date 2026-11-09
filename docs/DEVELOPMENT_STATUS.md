@@ -1,3 +1,299 @@
+# Export controls and guarded curved reduction — 2026-11-10
+
+## Delivered
+
+File type (STL/GLB with unit/format tooltips) and Quality preset share the top row.
+Actual size (1:1) is an on-by-default switch below; off reveals explicit target
+sizing. The duplicate preset slider is removed. Advanced offers an off-by-default
+**Curved reduction · Experimental · STL** checkbox and a 0.01/0.025/0.05/0.1 mm
+Surface tolerance slider. The result shows **✓ applied** or **✕ fallback**, retaining
+the fallback reason. The visible description explicitly says sampled checks are not
+a fit guarantee. Printable-part export does not apply this lossy mode; GLB clears
+and disables it. Export choices are session controls, not a project-schema change.
+
+[Implementation, limits, matrix, rollback and reproduction](EXPERIMENTAL_CURVED_EXPORT.md).
+
+## Reliability and measurements
+
+The optional worker stage uses pinned meshoptimizer 0.22.0 after physical STL sizing,
+keeps original vertex positions, locks borders/creases/extrema, and requires final
+closed topology, dimensions/Euler, two-direction sampled distance, silhouette and
+cavity/gap-section checks. A separate input/work/workspace allowance is enforced in
+addition to existing admission. Cancellation and stale-source failures propagate.
+Unchecking returns the original exporter; rejected candidates keep its exact bytes.
+No SDF, geometry, work, memory, polygon or size limit is raised, and no new primitive
+mesh replaces evaluated SDF output. Default/off mode keeps its existing geometry.
+
+Coarse curved High: 34,028 → 33,686 faces at 0.05 mm, sampled maximum 0.029127 mm,
+maximum section change 0.049672 mm. The more aggressive 0.1 mm candidate fell back
+on silhouette checks. Eleven serialized-baseline comparisons applied only coarse
+clay and the mechanical array; dense curved, holders, Lens and enclosures retained
+the original on geometry/workspace/verification-work failures. These optional-check
+timings are not export speedups or printer-fit claims. No Astra file/result.
+
+## Acceptance
+
+Quick 21/21, focused curved/export/staged 27/27, and full formatting/lint/strict
+TypeScript/production build + **1,693/1,693 tests** passed, no failures/skips/
+cancellations (final 115.05 s test wall). Unit checks include independent distance/
+section probes, actual worker parity/cancellation, stale revisions, open/invalid
+surfaces, memory admission and native/history preservation. ES worker output permits
+lazy reduction/WASM chunks; the test compiler now handles relative dynamic imports.
+
+Final production Chromium controls run `work/export-controls/run-vNFTIY` passed
+actual and target sizing, real STL/GLB worker downloads, off-by-default/GLB-disabled
+controls, prepared-link invalidation, ✓ applied vs ✕ byte-exact fallback, independent
+STL topology/counts, unchanged input/history, and desktop/390 px mobile no-overflow
+screenshots. Full baseline production smoke passed 1:1/100/200 mm STL, metre GLB,
+planar cube 29,292→18,132 and oblique cube 169,480→92,440 with matching bounds/Undo,
+plus injected worker-failure stage/cause/no-download. Production lifecycle smoke
+passed hidden/blur continuation, Cancel/Escape and actual interruption/Undo handling.
+
+Earlier runs exposed IIFE worker splitting, a Node dynamic-import rewrite gap and
+outdated hidden sizing-select test locators; all were corrected before acceptance.
+A dev full-smoke download timed out; its immutable-production rerun passed and is
+the baseline acceptance result. The initial experiment reports remain historical;
+“offline only” is superseded only by this explicit opt-in guarded STL mode.
+
+Raw matrix: `work/curved-export/matrix.json`. Logs `/tmp/curved-{quick,focused,tests,
+final-quick,final-check,matrix,browser,controls-final-browser,baseline-browser,
+baseline-production,lifecycle-browser,lifecycle-production}.log`. Other pre-existing
+local changes were preserved. No commit, push or merge.
+
+---
+
+# Bounded Boolean preview and concise status — 2026-11-09
+
+The original nine-layer Lens native copy admits 192³ at 63,700,992 estimated source
+samples. The active Chrome scene showed “Recovery restored” plus a visible Layer 10;
+ten sources at 192³ require 70,778,880 samples and reproduced the user's 64M refusal.
+No layer was removed or edited. A read-only copy of the available ten-layer Lens
+native project reproduces the same guard.
+
+Interactive layer preview now opts into bounded resolution: keep the selected cap
+when it fits, otherwise choose the highest lattice fitting the unchanged 64M work
+budget. Ten sources use 185³ / 63,316,250 calls; 186³ would exceed the budget. Work
+accounting follows actual visible roots and enabled modifier calls, counts shared
+hidden operands per reference, and includes every array instance. Unreferenced hidden
+roots are excluded only when the evaluator also excludes them. Cycles/missing refs,
+memory and intermediate mesh guards remain. Only IndependentLayers' display cache
+opts in; strict compositor/Bake and staged export admission remain unchanged.
+
+The evaluator, source fields, transforms, calibration, native data, Undo/Redo,
+export resolution and project schemas are unchanged. Preview detail can be lower;
+this is a display approximation, not a new fitting tolerance or automatic export
+downgrade. The status is deliberately short: “Boolean preview · 185³ · Reduced
+detail”, including when returning to a cached preview. Timings, voxel size, chunks
+and work-budget prose were removed from that normal status line.
+
+Verification: quick 21/21; targeted new policy/field tests 2/2; full format/lint,
+strict TypeScript, production build and **1,683/1,683 tests** passed, no failures/
+skips/cancellations (143.29 s test wall). After the shorter wording/release note,
+quick 21/21 and final strict/build passed again. The earlier focused run's new
+fixture had an invalid brush-radius preference; it was corrected before acceptance.
+Both native fixtures passed 4,096 sampled Float32 field equality probes at their
+actual preview lattices and native serialization/history preservation. Nine-layer
+preview remains 192³ / 103,336 triangles; ten-layer now renders 185³ / 97,128
+triangles. Those are preview counts, not printable topology acceptance.
+
+Evidence: `work/lens-preview-repro/native-preview.json`, read-only ten-layer copy
+`input/lens-ten.form` (SHA-256 `2b53c109de6e815f39abc73aeec8659f28bc4088432234253aebb40b78522414`),
+plus the unchanged original nine-layer SHA-256 `ff59de49…c855`. Logs in
+`/tmp/preview-budget-{quick,focused,targeted,native,check,final-quick,final-build,browser}.log`.
+No commit, push or merge.
+
+Production Chromium verified the concise ready/cached status at 185³, a deliberate
+128³ preview choice, unchanged selected 256³ export detail, unchanged 0 Undo/0 Redo,
+and unchanged native input bytes. Evidence: `work/lens-preview-repro/browser-preview.json`
+and `preview-short.png`. The user also observed the successful 185³ preview in the
+active app before requesting the shorter wording.
+
+---
+
+# Export stage progress colours — 2026-11-09
+
+The export progress line now groups stage labels into seven colours: preparation
+(grey), SDF evaluation (blue), meshing (teal), optimisation (purple), physical
+sizing/transforms (amber), topology/precision validation (rose), and file encoding/
+packing (green). New exports reset to preparation; unknown future steps also use
+that neutral fallback. Stage text, accessible labels, elapsed time, per-stage
+percentages, cancellation and reduced-motion behaviour remain.
+
+Uses the existing local feedback control with Chromium/WebKit and Firefox progress
+fill selectors. A disposable Chromium preview verified all seven distinct inherited
+colours, stage labels and values and was visually inspected. Screenshot:
+`work/export-progress-colours/preview.png`. Quick 21/21; full formatting/lint,
+strict TypeScript, production build and **1,681/1,681 tests** passed, no failures/
+skips/cancellations (128.62 s test wall). Logs `/tmp/export-colours-{quick,check,browser}.log`.
+Firefox-specific rendering was not separately tested. No commit/push/merge.
+
+---
+
+# Lens High visible-STL correction — 2026-11-09
+
+Reproduced the supplied Lens native copy at every preset: All visible layers borrowed
+96 committed shell triangles, including three subtraction cutters, and final STL
+validation blocked exactly 12 non-manifold edges. The 256 detail setting was unused
+on that route. The preceding native benchmark matrices tested Unified Boolean,
+which passed; they did not validate this visible-layer route.
+
+Visible STL now evaluates visible ordered difference/intersection layers through
+the existing bounded SDF pipeline, applying the selected cap, sizing and unchanged
+continuity checks. Selected-layer, additive separate-layer, visible GLB and assembly
+semantics remain. Estimates and the prepared summary identify evaluation. The
+original and input-copy native SHA-256 remain unchanged; no commit/push/merge.
+
+Quick 21/21, focused export-resolution/estimate 5/5, full format/lint/strict types/
+production build/tests **1,681/1,681** passed. Actual native-file browser downloads
+at High/192 and High/256/default 256 MiB both have one outward component, zero
+checked defects and approximately 450 × 59 × 70 mm bounds. Counts 79,566 / 110,420;
+SHA-256 matches the earlier Unified Boolean benchmarks at each cap. The production-preview browser regression passed all four downloads, same-session
+Unified parity, the 200 mm target, identical before/after native bytes and unchanged
+Undo/Redo. Passing artifacts: `work/lens-visible-repro/browser-A93lWU`. Two earlier
+dev-browser attempts were incomplete/interrupted and are documented separately.
+
+[Root cause, verification and reproduction](PHASE_7_5_4C_EXPORT_INTEGRATION.md#lens-visible-stl-routing-correction).
+
+---
+
+# Phase 7.5.4c handover — Validation and production integration — 2026-11-09
+
+## Delivered
+
+Promoted the exact evaluated-STL chunk compactor: scalar expansion copies, omitted unused local edge reports/colour copies and early exit after an unchanged inner planar pass. Public optimiser reports and final physical STL topology validation remain. Original-path fallback is an explicit argument; source rollback changes both defaults to false. No lossy QEM, adaptive extraction, raw primitive substitution, smoothing, limit increase, UI/schema or Undo change.
+
+[Complete measurements, geometry checks, limitations and rollback](PHASE_7_5_4C_EXPORT_INTEGRATION.md).
+
+## Measurements and preservation
+
+The four-fixture, mounting-opening enclosure and read-only native Lens matrices completed 96 serial paired attempts at requested 192/256 caps, Fast/High, cold/same-process warm. Original/promoted bytes or refusals match in every case; native serialization, Undo/Redo and Lens input bytes remain unchanged. Warm dense curved 192 Fast: 3.771 → 2.987 s; High: 6.801 → 5.969 s. Warm Lens 256 Fast: 19.626 → 18.681 s; High: 20.968 → 19.641 s. Peak RSS can increase and exceeds the admission budget; no lower memory ceiling is claimed.
+
+## Acceptance and limits
+
+Quick 21/21, focused 38/38, and full `npm run check` 1,680/1,680 passed (format/lint/strict types/build; no skips). Both Chromium export/lifecycle tests passed with the required execution permission. Six High silhouette pairs match; curved/Lens/enclosure PNGs were inspected. Sixteen in-app actual-worker comparisons passed clean topology, hash equality and native/history preservation. Initial restricted local-server/Chromium permission failures are documented separately. Fast synthetic clay retains its pre-existing blocking topology report. Dense curved at cap 256 evaluates 196³ and High refuses 306,312 input faces at the unchanged 300k ceiling. A plain 5 mm enclosure wall can disappear under the existing coarse source-feature sampling heuristic; the original/promoted enclosure failure is retained, with a separate finer-sampled mounting-opening fixture. This phase adds no geometry deviation relative to the original exporter and does not certify absolute print fit or fix the source sampler. No identifiable Astra native file was found in the workspaces/Downloads or metadata scan; no Astra measurements are claimed.
+
+No commit, push or merge. The earlier 7.5.4a/b changes were already uncommitted and remain part of this working tree.
+
+---
+
+# Phase 7.5.4b handover — Experimental export optimisation — 2026-11-09
+
+## 1. Delivered
+
+An off-by-default experimental chunk flag for evaluated STL, a paired cold/warm Node harness, an isolated browser comparison and an offline meshoptimizer simplification experiment. The original 7.5.4a work is retained below. [Full experimental results, raw-evidence locations and reproduction](PHASE_7_5_4B_EXPORT_EXPERIMENT.md).
+
+## 2. Correctness and preservation
+
+Compared encoded STL SHA-256, physical dimensions, final topology, field residuals, native bytes and Undo/Redo on disposable editors. The read-only Lens copy and the Downloads original retained their recorded hash. Production dialog, sizing, GLB metres, STL millimetres, ordered SDF and all admission guards retain the existing defaults. Exact mode bypasses decimation. Experimental diagnostics select the source on a failed candidate and refuse a defective source.
+
+## 3. Measurements
+
+On the dense curved fixture, warm Fast STL fell from 4.023 to 3.188 s with the same 293,776 triangles. The synthetic holder at requested 256³ fell from 23.913 to 21.189 s; observed warm process peak rose from 468 to 505 MiB. In the separate High STL simplification experiment the 50% face target yielded no acceptable candidate. The 90% target passed on four mechanical cases, with matching sampled holder and array slot widths. Dense organic clay failed even the 99% target. Coarse clay saved 342 faces at that target.
+
+## 4. Verification
+
+Quick suite 21/21. Strict TypeScript, Biome format/lint, Vite build and full suite passed (1,679/1,679). Targeted tests cover exact chunk parity, budgets, cancellation, stale source, occluded intersections and calibrated distance. A fresh in-app product export produced a ready 1:1 STL. Four additional browser High STL comparisons yielded the same SHA-256. Scripted headless Chromium terminated during startup. Test logs and run identifiers are in the experiment report.
+
+## 5. Known failures and limits
+
+Fast synthetic clay retains its pre-existing blocking print report. QEM can introduce non-manifold edges or change hidden intervals despite negligible solver error. Sampled surface distances, sections and raster masks cannot certify global fit. Peak RSS is process-wide and occasionally increases. Tests do not establish a hardware, printer, slicer, heavy Astra or experimental browser-worker result. No adaptive extractor, GLB retopology or increased budget shipped.
+
+## 6. Next phase
+
+7.5.4c should validate the exact chunk path on target workers with repeated matched runs, aborts and memory pressure. Keep lossy simplification offline pending a stricter organic result, named fit tolerances, oblique clearance gauges and a native Astra copy. Profile indexed/slab extraction and a bounded global STL edge ledger before changing guards. No commit, push or merge.
+
+---
+
+# Phase 7.5.4a handover — Export benchmark and diagnosis — 2026-11-09
+
+## 1. Delivered
+
+Repeatable `scripts/benchmark-export-diagnose.mjs`: serial isolated processes per
+fixture/cap/quality/format, one discarded + three measured runs, fresh output
+subdirectories, exact refusal evidence, independent STL/GLB reload/bounds checks,
+field residuals, resource snapshots and peak RSS. Disposable clay/curved/holder/
+array fixtures remain available; read-only native copies use persisted calibration.
+A separate `scripts/diagnose-export-files.mjs` creates full-triangle orthographic
+PNG masks, decoded topology and optional native-field GLB probes. Only production
+change is additive extraction/precompaction timing counters; no algorithm/UX change.
+
+## 2. Correctness and preservation
+
+Initial active checkout clean at `4062735` in `/Users/brettjames/development/vrappPOC`;
+conversation cwd is not a repository. Read latest status/roadmap, 7.5.2/7.5.3 evidence
+and export/worker/sampling/mesher/compactor/topology/encoder code before edits.
+96 main benchmark attempts (24 discarded / 72 measured) retained native bytes and
+Undo/Redo. User supplied Downloads `lensbenchmark.form` (9,056,816 bytes): tested a
+write-disabled ignored copy, original/copy SHA-256 unchanged
+`ff59de49002bde1f97771e8b1c52de7b401d3e7f4faf50bf31325803c0b8c855`.
+It is a nine-layer mechanical holder, not a demonstrated organic Astra file.
+No connected user editor, project library or recovery record was edited/restored/
+discarded. All limits, source semantics, winding rules, defaults and units retained.
+No commit, push or merge. What’s New unchanged because this is research tooling.
+
+## 3. Measured findings
+
+[Full report, exact diagnostics and Astra invocation](PHASE_7_5_4A_EXPORT_BENCHMARK.md).
+Lens 192³ Fast/High STL median 11.136/11.987 s, 89,018/79,566 triangles;
+256³ 19.848/20.737 s, 129,168/110,420 triangles. Approximately 450 × 59 × 70 mm
+bounds, one component and zero checked defects in all emitted Lens files, including
+metre-unit GLB reloads. Native-field residual maxima 1.158783/0.891753 mm at 192/256;
+Fast/High agree. These are sampled field values, not Hausdorff/clearance/fit bounds.
+
+Synthetic holder extraction ~1 ms versus precompaction ~8.5–8.7 s of ~11.3–11.4 s
+preparation: the historical combined bottleneck is specifically compaction. Lens
+precompaction ~7.2/10.4–10.5 s; sampling ~1.7/4.1 s at 192/256. Curved High costs
+~3 s optimiser time with zero triangle reduction. High GLB refuses Lens 256 at
+363,540 input triangles (300k High limit); synthetic holder also refuses and curved
+High GLB exceeds available workspace. No limit was raised. Lens RSS reaches 563 MiB
+with 512 MiB admission: accounting remains distinct from whole-process RSS.
+Nine available Fast/High quality pairs have identical three-view 300² raster masks;
+visual checks conceal pocket interiors and cannot establish print fit. Synthetic
+clay Fast correctly retains blocked STL topology; High cleanup passes checks.
+
+## 4. Verification
+
+`npm run check` passed Biome formatting/lint, strict TypeScript, production Vite
+build and **1,677/1,677 tests**, no failures/skips/cancellations (initial 102.21 s; final
+98.30 s test wall after empty-blocking-list summary regression correction).
+Quick **21/21**, focused benchmark/export correctness **42/42** passed. Seven new
+tests cover isolated repeats, native input bytes/calibration/history, actual STL
+counts, summary warmup/refusals, raster coverage, CLI bounds and encoder stale/
+cancel/memory refusal reasons. Existing lint warnings/bundle advisory remain.
+
+Both scripted export/lifecycle Chromium checks failed at launch with SIGABRT;
+assertions did not run. Fresh-origin in-app fallback passed actual worker STL
+preparation/download (31,536 triangles / 1,576,884 bytes / 169.848068 mm), unified
+High profile/clean print report, GLB High preparation, link invalidation, explicit
+Cancel, idle Escape/focus restore and 0 Undo / 0 Redo. It does not replace the full
+scripted lifecycle/responsive/holder acceptance gate. No elevated launch bypass.
+
+## 5. Limitations and next engineering gate
+
+Astra absent; heavy organic generalisation remains pending. Node cooperative costs
+are not browser/Quest/download-completion timings. Discarded isolated runs warm OS
+caches, not subsequent JITs. Per-stage tracked storage/snapshots and process high-water
+RSS do not isolate every transient allocation. Raster silhouettes and field probes
+do not prove Hausdorff distance, slot depth, walls, clearance, slicer or print fit.
+No simplifier, adaptive mesher, retopology, memory/work/triangle-limit relaxation,
+export default or UX change is implemented. Prioritise compaction copying/allocations/
+reuse, then feature-preserving curved simplification, then adaptive extraction;
+optional artist retopology last. Repeated bottleneck/zero-reduction and admission
+findings warrant an Extra High effort **7.5.4b investigation**, with matched baselines,
+physical-error/topology/memory/cancellation proofs before any shipping decision.
+
+## 6. Evidence and resumption
+
+Use the report's fixture/native-copy/Astra commands, `npm run check` and focused
+`npm test -- export-benchmark export-sizing export-resolution staged-boolean-export export-quality planar-patches`.
+Main evidence: ignored `work/phase-7-5-4a/benchmark.json`,
+`work/phase-7-5-4a/lens/run-yAG1Ju/benchmark.json`, matching decoded diagnostics and
+STL/GLB/PNG files; browser text/screenshots and independently parsed `browser-base.stl`.
+Input copy stays at `work/phase-7-5-4a/input/lensbenchmark.form`.
+Logs `/tmp/phase754a-{benchmark,lens,lens-diagnostics,fixture-diagnostics,focused,quick,check,final-check,browser,lifecycle,harness-validation,harness-final}.log`.
+Browser's disposable downloaded `Base (3).stl` remains in Downloads; original Lens
+file is untouched. Fresh benchmark commands always create a new run subdirectory.
+
 # Export dialog UI tidy — 2026-11-09
 
 Grouped format and physical size, kept a single primary quality slider with a live

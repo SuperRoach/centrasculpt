@@ -30,6 +30,10 @@ test("compile cache invalidates changed source, missing output and corrupt outpu
       readFileSync(join(root, "work/test-build/clay-stroke-session.mjs"), "utf8"),
       /from ["']\.\/clay-path\.mjs["']/,
     );
+    assert.match(
+      readFileSync(join(root, "work/test-build/stl-export.mjs"), "utf8"),
+      /import\(["']\.\/curved-decimation\.mjs["']\)/,
+    );
     assert.deepEqual(run(), { compiled: 0, cached: cold.compiled });
     const output = join(root, "work/test-build/move-field.mjs"),
       original = readFileSync(output, "utf8");

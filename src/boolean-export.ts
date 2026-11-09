@@ -15,6 +15,25 @@ export function exportResolution(value: number): ExportResolution {
   if (value !== 192 && value !== 256) throw new Error("Choose export resolution 192³ or 256³.");
   return value;
 }
+/** Visible printable Booleans must evaluate cutters, not concatenate their shells.
+ * GLB visible/current-layer exports retain their existing separate-layer semantics. */
+export function exportNeedsEvaluation(
+  project: SculptProject,
+  scope: "visible" | "selected" | "composite",
+  stl: boolean,
+): boolean {
+  return (
+    scope === "composite" ||
+    project.layerStack.layers.some(
+      (layer) => layer.booleanModifiers?.length || layer.array?.enabled,
+    ) ||
+    (stl &&
+      scope === "visible" &&
+      project.layerStack.compositionLayers.some(
+        (layer) => layer.visible && layer.operation !== "union",
+      ))
+  );
+}
 /** Independent export cache: analytic primitives need no sampling from their dense caches. */
 export async function prepareBooleanExport(
   layers: IndependentLayers,
@@ -24,6 +43,8 @@ export async function prepareBooleanExport(
   progress?: (p: ExportProgress) => void,
   memoryLimit = EXPORT_MEMORY_LIMIT,
   resolution: ExportResolution = 192,
+  // Pass false to retain the original chunk pipeline for diagnosis/rollback.
+  optimisedChunks = true,
 ) {
   if (!Number.isFinite(memoryLimit) || memoryLimit <= 0 || memoryLimit > EXPORT_MEMORY_MAX)
     throw new Error("Invalid export memory budget; maximum is 512 MiB.");
@@ -69,6 +90,8 @@ export async function prepareBooleanExport(
     const evaluatedResolution = composite.stats!.resolution;
     let sources = composite.exportSources(),
       ownedBytes = 0;
+    const extractionMs = performance.now() - compactionStart,
+      precompactionStart = performance.now();
     let removedTriangles = 0,
       maxPlanarDeviation = 0;
     if (stl) {
@@ -103,6 +126,7 @@ export async function prepareBooleanExport(
               layers.composite.trackedBytes -
               composite.trackedBytes,
             work,
+            optimisedChunks,
           );
       sources = compact.sources.map((source) => ({ ...source, current }));
       removedTriangles = compact.removedTriangles;
@@ -120,7 +144,13 @@ export async function prepareBooleanExport(
     }
     return {
       sources,
-      profile: { evaluation, derivedBytes, compactionMs: performance.now() - compactionStart },
+      profile: {
+        evaluation,
+        derivedBytes,
+        extractionMs,
+        precompactionMs: performance.now() - precompactionStart,
+        compactionMs: performance.now() - compactionStart,
+      },
       resolution: evaluatedResolution,
       dispose,
       removedTriangles,

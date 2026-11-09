@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Centra Sculpt export comparison</title>
+<h1>Disposable curved STL comparison</h1>
+<button id="run">Compare small High pipelines</button>
+<button id="dense-fast">Compare dense 192 Fast</button>
+<button id="dense-high">Compare dense 192 High</button>
+<button id="dense-256">Compare dense 256 Fast</button>
+<pre id="results"></pre>
+<script type="module">
+  import { prepareBooleanExport } from "../src/boolean-export.ts";
+  import { IndependentLayers } from "../src/independent-layers.ts";
+  import { createBaseProject } from "../src/layers.ts";
+  import { physicalExportDimensionsMM } from "../src/physical-units.ts";
+  import { saveSculptProject } from "../src/project.ts";
+  import { SDFVolume } from "../src/sdf.ts";
+  import { exportGlbAsync } from "../src/export-client.ts";
+
+  const run = document.querySelector("#run");
+  const result = document.querySelector("#results");
+  const buttons = document.querySelectorAll("button");
+  const compare = async (n = 65, resolution = 192, quality = "high", budgetMiB = 256) => {
+    buttons.forEach(button => button.disabled = true);
+    result.textContent = "";
+    try {
+      const hashes = new Set();
+      for (const experimental of [false, true, true, false]) {
+        const volume = new SDFVolume(n, 1.6, false);
+        for (let z = 0; z < n; z++)
+          for (let y = 0; y < n; y++)
+            for (let x = 0; x < n; x++) {
+              const py = volume.coordinate(y);
+              volume.values[volume.index(x, y, z)] =
+                Math.hypot(volume.coordinate(x) + 0.15 * Math.sin(py * 4), py, volume.coordinate(z)) - 0.85;
+            }
+        const editor = new IndependentLayers(createBaseProject(volume, {
+          mode: "add", radius: 0.22, hardness: 0.5, strength: 0.35,
+          camera: { position: [2, 2, 3], target: [0, 0, 0] },
+        }));
+        const before = new Uint8Array(saveSculptProject(editor.project));
+        const history = [editor.undoCount, editor.redoCount];
+        let prepared;
+        try {
+          const start = performance.now();
+          prepared = await prepareBooleanExport(editor, editor.project, undefined, true, undefined, budgetMiB * 1024 ** 2, resolution, experimental);
+          const dims = physicalExportDimensionsMM(prepared.sources, 100);
+          const stl = await exportGlbAsync(prepared.sources, quality, { maxBytes: prepared.availableBytes(), stlMM: Math.max(...dims) });
+          if (stl.backend !== "worker") throw new Error("Expected production worker");
+          const totalMs = performance.now() - start;
+          const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", stl.data)), b => b.toString(16).padStart(2,"0")).join("");
+          const after = new Uint8Array(saveSculptProject(editor.project));
+          const preserved = before.length === after.length && before.every((b, i) => b === after[i]) && history[0] === editor.undoCount && history[1] === editor.redoCount;
+          if (!preserved) throw new Error("Source/history changed");
+          hashes.add(hash);
+          if (stl.report.blocking.length || hashes.size !== 1) throw new Error("Topology or file mismatch");
+          result.textContent += JSON.stringify({ n, resolution, quality, budgetMiB, preserved, optimisedChunks: experimental, backend: stl.backend, totalMs, precompactionMs: prepared.profile.precompactionMs, triangles: stl.report.triangles, hash }) + "\n";
+        } finally {
+          prepared?.dispose();
+          editor.dispose();
+        }
+      }
+      result.textContent += "Four exports verified";
+    } catch (error) {
+      result.textContent += String(error);
+    } finally {
+      buttons.forEach(button => button.disabled = false);
+    }
+  };
+  run.onclick = () => compare();
+  document.querySelector("#dense-fast").onclick = () => compare(192, 192, "fast", 512);
+  document.querySelector("#dense-high").onclick = () => compare(192, 192, "high", 512);
+  document.querySelector("#dense-256").onclick = () => compare(192, 256, "fast", 512);
+</script>

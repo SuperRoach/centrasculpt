@@ -207,7 +207,23 @@ export class RecoveryController {
     this.lastBytes = record.bytes;
     this.hooks.changed();
   }
-  status(): string {
+  status(now = Date.now()): string {
+    const minutes = Math.max(0, Math.floor((now - this.lastSuccess) / 60000));
+    const hours = Math.floor(minutes / 60);
+    const age =
+      minutes < 1
+        ? "just now"
+        : minutes < 60
+          ? `${minutes} ${minutes === 1 ? "min" : "mins"} ago`
+          : hours < 24
+            ? `${hours} ${hours === 1 ? "hr" : "hrs"} ago`
+            : `on ${new Date(this.lastSuccess).toLocaleDateString(undefined, {
+                day: "numeric",
+                month: "short",
+                ...(new Date(now).getFullYear() !== new Date(this.lastSuccess).getFullYear()
+                  ? { year: "numeric" as const }
+                  : {}),
+              })}`;
     return !this.initialized
       ? "Checking local recovery…"
       : this.warning
@@ -219,9 +235,9 @@ export class RecoveryController {
           : !this.enabled
             ? "Autosave off · manual saves are separate."
             : this.active
-              ? "Creating local recovery checkpoint…"
+              ? "Saving…"
               : this.lastSuccess
-                ? `Autosave on · last checkpoint ${new Date(this.lastSuccess).toLocaleTimeString()} · ${(this.lastBytes / 1048576).toFixed(1)} MiB`
+                ? `Saved ${age} · ${(this.lastBytes / 1048576).toFixed(1)} MiB`
                 : "Autosave on · waiting for completed edits and an idle pause.";
   }
   dispose(): void {

@@ -1,3 +1,33 @@
+### Export controls and optional curved reduction (2026-11-10)
+
+- File type and Quality preset now share the top row. Format tooltips describe STL and GLB; an **Actual size (1:1)** switch below reveals target sizing when turned off.
+- Advanced settings offers **Curved reduction · Experimental · STL**, off by default, with a 0.01–0.1 mm surface-tolerance slider. It can reduce eligible meshes and keeps the original when geometry checks or resource limits reject a candidate.
+- The result shows **✓ applied** or **✕ fallback**, with the fallback reason. Checks are sampled and do not guarantee print fit; calibrated printable-part exports remain exact.
+
+### Adaptive desktop Boolean editing (2026-11-09)
+
+- Boolean preview stays visible while using desktop tools. Interactive detail adapts between 18³ and 64³ based on measured frame rate; after release, it refines to your chosen preview quality.
+- The last completed result stays visible during rebuilding. Draft quality does not change saved geometry or export settings.
+
+### Boolean preview stays within its work budget (2026-11-09)
+
+- Boolean preview now uses the highest resolution that fits its existing work budget instead of refusing ordinary larger layer stacks.
+- The status is concise: **Boolean preview · 185³ · Reduced detail**. Export detail settings remain independent.
+
+### Export progress colours (2026-11-09)
+
+- The export progress line changes colour for preparation, SDF evaluation, meshing, optimisation, sizing, validation and file encoding. Stage names and per-stage progress remain visible.
+
+### Correct visible-layer STL Booleans (2026-11-09)
+
+- **All visible layers** now evaluates visible subtraction and intersection layers for STL, preserving the Boolean result instead of exporting cutter solids.
+- These exports use the chosen SDF detail setting and identify evaluated geometry in their summary. Final topology checks remain enforced.
+
+### Faster evaluated STL exports — Phase 7.5.4c (2026-11-09)
+
+- Boolean and printable-part STL preparation avoids unused work and temporary copies, with measured gains on curved and mechanical models.
+- Evaluated sculpted geometry, physical sizing and final print checks follow the existing pipeline. Curved decimation remains disabled.
+
 ### A dedicated export workspace — Phase 7.5.3 (2026-11-09)
 
 - A cleaner **Export…** dialog puts format, physical size and one quality slider first; memory, resolution and the alternate preset selector live under Advanced settings. Target dimensions appear only when target sizing is selected.

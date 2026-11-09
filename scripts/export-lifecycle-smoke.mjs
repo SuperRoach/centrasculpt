@@ -5,7 +5,15 @@ import { chromium } from "@playwright/test";
 
 const server = spawn(
   process.execPath,
-  ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "5201", "--strictPort"],
+  [
+    "node_modules/vite/bin/vite.js",
+    ...(process.env.EXPORT_SMOKE_PRODUCTION === "1" ? ["preview"] : []),
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "5201",
+    "--strictPort",
+  ],
   { stdio: "ignore" },
 );
 let browser;
@@ -20,11 +28,11 @@ try {
   const page = await browser.newPage();
   await page.goto("http://127.0.0.1:5201");
   await page.locator("#open-export").click();
-  await page.locator("#export-sizing").waitFor();
+  await page.locator("#export-actual-size").waitFor();
   await page.locator("#export-advanced").evaluate((el) => {
     el.open = true;
   });
-  await page.locator("#export-sizing").evaluate((el) => {
+  await page.locator("#export-actual-size").evaluate((el) => {
     for (let p = el.parentElement; p; p = p.parentElement)
       if (p.tagName === "DETAILS") p.open = true;
   });

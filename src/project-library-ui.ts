@@ -1,3 +1,4 @@
+import { activityLogo } from "./activity-logo";
 import type { ProjectBrowser } from "./project-browser";
 import { libraryModifiedLabel } from "./project-library";
 import type { MenuButton } from "./xr-menu-model";
@@ -28,6 +29,10 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
   const focusAction = previousFocus?.dataset.libraryAction;
   const selection = previousFocus?.tagName === "INPUT" ? previousFocus.selectionStart : null;
   const wasForm = dialog.dataset.form;
+  const wasSelected = dialog.dataset.selected;
+  dialog.dataset.selected = browser.selected ?? "";
+  if (browser.selected && !wasSelected) dialog.dataset.enterDetails = "true";
+  if (!browser.selected || browser.form || browser.confirmation) delete dialog.dataset.enterDetails;
   dialog.dataset.form = browser.form ?? "";
   const header = document.createElement("div");
   header.className = "library-header";
@@ -42,7 +47,9 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
         ? "Save Project As"
         : browser.form === "rename"
           ? "Rename Project"
-          : "Project Library";
+          : browser.selected
+            ? "Project details"
+            : "Project Library";
   const close = document.createElement("button");
   close.type = "button";
   close.dataset.libraryAction = "close";
@@ -52,7 +59,11 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
   const subtitle = document.createElement("p");
   subtitle.className = "library-subtitle";
   subtitle.textContent =
-    browser.form === "new" ? "Give your next sculpture a name." : content.subtitle;
+    browser.form === "new"
+      ? "Give your next sculpture a name."
+      : browser.selected && !browser.form && !browser.confirmation
+        ? "Open this saved project to continue working on it."
+        : content.subtitle;
   dialog.replaceChildren(header, subtitle);
 
   const action = (id: string, label?: string) => {
@@ -82,7 +93,7 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
   };
   const toolbar = document.createElement("div");
   toolbar.className = "library-toolbar";
-  if (!browser.form && !browser.confirmation) {
+  if (!browser.form && !browser.confirmation && !browser.selected) {
     appendActions(toolbar, [
       "clear",
       "new",
@@ -171,6 +182,18 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
     appendActions(controls, ["cancel", "discard-replace", "save-replace", "delete-confirm"]);
     dialog.append(controls);
   } else if (browser.selected) {
+    const panel = document.createElement("div");
+    panel.className = "library-details-panel";
+    if (dialog.dataset.enterDetails && !browser.busy) {
+      panel.classList.add("library-details-enter");
+      delete dialog.dataset.enterDetails;
+    }
+    const back = action("clear", "Back to library");
+    if (back) {
+      back.className = "library-back";
+      back.textContent = "← Back to library";
+      panel.append(back);
+    }
     const details = document.createElement("div");
     details.className = "library-project-details";
     const record = browser.records.find((r) => r.id === browser.selected);
@@ -188,11 +211,23 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
       metadata.append(p);
     }
     const controls = document.createElement("div");
-    controls.className = "library-toolbar";
-    appendActions(controls, ["open", "rename", "duplicate", "download", "delete"]);
+    controls.className = "library-project-actions";
+    const open = action("open");
+    if (open) controls.append(open);
+    const secondary = document.createElement("div");
+    secondary.className = "library-project-management";
+    for (const id of ["rename", "duplicate", "download", "delete"]) {
+      const button = action(id);
+      if (!button) continue;
+      button.classList.remove("library-icon-button");
+      button.textContent = id === "download" ? "Download .form" : button.title;
+      secondary.append(button);
+    }
+    controls.append(secondary);
     metadata.append(controls);
     details.append(metadata);
-    dialog.append(details);
+    panel.append(details);
+    dialog.append(panel);
   } else {
     const list = document.createElement("ul");
     list.className = "library-project-list";
@@ -210,6 +245,17 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
     list.addEventListener("scroll", hidePreview, { passive: true });
     for (const record of browser.records) {
       const row = document.createElement("li");
+      const thumbnail = document.createElement("button");
+      thumbnail.type = "button";
+      thumbnail.className = "library-thumbnail-open";
+      thumbnail.dataset.libraryAction = `library:open:${record.id}`;
+      thumbnail.disabled = browser.busy;
+      thumbnail.setAttribute("aria-label", `Open project ${record.name}`);
+      thumbnail.title = `Open ${record.name}`;
+      thumbnail.onclick = () => {
+        hidePreview();
+        void browser.activate(`library:open:${record.id}`);
+      };
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.libraryAction = `library:select:${record.id}`;
@@ -236,11 +282,10 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
         };
         preview.addEventListener("mouseenter", showPreview);
         preview.addEventListener("mouseleave", hidePreview);
-        button.addEventListener("focus", () => {
-          if (button.matches(":focus-visible")) showPreview();
+        thumbnail.addEventListener("focus", () => {
+          if (thumbnail.matches(":focus-visible")) showPreview();
         });
-        button.addEventListener("blur", hidePreview);
-        button.addEventListener("click", hidePreview);
+        thumbnail.addEventListener("blur", hidePreview);
       } else {
         preview.textContent = "◎";
         preview.setAttribute("aria-hidden", "true");
@@ -260,9 +305,10 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
       const arrow = document.createElement("span");
       arrow.textContent = "›";
       arrow.setAttribute("aria-hidden", "true");
-      button.append(preview, text, arrow);
+      thumbnail.append(preview);
+      button.append(text, arrow);
       button.onclick = () => void browser.activate(`library:select:${record.id}`);
-      row.append(button);
+      row.append(thumbnail, button);
       list.append(row);
     }
     if (!browser.records.length) {
@@ -277,7 +323,13 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
   status.className = "library-status";
   status.setAttribute("role", "status");
   status.classList.toggle("error", browser.error);
-  status.textContent = content.footer;
+  status.setAttribute("aria-busy", String(browser.busy));
+  if (browser.busy) {
+    const indicator = document.createElement("span");
+    indicator.innerHTML = activityLogo;
+    status.append(indicator);
+  }
+  status.append(content.footer);
   dialog.append(status);
   const focus = Array.from(dialog.querySelectorAll<HTMLElement>("[data-library-action]")).find(
     (element) => element.dataset.libraryAction === focusAction,
@@ -286,6 +338,8 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
     const input = dialog.querySelector("input");
     input?.focus();
     input?.select();
+  } else if (browser.selected && wasSelected !== browser.selected && !browser.busy) {
+    dialog.querySelector<HTMLElement>('[data-library-action="library:open"]')?.focus();
   } else if (focus && !focus.hasAttribute("disabled")) {
     focus.focus();
     if (focus instanceof HTMLInputElement && selection !== null)

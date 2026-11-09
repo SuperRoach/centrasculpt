@@ -50,7 +50,15 @@ function fixture() {
   fill.position.set(4, 1, -2);
   scene.add(key, fill, ambient);
   const display = new LayerDisplayPreferences();
-  const rig = new LightRig(() => display.lighting, xr.workspaceRoot, key, fill, ambient);
+  const rig = new LightRig(
+    () => display.lighting,
+    xr.workspaceRoot,
+    key,
+    fill,
+    ambient,
+    undefined,
+    () => display.renderStyle,
+  );
   return {
     scene,
     xr,
@@ -70,6 +78,33 @@ function fixture() {
     },
   };
 }
+test("reflection lighting remains stable across frames and restores saved lighting on Normal", () => {
+  const f = fixture();
+  try {
+    for (const custom of [false, true]) {
+      if (custom) f.enable();
+      f.display.renderStyle = "normal";
+      f.rig.sync();
+      const original = [f.ambient.intensity, ...f.rig.lights.map((l) => l.intensity)],
+        saved = JSON.stringify(f.display.lighting);
+      for (const style of ["matte", "glossy"]) {
+        f.display.renderStyle = style;
+        f.rig.sync();
+        const reduced = [f.ambient.intensity, ...f.rig.lights.map((l) => l.intensity)];
+        assert(reduced[0] < original[0]);
+        assert(reduced[1] < original[1]);
+        for (let frame = 0; frame < 10; frame++) f.rig.sync();
+        assert.deepEqual([f.ambient.intensity, ...f.rig.lights.map((l) => l.intensity)], reduced);
+        assert.equal(JSON.stringify(f.display.lighting), saved);
+      }
+      f.display.renderStyle = "normal";
+      f.rig.sync();
+      assert.deepEqual([f.ambient.intensity, ...f.rig.lights.map((l) => l.intensity)], original);
+    }
+  } finally {
+    f.dispose();
+  }
+});
 const state = () => ({
   role: "tool",
   connectionId: 1,

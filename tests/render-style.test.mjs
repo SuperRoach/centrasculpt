@@ -35,7 +35,7 @@ test("render styles change only existing viewport materials and preserve layer c
       assert.equal(c.active.material.wireframe, false);
       assert.equal(
         c.active.material.roughness,
-        style === "glossy" ? 0.14 : style === "matte" ? 0.4 : 0.68,
+        style === "glossy" ? 0.22 : style === "matte" ? 0.72 : 0.68,
       );
       assert.equal(
         c.active.material.metalness,

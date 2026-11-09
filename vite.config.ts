@@ -8,6 +8,8 @@ export default defineConfig(async ({ command }) => {
   return {
     plugins: agent ? [(await import("./scripts/agent-vite.mjs")).agentPlugin()] : [],
     define: { __APP_VERSION__: JSON.stringify(version), __AGENT_ENABLED__: agent },
+    // All clients already use module workers; permit lazy optional reduction chunks.
+    worker: { format: "es" },
     server: {
       strictPort: true,
       // Agent sessions preserve in-memory sculptures across server restarts.

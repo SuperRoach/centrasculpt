@@ -26,6 +26,9 @@ for (const name of [
   "agent-preview",
   "agent-activity",
   "agent-feedback",
+  "activity-logo",
+  "desktop-navigation",
+  "desktop-preview-performance",
   "agent-preferences",
   "enclosure-recipe",
   "enclosure-features",
@@ -99,6 +102,8 @@ for (const name of [
   "app-lifecycle",
   "stability-metrics",
   "export-mesh",
+  "export-decimation",
+  "curved-decimation",
   "glb-export",
   "export-worker",
   "export-client",
@@ -172,10 +177,15 @@ for (const name of [
   "controller-models",
   "controller-model-provider",
 ]) {
-  const source = readFileSync(`src/${name}.ts`, "utf8").replace(
-    /from (["'])(\.\/[^"']+)\1/g,
-    (_match, quote, specifier) => `from ${quote}${specifier}.mjs${quote}`,
-  );
+  const source = readFileSync(`src/${name}.ts`, "utf8")
+    .replace(
+      /from (["'])(\.\/[^"']+)\1/g,
+      (_match, quote, specifier) => `from ${quote}${specifier}.mjs${quote}`,
+    )
+    .replace(
+      /import\((["'])(\.\/[^"']+)\1\)/g,
+      (_match, quote, specifier) => `import(${quote}${specifier}.mjs${quote})`,
+    );
   const output = `work/test-build/${name}.mjs`,
     key = digest(JSON.stringify([ts.version, options, source]));
   const prior = cache[name];

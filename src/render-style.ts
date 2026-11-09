@@ -13,7 +13,7 @@ export function applyRenderStyle(material: MeshStandardMaterial, style: RenderSt
     material.wireframe = wireframe;
     material.needsUpdate = true;
   }
-  material.roughness = style === "glossy" ? 0.14 : style === "matte" ? 0.4 : 0.68;
+  material.roughness = style === "glossy" ? 0.22 : style === "matte" ? 0.72 : 0.68;
   material.metalness = style === "glossy" ? 0.12 : style === "matte" ? 0.06 : 0.03;
-  material.envMapIntensity = style === "glossy" ? 1 : style === "matte" ? 0.45 : 0;
+  material.envMapIntensity = style === "glossy" ? 0.35 : style === "matte" ? 0.12 : 0;
 }

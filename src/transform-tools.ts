@@ -298,6 +298,7 @@ export class LayerTransformTools {
       ...(after.map((v, i) => (r.pose.scale[i] * v) / before[i]) as [number, number, number]),
     );
     r.object.updateWorldMatrix(true, true);
+    r.editor.composite.setPrimitivePreview(r.id, r.next);
   }
   private completeResize(): void {
     const r = this.resize;
@@ -326,6 +327,7 @@ export class LayerTransformTools {
       })
       .finally(() => {
         // Restore only the borrowed preview object. Successful publication owns a new runtime.
+        r.editor.composite.setPrimitivePreview(r.id, null);
         r.object.scale.fromArray(r.pose.scale);
         r.object.updateWorldMatrix(true, true);
         if (this.resizeAbort === abort) this.resizeAbort = undefined;
@@ -344,6 +346,7 @@ export class LayerTransformTools {
     if (r) r.editor.finishTransform();
     else this.layers().cancelTransform();
     if (r) {
+      r.editor.composite.setPrimitivePreview(r.id, null);
       r.object.scale.fromArray(r.pose.scale);
       r.object.updateWorldMatrix(true, true);
     }

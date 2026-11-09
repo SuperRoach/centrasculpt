@@ -3,7 +3,20 @@ import type { IndependentLayers } from "./independent-layers";
 export class TransformPreview {
   private owner: IndependentLayers | null = null;
   private separate = false;
-  sync(layers: IndependentLayers): void {
+  sync(layers: IndependentLayers, adaptiveBoolean = false): void {
+    if (adaptiveBoolean) {
+      layers.composite.setInteractive(
+        layers.viewMode === "boolean" &&
+          (layers.transforming || layers.drawing || layers.generatingTube || layers.previewing),
+      );
+      if (layers.viewMode === "boolean" && !layers.composite.failed) {
+        layers.group.visible = !layers.composite.stats;
+        layers.composite.group.visible = !!layers.composite.stats;
+        layers.syncAssemblyPreview();
+        return;
+      }
+    }
+    if (!adaptiveBoolean) layers.composite.setInteractive(false);
     if (this.owner !== layers) {
       this.owner = layers;
       this.separate = false;

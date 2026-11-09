@@ -7,6 +7,9 @@ acceptance is implied.
 
 | Phase | Implementation | Automated | Browser | Quest | Physical print |
 | --- | --- | --- | --- | --- | --- |
+| 7.5.4c | Exact STL compaction promoted; original fallback; visible STL evaluates ordered cutters; bounded interactive preview; guarded curved STL reduction opt-in | 1,693/1,693 follow-up full; 96 main paired attempts; 16 coarse-enclosure refusals retained | Chromium export/lifecycle passed; 16 in-app worker comparisons byte-identical; native Lens visible High 192/256, Unified parity, 200 mm target and native/history preservation passed on production preview | Not run | Not run |
+| 7.5.4b | Off-by-default STL precompaction and offline constrained decimation experiments | 1,679/1,679 full; paired byte hashes, topology, slot and curved-surface checks | Production 1:1 STL ready; four identical High STL comparison outputs; Chromium launcher blocked | Not run | Not run |
+| 7.5.4a | Repeatable isolated fixture/native-copy benchmarks and decoded geometry/silhouette diagnostics; timing split only, no algorithm/default/limit change | 1,677/1,677 full; 42/42 focused; 96 main benchmark attempts preserved native/history | Fresh-origin in-app worker/download/cancel checks passed; both scripted Chromium launches blocked | Not run | Not run |
 | 7.5.3 | Export dialog, metadata estimates and measured pipeline profiles; existing conservative planar quality retained; curved decimation off | Final 1,670/1,670 full; 61/61 focused passed | In-app worker/download/modal checks passed; separate Chromium launch blocked | Not run | Not run |
 | 7.5.2 | Explicit sizing, tighter/256³ export, arbitrary-plane High and lifecycle correction | 1,667/1,667 full handoff checks passed | Final export/physical-report and lifecycle browser checks passed | Not run | Original holder pending |
 | 7.5.1 | Capability/workflow/hostname support and HTTP UUID fallback implemented | 1,667/1,667 full; 19/19 focused passed | Hostname stdio/approval/holder/captures/Undo/restart/production smoke passed | Not run | Not run |
@@ -168,3 +171,49 @@ performance gain is claimed. See [metrics, limits and evidence](PHASE_7_5_3_EXPO
 The holder's precompaction dominates; curved High costs more without reducing
 triangles. Predictive estimates, QEM proof, whole-process memory control, broader
 multi-part/modal/browser and physical hardware acceptance remain future work.
+
+
+## Optional curved export and controls — 2026-11-10
+
+File type/preset moved to the top; actual-size switch below. Advanced now exposes
+an experimental, default-off STL curved-reduction checkbox with sampled tolerance
+in mm and ✓ applied / ✕ fallback. Candidates must pass bounded checks or retain
+the original. Default geometry, source data, GLB and printable-part precision paths
+remain. No global fit guarantee or automatic curved reduction is shipped.
+[Evidence, safety limits and limitations](EXPERIMENTAL_CURVED_EXPORT.md).
+
+## Phase 7.5.4c — Validation and production integration
+
+Promoted the byte-preserving evaluated-STL chunk path after paired 192/256 Fast/High
+comparisons. The original chunk pipeline remains available by explicit argument;
+no export limits, SDF evaluator, source schema, sizing or modal controls change.
+Lossy QEM stays offline after organic/topology failures. Source sampling can still
+miss sub-grid walls; improving that is separate from exact compaction.
+[Measured results, acceptance evidence and rollback](PHASE_7_5_4C_EXPORT_INTEGRATION.md).
+
+## Phase 7.5.4b — Experimental export optimisation
+
+[Timing, memory, geometry, rejection matrix and exact-mode reproduction](PHASE_7_5_4B_EXPORT_EXPERIMENT.md).
+The experimental STL compactor preserved tested bytes and accelerated the warm dense curved case.
+Gentle decimation met the sampled gates on mechanical fixtures; dense organic clay reverted at every target.
+The exact chunk experiment is promoted in 7.5.4c with the original fallback. Keep lossy
+decimation outside product controls; heavy native organic evidence, measured mating
+surfaces and bounded peak memory remain gates for any lossy mode or changes to limits.
+
+## Phase 7.5.4a — Export benchmark and diagnosis
+
+[Evidence and exact Astra run instructions](PHASE_7_5_4A_EXPORT_BENCHMARK.md).
+Four disposable fixtures at 192³ plus the supplied read-only Lens native copy at
+192/256³, Fast/High, STL/GLB: one discarded + three measured isolated runs per case.
+Lens is a mechanical holder; organic Astra remains unavailable. Lens STL medians:
+11.14/11.99 s at 192³ and 19.85/20.74 s at 256³, preserving checked physical bounds,
+topology and source/native/history. Synthetic holder extraction is ~1 ms, while
+precompaction costs ~8.5–8.7 s; curved High spends ~3 s without triangle reduction.
+Format-specific High refusals and RSS above admission budget are recorded, not bypassed.
+
+Phase 7.5.4b warrants Extra High effort investigation into compaction allocations/
+reuse first, feature-preserving curved simplification next, adaptive SDF extraction
+then optional artist retopology. No production algorithm or limit change authorised
+by this research result. Require physical-error, topology, visual, memory/work,
+cancellation/stale-source and native-preservation evidence before a 7.5.4c release.
+Field residuals and raster masks are not Hausdorff, pocket-depth or print-fit proofs.

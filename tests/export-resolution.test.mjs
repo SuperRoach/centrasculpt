@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Box3, MeshBasicMaterial, Vector3 } from "three";
 import { installFileReader, readGlb } from "../scripts/fixtures/export-node.mjs";
-import { exportResolution, prepareBooleanExport } from "../work/test-build/boolean-export.mjs";
+import {
+  exportNeedsEvaluation,
+  exportResolution,
+  prepareBooleanExport,
+} from "../work/test-build/boolean-export.mjs";
 import {
   BooleanComposite,
   compositeLayout,
@@ -184,6 +188,26 @@ test("192 and 256 export grids preserve holder dimensions/topology/native bytes 
     }
     assert.deepEqual(saveSculptProject(e.project), before);
     assert.equal(e.undoCount, undo);
+  } finally {
+    e.dispose();
+  }
+});
+
+test("visible STL evaluates ordered cutters while selected and separate GLB scopes retain their meaning", () => {
+  const e = fixture();
+  try {
+    assert.equal(exportNeedsEvaluation(e.project, "visible", true), true);
+    assert.equal(exportNeedsEvaluation(e.project, "visible", false), false);
+    assert.equal(exportNeedsEvaluation(e.project, "selected", true), false);
+    assert.equal(exportNeedsEvaluation(e.project, "composite", true), true);
+    assert.equal(exportNeedsEvaluation(e.project, "composite", false), true);
+    const cutters = e.project.layerStack.layers.filter((l) => l.operation === "difference");
+    for (const layer of cutters) layer.visible = false;
+    assert.equal(exportNeedsEvaluation(e.project, "visible", true), false);
+    cutters[0].operation = "intersect";
+    cutters[0].visible = true;
+    assert.equal(exportNeedsEvaluation(e.project, "visible", true), true);
+    assert.equal(exportNeedsEvaluation(e.project, "visible", false), false);
   } finally {
     e.dispose();
   }
