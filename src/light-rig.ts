@@ -19,7 +19,13 @@ import {
   Sphere,
   Vector3,
 } from "three";
-import { defaultLighting, LIGHT_IDS, type LightId, type LightingSettings } from "./lighting";
+import {
+  ambientIntensity,
+  defaultLighting,
+  LIGHT_IDS,
+  type LightId,
+  type LightingSettings,
+} from "./lighting";
 import type { RenderStyle } from "./render-style";
 import type { XRControllerState } from "./xr-input";
 
@@ -31,6 +37,7 @@ export class LightRig {
   readonly lights: DirectionalLight[];
   readonly inspection = { enabled: false, paused: false, speed: 6, direction: 1, angle: 0 };
   editing = false;
+  desktopVisible = false;
   hover: LightId | null = null;
   selected: LightId | null = null;
   private original: {
@@ -244,6 +251,9 @@ export class LightRig {
     this.armed = false;
     this.hover = null;
   }
+  get environmentIntensity(): number {
+    return this.inspection.enabled ? 0.04 : ambientIntensity(this.config);
+  }
   sync(time?: number, visible = true): void {
     if (this.ended) return;
     const s = this.config;
@@ -265,11 +275,11 @@ export class LightRig {
           (Math.PI * 2);
     }
     const custom = s.enabled || inspection.enabled;
-    this.ambient.intensity = custom ? (inspection.enabled ? 0.25 : 0.65) : this.ambientIntensity;
-    // Reflection styles already receive diffuse illumination from the studio environment.
-    // Reduce the additional rig illumination without modifying saved light settings.
+    this.ambient.intensity = this.ambientIntensity * this.environmentIntensity;
     const reflective = this.renderStyle() !== "normal";
-    if (reflective) this.ambient.intensity *= 0.3;
+    // Preserve the legacy studio balance when the rig is off. Custom lights retain
+    // their chosen intensity in every material style.
+    if (reflective && !custom) this.ambient.intensity *= 0.3;
     for (let i = 0; i < 3; i++) {
       const l = this.lights[i],
         p = s.lights[LIGHT_IDS[i]];
@@ -305,7 +315,7 @@ export class LightRig {
         l.color.setHex(o.colour);
         l.intensity = o.intensity;
       } else l.intensity = 0;
-      if (reflective) l.intensity *= 0.6;
+      if (reflective && !custom) l.intensity *= 0.6;
       const icon = this.icons[i];
       icon.group.position.fromArray(p.position);
       this.target.fromArray(p.target);
@@ -338,8 +348,28 @@ export class LightRig {
         this.guides[i].geometry.computeBoundingSphere();
       }
     }
-    this.handles.visible = this.editing && s.enabled && !inspection.enabled;
+    this.handles.visible =
+      (this.desktopVisible || (this.editing && s.enabled)) && !inspection.enabled;
     if (!this.handles.visible) this.cancel();
+  }
+  /** Desktop selection uses the same workspace-space handle radius as XR. */
+  pickHandle(ray: Ray): LightId | null {
+    if (!this.handles.visible) return null;
+    this.root.updateWorldMatrix(true, false);
+    let nearest = Infinity;
+    let hit: LightId | null = null;
+    for (const id of LIGHT_IDS) {
+      this.world.fromArray(this.config.lights[id].position).applyMatrix4(this.root.matrixWorld);
+      this.sphere.set(this.world, 0.16 * this.root.matrixWorld.getMaxScaleOnAxis());
+      if (ray.intersectSphere(this.sphere, this.point)) {
+        const distance = this.point.distanceTo(ray.origin);
+        if (distance < nearest) {
+          nearest = distance;
+          hit = id;
+        }
+      }
+    }
+    return hit;
   }
   /** Explicit edit mode reserves Tool trigger through release, including misses. Grips stay navigation. */
   step(

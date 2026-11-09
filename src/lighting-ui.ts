@@ -1,18 +1,31 @@
 import type { LayerDisplayPreferences } from "./display-preferences";
 import type { LightRig } from "./light-rig";
-import { defaultLighting, LIGHT_IDS, type LightId, validateLighting } from "./lighting";
+import {
+  ambientIntensity,
+  defaultLighting,
+  LIGHT_IDS,
+  type LightId,
+  validateLighting,
+} from "./lighting";
 /** Desktop numerical companion to the XR World Settings panel. */
 export function lightingUI(
   display: () => LayerDisplayPreferences,
   rig: LightRig,
   parent: HTMLElement,
   busy: () => boolean,
+  frameLights?: () => void,
 ) {
   const panel = document.createElement("details");
   panel.className = "lighting-panel";
   panel.innerHTML =
     "<summary>World Settings · Lighting</summary><p>Directional lights aim toward their targets. Distance does not change brightness.</p>";
   parent.append(panel);
+  const groups = new Map<LightId, HTMLDetailsElement>();
+  panel.addEventListener("toggle", () => {
+    sync();
+    rig.sync();
+    if (panel.open && !busy()) frameLights?.();
+  });
   const defaults = defaultLighting();
   const inputs: { el: HTMLInputElement; read: () => string | boolean }[] = [];
   const edit = (fn: () => void) => {
@@ -74,10 +87,26 @@ export function lightingUI(
       config().enabled = v === "true";
     },
   );
+  input(
+    panel,
+    "Ambient / Environment intensity",
+    "number",
+    () => String(ambientIntensity(display().lighting ?? defaults)),
+    (v) => {
+      display().lighting = validateLighting({ ...config(), ambientIntensity: Number(v) });
+    },
+    0,
+    2,
+  );
+  button(panel, "Reset ambient to automatic", () => {
+    delete config().ambientIntensity;
+  });
+  button(panel, "Frame Lights", () => frameLights?.());
   for (const id of LIGHT_IDS) {
     const group = document.createElement("details");
     group.innerHTML = `<summary>${id[0].toUpperCase() + id.slice(1)} Light</summary>`;
     panel.append(group);
+    groups.set(id, group);
     const light = () => (display().lighting ?? defaults).lights[id];
     const update = (fn: (p: ReturnType<typeof light>) => void) => {
       const candidate = structuredClone(config());
@@ -124,6 +153,7 @@ export function lightingUI(
   }
   button(panel, "Reset All Lights", () => {
     config().lights = rig.preset().lights;
+    delete config().ambientIntensity;
   });
   const inspection = document.createElement("details");
   inspection.innerHTML =
@@ -168,6 +198,7 @@ export function lightingUI(
   });
   button(inspection, "Reset angle", () => rig.resetInspection());
   function sync() {
+    rig.desktopVisible = panel.open && !busy();
     for (const { el, read } of inputs) {
       el.disabled = busy();
       if (document.activeElement === el) continue;
@@ -178,5 +209,14 @@ export function lightingUI(
     for (const b of panel.querySelectorAll("button")) b.disabled = busy();
   }
   sync();
-  return { sync };
+  return {
+    sync,
+    select(id: LightId) {
+      if (!rig.desktopVisible || busy()) return;
+      rig.selected = id;
+      for (const [key, group] of groups) group.open = key === id;
+      groups.get(id)?.scrollIntoView({ block: "nearest" });
+      rig.sync();
+    },
+  };
 }

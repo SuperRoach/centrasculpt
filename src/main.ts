@@ -440,6 +440,28 @@ function updatePointer(e: PointerEvent) {
   );
   pointerInside = true;
 }
+renderer.domElement.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (
+      !lighting.desktopVisible ||
+      loadingProject ||
+      ui.modalOpen ||
+      xrBlocked() ||
+      event.button !== 0
+    )
+      return;
+    updatePointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    const id = lighting.pickHandle(raycaster.ray);
+    if (!id) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    stopSculpt();
+    lightUI.select(id);
+  },
+  true,
+);
 // Inspection owns scene taps before gizmos, Tube and sculpt listeners receive them.
 renderer.domElement.addEventListener(
   "pointerdown",
@@ -2339,7 +2361,23 @@ const lightUI = lightingUI(
   lighting,
   precisionPanel.parentElement!,
   () => loadingProject || ui.modalOpen || xrBlocked(),
+  () => {
+    lighting.sync();
+    const bounds = new THREE.Box3().setFromObject(lighting.handles);
+    bounds.union(new THREE.Box3().setFromObject(layers.group));
+    if (!bounds.isEmpty()) frameAgentBounds(camera, controls, bounds);
+  },
 );
+renderer.domElement.addEventListener("pointermove", (event) => {
+  if (!lighting.desktopVisible || loadingProject || ui.modalOpen || xrBlocked()) return;
+  updatePointer(event);
+  raycaster.setFromCamera(pointer, camera);
+  lighting.hover = lighting.pickHandle(raycaster.ray);
+});
+renderer.domElement.addEventListener("pointerleave", () => {
+  if (lighting.desktopVisible) lighting.hover = null;
+});
+
 const references = new ReferenceView(
   () => display.references,
   xrRig.workspaceRoot,
@@ -3452,8 +3490,9 @@ renderer.setAnimationLoop((now, frame) => {
     lastAssemblyUISync = now;
   }
   const cpuStart = performance.now();
-  lighting.sync(now, document.visibilityState !== "hidden");
   lightUI.sync();
+  lighting.sync(now, document.visibilityState !== "hidden");
+  scene.environmentIntensity = lighting.environmentIntensity;
   worldUI.sync();
   referenceEditor?.sync();
   referencesUI.sync();

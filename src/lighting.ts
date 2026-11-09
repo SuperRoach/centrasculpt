@@ -13,9 +13,11 @@ export type LightSettings = {
 export type LightingSettings = {
   version: 1;
   enabled: boolean;
+  /** Global fill multiplier; omitted uses 10% with the rig on, 100% otherwise. */
+  ambientIntensity?: number;
   lights: Record<LightId, LightSettings>;
 };
-export const LIGHT_COLOURS = ["#fff4df", "#d6eaff", "#ffffff", "#ffd1b3", "#b3dfff", "#d9bdff"];
+export const LIGHT_COLOURS = ["#fff4df", "#d6eaff", "#ffffff", "#ff963d", "#38baff", "#b56bff"];
 export function defaultLighting(): LightingSettings {
   return {
     version: 1,
@@ -24,7 +26,7 @@ export function defaultLighting(): LightingSettings {
       key: {
         type: "directional",
         enabled: true,
-        colour: "#fff4df",
+        colour: "#ff963d",
         intensity: 3.4,
         position: [-2, 2, 2],
         target: [0, 0, 0],
@@ -32,7 +34,7 @@ export function defaultLighting(): LightingSettings {
       fill: {
         type: "directional",
         enabled: true,
-        colour: "#d6eaff",
+        colour: "#38baff",
         intensity: 1.4,
         position: [2, 1, 1],
         target: [0, 0, 0],
@@ -40,7 +42,7 @@ export function defaultLighting(): LightingSettings {
       rim: {
         type: "directional",
         enabled: true,
-        colour: "#ffffff",
+        colour: "#b56bff",
         intensity: 2,
         position: [0, 2, -2],
         target: [0, 0, 0],
@@ -63,6 +65,11 @@ export function validateLighting(value: unknown): LightingSettings {
     return fail();
   const result = defaultLighting();
   result.enabled = s.enabled;
+  if (s.ambientIntensity !== undefined) {
+    if (!Number.isFinite(s.ambientIntensity) || s.ambientIntensity < 0 || s.ambientIntensity > 2)
+      return fail();
+    result.ambientIntensity = s.ambientIntensity;
+  }
   for (const id of LIGHT_IDS) {
     const l = s.lights[id];
     if (
@@ -97,4 +104,9 @@ export function validateLighting(value: unknown): LightingSettings {
     };
   }
   return result;
+}
+
+/** Shared by the ambient hemisphere and studio environment, independent of material style. */
+export function ambientIntensity(settings: LightingSettings): number {
+  return settings.ambientIntensity ?? (settings.enabled ? 0.1 : 1);
 }

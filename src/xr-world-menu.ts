@@ -1,6 +1,12 @@
 import type { EditorToolState } from "./editor-tool-state";
 import type { LightRig } from "./light-rig";
-import { defaultLighting, LIGHT_COLOURS, LIGHT_IDS, type LightId } from "./lighting";
+import {
+  ambientIntensity,
+  defaultLighting,
+  LIGHT_COLOURS,
+  LIGHT_IDS,
+  type LightId,
+} from "./lighting";
 import type { PrecisionTools } from "./precision-tools";
 import { libraryModifiedLabel } from "./project-library";
 import type { ReferenceView } from "./reference-view";
@@ -12,6 +18,7 @@ export type ProjectAction = "new" | "open" | "save" | "export" | "print" | "reco
 export type WorldSection =
   | "precision"
   | "project"
+  | "ambient"
   | "lighting"
   | "light"
   | "light-colour"
@@ -249,7 +256,9 @@ export class XRWorldMenu {
         rect: { x: 40, y: 844, width: 524, height: 136 },
       });
     } else if (
-      ["lighting", "light", "light-colour", "light-position", "inspection"].includes(this.section)
+      ["lighting", "ambient", "light", "light-colour", "light-position", "inspection"].includes(
+        this.section,
+      )
     ) {
       const rig = this.port?.lighting,
         s = layers.display.lighting ?? defaultLighting(),
@@ -260,7 +269,7 @@ export class XRWorldMenu {
           "lighting-enable",
           `Three-Point Lighting · ${s.enabled ? "On" : "Off"}`,
           244,
-          "Off restores original illumination",
+          "Off restores studio lighting; ambient control still applies",
           s.enabled,
         );
         LIGHT_IDS.forEach((id, i) => {
@@ -287,11 +296,37 @@ export class XRWorldMenu {
           "Temporary rotating illumination · separate from Turntable",
         );
         add(
-          "lighting-reset",
-          "Reset All Lights",
+          "world:ambient",
+          "Ambient / Environment",
           884,
-          "Restore positions, colours and intensities",
+          `Global fill · ${Math.round(ambientIntensity(s) * 100)}%`,
         );
+      } else if (this.section === "ambient") {
+        subtitle = "Global fill · lower values reveal light colour and direction";
+        labels.push({
+          text: `Ambient / Environment · ${Math.round(ambientIntensity(s) * 100)}%`,
+          x: 56,
+          y: 244,
+          width: 1040,
+          height: 90,
+        });
+        for (const [index, direction] of ["dimmer", "brighter"].entries())
+          buttons.push({
+            id: `lighting-ambient-${direction}`,
+            label: direction === "dimmer" ? "−" : "+",
+            disabled:
+              busy ||
+              (direction === "dimmer" ? ambientIntensity(s) <= 0 : ambientIntensity(s) >= 2),
+            rect: { x: 40 + index * 548, y: 394, width: 524, height: 136 },
+          });
+        add(
+          "lighting-ambient-auto",
+          "Automatic ambient",
+          544,
+          "10% with three-point lighting · 100% with rig off",
+        );
+        add("lighting-reset", "Reset All Lights", 694, "Restore lights and automatic ambient");
+        add("world:lighting", "‹ Lighting", 844);
       } else if (this.section === "inspection") {
         const i = rig?.inspection;
         subtitle = "Inspection · temporary override · settings not saved";
@@ -339,7 +374,7 @@ export class XRWorldMenu {
         LIGHT_COLOURS.forEach((c, i) => {
           buttons.push({
             id: `lighting-colour:${c}`,
-            label: ["Warm white", "Cool white", "White", "Peach", "Sky", "Lavender"][i],
+            label: ["Warm white", "Cool white", "White", "Amber", "Cyan", "Violet"][i],
             colour: c,
             swatch: true,
             selected: p.colour === c,
@@ -885,6 +920,17 @@ export class XRWorldMenu {
       } else if (id === "lighting-enable") {
         s.enabled = !s.enabled;
         if (!s.enabled && rig) rig.editing = false;
+      } else if (id === "lighting-ambient-auto") delete s.ambientIntensity;
+      else if (id === "lighting-ambient-dimmer" || id === "lighting-ambient-brighter") {
+        s.ambientIntensity = Math.max(
+          0,
+          Math.min(
+            2,
+            Math.round(
+              (ambientIntensity(s) + (id === "lighting-ambient-brighter" ? 0.1 : -0.1)) * 10,
+            ) / 10,
+          ),
+        );
       } else if (id === "lighting-edit" && rig) {
         rig.sync();
         rig.editing = !rig.editing;
@@ -909,8 +955,10 @@ export class XRWorldMenu {
           v = Math.max(-1000, Math.min(1000, p.position[a] + Number(sign) * 0.1));
         if (p.position.some((n, i) => Math.abs((i === a ? v : n) - p.target[i]) >= 0.001))
           p.position[a] = v;
-      } else if (id === "lighting-reset") s.lights = (rig?.preset() ?? defaultLighting()).lights;
-      else if (id === "lighting-reset-one")
+      } else if (id === "lighting-reset") {
+        s.lights = (rig?.preset() ?? defaultLighting()).lights;
+        delete s.ambientIntensity;
+      } else if (id === "lighting-reset-one")
         s.lights[this.light] = (rig?.preset() ?? defaultLighting()).lights[this.light];
       else if (rig) {
         const i = rig.inspection;

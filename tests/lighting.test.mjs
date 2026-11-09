@@ -6,6 +6,7 @@ import {
   HemisphereLight,
   Matrix4,
   PerspectiveCamera,
+  Ray,
   Scene,
   Vector3,
 } from "three";
@@ -91,8 +92,11 @@ test("reflection lighting remains stable across frames and restores saved lighti
         f.display.renderStyle = style;
         f.rig.sync();
         const reduced = [f.ambient.intensity, ...f.rig.lights.map((l) => l.intensity)];
-        assert(reduced[0] < original[0]);
-        assert(reduced[1] < original[1]);
+        if (custom) assert.deepEqual(reduced, original);
+        else {
+          assert(reduced[0] < original[0]);
+          assert(reduced[1] < original[1]);
+        }
         for (let frame = 0; frame < 10; frame++) f.rig.sync();
         assert.deepEqual([f.ambient.intensity, ...f.rig.lights.map((l) => l.intensity)], reduced);
         assert.equal(JSON.stringify(f.display.lighting), saved);
@@ -379,6 +383,7 @@ test("native save/load and actual recovery worker preserve lighting without sour
       before = await encodeExport(layers.exportSources(), "fast", 256 * 1024 ** 2);
     layers.display.lighting = defaultLighting();
     layers.display.lighting.enabled = true;
+    layers.display.lighting.ambientIntensity = 0.4;
     layers.display.lighting.lights.rim.colour = "#123456";
     layers.display.lighting.lights.fill.position = [3, 2, 1];
     f.display.lighting = layers.display.lighting;
@@ -463,7 +468,14 @@ test("all lighting menu targets are disjoint and controls update rig settings an
   try {
     model.setRequest("tool-wheel");
     model.activate("world");
-    for (const section of ["lighting", "light", "light-colour", "light-position", "inspection"]) {
+    for (const section of [
+      "lighting",
+      "ambient",
+      "light",
+      "light-colour",
+      "light-position",
+      "inspection",
+    ]) {
       model.world.section = section;
       const buttons = model.content().buttons;
       for (const b of buttons) {
@@ -487,6 +499,18 @@ test("all lighting menu targets are disjoint and controls update rig settings an
     model.activate("world:lighting");
     model.activate("lighting-enable");
     assert(layers.display.lighting.enabled);
+    model.activate("world:ambient");
+    model.activate("lighting-ambient-brighter");
+    assert.equal(layers.display.lighting.ambientIntensity, 0.2);
+    for (let i = 0; i < 25; i++) model.activate("lighting-ambient-brighter");
+    assert.equal(layers.display.lighting.ambientIntensity, 2);
+    for (let i = 0; i < 25; i++) model.activate("lighting-ambient-dimmer");
+    assert.equal(layers.display.lighting.ambientIntensity, 0);
+    model.activate("lighting-ambient-auto");
+    assert.equal(layers.display.lighting.ambientIntensity, undefined);
+    model.activate("lighting-ambient-brighter");
+    model.activate("lighting-reset");
+    assert.equal(layers.display.lighting.ambientIntensity, undefined);
     for (const id of LIGHT_IDS) {
       model.world.section = "lighting";
       model.activate("lighting-select:" + id);
@@ -907,4 +931,65 @@ test("optional light roll validates, retains legacy omission and rejects damaged
   s.lights.key.roll = Math.PI;
   assert.equal(validateLighting(s).lights.key.roll, Math.PI);
   assert.equal(validateLighting(defaultLighting()).lights.key.roll, undefined);
+});
+
+test("ambient control bounds, persistence, automatic defaults and zero fill", () => {
+  const f = fixture();
+  try {
+    assert.equal(f.rig.environmentIntensity, 1);
+    f.enable();
+    assert.equal(f.rig.environmentIntensity, 0.1);
+    for (const value of [0, 0.4, 2]) {
+      f.display.lighting.ambientIntensity = value;
+      const saved = f.display.snapshot("p", []);
+      const restored = new LayerDisplayPreferences();
+      restored.restore("p", [], saved);
+      assert.equal(restored.lighting.ambientIntensity, value);
+      f.rig.sync();
+      assert.equal(f.ambient.intensity, 2.7 * value);
+      assert.equal(f.rig.environmentIntensity, value);
+      assert.equal(f.key.intensity, 3.4);
+    }
+    for (const value of [-1, 2.1, NaN, Infinity, "1", null])
+      assert.throws(() => validateLighting({ ...defaultLighting(), ambientIntensity: value }));
+    delete f.display.lighting.ambientIntensity;
+    assert.equal(f.rig.environmentIntensity, 0.1);
+    f.display.lighting.enabled = false;
+    assert.equal(f.rig.environmentIntensity, 1);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("desktop light handles select the nearest light, respect transformed workspaces and hide independently of XR editing", () => {
+  const f = fixture();
+  try {
+    const ray = new Ray(new Vector3(-2, 2, 6), new Vector3(0, 0, -1));
+    assert.equal(f.rig.pickHandle(ray), null);
+    f.rig.desktopVisible = true;
+    f.rig.sync();
+    assert(f.rig.handles.visible);
+    assert(!f.rig.editing);
+    assert.equal(f.rig.pickHandle(ray), "key");
+    f.rig.root.parent.position.set(1, 2, 3);
+    f.rig.root.parent.scale.setScalar(2);
+    f.rig.root.updateWorldMatrix(true, false);
+    const point = new Vector3()
+      .fromArray(f.rig.config.lights.fill.position)
+      .applyMatrix4(f.rig.root.matrixWorld);
+    ray.origin.copy(point).add(new Vector3(0, 0, 10));
+    assert.equal(f.rig.pickHandle(ray), "fill");
+    ray.direction.set(0, 1, 0);
+    assert.equal(f.rig.pickHandle(ray), null);
+    f.rig.desktopVisible = false;
+    f.rig.sync();
+    assert(!f.rig.handles.visible);
+    assert.equal(f.rig.pickHandle(ray), null);
+    f.enable();
+    f.rig.editing = true;
+    f.rig.sync();
+    assert(f.rig.handles.visible);
+  } finally {
+    f.dispose();
+  }
 });
