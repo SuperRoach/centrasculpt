@@ -7,6 +7,7 @@ acceptance is implied.
 
 | Phase | Implementation | Automated | Browser | Quest | Physical print |
 | --- | --- | --- | --- | --- | --- |
+| 7.6 | Public static field guide in read-the-docs-pls; 23 task-based guides, Pagefind, themes, mobile navigation and MCP holder examples | Docs 7/7; root check 1,696/1,696 | In-app browser harness 174 assertions; axe, 23 routes at 1440/390/320 px, actual search and subpath links; screenshots | Not run | Not run |
 | 7.5.4c | Exact STL compaction promoted; original fallback; visible STL evaluates ordered cutters; bounded interactive preview; guarded curved STL reduction opt-in | 1,693/1,693 follow-up full; 96 main paired attempts; 16 coarse-enclosure refusals retained | Chromium export/lifecycle passed; 16 in-app worker comparisons byte-identical; native Lens visible High 192/256, Unified parity, 200 mm target and native/history preservation passed on production preview | Not run | Not run |
 | 7.5.4b | Off-by-default STL precompaction and offline constrained decimation experiments | 1,679/1,679 full; paired byte hashes, topology, slot and curved-surface checks | Production 1:1 STL ready; four identical High STL comparison outputs; Chromium launcher blocked | Not run | Not run |
 | 7.5.4a | Repeatable isolated fixture/native-copy benchmarks and decoded geometry/silhouette diagnostics; timing split only, no algorithm/default/limit change | 1,677/1,677 full; 42/42 focused; 96 main benchmark attempts preserved native/history | Fresh-origin in-app worker/download/cancel checks passed; both scripted Chromium launches blocked | Not run | Not run |
@@ -217,3 +218,21 @@ then optional artist retopology. No production algorithm or limit change authori
 by this research result. Require physical-error, topology, visual, memory/work,
 cancellation/stale-source and native-preservation evidence before a 7.5.4c release.
 Field residuals and raster masks are not Hausdorff, pocket-depth or print-fit proofs.
+
+## Phase 7.6 — Public Documentation & Learning Experience (2026-11-10)
+
+Delivered locally in `read-the-docs-pls/`, separate from this engineering archive.
+See its README for build/preview/static deployment and SOURCE_AUDIT for current
+source authorities. All app/export/agent engine and project data remain unchanged.
+Publication requires separate authorisation; nothing was committed or deployed.
+The next product feature remains Phase 8.0 Personal Shape Library, then custom
+stamps. Neither is presented as implemented. UX follow-ups are recorded in
+[Phase 7.6 UX gaps](PHASE_7_6_UX_GAPS.md). Hardware/physical acceptance remains separate.
+
+### Phase 7.6 same-site Help follow-up — 2026-11-10
+
+The app build includes the guide/search in `dist/read-the-docs/`; development
+servers serve the same route. Centra Sculpt logo menu → Help opens a separate tab
+with a base-aware local URL. Deploy the complete app dist normally after separate
+authorisation. Root npm ci supplies Pagefind; no nested docs install is required
+for app build/dev. App modelling/export/agent engines remain unchanged.

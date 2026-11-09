@@ -1,3 +1,15 @@
+### Help on the same site (2026-11-10)
+
+- **Centra Sculpt → Help ↗** opens the field guide in a new tab while your editor stays open.
+- The normal app build now includes the documentation and search at `read-the-docs/`. The same path also works on the development server.
+
+### A guide from first sculpt to printable parts — Phase 7.6 (2026-11-10)
+
+- A new local documentation website in `read-the-docs-pls/` covers desktop and Quest controls, the full Tool Wheel, sculpting, precise modelling, projects, painting, export and local-agent workflows.
+- Search the 23 guides with Cmd/Ctrl+K, switch light/dark themes and browse the complete task-based navigation on desktop or mobile.
+- Export guidance explains physical sizing, evaluated geometry, detail/resource limits and the optional curved-reduction fallback. The agent walkthrough includes the editable three-slot holder and separate browser approval.
+- Build and preview instructions are in the website README. This delivery is local; the documentation has not been published.
+
 ### Export controls and optional curved reduction (2026-11-10)
 
 - File type and Quality preset now share the top row. Format tooltips describe STL and GLB; an **Actual size (1:1)** switch below reveals target sizing when turned off.

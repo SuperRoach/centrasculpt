@@ -1,0 +1,15 @@
+{
+  "name": "centra-sculpt-guide",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs && pagefind --site dist",
+    "preview": "node preview.mjs",
+    "test": "node --test tests.mjs",
+    "test:browser": "node browser-smoke.mjs"
+  },
+  "devDependencies": {
+    "axe-core": "4.14.0",
+    "pagefind": "1.6.0"
+  }
+}

@@ -1,3 +1,149 @@
+# Phase 7.6 follow-up — Same-site Help — 2026-11-10
+
+## 1. Request and preservation
+
+User requested the guide on the deployed app site under `read-the-docs/` and a
+Help item inside the Centra Sculpt logo menu. Preserved the uncommitted Phase 7.6
+site and handover. No reset, commit, push, deployment or saved-project changes.
+
+## 2. Delivered behaviour
+
+Centra Sculpt → Help ↗ is an accessible native link opening a separate tab with
+noopener, so the editor remains open. Its URL uses Vite BASE_URL. Root `npm run
+build` generates the guide/search and copies only public files to
+`dist/read-the-docs/`. Deploy the complete root dist normally; no second host or
+nested npm install is needed. Standalone guide build/preview remains available.
+
+## 3. Implementation and boundaries
+
+Pinned Pagefind 1.6.0 in root development dependencies/lock. Added
+`scripts/docs-vite.mjs`: build and indexed output copy for production, restricted
+static-file middleware for dev (also HTTPS/agent Vite configurations). Directory
+redirects preserve query strings; assets have proper types, missing files are
+404, escaping paths are refused, GET/HEAD only. Generated guide output is ignored
+by the app watcher. Only menu UI/style, Vite setup and docs tooling changed; sculpt,
+export and agent engines remain unchanged. Guide QA endpoints never enter dist.
+
+## 4. Automated checks
+
+Quick **21/21** passed. New deployment/middleware tests **2/2** passed, checking
+all 23 built guide routes/search assets, no QA output, base-aware Help URL, new-tab
+semantics, directory redirect, assets/HEAD, 404/traversal/method handling and editor
+fallthrough. `npm run check` passed formatting/lint, strict TS, production build
+and **1,698/1,698** full tests with no failures/skips/cancellations (87.53 s).
+Final docs build/tests passed **7/7** after the access-instructions update.
+Evidence `/tmp/centra-help-{quick,build,hosting,check,final-build,docs-tests}.log`.
+Dev HTTP smoke at port 5198 passed redirect, guide HTML and Pagefind JS responses;
+`/tmp/centra-help-dev.log`. Both temporary preview/dev servers were stopped.
+
+## 5. Real browser evidence
+
+Fresh production preview origin port 4198: opened logo menu, inspected Help,
+clicked the real link and observed the new guide tab at `/read-the-docs/` while
+the editor stayed open. Pagefind query `calibration` returned eight results;
+first result `/read-the-docs/precision.html`, retaining the same-site prefix.
+Screenshots `work/docs-7-6/help-menu.jpg` and `help-shared-site-search.jpg`.
+No user modelling operation or current project was used. This is desktop browser
+acceptance; Quest/hardware acceptance is not claimed.
+
+## 6. Reproduction and deployment
+
+`npm ci && npm run dev`, then Centra Sculpt → Help. Or `npm run build && npm run
+preview` to review the complete production site. Upload the root dist only after
+explicit deployment authorisation. The site README explains combined versus
+standalone builds; guide content/release notes/roadmap reflect menu access.
+
+---
+
+# Phase 7.6 — Public Documentation & Learning Experience — 2026-11-10
+
+## 1. Scope and starting state
+
+Used the active `/Users/brettjames/development/vrappPOC` checkout. Initial
+`git status --short` was empty; no existing public documentation site was present.
+Read the latest local status, roadmap, WHATS_NEW, current UI/menu/controller,
+export, native/library, modelling and MCP source before authoring. The referenced
+research chat confirms documentation before the Personal Shape Library/custom
+stamps. No app/engine code, saved projects, imported assets or recovery data was
+changed. No commit, push, deploy or merge.
+
+## 2. Delivered user experience
+
+`read-the-docs-pls/` contains an independent static HTML/CSS/JS generator with 23
+complete guides, a persistent task sidebar, complete full text index, breadcrumbs,
+section links, previous/next links, Pagefind full-text search and Cmd/Ctrl+K modal,
+light/dark preference, mobile navigation, skip link and semantic landmarks. The
+existing favicon and original CSS forms provide the identity; accessible flow
+diagrams explain source/evaluation and holder operations. No invented app
+screenshots, external runtime API/account/CDN/font dependency or app UI additions.
+
+## 3. Content accuracy and boundaries
+
+Guides cover desktop/Quest setup and tool/support controls; all nine wheel sectors
+including Cut, nested Move brushes, Paint/Mask and World/Layer/Precision paths;
+brushes, Tube, Stamp, editable primitives including Cone/Capsule/Torus tyre/Pyramid;
+physical calibration/transforms, layers/groups, Bake, Boolean/arrays, snapping,
+enclosures/features, assemblies/fit, project/library/.form/recovery, references,
+painting/masks, current export controls/scopes/units/limits and local MCP workflows.
+The canonical holder payload and tool argument examples validate against the real
+MCP schemas. Source audit caught separate 16-layer/32-group limits, stamp versus
+primitive shapes, capture `viewpoint`, proposalId-only apply, STL/GLB scope differences
+and the newest default-off curved STL mode. Deferred library/custom stamps and
+sampled-fit/hardware limits are explicit. `SOURCE_AUDIT.md` lists authorities;
+`PHASE_7_6_UX_GAPS.md` records follow-ups without expanding product scope.
+
+## 4. Automated verification
+
+- `npm --prefix read-the-docs-pls run build`: PASS, 23 HTML pages, Pagefind 1.6.0,
+  en-au index, 23 indexed pages / 1,418 indexed unique words.
+- `npm --prefix read-the-docs-pls test`: PASS **7/7**, no skips/failures. Covers
+  stable route contract, all internal href/src/fragment targets, unique IDs,
+  landmarks/current navigation, generated Pagefind fragments/assets, key topics
+  and shortcuts, holder/current tool schemas and binding/source guard facts.
+- `npm run check`: PASS formatting, lint, strict TypeScript, production app build,
+  full **1,696/1,696** tests, zero failed/skipped/cancelled; 88.78 s test wall.
+  Evidence `/tmp/centra-docs-76-check.log`; docs logs
+  `/tmp/centra-docs-76-{build,tests}.log`.
+
+## 5. Real browser evidence and corrections
+
+Shell Playwright Chromium launch aborted with host sandbox SIGABRT/EPERM; that
+script is delivered but is not claimed to have passed here. Used the app's real
+in-app browser with the repository-owned preview-only `/__qa.html` harness instead.
+Final **174 assertions passed**: all 23 guides at 1440/390/320 px without horizontal
+overflow, one H1, axe WCAG A/AA on all desktop pages, alternate-theme/home and search
+modal checks, mobile menu state, theme persistence, Ctrl/Meta+K events, focus return,
+real Pagefind tyre → primitives result and nested deployment-prefix search links.
+Direct interactions also verified Ctrl+K, typing tyre, real results, Escape and
+focus returning to the opener; Tab → skip link → Enter focused main, Meta+K opened
+search and Shift+Tab reached Close. Mobile menu and desktop layouts were inspected.
+This is automated browser evidence, not complete screen-reader usability acceptance.
+
+Initial browser QA found a relative Pagefind bundle path error and 320 px header /
+text overflow. Corrected with document-derived bundle paths, a narrow header layout
+and wrapping; final harness passed. An initial synchronous focus assertion was
+corrected to wait for the native dialog close event. No app fixes were made.
+Evidence: ignored `work/docs-7-6/browser-qa-report.txt`, `search.jpg`,
+`desktop-first.jpg` (light), `desktop-alternate.jpg` (dark), `mobile-390.jpg`,
+`mobile-navigation.jpg`. These are documentation-site screenshots, not app UI.
+
+## 6. Reproduction, deployment and remaining acceptance
+
+From repo root: `npm ci --prefix read-the-docs-pls`, then docs build/test above,
+then `npm --prefix read-the-docs-pls run preview` at loopback port 4176. The root
+node_modules are also needed for schema/Playwright tests. Run `test:browser` where
+Chromium launch is allowed, or click Run checks at `/__qa.html`. Preview QA assets
+and nested-prefix alias are never included in deploy output. README explains
+GitHub Pages/static upload of this site's dist only, with publication requiring
+separate authorisation. Generated output and dependencies are ignored.
+
+No Quest hardware, new physical print, fresh Codex/Cursor tool-cache acceptance or
+full assistive-technology user testing is claimed. Existing app acceptance gaps
+remain separate. The site is delivered locally and buildable; publication and
+product work on Personal Shape Library/custom stamps remain future steps.
+
+---
+
 # Export controls and guarded curved reduction — 2026-11-10
 
 ## Delivered

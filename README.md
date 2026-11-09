@@ -1,5 +1,13 @@
 # Centra Sculpt
 
+## Help and user guide
+
+Click **Centra Sculpt → Help ↗** to open the guide in a new tab. It is served at
+`read-the-docs/` on the same site in development and included in the normal app
+production build. Deploy the complete `dist/` directory. See the
+[guide README](read-the-docs-pls/README.md) for standalone preview and authoring.
+
+
 Centra Sculpt is a browser-based 3D sculpting and modelling app for desktop and WebXR. Build with clay brushes, editable primitives and Boolean operations, then save an editable project or export geometry for other tools and 3D printing. It uses TypeScript, Three.js and a signed distance field (SDF) sculpting engine.
 
 ## What you can do
