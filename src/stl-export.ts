@@ -319,11 +319,14 @@ export async function encodeSTL(
     stats: GlbExportResult["stats"] = [],
     min = [Infinity, Infinity, Infinity],
     max = [-Infinity, -Infinity, -Infinity];
+  let optimiserMs = 0;
   let count = 0,
     patchDeviation = 0;
   for (const source of sources) {
-    const mesh = await optimiseExportMesh(source, quality, work),
-      matrix = transformMatrix(validateTransform(mesh.transform)),
+    const optimiseStart = performance.now();
+    const mesh = await optimiseExportMesh(source, quality, work);
+    optimiserMs += performance.now() - optimiseStart;
+    const matrix = transformMatrix(validateTransform(mesh.transform)),
       length = mesh.indices?.length ?? mesh.positions.length / 3,
       p = new Float32Array(length * 3),
       v = new Vector3();
@@ -357,6 +360,7 @@ export async function encodeSTL(
     }
     offset += chunk.length;
   }
+  const validationStart = performance.now();
   const stable = await stabilisePrintCoordinates(
     p,
     work,
@@ -371,6 +375,8 @@ export async function encodeSTL(
   view.setUint32(80, report.triangles, true);
   if (stable.repaired) report.precisionRetriangulations = stable.repaired;
   if (patchDeviation > 0) report.planarPatchDeviationMM = patchDeviation * factor;
+  const validationMs = performance.now() - validationStart,
+    encodingStart = performance.now();
   const a = new Vector3(),
     b = new Vector3(),
     c = new Vector3();
@@ -387,6 +393,7 @@ export async function encodeSTL(
   work.check();
   return {
     data,
+    timings: { optimiserMs, validationMs, encodingMs: performance.now() - encodingStart },
     report,
     stats,
     milliseconds: performance.now() - start,

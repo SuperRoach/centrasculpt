@@ -7,6 +7,7 @@ acceptance is implied.
 
 | Phase | Implementation | Automated | Browser | Quest | Physical print |
 | --- | --- | --- | --- | --- | --- |
+| 7.5.3 | Export dialog, metadata estimates and measured pipeline profiles; existing conservative planar quality retained; curved decimation off | Final 1,670/1,670 full; 61/61 focused passed | In-app worker/download/modal checks passed; separate Chromium launch blocked | Not run | Not run |
 | 7.5.2 | Explicit sizing, tighter/256³ export, arbitrary-plane High and lifecycle correction | 1,667/1,667 full handoff checks passed | Final export/physical-report and lifecycle browser checks passed | Not run | Original holder pending |
 | 7.5.1 | Capability/workflow/hostname support and HTTP UUID fallback implemented | 1,667/1,667 full; 19/19 focused passed | Hostname stdio/approval/holder/captures/Undo/restart/production smoke passed | Not run | Not run |
 | 7.4.2 | Historical implementation recorded in development status | Historical results; see phase handover | Partial or pending; see handover | Partial or pending; see handover | No phase-wide validation |
@@ -29,7 +30,7 @@ acceptance is implied.
 | 6.0.1 | Historical implementation recorded in development status | Historical results; see phase handover | Partial or pending; see handover | Partial or pending; see handover | No phase-wide validation |
 | 6.0 | Historical implementation recorded in development status | Historical results; see phase handover | Partial or pending; see handover | Partial or pending; see handover | No phase-wide validation |
 | 7.5 cleanup | Evaluated object/part isolation implemented; reliability acceptance in progress | 1,652/1,652 full; 27/27 focused passed | Installed Chromium smoke and isolated PNG delivery passed; expanded lifecycle scenarios pending | Not run | Not run |
-| Future export optimisation | Deferred | Pending | Pending | Pending | Pending |
+| Future export work | Safe curved decimation, predictive estimates, compaction reuse and wider hardware acceptance | Pending | Pending | Pending | Pending |
 
 The user's enclosure-and-lid print is **one successful real-world fit test**.
 It does not validate other dimensions, clearances, features, printers or materials.
@@ -56,14 +57,13 @@ It does not validate other dimensions, clearances, features, printers or materia
   confirm via each client's MCP panel after refresh/reconnect. Quest hardware remains
   a separate acceptance gate.
 
-## Deferred export optimisation
+## Remaining export optimisation
 
-Profile sampling and meshing before changing performance behavior. Investigate
-feature-preserving mesh decimation, estimated triangle counts on a quality slider,
-and measured estimate error against actual generated counts. Design a cleaner
-modal-based export workflow. Preserve print-critical dimensions, small features,
-wall thicknesses and fit clearances, with geometry and physical-print verification.
-This cleanup does not implement the export redesign.
+Phase 7.5.3 delivers measured profiles, a dedicated dialog and conservative metadata
+estimates. Next investigate compaction reuse at the measured bottleneck, narrower
+predictive estimates and opt-in curved decimation only with physical-error,
+feature/topology and memory evidence. Keep full-triangle preparation and all
+correctness/refusal paths available. Hardware/physical fit acceptance remains separate.
 
 ## Manual browser acceptance — 2026-11-08
 
@@ -156,3 +156,15 @@ redesign remain separate work.
 Final2026-11-09 handoff verification supersedes earlier permission-limited runs:
 1,667/1,667 full checks and final MCP/export/lifecycle browser checks passed.
 See the latest Development Status handoff for scope and remaining hardware gates.
+
+## Phase 7.5.3 — Export performance, quality and UX
+
+Implemented a dedicated native dialog, explicit prepared-file confirmation,
+metadata-only quality slider estimates with stated uncertainty, generated counts,
+stage timing/resource reports and meshing progress. Fresh prerequisite correctness
+tests passed before optimisation work. Existing planar simplification and all
+scale/evaluator/safety semantics remain. No new curved decimator or unmeasured
+performance gain is claimed. See [metrics, limits and evidence](PHASE_7_5_3_EXPORT_OPTIMISATION.md).
+The holder's precompaction dominates; curved High costs more without reducing
+triangles. Predictive estimates, QEM proof, whole-process memory control, broader
+multi-part/modal/browser and physical hardware acceptance remain future work.

@@ -255,3 +255,9 @@ painted or incompatible regions remain protected. Patch-only deviation is report
 in source coordinates and STL millimetres separately from SDF/local cleanup error.
 See [arbitrary-plane guide](ARBITRARY_PLANE_EXPORT.md) for actual STL/GLB, rotated
 holder and browser evidence plus verification permission limits.
+
+## Next phase — 7.5.3
+
+The dedicated dialog, metadata-only count estimates and measured stage profiles
+are documented in [Phase 7.5.3](PHASE_7_5_3_EXPORT_OPTIMISATION.md). No new
+curved decimation, sizing default, evaluator or admission change accompanies it.

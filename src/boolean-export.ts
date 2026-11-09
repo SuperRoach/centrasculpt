@@ -43,6 +43,10 @@ export async function prepareBooleanExport(
           total,
         });
       },
+      meshingProgress: (completed, total) => {
+        work.check();
+        work.progress({ stage: "Meshing evaluated SDF", completed, total });
+      },
       colours: !stl,
     });
   composite.availableBytes = () =>
@@ -59,6 +63,9 @@ export async function prepareBooleanExport(
     work.check();
     await composite.flush();
     work.check();
+    const evaluation = { ...composite.stats! },
+      derivedBytes = composite.trackedBytes;
+    const compactionStart = performance.now();
     const evaluatedResolution = composite.stats!.resolution;
     let sources = composite.exportSources(),
       ownedBytes = 0;
@@ -113,6 +120,7 @@ export async function prepareBooleanExport(
     }
     return {
       sources,
+      profile: { evaluation, derivedBytes, compactionMs: performance.now() - compactionStart },
       resolution: evaluatedResolution,
       dispose,
       removedTriangles,

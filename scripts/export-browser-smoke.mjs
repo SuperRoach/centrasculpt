@@ -23,7 +23,18 @@ try {
   browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await page.goto("http://127.0.0.1:5199");
+  await page.locator("#open-export").click();
   await page.locator("#export-sizing").waitFor();
+  await page.locator("#export-advanced").evaluate((el) => {
+    el.open = true;
+  });
+  await page.locator("#export-format").press("Escape");
+  assert.equal(await page.locator("#export-dialog").isVisible(), false);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "open-export");
+  await page.locator("#open-export").click();
+  await page.locator("#export-quality-slider").press("ArrowRight");
+  assert.equal(await page.locator("#export-quality").inputValue(), "standard");
+  assert.match(await page.locator("#export-estimate").textContent(), /uncertainty/);
   // Open containing details panels without relying on their current presentation defaults.
   await page.locator("#export-sizing").evaluate((el) => {
     for (let p = el.parentElement; p; p = p.parentElement)
@@ -46,6 +57,8 @@ try {
     await page.locator("#export-resolution").selectOption(scope === "composite" ? "256" : "192");
     const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator(scope === "composite" ? "#export-boolean" : "#export-selected").click();
+    await page.locator("#export-download").waitFor({ state: "visible", timeout: 120000 });
+    await page.locator("#export-download").click();
     const file = await download;
     if (scope === "composite")
       assert.match(await page.locator("#export-summary").textContent(), /max 256³/);
@@ -81,9 +94,15 @@ try {
       /Actual .*Export .*mm.*×.*fast/,
     );
   }
+  await page.setViewportSize({ width: 480, height: 800 });
+  assert(
+    await page.locator("#export-dialog").evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+  );
   await page.screenshot({ path: "work/phase-7-5-2/browser-summary.png" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   // A large box contains the starter sphere: unified output is a densely sampled cube.
   // Create it only in this disposable profile, then compare actual worker files.
+  await page.locator("#close-export").click();
   const primitivePanel = page.locator("details.primitive-panel");
   await primitivePanel.locator("summary").first().click();
   await primitivePanel.getByRole("button", { name: "Create new", exact: true }).click();
@@ -107,13 +126,18 @@ try {
   await page.locator("#history-info").filter({ hasText: "1 undo" }).waitFor();
   const history = await page.locator("#history-info").textContent(),
     boxCounts = [];
+  await page.locator("#open-export").click();
   await page.locator("#export-format").selectOption("stl");
   await page.locator("#export-sizing").selectOption("actual");
   await page.locator("#export-memory").selectOption("512");
+  if (!(await page.locator("#export-dialog").isVisible()))
+    await page.locator("#open-export").click();
   for (const quality of ["fast", "high"]) {
     await page.locator("#export-quality").selectOption(quality);
     const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-boolean").click();
+    await page.locator("#export-download").waitFor({ state: "visible", timeout: 120000 });
+    await page.locator("#export-download").click();
     const file = await download,
       path = `work/phase-7-5-2/browser-planar-${quality}.stl`;
     await file.saveAs(path);
@@ -138,6 +162,7 @@ try {
     `Real browser planar cube: Fast ${boxCounts[0]}, High ${boxCounts[1]} triangles; unchanged 300 mm bounds and Undo.`,
   );
   await page.screenshot({ path: "work/phase-7-5-2/browser-planar-patches.png" });
+  await page.locator("#close-export").click();
   await primitivePanel.locator("summary").first().click();
   for (const [axis, degrees] of [
     ["X", 17],
@@ -150,10 +175,14 @@ try {
   }
   const tiltedHistory = await page.locator("#history-info").textContent(),
     tilted = [];
+  if (!(await page.locator("#export-dialog").isVisible()))
+    await page.locator("#open-export").click();
   for (const quality of ["fast", "high"]) {
     await page.locator("#export-quality").selectOption(quality);
     const download = page.waitForEvent("download", { timeout: 120000 });
     await page.locator("#export-boolean").click();
+    await page.locator("#export-download").waitFor({ state: "visible", timeout: 120000 });
+    await page.locator("#export-download").click();
     const file = await download,
       path = `work/phase-7-5-2/browser-oblique-${quality}.stl`;
     await file.saveAs(path);

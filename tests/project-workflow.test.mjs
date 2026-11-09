@@ -88,3 +88,26 @@ test("recovery entry owns its confirmation and retains one dialog through restor
   assert.doesNotMatch(flow, /window.confirm|confirm-recovery.*click/);
   assert.match(flow, /entryRecoveryDialog.close\(\);\s*void xrExperience!\.session.enter\(\)/);
 });
+
+test("Quest print/export handoff opens the export dialog after XR exit without starting a download", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync("src/main.ts", "utf8");
+  const handoff = source.slice(
+    source.indexOf("projectAction: async (action)"),
+    source.indexOf("    lighting,", source.indexOf("projectAction: async (action)")),
+  );
+  assert.match(handoff, /await leaveForProject\(/);
+  assert.match(handoff, /export: "open-export",\s*print: "open-export"/);
+  assert.match(handoff, /action === "print" \? "stl" : "glb"/);
+  assert.match(
+    handoff,
+    /action === "new" \|\| action === "print" \|\| action === "export"\) target.click\(\)/,
+  );
+  assert.doesNotMatch(handoff, /exportSculpt|printDownload.click/);
+  const shortcut = source.slice(
+    source.indexOf("projectPrintSize.onclick"),
+    source.indexOf("printLabel.append(projectPrintSize)"),
+  );
+  assert.doesNotMatch(shortcut, /ui.modalOpen/);
+  assert.match(shortcut, /clearPreparedExport\(\)/);
+});

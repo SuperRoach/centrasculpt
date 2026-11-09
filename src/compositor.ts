@@ -598,6 +598,7 @@ export class BooleanComposite {
       colours?: boolean;
       stagedEvaluation?: boolean;
       samplingProgress?: (completed: number, total: number, stage: number, stages: number) => void;
+      meshingProgress?: (completed: number, total: number) => void;
     } = {},
   ) {
     this.group.name = "Boolean Preview";
@@ -899,6 +900,7 @@ export class BooleanComposite {
       chunks += update.stats.chunks;
       totalChunks = update.stats.totalChunks;
       triangles = update.triangles;
+      this.options.meshingProgress?.(chunks, totalChunks);
       if (this.trackedBytes > this.availableBytes())
         throw new Error("Boolean evaluation exceeds the available memory budget.");
       if (triangles > 1_000_000) {

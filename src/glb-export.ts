@@ -9,6 +9,7 @@ export type GlbExportResult = {
   estimatedBytes: number;
   geometryBytes: number;
   backend: "worker" | "cooperative";
+  timings?: Record<string, number>;
 };
 /** Entire preparation and GLB packing run in a browser Worker in the application. */
 export async function encodeExport(
@@ -28,11 +29,14 @@ export async function encodeExport(
       metalness: 0.03,
     }),
     stats: ExportMeshStats[] = [];
-  let geometryBytes = 0;
+  let geometryBytes = 0,
+    optimiserMs = 0;
   group.name = "Centra Sculpt";
   try {
     for (let i = 0; i < sources.length; i++) {
+      const optimiseStart = performance.now();
       const result = await optimiseExportMesh(sources[i], quality, work);
+      optimiserMs += performance.now() - optimiseStart;
       if (!result.stats.triangles) continue;
       const geometry = new BufferGeometry();
       geometry.setAttribute("position", new BufferAttribute(result.positions, 3));
@@ -58,6 +62,7 @@ export async function encodeExport(
     if (!group.children.length) throw new Error("No valid triangles to export.");
     work.check();
     work.progress({ stage: "Packing GLB", completed: 0, total: 1 });
+    const packingStart = performance.now();
     const data = await new GLTFExporter().parseAsync(group, { binary: true, onlyVisible: true });
     work.check();
     if (!(data instanceof ArrayBuffer)) throw new Error("GLB encoder returned invalid data.");
@@ -65,6 +70,7 @@ export async function encodeExport(
       throw new Error("GLB exceeds the export memory limit. Export fewer layers.");
     return {
       data,
+      timings: { optimiserMs, packingMs: performance.now() - packingStart },
       stats,
       milliseconds: performance.now() - start,
       estimatedBytes: admission.estimatedBytes,

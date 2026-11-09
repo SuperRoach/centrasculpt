@@ -1,3 +1,116 @@
+# Export dialog UI tidy — 2026-11-09
+
+Grouped format and physical size, kept a single primary quality slider with a live
+preset label/short description, moved memory/resolution/alternate preset selection
+into Advanced settings, and arranged scope actions in a compact grid. Target
+controls appear only in target mode. Empty reports/download controls stay hidden.
+Original handlers, calibration, preparation and safety semantics are retained;
+all earlier uncommitted Phase 7.5.3 work remains in the checkout.
+
+Browser checked default layout, advanced-control visibility, slider→Standard,
+actual worker STL preparation at explicit200 mm, selected-size URL invalidation,
+idle Escape/focus restore and unchanged0 Undo/0 Redo. Final screenshot:
+`work/phase-7-5-3/export-dialog-clean.png`. No recovery restore/discard or scene edit.
+Quick21/21 passed. Final `npm run check` passed format/lint, strict TS, Vite build
+and **1,670/1,670 tests**, zero failures/skips/cancellations (97.96 s test wall).
+Existing lint/bundle advisories remain. Evidence: `/tmp/export-ui-final-check.log`,
+`/tmp/export-ui-quick.log`; whitespace/format checks passed. No commit/push.
+
+# Phase 7.5.3 handover — Export performance, quality and UX — 2026-11-09
+
+## 1. Delivered
+
+Dedicated native desktop Export dialog with existing formats/sizing/resolution/
+memory and current/all/unified/marked-part scopes; quality slider with metadata-only
+estimates and explicit uncertainty; generated triangle counts; measured stage and
+resource details; evaluated meshing progress; explicit prepared-download confirmation.
+Idle Escape restores opener focus; active Escape/Cancel requests cancellation.
+Sizing/quality/memory changes invalidate URLs and final source revision checks
+refuse stale mesh downloads. Modal printable-part STL/report links retain a bounded
+32 MiB/available-memory file allowance; existing direct Assembly/Quest actions stay
+compatible. Quest print/export handoff now opens the dialog after XR exit. The
+selected physical-size shortcut works within the modal and invalidates old output.
+
+## 2. Correctness and preservation
+
+Initial active Git checkout was clean at `/Users/brettjames/development/vrappPOC`;
+conversation cwd was not a repository. Fresh 7.5.2 prerequisite audit **35/35 passed**
+before export UX/metadata work: actual 443/200/100 mm STL/GLB files, metre/mm units,
+evaluated ordered SDF/clay holes, 192/256³, topology, fallbacks/refusals, cancellation,
+source/native bytes and history. No algorithm, physical calibration, native schema,
+Bake/viewport, work quota, 600k STL/intermediate ceiling or MCP security changed.
+No user native/recovery record was restored/discarded/overwritten. Browser testing
+used fresh tabs with the default sphere; pre-existing recovery remained paused and
+history stayed 0 Undo/0 Redo. No commit, push or merge authorised or performed.
+
+## 3. Measured findings
+
+Production instrumented baselines, four disposable fixtures, actual STL files and
+independent local parser/field probes: [complete metrics and limits](PHASE_7_5_3_EXPORT_OPTIMISATION.md).
+Holder 443 mm: sampling 850.4 ms, meshing 304.2 ms, extraction/precompaction
+8,595.6 ms of 11,130.2 ms preparation. Fast/High 103,128/81,708 triangles (20.77%
+reduction using the existing High algorithm); checked bounds/topology match.
+Curved192 remains 293,776 at either quality; High spends 3,019.2 ms optimising.
+Array104: 48,288→43,940, checked bounds/topology match. No new decimation or
+before/after speedup is claimed. Conservative QEM/curved decimation stays off.
+
+Field-residual probe maxima (vertices/centroids, not Hausdorff or wall/fit proofs):
+clay 0.0901 mm; curved 0.0322 mm; holder 0.9723 mm; array 1.6537 mm; Fast/High
+maxima agree. Synthetic clay Fast is correctly BLOCKED for 8 degenerate triangles /
+10 non-manifold edges (also 2 open edges); existing High cleanup passes checks.
+Tracked derived storage 4.84/74.17/78.59/15.97 MiB; peak process RSS
+213/776.38/387.73/315.14 MiB includes fixture/snapshot/parser/both-quality/runtime
+costs. The export budget is admission accounting, not a whole-process RSS ceiling.
+
+## 4. Verification
+
+Initial full `npm run check`: **1,669/1,669 passed** (86.07 s test wall).
+Subsequent full pass after modal part-link/layout changes: **1,669/1,669** (85.72 s).
+Latest quick **21/21** and focused estimate/outcome/project-workflow/Quest menu
+**61/61** passed. Final full run after shortcut/handoff regression fix:
+**1,670/1,670 passed**, zero failures/skips/cancellations (82.07 s test wall). All full passes include Biome formatting/lint, strict TypeScript
+and Vite production build. Existing lint warnings/bundle-size advisory remain.
+An intermediate check stopped on benchmark formatting; corrected before rerun.
+
+Actual in-app browser fallback: Standard STL worker preparation + actual download
+(independently parsed 31,536 finite triangles, 1,576,884 bytes); final fresh tab
+confirmed worker backend, calibrated 169.848 mm dimensions and zero checked defects.
+Also exercised 200 mm GLB preparation, High unified preparation, slider synchronisation,
+quality-change URL invalidation, explicit Escape cancellation, idle focus restoration,
+absent-part refusal and visually reviewed final 680 px dialog/report layout.
+Final worker sample: optimiser128.9 ms, validation134.9 ms, encoding1.7 ms,
+snapshot0.5 ms, round-trip305.1 ms, Blob/URL0.5 ms. Browser disk write is unmeasured.
+Separate scripted Chromium launch failed SIGABRT/EPERM; its assertions did not run,
+even after local network permission. Do not call that script a pass.
+
+## 5. Limitations and remaining acceptance
+
+Count intervals for cleaned qualities are deliberately broad (0–input, up to100%
+uncertainty); evaluated count remains unknown until preparation. No asynchronous
+estimation work exists to debounce/abort. Fast is prepared triangles; pre-existing
+staged STL compaction still applies. No new tolerance-controlled curved decimator,
+clearance/wall guarantee, automatic smoothing or print-fit claim. Investigate
+compaction reuse before adding expensive passes. RSS accounting needs further work.
+Full multi-part confirmation/cancellation, narrow responsive viewport, separate
+scripted lifecycle/sizing smoke rerun, external slicer acceptance, OS freeze,
+physical printer and Quest acceptance remain pending. Original user holder
+appearance remains unconfirmed without native/source-export comparison.
+
+## 6. Evidence and resumption
+
+Run `node scripts/benchmark-export-pipeline.mjs` for four isolated-process fixtures;
+`npm run check`, `npm run test:quick`, focused tests above; and
+`scripts/export-browser-smoke.mjs` / `scripts/export-lifecycle-smoke.mjs` on a host
+that permits Chromium launch. Updated scripts require explicit download confirmation
+and exercise modal Escape/focus, slider and responsive width. Never attach them to
+an existing user's project or approve agent access as part of these checks.
+
+Evidence: ignored `work/phase-7-5-3/profile.json`, fixture STLs,
+`browser-standard.stl`, `browser-evidence.json`, `export-dialog.png`;
+`/tmp/phase753-profile-final.log`, `/tmp/phase753-browser.log`,
+`/tmp/phase753-check.log`, `/tmp/phase753-final-check.log`,
+`/tmp/phase753-quick.log`, `/tmp/phase753-focused.log`.
+
 # Handoff — export correctness/detail and agent workflows — 2026-11-09
 
 **Ready for software handoff.** User authorised commit/push for the complete current

@@ -43,6 +43,7 @@ export async function exportGlbAsync(
     throw new Error(
       "Background export requires Web Workers for this sculpture. Use a supported browser; source kept.",
     );
+  const snapshotStart = performance.now();
   const copies: ExportSource[] = [];
   for (const source of sources) {
     const chunks: ExportSource["chunks"] = [];
@@ -75,6 +76,8 @@ export async function exportGlbAsync(
     return options.stlMM === undefined
       ? encodeExport(copies, quality, maxBytes, work)
       : encodeSTL(copies, quality, maxBytes, options.stlMM, work);
+  const snapshotMs = performance.now() - snapshotStart,
+    workerStart = performance.now();
   const id = ++generation,
     worker = new Worker(new URL("./export-worker.ts", import.meta.url), { type: "module" });
   let cleanup = () => {};
@@ -110,6 +113,11 @@ export async function exportGlbAsync(
           }
           if (!(d.result?.data instanceof ArrayBuffer))
             throw new Error("Invalid export worker response.");
+          d.result.timings = {
+            ...d.result.timings,
+            snapshotMs,
+            workerRoundTripMs: performance.now() - workerStart,
+          };
           resolve(d.result);
         } catch (error) {
           reject(error);

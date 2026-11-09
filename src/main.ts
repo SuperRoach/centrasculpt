@@ -4,6 +4,8 @@ import { restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
 import { assemblyUI } from "./assembly-ui";
 import { exportResolution, prepareBooleanExport } from "./boolean-export";
 import { enclosureUI } from "./enclosure-ui";
+import { mountExportDialog } from "./export-dialog";
+import { exportCountEstimate } from "./export-estimate";
 import { createExportFeedback } from "./export-feedback";
 import { exportFilename } from "./export-filename";
 import { exportFailure, exportInterruption } from "./export-outcome";
@@ -31,7 +33,7 @@ import { LayerDisplayPreferences } from "./display-preferences";
 import { EditorToolState } from "./editor-tool-state";
 import { exportGlbAsync } from "./export-client";
 import type { ExportQuality, ExportSource } from "./export-mesh";
-import { exportAdmission, exportMemoryBudget } from "./export-mesh";
+import { exportMemoryBudget } from "./export-mesh";
 import { IndependentLayers } from "./independent-layers";
 import type { EditorMode } from "./interaction";
 import { handleLayerDeleteShortcut, InputOwnership } from "./interaction";
@@ -1494,33 +1496,27 @@ window.addEventListener("keydown", (event) => {
   }
 });
 function exportEstimate(): void {
-  if (
-    layers.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled)
-  ) {
-    document.getElementById("export-estimate")!.textContent =
-      "Boolean geometry is evaluated during export. Final triangle count and sampling spacing appear in the print report.";
-    return;
-  }
+  const evaluated = layers.project.layerStack.layers.some(
+    (l) => l.booleanModifiers?.length || l.array?.enabled,
+  );
   const count = layers.project.layerStack.layers.reduce(
     (n, l) => n + (l.visible ? layers.runtime(l.id).triangles : 0),
     0,
   );
-  let note = "Final count reported after export.";
-  try {
-    const q = document.querySelector<HTMLSelectElement>("#export-quality")!.value as ExportQuality;
-    exportAdmission(
-      layers.exportSources("visible", false),
-      q,
-      Math.max(1, selectedExportMemory() - layers.trackedBytes),
-    );
-  } catch (error) {
-    note = message(error);
-  }
+  const quality = document.querySelector<HTMLSelectElement>("#export-quality")!
+    .value as ExportQuality;
+  const estimate = exportCountEstimate(count, quality, evaluated);
   document.getElementById("export-estimate")!.textContent =
-    `Visible source: ${count.toLocaleString()} triangles before optimisation. ${note}`;
+    `${estimate.text} Unified Boolean requires evaluation regardless of source count. No remeshing for estimates. Measured final counts appear after preparation. Memory admission is checked during preparation.`;
 }
-document.getElementById("export-quality")!.addEventListener("change", exportEstimate);
-exportMemory.addEventListener("change", exportEstimate);
+document.getElementById("export-quality")!.addEventListener("change", () => {
+  clearPreparedExport();
+  exportEstimate();
+});
+exportMemory.addEventListener("change", () => {
+  clearPreparedExport();
+  exportEstimate();
+});
 
 async function exportSculpt(scope: "visible" | "selected" | "composite") {
   const format = exportFormat.value;
@@ -1561,7 +1557,11 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
       }
       assembly.partA = owner;
     }
+    clearPreparedExport();
     loadingProject = true;
+    exportAbort = new AbortController();
+    exportAbort.signal.addEventListener("abort", () => void assembly.run("cancel"), { once: true });
+    cancelExport.style.visibility = "visible";
     ui.projectBusy(true, true);
     exportFeedback.start();
     exportMessage("Preparing STL export…");
@@ -1575,6 +1575,8 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
       exportMessage(message(error), true);
     } finally {
       exportFeedback.stop();
+      exportAbort = null;
+      cancelExport.style.visibility = "hidden";
       loadingProject = false;
       ui.projectBusy(false);
       printSize.disabled = printSizing.value === "actual";
@@ -1686,6 +1688,9 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
               );
             },
           });
+          const actualTriangles =
+            result.report?.triangles ?? result.stats.reduce((n, stat) => n + stat.triangles, 0);
+          exportSummary.textContent += ` · ${format.toUpperCase()} · Actual generated ${actualTriangles.toLocaleString()} triangles · ${Math.ceil(result.estimatedBytes / 1048576)} MiB encoder admission estimate`;
           if (prepared && result.stats[0]) {
             result.stats[0].inputTriangles += prepared.removedTriangles;
             result.stats[0].planarRemoved += prepared.removedTriangles;
@@ -1701,6 +1706,24 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
                 calibratedLongestMM;
           }
           if (signal.aborted) throw new Error("Export cancelled.");
+          exportProfile.textContent = JSON.stringify(
+            {
+              scope,
+              format,
+              quality,
+              backend: result.backend,
+              memoryBudgetBytes: memoryLimit,
+              encoderAdmissionBytes: result.estimatedBytes,
+              geometryBytes: result.geometryBytes,
+              outputBytes: result.data.byteLength,
+              preparation: prepared?.profile,
+              encodingWallMs: result.milliseconds,
+              stagesWallMs: result.timings,
+              note: "Sampling/meshing are compositor compute times. Other stages are elapsed wall time including cooperative waits. Worker round trip overlaps encoding; do not sum. Admission/derived bytes are not process RSS. Download preparation excludes browser disk write.",
+            },
+            null,
+            2,
+          );
           const encodedView = new DataView(result.data);
           if (
             format === "stl"
@@ -1751,12 +1774,12 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             if (report.warnings.length) {
               exportMessage(`Review print warnings, then download ${filename}.`);
             } else {
-              printDownload.click();
+              exportMessage(`Ready: ${filename}. Review the summary, then download.`);
             }
             return;
           }
           prepareExportDownload(result.data, filename, "model/gltf-binary", false);
-          printDownload.click();
+          exportMessage(`Ready: ${filename}. Review the summary, then download.`);
         } finally {
           prepared?.dispose();
         }
@@ -1796,25 +1819,26 @@ printSize.min = "0.1";
 printSize.max = "10000";
 printSize.value = "200";
 printSize.step = "0.1";
+printSize.addEventListener("input", () => clearPreparedExport());
 const printSizing = document.createElement("select");
 printSizing.id = "export-sizing";
 printSizing.innerHTML =
   '<option value="actual">Actual size (1:1)</option><option value="target">Scale to target</option>';
 printSize.disabled = true;
 const printPhysicalLabel = document.createElement("label");
-printPhysicalLabel.append(document.createTextNode("Export sizing "), printSizing);
+printPhysicalLabel.append(document.createTextNode("Physical size "), printSizing);
 const printLabel = document.createElement("label");
-printLabel.textContent = "Longest side (mm)";
+printLabel.textContent = "Target longest side (mm)";
+printLabel.hidden = true;
 printLabel.append(printSize);
-printLabel.append(
-  document.createTextNode(" · aspect ratio locked · overrides project physical calibration"),
-);
+printLabel.title =
+  "Aspect ratio stays locked. Target sizing overrides project physical calibration.";
 const projectPrintSize = document.createElement("button");
 projectPrintSize.disabled = true;
 projectPrintSize.textContent = "Use selected physical size";
 projectPrintSize.onclick = () => {
   try {
-    if (loadingProject || ui.modalOpen || xrBlocked()) return;
+    if (loadingProject || xrBlocked()) return;
     if (layers.selectedGroupId)
       throw new Error(
         "Select an individual layer for this shortcut, or use project physical scale with Export all layers.",
@@ -1822,6 +1846,7 @@ projectPrintSize.onclick = () => {
     printSize.value = String(
       Math.max(...selectionDimensions(layers)) * display.precision.millimetresPerUnit,
     );
+    clearPreparedExport();
     exportMessage(
       "Selected physical longest dimension copied. Export Selected to retain this scale.",
     );
@@ -1832,6 +1857,7 @@ projectPrintSize.onclick = () => {
 printLabel.append(projectPrintSize);
 printSizing.onchange = () => {
   printSize.disabled = printSizing.value === "actual";
+  printLabel.hidden = printSizing.value === "actual";
   projectPrintSize.disabled = printSizing.value === "actual";
   clearPreparedExport();
   exportSummary.textContent = `Sizing: ${printSizing.selectedOptions[0].textContent}. Exact evaluated bounds will be measured before encoding.`;
@@ -1845,15 +1871,31 @@ document.getElementById("export-selected")!.before(printPhysicalLabel, printLabe
 const exportSummary = document.createElement("p");
 exportSummary.id = "export-summary";
 exportSummary.textContent =
-  "Sizing: Actual size (1:1). Exact evaluated bounds and export dimensions appear here before encoding.";
+  "Project size is preserved (1:1). Prepare an export to review its dimensions.";
 const exportResult = document.createElement("div");
 exportResult.id = "export-result";
+const exportProfileDetails = document.createElement("details");
+exportProfileDetails.innerHTML = "<summary>Performance and resource report</summary>";
+const exportProfile = document.createElement("pre");
+exportProfile.style.whiteSpace = "pre-wrap";
+exportProfileDetails.append(exportProfile);
+const printableDownloads = document.createElement("div");
+printableDownloads.id = "export-part-downloads";
+let partDownloadURLs: string[] = [];
+let partDownloadBytes = 0;
 const exportStatus = document.createElement("p");
 exportStatus.setAttribute("role", "status");
 const printDownload = document.createElement("a");
 printDownload.id = "export-download";
 printDownload.style.visibility = "hidden";
-exportResult.append(exportSummary, exportStatus, printDownload, cancelExport);
+exportResult.append(
+  exportSummary,
+  exportStatus,
+  printDownload,
+  cancelExport,
+  printableDownloads,
+  exportProfileDetails,
+);
 const exportFeedback = createExportFeedback(exportResult);
 document.getElementById("export-boolean")!.after(exportResult);
 cancelExport.hidden = false;
@@ -1865,6 +1907,10 @@ function exportMessage(text: string, error = false) {
   exportStatus.setAttribute("role", error ? "alert" : "status");
 }
 function clearPreparedExport() {
+  for (const url of partDownloadURLs) URL.revokeObjectURL(url);
+  partDownloadURLs = [];
+  partDownloadBytes = 0;
+  printableDownloads.replaceChildren();
   if (preparedExportURL) URL.revokeObjectURL(preparedExportURL);
   preparedExportURL = null;
   printDownload.removeAttribute("href");
@@ -1874,6 +1920,7 @@ function clearPreparedExport() {
   printReportDownload.hidden = true;
   printReportDownload.onclick = null;
   printReport.textContent = "";
+  exportProfile.textContent = "";
 }
 function prepareExportDownload(
   data: ArrayBuffer,
@@ -1881,12 +1928,21 @@ function prepareExportDownload(
   mime: string,
   warnings: boolean,
 ) {
+  const preparationStart = performance.now();
   preparedExportURL = URL.createObjectURL(new Blob([data], { type: mime }));
+  exportProfile.textContent += `\nBlob / download URL preparation: ${(performance.now() - preparationStart).toFixed(3)} ms. Browser disk-write timing unavailable.`;
   printDownload.href = preparedExportURL;
   printDownload.download = filename;
   printDownload.textContent = `Download ${filename}${warnings ? " · accept report warnings" : ""}`;
   printDownload.style.visibility = "visible";
-  printDownload.onclick = () => {
+  const preparedRevision = layers.sourceRevision;
+  printDownload.onclick = (event) => {
+    if (preparedRevision !== layers.sourceRevision) {
+      event.preventDefault();
+      clearPreparedExport();
+      exportMessage("Source changed. Prepare this export again before downloading.", true);
+      return;
+    }
     exportMessage(
       `Download requested: ${filename}. If it did not appear, use the download link here.`,
     );
@@ -1903,8 +1959,25 @@ printReport.setAttribute("role", "status");
 printPanel.append(printReport);
 document.getElementById("export-boolean")!.parentElement!.append(printPanel);
 mountWhatsNew(printPanel, whatsNew);
+mountExportDialog(exportEstimate, () => loadingProject || xrBlocked());
+const markedPartsExport = document.createElement("button");
+markedPartsExport.id = "export-marked-parts";
+markedPartsExport.textContent = "Marked printable parts · STL";
+markedPartsExport.onclick = () => {
+  if (loadingProject || xrBlocked()) return;
+  if (!layers.project.layerStack.layers.some((l) => l.assemblyPart)) {
+    exportMessage("Assign printable parts in Assembly / Fit first.", true);
+    return;
+  }
+  if (exportFormat.value !== "stl") {
+    exportMessage("Marked printable parts require STL. Choose STL and 1:1 sizing.", true);
+    return;
+  }
+  void exportSculpt("visible");
+};
+document.getElementById("export-boolean")!.after(markedPartsExport);
 function syncExportFormat() {
-  printLabel.hidden = false;
+  printLabel.hidden = printSizing.value === "actual";
   printPhysicalLabel.hidden = false;
   printPanel.hidden = exportFormat.value !== "stl";
   clearPreparedExport();
@@ -2364,6 +2437,43 @@ precision.primitives.assembly.exportSummary = async (dimensions) => {
 };
 precision.primitives.assembly.onExport = (result) => {
   const name = result.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (document.querySelector<HTMLDialogElement>("#export-dialog")!.open) {
+    if (
+      partDownloadBytes + result.data.byteLength >
+      Math.min(32 * 1048576, Math.max(0, selectedExportMemory() - layers.trackedBytes))
+    )
+      throw new Error(
+        "Prepared part downloads exceed their 32 MiB/available memory budget. Export one part at a time; source kept.",
+      );
+    const revision = layers.sourceRevision;
+    const row = document.createElement("div");
+    row.textContent = `${name}: ${result.report.triangles.toLocaleString()} triangles · ${result.report.dimensions.map((n) => n.toFixed(3)).join(" × ")} mm · ${result.report.components} surfaces · open ${result.report.boundaryEdges}, non-manifold ${result.report.nonManifoldEdges}, winding ${result.report.inconsistentEdges}. ${result.report.warnings.join(" ")} `;
+    for (const [blob, filename] of [
+      [new Blob([result.data], { type: "model/stl" }), `${name}.stl`],
+      [
+        new Blob([JSON.stringify(result.report, null, 2)], { type: "application/json" }),
+        `${name}-print-report.json`,
+      ],
+    ] as const) {
+      const link = document.createElement("a"),
+        url = URL.createObjectURL(blob);
+      partDownloadURLs.push(url);
+      link.href = url;
+      link.download = filename;
+      link.textContent = `Download ${filename} `;
+      link.onclick = (event) => {
+        if (revision !== layers.sourceRevision) {
+          event.preventDefault();
+          clearPreparedExport();
+          exportMessage("Source changed. Prepare printable parts again.", true);
+        }
+      };
+      row.append(link);
+    }
+    partDownloadBytes += result.data.byteLength;
+    printableDownloads.append(row);
+    return;
+  }
   download(new Blob([result.data], { type: "model/stl" }), `${name}.stl`);
   download(
     new Blob([JSON.stringify(result.report, null, 2)], { type: "application/json" }),
@@ -2647,8 +2757,8 @@ xrExperience = new XRExperience(
                   new: "new-project",
                   open: "open-project",
                   save: "save-project",
-                  export: "export-format",
-                  print: "export-format",
+                  export: "open-export",
+                  print: "open-export",
                   recover: "restore-recovery",
                 } as const
               )[action],
@@ -2666,7 +2776,7 @@ xrExperience = new XRExperience(
             ui.projectMessage(
               `Continue ${action === "recover" ? "recovery" : action} in the browser panel. Use Enter Studio / Passthrough when ready.`,
             );
-            if (action === "new") target.click();
+            if (action === "new" || action === "print" || action === "export") target.click();
           },
         );
       } catch (error) {

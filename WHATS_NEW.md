@@ -1,3 +1,10 @@
+### A dedicated export workspace — Phase 7.5.3 (2026-11-09)
+
+- A cleaner **Export…** dialog puts format, physical size and one quality slider first; memory, resolution and the alternate preset selector live under Advanced settings. Target dimensions appear only when target sizing is selected.
+- Open **Export…** for sizing, format, scope, quality, memory and reports in one dialog. Review prepared files before downloading; Escape cancels active work or closes the idle dialog.
+- A quality slider shows source-count estimates with uncertainty, then measured generated triangles after preparation. It does not remesh while you adjust it.
+- Inspect stage timings and resource estimates alongside the existing physical dimensions and STL checks. Curved decimation remains disabled; High retains conservative planar optimisation.
+
 ### Simplify tilted flat surfaces (2026-11-09)
 
 - High export now simplifies eligible planar regions at arbitrary orientations, retaining hole boundaries, seam vertices and local/world bounds.
