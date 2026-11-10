@@ -15,6 +15,7 @@ import { createExportFeedback } from "./export-feedback";
 import { exportFilename } from "./export-filename";
 import { exportFailure, exportInterruption } from "./export-outcome";
 import { questCapture } from "./performance-capture";
+import { installPersonalShapes } from "./personal-shape-ui";
 import { exportSizing, physicalExportDimensionsMM, physicalGLBSources } from "./physical-units";
 import { PrecisionTools, selectionDimensions } from "./precision-tools";
 import { precisionUI } from "./precision-ui";
@@ -2884,6 +2885,7 @@ xrExperience = new XRExperience(
                   export: "open-export",
                   print: "open-export",
                   recover: "restore-recovery",
+                  shapes: "personal-shapes",
                 } as const
               )[action],
             )!;
@@ -2900,7 +2902,13 @@ xrExperience = new XRExperience(
             ui.projectMessage(
               `Continue ${action === "recover" ? "recovery" : action} in the browser panel. Use Enter Studio / Passthrough when ready.`,
             );
-            if (action === "new" || action === "print" || action === "export") target.click();
+            if (
+              action === "new" ||
+              action === "print" ||
+              action === "export" ||
+              action === "shapes"
+            )
+              target.click();
           },
         );
       } catch (error) {
@@ -3707,3 +3715,11 @@ if (import.meta.env.DEV) {
 }
 
 installDesktopColourPicker();
+
+installPersonalShapes(
+  () => layers,
+  renderer,
+  () => {
+    shapeLibraryUI.refresh();
+  },
+);

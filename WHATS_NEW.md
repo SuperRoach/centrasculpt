@@ -1,3 +1,11 @@
+### Personal Shapes — Phase 8.0 (2026-11-10)
+
+- Save a selected sculpt or evaluated Boolean root with a genuine thumbnail, name, physical dimensions and Centre/Base centre insertion pivot.
+- Browse your persistent browser-local Personal Shapes independently of projects. Rename or confirm deletion, and insert independent editable sculpt copies.
+- Masters retain full stored SDF detail with lossless compression and integrity checks. Unsupported evaluation, memory and storage sizes refuse explicitly; keep a .form backup or split the object.
+- Insertions support Undo/redo, normal transforms, sculpting, .form saves and STL/GLB export. Procedural construction history is flattened.
+- Quest Project navigation can leave XR for the browser workflow; physical headset acceptance remains pending. Personal stamps (8.0.1), component collections (8.1) and agent integration (8.2) are deferred.
+
 ### Learn by making — Phase 7.6.1 (2026-11-10)
 
 - Three illustrated tutorials cover a first clay sculpt, a measured three-slot holder and a box with a separate lid.

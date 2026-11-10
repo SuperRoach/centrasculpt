@@ -14,7 +14,7 @@ import type { Turntable } from "./turntable";
 import { mirrorGuideSettings, STUDIO_BACKGROUNDS, turntableSettings } from "./world-settings";
 import type { MenuButton, MenuContent } from "./xr-menu-model";
 import type { XRSessionController } from "./xr-session";
-export type ProjectAction = "new" | "open" | "save" | "export" | "print" | "recover";
+export type ProjectAction = "new" | "open" | "save" | "export" | "print" | "recover" | "shapes";
 export type WorldSection =
   | "precision"
   | "project"
@@ -140,7 +140,7 @@ export class XRWorldMenu {
           disabled: browser.busy,
           rect: { x: 940, y: 140, width: 172, height: 74 },
         });
-        for (const [i, action] of (["export", "print", "recover"] as const).entries())
+        for (const [i, action] of (["export", "print", "recover", "shapes"] as const).entries())
           content.buttons.push({
             id: `project:${action}`,
             label:
@@ -148,9 +148,11 @@ export class XRWorldMenu {
                 ? "Export GLB…"
                 : action === "print"
                   ? "3D Print / Export STL…"
-                  : "Recovery…",
+                  : action === "recover"
+                    ? "Recovery…"
+                    : "Personal Shapes…",
             disabled: busy || browser.busy || !this.port.projectAction,
-            rect: { x: 40 + i * 365, y: 1008, width: 345, height: 78 },
+            rect: { x: 40 + i * 274, y: 1008, width: 254, height: 78 },
           });
       }
       if (listing) {
@@ -184,7 +186,7 @@ export class XRWorldMenu {
         this.port?.projectStatus?.() ||
         "Project commands unavailable in this preview";
       for (const [i, action] of (
-        ["new", "open", "save", "export", "print", "recover"] as const
+        ["new", "open", "save", "export", "print", "recover", "shapes"] as const
       ).entries()) {
         const labels = {
           new: "New Project…",
@@ -193,6 +195,7 @@ export class XRWorldMenu {
           export: "Export GLB…",
           print: "3D Print / Export STL…",
           recover: "Recover Project…",
+          shapes: "Personal Shapes…",
         };
         buttons.push({
           id: `project:${action}`,

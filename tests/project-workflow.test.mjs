@@ -101,7 +101,7 @@ test("Quest print/export handoff opens the export dialog after XR exit without s
   assert.match(handoff, /action === "print" \? "stl" : "glb"/);
   assert.match(
     handoff,
-    /action === "new" \|\| action === "print" \|\| action === "export"\) target.click\(\)/,
+    /action === "new"\s*\|\|\s*action === "print"\s*\|\|\s*action === "export"\s*\|\|\s*action === "shapes"\s*\)\s*target.click\(\)/,
   );
   assert.doesNotMatch(handoff, /exportSculpt|printDownload.click/);
   const shortcut = source.slice(

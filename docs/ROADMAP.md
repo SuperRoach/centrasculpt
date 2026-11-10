@@ -7,6 +7,7 @@ acceptance is implied.
 
 | Phase | Implementation | Automated | Browser | Quest | Physical print |
 | --- | --- | --- | --- | --- | --- |
+| 8.0 | Personal Shapes Save → Browse → Insert; separate persistent SDF masters, genuine thumbnails, pivots, calibrated independent editable copies and native/export compatibility | Full check 1,706/1,706; personal 8/8; guide 8/8 | Chromium save/thumbnail/new-project/two insertions/reload/rename/delete passed | Project handoff implemented; physical acceptance pending | Not run |
 | 7.6.1 | Documentation polish: 26 pages, three illustrated tutorials, 17 authentic desktop captures with zoom, interactive source-accurate Tool Wheel schematic, glossary and tool-choice guide | Docs 8/8; full root check 1,698/1,698; screenshot dimensions/provenance and links checked | All 26 routes passed axe, Pagefind, keyboard/search, mobile layouts, touch/wheel/lightbox and reduced-motion checks; real holder prepared STL 110 × 27 × 50 mm | Authentic wheel/submenu captures pending; no fresh hardware acceptance | No new print test |
 | 7.6 | Public static field guide in read-the-docs-pls; 23 task-based guides, Pagefind, themes, mobile navigation and MCP holder examples | Docs 7/7; root check 1,696/1,696 | In-app browser harness 174 assertions; axe, 23 routes at 1440/390/320 px, actual search and subpath links; screenshots | Not run | Not run |
 | 7.5.4c | Exact STL compaction promoted; original fallback; visible STL evaluates ordered cutters; bounded interactive preview; guarded curved STL reduction opt-in | 1,693/1,693 follow-up full; 96 main paired attempts; 16 coarse-enclosure refusals retained | Chromium export/lifecycle passed; 16 in-app worker comparisons byte-identical; native Lens visible High 192/256, Unified parity, 200 mm target and native/history preservation passed on production preview | Not run | Not run |
@@ -237,3 +238,13 @@ servers serve the same route. Centra Sculpt logo menu → Help opens a separate 
 with a base-aware local URL. Deploy the complete app dist normally after separate
 authorisation. Root npm ci supplies Pagefind; no nested docs install is required
 for app build/dev. App modelling/export/agent engines remain unchanged.
+
+## Phase 8.0 — Personal Shapes
+
+Implemented locally: separate versioned IndexedDB library, evaluated selected sculpt/Boolean-root capture, actual thumbnail review, names/dimensions/dates, Centre/Base centre pivots, lossless gzip and integrity validation, explicit limits, confirmed rename/delete, independent editable insertions with Undo/redo and native/export compatibility. Source-history collections remain deferred. Quest Project entry exits XR for browser controls; no physical headset acceptance claimed.
+
+- 8.0.1: Personal shapes as stamps with optimised detail caches.
+- 8.1: Editable component collections retaining construction.
+- 8.2: MCP/agent integration.
+
+See the latest six-part development handover for current verification and limitations.

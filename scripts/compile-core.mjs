@@ -15,6 +15,7 @@ const nextCache = {};
 const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext };
 
 for (const name of [
+  "personal-shapes",
   "assembly",
   "assembly-tools",
   "boolean-export",

@@ -2778,6 +2778,80 @@ export class IndependentLayers {
     this.assertCapacity(resolution ** 3, undefined, 1);
     return planBake(this.project, resolution, sourceIds);
   }
+  async insertPersonalShape(
+    source: SdfLayer,
+    factor: number,
+    signal?: AbortSignal,
+  ): Promise<SdfLayer> {
+    this.assertAvailable();
+    this.finishStroke();
+    this.finishTransform();
+    if (!Number.isFinite(factor) || factor <= 0) throw new Error("Invalid shape calibration.");
+    const stack = this.project.layerStack;
+    if (
+      stack.layers.length >= MAX_PROJECT_LAYERS ||
+      stack.layers.reduce((n, l) => n + volumeSampleCount(l.volume), 0) +
+        volumeSampleCount(source.volume) >
+        MAX_PROJECT_VOXELS ||
+      this.trackedBytes + this.composite.trackedBytes + volumeSampleCount(source.volume) * 16 >
+        256 * 1024 ** 2
+    )
+      throw new Error(
+        "Shape insertion exceeds project layer or memory limits. Save a .form backup or use a smaller project; the master was kept at full detail.",
+      );
+    const before = this.bakeState(),
+      transform = copyTransform(source.transform);
+    transform.position = transform.position.map((v) => v * factor) as [number, number, number];
+    transform.scale = transform.scale.map((v) => v * factor) as [number, number, number];
+    const volume = new SDFVolume(source.volume.resolution, source.volume.extent, false, {
+      dimensions: source.volume.dimensions,
+      latticeMin: source.volume.latticeMin ?? [0, 0, 0],
+    });
+    for (let i = 0; i < volume.values.length; i++) volume.values[i] = source.volume.readVoxel(i);
+    const layer = new SdfLayer(volume, {
+      name: this.uniqueName(source.name),
+      transform,
+      order: Math.max(...stack.layers.map((l) => l.order)) + 1,
+    });
+    let candidate: LayerRuntime | undefined;
+    this.baking = true;
+    try {
+      candidate = new LayerRuntime(layer, this.neutral, volume, true);
+      const budget =
+        MAX_PROJECT_TRIANGLES - [...this.runtimes.values()].reduce((n, r) => n + r.triangles, 0);
+      while (candidate.mesher.pendingChunks) {
+        checkBakeCancelled(signal);
+        if (this.disposed) throw new Error("Project closed during insertion.");
+        candidate.rebuild(2, 3);
+        if (candidate.triangles > budget)
+          throw new Error("Shape exceeds the project triangle limit. Master and project kept.");
+        await yieldBake();
+      }
+      checkBakeCancelled(signal);
+      if (this.disposed || !candidate.triangles)
+        throw new Error("Shape has no surface or the project closed.");
+      stack.insert(layer);
+      this.install(candidate);
+      this.discardFuture();
+      this.viewMode = "separate";
+      this.past.push({
+        kind: "bake",
+        layerId: layer.id,
+        runtime: candidate,
+        before,
+        after: this.bakeState(),
+        index: stack.layers.length - 1,
+      });
+      this.committedRevision++;
+      this.syncPresentation();
+      this.composite.invalidate();
+      candidate = undefined;
+      return layer;
+    } finally {
+      candidate?.dispose();
+      this.baking = false;
+    }
+  }
   async bake(
     options: BakeOptions,
     signal?: AbortSignal,

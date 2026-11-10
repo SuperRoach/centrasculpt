@@ -1,3 +1,114 @@
+# Phase 8.0 — Personal Shape Library — 2026-11-10
+
+## 1. Scope, inspection and preservation
+
+Active checkout `/Users/brettjames/development/vrappPOC`; initial Git status clean.
+Inspected AGENTS.md, latest handover and roadmap, built-in stamp definitions/UI,
+SDF dense/grown lattices, ordered/live Boolean evaluation and Bake, Project Library,
+native .form codec, project thumbnails, insertion/Undo runtime and desktop/XR
+Project navigation. The requested working directory is a container directory;
+the active repository is the development checkout above. No user saved projects,
+recovery stores, native assets or production browser profiles were opened or changed.
+No commit, push, deploy or merge. Earlier handovers below remain preserved.
+
+## 2. Delivered Save → Browse → Insert workflow
+
+Left project controls → Personal Shapes… opens a labelled native modal. Save
+selected as Shape captures only the selected evaluated sculpt or live Boolean
+root with its reachable operands; raw cutters and unrelated layers are excluded.
+Preview meshes this captured master and uses the genuine disposable WebGL thumbnail
+renderer. Review name, measured world XYZ dimensions in mm and Centre/Base centre
+pivot before Save Shape. Dates, thumbnails, insertion, explicit confirmed rename
+and deletion, empty/loading/error states and cancellation are included.
+
+Inserted copies are independent editable SDF layers, flattening construction history.
+They preserve orientation and physical scale across destination calibration and use
+normal transforms, brushes, one-step insertion Undo/redo, native .form persistence
+and STL/GLB geometry paths. Masters remain independent of projects and of every
+inserted copy. Browser storage is profile/origin-local; users are told to keep
+.form backups and that clearing site data removes saved shapes.
+
+## 3. Architecture, quality and bounded failure
+
+`src/personal-shapes.ts` implements version-1 master records over the proven atomic
+ProjectLibrary transaction engine in a separate `centra-personal-shapes-v1` database.
+A single-layer validated native payload stores full Float32 SDF samples, native
+lattice layout and transform; optional gzip is lossless and thumbnails are separate.
+Payload checksum, declared uncompressed length, bounded gzip decoding, native codec
+validation and explicit metadata-version validation refuse corrupt/unsupported data.
+Optimistic revision checks protect rename/delete across tabs. Library quota/count
+and native/project layer/voxel/triangle limits remain in force.
+
+Ordinary sculpt capture copies every sample exactly, including grown grids. Native
+growth layouts must contain their original lattice, so exact dense copies retain
+that layout rather than changing engine/native semantics to crop it. Live Boolean
+masters evaluate cropped composite bounds at up to 192³ only when world sampling
+step meets the source-detail requirement. Unsupported detail refuses explicitly;
+no resolution downgrade or preview substitution is allowed. Standalone analytic
+primitives refuse cached-grid substitution and direct users to an explicit Bake to
+Sculpt at chosen quality or retaining their .form construction. Groups are not
+component collections; choose an individual sculpt or Boolean root.
+
+128 MiB master/staging bounds and conservative 256 MiB editor admission estimates
+cover capture/loading/insertion; insertion also stages/meshes before a single Undo
+commit. Error/cancellation paths keep existing records/source geometry. These are
+admission estimates, not a measured guarantee of total browser/GPU peak memory.
+
+## 4. Automated and browser verification
+
+Focused `npm test -- personal-shapes`: 8/8 passed. The acceptance scenario creates
+an evaluated bent organic capsule, saves/reopens its database, creates another
+project, inserts twice with calibration conversion, sculpts one via real brush
+history, proves the second/master/source samples unchanged, reopens .form with
+identical samples/transforms, and encodes validated STL. Additional cases cover
+Boolean holes, raw-cutter exclusion, exact compression/checksum corruption,
+missing storage/quota, confirmation revisions, cancellation/Undo preservation,
+memory refusal and unsupported source-detail refusal.
+
+Chromium fresh disposable context: actual evaluated thumbnail decoded; saved,
+created a second empty project, inserted twice, reloaded the page, found the
+persistent thumbnail/master, renamed and confirmed deletion; zero page errors.
+Script `scripts/personal-shapes-browser-smoke.mjs`, log
+`/tmp/personal-shapes-browser.log`. It uses the running dev origin at port 5268;
+set PLAYWRIGHT_CHROMIUM_EXECUTABLE if the host requires full installed Chromium.
+The automated organic acceptance is engine + IndexedDB/native/export integration;
+the browser case uses the starter sculpt, not claimed as a manual organic session.
+
+Quick tests 21/21 and guide build/tests passed (26 routes, 8/8).
+Guide Chromium also passed all 26 routes: axe WCAG A/AA, actual Pagefind search,
+themes, keyboard and 390/320 px layouts; `/tmp/personal-shapes-docs-browser.log`. Required root check
+covers format, lint, strict TypeScript, production app/guide build and full suite;
+final result: PASS format/lint, strict TS, production app/guide build and
+**1,706/1,706 tests**, zero failures/skips/cancellations (77.25 s test wall). Sandbox HTTP/Chromium EPERM failures
+were infrastructure restrictions; authorised unrestricted runs used for acceptance.
+An existing source-string handoff test was updated to include the new Shapes action.
+
+## 5. Documentation and reproduction
+
+Public projects guide now has a friendly save/reuse walkthrough, pivot/physical
+size, independent copies, history flattening, browser-local storage/backups and
+error guidance. Home, tool-choice, Stamp guide and FAQ no longer describe the
+personal library as upcoming. Source-contract assertions cover the new guide and
+deferred phases. WHATS_NEW and ROADMAP updated without publication.
+
+Run `npm run dev`, open the left Personal Shapes control. Run focused tests above;
+`npm run check` for all checks. Guide build/test commands remain in its README.
+Logs: `/tmp/personal-shapes-{tests,quick,docs-build,docs,browser,final-check}.log`.
+
+## 6. Quest and remaining boundaries
+
+World Settings → Project → Personal Shapes exits XR using the established safe
+project/browser handoff and opens the browser modal. Tool Wheel sectors remain
+unchanged. No physical Quest, hardware memory/performance, physical print or
+assistive-technology acceptance is claimed. No dedicated immersive personal-shape
+browser or headset keyboard was added.
+
+Deferred exactly as requested: 8.0.1 personal sculpting stamps/detail caches; 8.1
+editable component collections retaining primitive/Boolean history; 8.2 agent/MCP
+integration. User assets were preserved and all changes remain uncommitted locally.
+
+---
+
 # Phase 7.6.1 — Documentation experience & visual polish — 2026-11-10
 
 ## Scope and preservation
