@@ -9,6 +9,7 @@ import {
   PersonalShapeLibrary,
 } from "./personal-shapes";
 import { captureProjectThumbnail } from "./project-thumbnail";
+import { exportShapeBackup, previewShapeBackup, shapeMerge } from "./shape-backup";
 import { ChunkSurface } from "./surface";
 import { transformMatrix } from "./transform";
 
@@ -54,7 +55,7 @@ export function installPersonalShapes(
   heading.textContent = "Personal Shapes";
   const note = document.createElement("p");
   note.textContent =
-    "Reusable evaluated geometry, without the original procedural history. Stored in this browser independently of projects. Clearing site data removes the library; keep .form backups. Move, rotate, resize and sculpt inserted copies normally.";
+    "Reusable evaluated geometry, without the original procedural history. Stored in this browser independently of projects. Clearing site data removes the library; use Export Library Backup to keep a portable copy. Move, rotate, resize and sculpt inserted copies normally.";
   const content = document.createElement("div");
   const saveButton = button("Save selected as Shape", async () => {
     const layers = getLayers();
@@ -251,10 +252,105 @@ export function installPersonalShapes(
       content.append(row);
     }
   }
+  const backupExport = button("Export Library Backup", async () => {
+    abort?.abort();
+    abort = new AbortController();
+    const signal = abort.signal;
+    status.textContent = "Validating and preparing library backup…";
+    const blob = await exportShapeBackup(library, signal);
+    const count = blob.shapeCount;
+    if (signal.aborted) throw new Error("Backup cancelled.");
+    content.replaceChildren();
+    status.textContent = `${count} shapes · ${(blob.size / 1024 ** 2).toFixed(2)} MiB. Ready to download.`;
+    content.append(
+      button("Download Library Backup", () => {
+        if (signal.aborted) throw new Error("Backup cancelled.");
+        const url = URL.createObjectURL(blob),
+          a = document.createElement("a");
+        a.href = url;
+        a.download = "centra-shapes.cshapes";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+        status.textContent = "Backup download requested. Keep the file somewhere safe.";
+      }),
+    );
+  });
+  const backupImport = button("Import Library Backup", () => {
+    abort?.abort();
+    abort = new AbortController();
+    const signal = abort.signal;
+    content.replaceChildren();
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".cshapes";
+    input.setAttribute("aria-label", "Library backup file");
+    input.oncancel = () => {
+      status.textContent = "Import cancelled. Existing shapes kept.";
+    };
+    input.onchange = () => {
+      void (async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        status.textContent = "Validating backup masters, thumbnails and integrity…";
+        const layers = getLayers();
+        if (layers.trackedBytes + layers.composite.trackedBytes > 32 * 1024 ** 2)
+          throw new Error("Open a smaller project before restoring: memory safety limit.");
+        const preview = await previewShapeBackup(file, signal);
+        const estimate = await navigator.storage?.estimate();
+        if (
+          estimate?.quota !== undefined &&
+          estimate.usage !== undefined &&
+          estimate.quota - estimate.usage < preview.bytes * 2
+        )
+          throw new Error("Insufficient available browser storage. Existing shapes kept.");
+        const existing = await library.shapes(),
+          merge = shapeMerge(existing, preview);
+        if (
+          existing.length + merge.additions.length > 100 ||
+          existing.reduce((n, r) => n + r.bytes, 0) +
+            merge.additions.reduce((n, e) => n + e.data.byteLength, 0) >
+            512 * 1024 ** 2
+        )
+          throw new Error("Library storage limit reached. Existing shapes kept.");
+        if (signal.aborted) throw new Error("Import cancelled. Existing shapes kept.");
+        content.replaceChildren();
+        status.textContent = `${preview.entries.length} shapes · ${(preview.bytes / 1024 ** 2).toFixed(2)} MiB: ${merge.additions.length} new copies, ${merge.conflicts} identifier conflicts, ${merge.duplicates} duplicates skipped. Existing shapes will be preserved.`;
+        for (const { record } of merge.additions) {
+          const row = document.createElement("p");
+          row.textContent = record.name;
+          content.append(row);
+        }
+        const confirm = button("Confirm Import Library Backup", async () => {
+          confirm.disabled = true;
+          try {
+            const result = await library.restore(preview, signal);
+            await browse();
+            status.textContent = `Restored ${result.imported} shapes; ${result.duplicates} duplicates skipped. Existing shapes preserved.`;
+          } finally {
+            confirm.disabled = false;
+          }
+        });
+        content.append(
+          confirm,
+          button("Cancel Import", async () => {
+            await browse();
+            status.textContent = "Import cancelled. Existing shapes kept.";
+          }),
+        );
+      })().catch((error) => {
+        status.textContent = (error as Error).message;
+      });
+    };
+    content.append(input);
+    status.textContent =
+      "Choose a .cshapes backup to validate and preview. Nothing is imported until confirmation.";
+  });
   dialog.append(
     heading,
     note,
     saveButton,
+    backupExport,
+    backupImport,
     button("Browse", browse),
     button("Close / Cancel", close),
     status,

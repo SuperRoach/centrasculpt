@@ -1,3 +1,9 @@
+### Shape Library Backup & Restore — Phase 8.0.0 (2026-11-10)
+
+- Personal Shapes exports portable versioned .cshapes backups with exact SDF masters, metadata, genuine thumbnails and SHA-256 checksums.
+- Import validates before preview and confirmation, preserves existing records, copies identifier conflicts, skips previously imported duplicates and commits atomically. Cancellation, corruption, unsupported versions, quota and memory refusals keep existing shapes.
+- Safety limits: 64 MiB backup, 100 shapes, 4 MiB manifest, 32 MiB decoded master; import requires a small current project. Physical Quest file picker/download and memory acceptance remain pending. Custom stamps and the modelling engine are unchanged.
+
 ### Personal Shapes — Phase 8.0 (2026-11-10)
 
 - Save a selected sculpt or evaluated Boolean root with a genuine thumbnail, name, physical dimensions and Centre/Base centre insertion pivot.

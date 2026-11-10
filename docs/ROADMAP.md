@@ -227,8 +227,8 @@ Delivered locally in `read-the-docs-pls/`, separate from this engineering archiv
 See its README for build/preview/static deployment and SOURCE_AUDIT for current
 source authorities. All app/export/agent engine and project data remain unchanged.
 Publication requires separate authorisation; nothing was committed or deployed.
-The next product feature remains Phase 8.0 Personal Shape Library, then custom
-stamps. Neither is presented as implemented. UX follow-ups are recorded in
+Historical Phase 7.6 next-step note: Phase 8.0 Personal Shape Library has since
+been implemented; custom stamps remain outstanding (see audit below). UX follow-ups are recorded in
 [Phase 7.6 UX gaps](PHASE_7_6_UX_GAPS.md). Hardware/physical acceptance remains separate.
 
 ### Phase 7.6 same-site Help follow-up — 2026-11-10
@@ -248,3 +248,99 @@ Implemented locally: separate versioned IndexedDB library, evaluated selected sc
 - 8.2: MCP/agent integration.
 
 See the latest six-part development handover for current verification and limitations.
+
+## Phase 8.0.0 — Shape Library Backup & Restore (2026-11-10)
+
+Implemented Personal Shapes export/download and import/validate/preview/confirm. Binary version 1 preserves exact stored masters and thumbnail strings with SHA-256 integrity; atomic merge preserves existing records and copies identifier conflicts. Imported fingerprints suppress repeat restores. Explicit memory/count/file/storage admission refuses excess without reducing geometry. Cross-profile Chromium acceptance includes restored insert/edit/.form/STL. Physical Quest file picker, downloads, storage estimates and memory acceptance remain pending. Custom stamps remain deferred; no modelling engine changes.
+
+
+## Phase 8.0.1 / 8.0.2 audit and next acceptance — 2026-11-10
+
+Local HEAD c94c893 plus uncommitted backup/restore work is authoritative. 8.0.0 is
+implemented with earlier two-profile restore/insert/edit/native/STL evidence. Fresh
+focused tests pass 119/119; full audit check passes format/lint/types/build and
+1,707/1,712 tests, with five socket-bind EPERM failures. Fresh Chromium launch fails;
+previous 1,712/1,712 and browser passes remain historical evidence. See the latest
+six-part DEVELOPMENT_STATUS handover for exact logs and limits.
+
+**8.0.1 is not implemented here.** Built-in Shape Stamp supports four analytic kinds;
+Personal Shapes supports independent insertion. Restored-master stamping, custom detail
+caches and custom quality/performance have no verified results. Start 8.0.2 fixture and
+measurement preparation now; complete 8.0.1 before claiming custom-stamp polish or
+acceptance. Hardware release gates remain open. No engine changes in this audit.
+
+### Ranked Phase 8.0.2 — Stamp Quality, Performance & Usability
+
+1. **P0: establish a real custom stamp path and restored-master gate (8.0.1 dependency).**
+   Accept when original and cross-profile restored masters stamp identical destination
+   samples for Add/Subtract, and repeated uses leave master bytes/metadata unchanged.
+   Specify whether sampling uses decoded master directly or an intermediate cache;
+   retain source grid/step, disclose cache step and refuse unsupported quality rather
+   than silently losing detail. Verify current library limits and conflict copies.
+2. **P0: quality matrix and placement contract.** Run all fixtures below at destination
+   64/128/192 with fixed physical bounds, Add and Subtract, Centre/Base pivots, two
+   calibrations, identity plus translated/rotated/uniform-scaled targets and X symmetry.
+   Accept exact Float32 agreement with an independent reference using the declared
+   sampling policy; report geometric error against the high-detail master separately.
+   Keep holes/slots open when aperture spans >=4 destination voxels; for smaller features
+   report loss explicitly. Set numeric surface-error tolerances before optimisation.
+   Verify preview and commit agree on pivot, scale, orientation and placement; separately
+   test surface misses, normal alignment and transformed/workspace coordinates.
+3. **P1: repeat, Undo and bounded failure.** Replay 20 fixed poses, overlap and stationary
+   samples in single and continuous modes. Accept one Undo per click/whole stroke,
+   exact redo, no cross-layer/master mutation, bounded queues and full rollback for
+   cancel, tracking loss, stale target, invalid master, quota and staging admission.
+   Test restored shapes through real UI as well as engine API integration.
+4. **P1: reproducible CPU/chunk/memory baseline.** Capture first decode/preparation,
+   warm sampling/CSG, history, mesh, queue-drain and Undo separately; 3 cold runs and
+   >=20 warm observations per fixture/resolution/operation. Record host/browser/build,
+   pose trace, p50/p95/max, scanned/evaluated/changed voxels, changed/total mesh chunks,
+   actual layout and source/cache/target/history/staging bytes. Measure retained after
+   selection/repeat/deselection and observed peak heap/process memory with method and
+   limitations stated. Accept bounded cache lifetime and no retained growth across
+   repeated select/release cycles; set device budgets from measured baseline before
+   claiming speed/memory wins. No invented Quest or custom-stamp timing targets.
+5. **P1: desktop and physical Quest usability/portability.** Verify discoverable selection,
+   preview/loading/error/cancel states, mm size and pivot controls, XR/browser handoff,
+   file picker/download/transfer and restored stamping on a second device. Accept with
+   recorded device/browser and user-visible outcomes; simulated XR is separate evidence.
+
+### Fixed baseline fixture specification (to generate, not existing accepted assets)
+
+Use 100 mm source bounding cube, fixed 192³ evaluated master where representable,
+Centre and Base metadata variants, plus analytic/reference construction retained in
+.form. Save checksums, exact dimensions, source step and generator/version/seed before
+runs. Destination bounding cube is 100 mm at 64/128/192; feature widths must also be
+reported in source and destination voxels. Keep masters unchanged across target runs.
+
+| Fixture | Concrete geometry | Inspect/accept |
+| --- | --- | --- |
+| Horn | 60 mm curved tapered horn, 12 mm root diameter, 2 mm rounded tip, 90° bend | Tip length, curvature, root/pivot pose and mirrored silhouette |
+| Organic curve | 60 mm bent capsule, 10 mm diameter, 1/2/4 mm surface ridges | Smoothness, ridge survival and error from master, without cumulative resampling |
+| Hollow part with hole | 40×30×20 mm shell, 3 mm wall, 8 mm through bore | Connected bore and cavity, wall thickness, Add/Subtract topology |
+| Long thin shape | 75×3×3 mm bar plus 1/2/4 mm cross-section variants, rotated 35° | Continuity, endpoint length, orientation bias and refusal/detail warning |
+| Mechanically precise slot | 40×25×12 mm block with 20 mm long slots at 1/2/4/8 mm widths | Aperture, straight/parallel faces, depth and measured dimensional error |
+
+These are proposed controlled fixtures, not measured results or print-fit guarantees.
+Separate master capture error, cache error and destination discretisation. Preserve
+both exact sample comparisons and topology/physical measurements; a low-resolution
+stamp cannot recover absent source detail. Reuse this same dense baseline and traces
+when investigating sparse storage later, comparing equal output/error, retained/peak
+bytes and CPU/chunk work. Sparse storage design/implementation remains out of scope.
+
+
+### 8.0.2 fixture preparation follow-up — 2026-11-10
+
+The offline [baseline harness](PERSONAL_STAMP_BASELINE.md) now generates 11 evaluated
+192³ `.form` fixtures with calibration and exact native sample roundtrip checks,
+hashes, reference fields and a fixed 20-pose trace. The first complete run is retained
+under `work/personal-stamp-baseline/2026-11-10T12-23-20.143Z/`. Procedural geometry
+checks pass 3/3. Read-only interpolation probes and process snapshots are preparation
+results, not custom stamp quality/performance or retained/peak-memory acceptance.
+Actual destination stamping, restore integration, pivots, Undo/chunks and Quest remain
+open; 8.0.1 remains the dependency. No app engine or public feature changed.
+
+Preparation validation: required full check now passes format/lint/types/build and
+**1,715/1,715 tests**, zero failures/skips; quick 21/21 and fixture 3/3 also pass.
+The earlier audit socket restrictions did not recur in this run. Browser and physical
+Quest acceptance remain separate and pending for custom stamping.

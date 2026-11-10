@@ -36,7 +36,7 @@ export class ProjectLibrary {
   constructor(
     private factory: IDBFactory = globalThis.indexedDB,
     private name = "centra-sculpt-library",
-    private budget = LIBRARY_BYTES,
+    protected budget = LIBRARY_BYTES,
   ) {}
   private open(): Promise<IDBDatabase> {
     if (!this.factory)
@@ -74,7 +74,7 @@ export class ProjectLibrary {
       };
     }));
   }
-  private async transaction<T>(
+  protected async transaction<T>(
     write: boolean,
     run: (tx: IDBTransaction, done: (value: T) => void) => void,
     signal?: AbortSignal,
@@ -99,7 +99,7 @@ export class ProjectLibrary {
         resolve(value);
       };
       tx.onerror = (e) => {
-        error = (e.target as IDBRequest).error;
+        error ??= (e.target as IDBRequest).error;
       };
       tx.onabort = () => {
         clean();

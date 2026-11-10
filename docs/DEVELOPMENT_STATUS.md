@@ -1,3 +1,300 @@
+# Phase 8.0.2 — Offline fixture/baseline preparation — 2026-11-10
+
+## 1. Scope and preservation
+
+Continued from the completion audit in the active c94c893 checkout with all existing
+uncommitted backup work intact. Added offline scripts, fixture tests and engineering
+documentation only. No src engine changes, user database access, commits or publication.
+Generated files go into new timestamped ignored work directories, not user storage.
+
+## 2. Delivered preparation
+
+`scripts/fixtures/personal-stamp-baseline.mjs` version 1 defines horn, organic arc,
+hollow part, four thin-bar widths and four slot widths in millimetres. The curved
+fields are declared implicit approximations. `scripts/benchmark-personal-stamp-baseline.mjs`
+generates 11 dense 192³ evaluated `.form` projects in a 100 mm cube with 50 mm/unit
+calibration, verifies native sample roundtrips, records SHA-256 sample/native hashes,
+source step, occupied samples, calculated array bytes, probe errors and process memory
+snapshots. Includes a deterministic 20-pose trace for future actual stamp replay.
+
+## 3. Results and limits
+
+First complete run: `work/personal-stamp-baseline/2026-11-10T12-23-20.143Z/`, about
+297 MiB. All 11 fixtures have occupied samples, exact native sample roundtrips and
+preserved calibration; probes leave master hashes unchanged. Reference geometry tests
+pass 3/3 (boundaries, solid/void probes, holes/slots/bar widths and trace bounds).
+These do not establish topology in sampled/stamped volumes. The 64/128/192 rows use
+different probe spacings on the same master, not actual destination stamping.
+No custom-stamp CPU/chunk/cache/Undo or retained/peak browser measurements are claimed.
+
+## 4. Verification
+
+Fixture tests 3/3 and quick tests 21/21 passed; `git diff --check` passed.
+Required `npm run check` passed format, lint, strict types, production build and
+**1,715/1,715 tests**, zero failures/skips (88.00 s test wall). This fresh run
+also passed the socket-based tests that failed under the earlier audit restrictions.
+The existing bundle-size advisory remains. No fresh Chromium acceptance is claimed.
+Logs: `/tmp/centra-phase800-audit/baseline-{prep,tests,quick,check}.log`.
+
+## 5. Reproduction and documentation
+
+Run `node scripts/benchmark-personal-stamp-baseline.mjs` from repo root; optionally
+pass an output parent. Every run creates a fresh timestamped child. Run
+`npm test -- personal-stamp-baseline` and `npm run check` for verification.
+See [baseline guide](PERSONAL_STAMP_BASELINE.md) for formula semantics, file sizes,
+quality/memory interpretation and pending gates. Roadmap updated. Public docs and
+WHATS_NEW need no new entry because no app feature changed.
+
+## 6. Next acceptance
+
+8.0.1 custom stamps are still absent. Next implement/verify actual restored-master
+stamping before using these fixtures for Add/Subtract, pivots/transforms/symmetry,
+preview/repeat/Undo, CPU/chunks and hardware measurements. Generated `.form` files are
+not imported Personal Shape library records. Future dense-vs-sparse comparisons can
+reuse exact samples, source formulas, calibration and traces; no sparse work started.
+
+---
+
+# Phase 8.0.0 / 8.0.1 completion audit — 2026-11-10
+
+## 1. Authority, scope and preservation
+
+Audited active `/Users/brettjames/development/vrappPOC` at HEAD `c94c893`.
+The supplied Documents folder is not a repository. Local code takes precedence over
+GitHub and the referenced research chat. Initial status already contained changes
+in WHATS_NEW, this handover, ROADMAP, public content, compile-core, personal-shape-ui,
+personal-shapes and project-library, plus untracked shape-backup source/test/browser
+script. Those changes are preserved. This audit changes documentation only; no
+engine changes, user databases, project/recovery assets, commits, pushes or deployment.
+Tests use fresh fake IndexedDB factories; attempted Chromium uses disposable contexts.
+Older dated handovers below are historical evidence, not a fresh acceptance claim.
+
+## 2. Phase 8.0.0: implemented, with hardware acceptance outstanding
+
+Source inspected: `src/personal-shapes.ts`, `src/shape-backup.ts`,
+`src/personal-shape-ui.ts`, `src/project-library.ts`, and their unit/browser tests.
+Separate `centra-personal-shapes-v1` IndexedDB records/payloads store evaluated native
+SDF masters, calibration, dimensions, timestamps, Centre/Base pivot and thumbnails.
+Ordinary sculpt capture and independent insertion copy original Float32 samples and
+grown lattice exactly. Boolean/array capture samples an evaluated composite up to
+192³ with a source-step admission check; it refuses unsupported detail. Standalone
+analytic primitives require explicit Bake. Gzip and backup payload transport are
+lossless; evaluated capture itself must not be confused with original construction.
+
+Portable `.cshapes` v1 carries magic, manifest length, SHA-256 manifest/payload hashes,
+metadata and exact native/gzip bytes. Export is a read-only snapshot. UI reviews count/
+size before download; import validates before showing a preview and explicit confirm.
+Checks include version, lengths, trailing bytes, finite metadata, decoded native master,
+checksum, image headers and real browser decode. Limits: 64 MiB file, 4 MiB manifest,
+100 entries, 32 MiB decoded master, file + 6× current decoded master <=224 MiB;
+UI current tracked/composite geometry <=32 MiB. These can refuse a library that the
+ordinary shape store can hold; export is not an unlimited backup guarantee.
+
+Restore rechecks current count/byte budgets inside one strict-durability transaction
+covering both stores. Conflicting IDs become independent copies, never overwrite.
+Imported fingerprints include decoded master, name, dimensions, calibration, pivot and
+thumbnail; repeat imports skip matching imported records. Restoring into the original
+source profile can first make conflict copies. This is not universal geometry dedup.
+Quota, cancellation and interruption rollback are tested with simulated faults.
+Estimates do not reserve disk, guarantee browser peak memory or prove power-loss safety.
+
+## 3. Phase 8.0.1: absent in this checkout; built-in machinery is reusable
+
+`src/shapes.ts` accepts only sphere, box, triangular-prism and pyramid. No Personal
+Shape ID/master sampler/cache enters ShapeDefinition, prepareShape or stampShapeSteps.
+Personal Shapes UI has insertion, not Use as Stamp. No custom-stamp implementation,
+64/128/192 custom quality study or recent personal stamping experiment was found in
+tracked/uncommitted source, tests or searched work/outputs artifacts. External/manual
+experiments may exist elsewhere; their results cannot be certified here.
+
+Built-in `shape-library.ts` prepares analytic/polyhedron distance kernels directly;
+it does not resample saved masters. `shape-stamp.ts` stages exact Float32 min/max CSG
+for Add/Subtract with mask blending, layer-local transforms, uniform pose scale and
+mirror sampling. Conservative scans can span a dense grid even when remeshing is local.
+`independent-layers.ts` handles admission/growth, patch history and chunk invalidation.
+Single commands are one action; XR continuous stamps pack repeated patches into one
+stroke, queue bounded poses and rollback cancellation/overflow/budget failures.
+`xr-shape-stamp.ts` has attachment quaternion/offset, spacing, frozen released queues,
+preview ghosts and bounded pending previews. These are built-in capabilities only.
+
+`shape-placement.ts` places a preview at a world hit converted into layer coordinates,
+preserving rotation/dimensions; it does not automatically normal-align a custom pivot.
+`surface-snapping.ts` separately provides interpolated normals, mm offsets and alignment.
+`sdf-surface-hit.ts` provides read-only half-voxel marching/bisection on live fields when
+derived meshes miss. Existing surface sampling, transform and Undo tests are useful
+regression infrastructure, not proof that Personal Shape stamps work.
+
+## 4. Verification and evidence limits
+
+Fresh audit: `npm test -- personal-shapes shape-backup shape-stamp surface` passed
+**119/119**, zero failures/skips. Includes exact master insertion/native/STL, calibrated
+independence, Boolean holes, corruption/limits, atomic conflicts/duplicates, simulated
+quota/cancel/interruption, built-in Add/Subtract at 64/128/192, transforms, local remesh,
+Undo/redo and surface fallback. Full `npm run check`: format, lint, strict TS and
+production build passed; **1,707/1,712 tests passed, five failed on socket bind EPERM**
+(HTTP/MCP bridge and docs-hosting tests), zero skipped. This run is not a full pass.
+Network permission was granted but server attempts were unsuccessful (initial EPERM,
+then port 5268 reported occupied). Disposable Chromium backup smoke also failed at
+browser launch before test assertions. No fresh cross-profile browser pass is claimed.
+
+Earlier on-disk `/tmp/shape-backup-final-check.log` records 1,712/1,712 passing;
+`/tmp/shape-backup-browser.log` records two isolated profiles, exact payloads/metadata,
+UI export/import/cancel/repeat, restored insert/edit/.form/STL and master independence.
+The browser script performs downstream editing/export through imported engine APIs,
+not every step through visible UI. It never stamps a restored master. Earlier personal
+browser log covers insert/reload/rename/delete. These logs support 8.0.0 software
+completion, not 8.0.1 or physical cross-device/Quest acceptance.
+
+Post-edit quick tests passed 21/21, public guide tests passed 8/8, and
+`git diff --check` passed. Public Personal Shapes, backup, FAQ and Stamp guidance
+already distinguishes insertion from deferred custom stamping; no public text or
+WHATS_NEW change was needed for this audit. Existing uncommitted edits remain.
+
+Audit logs: `/tmp/centra-phase800-audit/{focused,check,dev,browser,quick,docs}.log`
+(temporary).
+Reproduce focused command above, `npm run check`, and the existing browser scripts
+against a permitted dev server at 5268 with installed Chromium and disposable profiles.
+No real origin data should be reset to obtain a pass.
+
+## 5. Quality/performance gaps and Phase 8.0.2 handoff
+
+Custom-stamp viability after restore, direct-master vs intermediate sampled cache,
+quality degradation at 64/128/192, pivot/scale/orientation/symmetry, preview fidelity,
+repeat/Undo and custom-stamp failure paths are all unverified because the feature is
+absent. No custom CPU timing, retained/peak memory or changed-chunk numbers exist here.
+Built-in historical benchmarks must not be relabelled as custom-shape evidence:
+`outputs/phase-1-11-stamp-benchmarks.json` measures analytic single commands at all
+three resolutions with evaluation/mesh/Undo/chunks; `outputs/phase-3-7/stamps.json`
+and `outputs/phase-5-2/continuous-stamps-phase-3-5-continuous-stamp.json` cover built-in
+continuous work. `outputs/headset-tools-feedback/stamp-after.json` explicitly says
+simulated Node poses, not Quest. Host/load/date and timing definitions differ.
+
+SDFVolume still owns dense values plus same-sized scratch. For cubic 64/128/192 grids,
+these two arrays alone are calculated 2/16/54 MiB; one values array is 1/8/27 MiB.
+These are allocation arithmetic, not measured retained or peak browser memory; meshes,
+history, decoded masters, compression buffers, staging and GPU memory are additional.
+Grown rectangular grids use actual dimensions, not resolution cubed.
+
+Ranked acceptance work and fixed fixture specifications are in the Phase 8.0.2 section
+of ROADMAP. Keep the exact dense-master baseline, destination layout, transform/pose
+trace and correctness metrics fixed for a future dense-vs-sparse comparison. Record
+cold preparation separately from warm execution, sampled/scanned/changed voxels and
+rebuilt chunks separately from total allocated voxels. Chunked meshing and packed Undo
+do not establish sparse SDF storage. No sparse architecture work is included now.
+
+## 6. Go/no-go and remaining hardware acceptance
+
+8.0.0 is implemented with strong existing desktop software evidence; fresh full/browser
+reruns are environment-limited. Quest file pick/download/location, actual transfer to a
+second device, real disk exhaustion, memory peaks and headset usability remain pending.
+Quest entry is World Settings → Project → Personal Shapes, exiting XR for browser UI;
+this is not an immersive custom stamp selector.
+
+**8.0.2 can start as fixture/baseline and acceptance preparation. It cannot honestly
+start as polish of a completed 8.0.1.** First deliver/verify 8.0.1 or explicitly include
+that missing scope in the next implementation brief. Restore → stamp is a release gate.
+Do not mark custom stamps complete or sparse work ready on the strength of built-in
+stamp tests. No new user-visible feature was delivered by this documentation audit;
+WHATS_NEW retains the existing accurate backup entry without a new release claim.
+
+---
+
+# Phase 8.0.0 — Shape Library Backup & Restore — 2026-11-10
+
+## 1. Scope, inspection and preservation
+
+The supplied working directory was a document folder rather than a Git checkout.
+The active repository is `/Users/brettjames/development/vrappPOC`; initial Git status
+was clean. Inspected PersonalShapeLibrary, ProjectLibrary, the native project codec,
+thumbnail renderer, Personal Shapes UI, existing unit/browser tests and documentation.
+No user browser profiles, saved shapes, projects or recovery databases were opened.
+All browser acceptance uses disposable profiles. No commit, push, deploy or merge.
+Sculpting stamps and modelling algorithms are unchanged.
+
+## 2. Delivered export and confirmed restore
+
+Personal Shapes adds Export Library Backup → count/size review → Download Library
+Backup, and Import Library Backup → file selection → validated summary → Confirm
+Import Library Backup. New copy names, identifier conflicts and duplicate counts are
+shown before confirmation. Cancel Import, Browse and Close / Cancel abort pending
+work. Download initiation is reported accurately; verify the file in Downloads.
+
+`src/shape-backup.ts` defines portable `.cshapes` binary version 1: eight-byte magic,
+little-endian manifest length, SHA-256 manifest digest, UTF-8 JSON manifest and exact
+stored native/gzip payloads. Records preserve names, timestamps, physical dimensions,
+calibration, pivot, thumbnail strings and full-fidelity SDF masters. SHA-256 payload
+hashes and content fingerprints complement the existing decoded-master checksum.
+Hashes detect corruption; they do not authenticate a publisher.
+
+## 3. Validation, transactions and limits
+
+Before preview, checks cover format/version, file/manifest/payload lengths, duplicate
+IDs, finite positive dimensions/calibration, timestamps, bounded metadata, integrity,
+gzip expansion length/checksum, native SDF parsing and evaluated-only master structure.
+Thumbnail headers are bounded before browser image decoding; animated WebP is refused.
+Real PNG/JPEG/WebP images must decode and stay within 256×256 pixels.
+
+Limits: 64 MiB backup, 4 MiB manifest, 100 shapes, 32 MiB decoded master and combined
+file size plus six times the current decoded master at most 224 MiB on import. UI
+import requires current tracked/composite geometry at most 32 MiB. Storage estimates
+are checked when available. Actual quota failure still rolls back; estimates cannot
+reserve space. Existing 512 MiB library/count limits are checked inside the write
+transaction against current records, including changes made since preview. Larger
+inputs refuse explicitly without resampling. Keep .form originals for refused sizes.
+
+Export takes a consistent read-only snapshot and never updates saved records. Restore
+uses one strict-durability IndexedDB transaction over metadata and payload stores.
+Conflicts get fresh IDs and independent payloads; existing records are never overwritten.
+Imported content fingerprints skip repeated identical restores. A first restore into
+the original source profile can create conflict copies; later repeats skip those copies.
+Original errors now survive subsequent abort request events, retaining quota reporting.
+ProjectLibrary exposes protected transaction/budget access solely for atomic shape merge.
+
+## 4. Automated verification
+
+`tests/shape-backup.test.mjs` covers exact multi-master/metadata/payload restoration,
+conflict preservation, repeated imports, corruption, truncation, trailing bytes,
+unsupported versions with valid manifest hashes, invalid lengths/dimensions/thumbnails,
+expansion/file limits, 100-shape success and 101-shape refusal, restart persistence,
+quota admission, mid-write simulated QuotaExceededError, explicit interruption and
+mid-write cancellation. Failed transactions preserve existing metadata and exact payloads.
+Node image decoding is stubbed; Chromium verifies actual thumbnail decoding.
+
+Focused shape-backup/project-library: 43/43 passed. Existing personal-shapes coverage
+also passed, including calibrated insertion, independent edits, .form and STL.
+`npm run test:quick` passed; guide tests 8/8 passed. Final unrestricted `npm run check` passed all 1,712 tests, including the quota
+and cancellation regression. Formatting, lint, strict types and production build passed.
+The sandboxed attempt could not bind local test servers; the unrestricted suite is
+required for HTTP/MCP bridge acceptance. Build reports the existing bundle-size warning.
+
+## 5. Browser evidence, documentation and reproduction
+
+`scripts/shape-backup-browser-smoke.mjs` passes in two isolated Chromium profiles:
+save two shapes through the actual UI with genuinely rendered thumbnails and both
+pivot settings, export/download, select file, cancel preview, confirm restore and
+repeat import without additions. Compares exact stored payload bytes and metadata.
+A restored master is inserted, sculpted, round-tripped through .form and exported as
+binary STL; the saved master remains identical. No page errors.
+Existing `scripts/personal-shapes-browser-smoke.mjs` also passes save/render/insert/
+reload/rename/confirmed-delete regression checks in its own disposable profile.
+
+Guide Personal Shapes and FAQ, WHATS_NEW.md and docs/ROADMAP.md are updated.
+Reproduce with `npm run dev -- --port 5268`, then
+`node scripts/shape-backup-browser-smoke.mjs` and
+`node scripts/personal-shapes-browser-smoke.mjs` (Chromium must be available).
+Logs: `/tmp/shape-backup-{quick,focused,browser,existing-browser,docs-tests,final-check}.log`.
+Run `npm run check` for all formatting, lint, strict types, build and automated tests.
+
+## 6. Quest and remaining acceptance
+
+Quest still uses World Settings → Project → Personal Shapes to exit XR for the browser
+workflow. Physical headset file picking, download completion/location, transfer to a
+second device, storage estimates, actual disk exhaustion and peak-memory behaviour
+remain unverified. Desktop simulated quota/interruption tests are not physical disk or
+power-loss tests. Large byte/decoded inputs deliberately refuse; the 100-shape test uses
+small full-fidelity masters, not a 64 MiB hardware stress test. No new Quest or physical
+print acceptance is claimed. Custom stamps remain deferred to 8.0.1.
+
 # Phase 8.0 — Personal Shape Library — 2026-11-10
 
 ## 1. Scope, inspection and preservation

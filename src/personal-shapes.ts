@@ -2,11 +2,13 @@ import { type BakePlan, bakeSources, sampleBake } from "./bake";
 import { compositeLayout } from "./compositor";
 import { LayerStack, newId, SculptProject, SdfLayer } from "./layers";
 import { openSculptProject, PROJECT_VERSION, saveSculptProject } from "./project";
-import { ProjectLibrary, type ProjectRecord } from "./project-library";
+import { LIBRARY_COUNT, LibraryError, ProjectLibrary, type ProjectRecord } from "./project-library";
 import { SDFVolume } from "./sdf";
+import { type ShapeBackupPreview, shapeMerge } from "./shape-backup";
 import { copyTransform } from "./transform";
 import { volumeSampleCount } from "./volume-store";
 export type PersonalShapeRecord = ProjectRecord & {
+  backupFingerprint?: string;
   shapeVersion: 1;
   checksum: number;
   encoding: "native" | "gzip";
@@ -23,6 +25,68 @@ export class PersonalShapeLibrary extends ProjectLibrary {
     budget?: number,
   ) {
     super(factory, name, budget);
+  }
+  async backupSnapshot(): Promise<ShapeBackupPreview["entries"]> {
+    return this.transaction(false, (tx, done) => {
+      const records = tx.objectStore("records").getAll();
+      const payloads = tx.objectStore("payloads");
+      records.onsuccess = () => {
+        const all = records.result as PersonalShapeRecord[];
+        if (all.reduce((n, r) => n + r.bytes, 0) > 64 * 1024 ** 2) {
+          (tx as IDBTransaction & { fail: (e: Error) => void }).fail(
+            new Error("Library exceeds the 64 MiB backup limit."),
+          );
+          return;
+        }
+        const entries: ShapeBackupPreview["entries"] = [];
+        if (!all.length) done(entries);
+        for (const record of all) {
+          const request = payloads.get(record.id);
+          request.onsuccess = () => {
+            entries.push({ record, data: request.result });
+            if (entries.length === all.length) done(entries);
+          };
+        }
+      };
+    });
+  }
+  async restore(preview: ShapeBackupPreview, signal?: AbortSignal) {
+    return this.transaction<{ imported: number; duplicates: number; conflicts: number }>(
+      true,
+      (tx, done) => {
+        const store = tx.objectStore("records"),
+          request = store.getAll();
+        request.onsuccess = () => {
+          try {
+            const all = request.result as PersonalShapeRecord[],
+              merge = shapeMerge(all, preview);
+            if (
+              all.length + merge.additions.length > LIBRARY_COUNT ||
+              all.reduce((n, r) => n + r.bytes, 0) +
+                merge.additions.reduce((n, e) => n + e.data.byteLength, 0) >
+                this.budget
+            ) {
+              (tx as IDBTransaction & { fail: (e: Error) => void }).fail(
+                new LibraryError("quota", "Library storage limit reached. Existing shapes kept."),
+              );
+              return;
+            }
+            for (const { record, data } of merge.additions) {
+              store.add(record, record.id);
+              tx.objectStore("payloads").add(data, record.id);
+            }
+            done({
+              imported: merge.additions.length,
+              duplicates: merge.duplicates,
+              conflicts: merge.conflicts,
+            });
+          } catch (error) {
+            (tx as IDBTransaction & { fail: (e: unknown) => void }).fail(error);
+          }
+        };
+      },
+      signal,
+    );
   }
   async shapes(): Promise<PersonalShapeRecord[]> {
     const records = await this.list();
@@ -183,7 +247,7 @@ export async function compressPersonalShape(record: PersonalShapeRecord, data: A
       }
     : { record, data };
 }
-async function unpackPersonalShape(
+export async function unpackPersonalShape(
   record: PersonalShapeRecord,
   stored: ArrayBuffer,
 ): Promise<ArrayBuffer> {

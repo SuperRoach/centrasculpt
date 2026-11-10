@@ -16,6 +16,7 @@ const options = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext }
 
 for (const name of [
   "personal-shapes",
+  "shape-backup",
   "assembly",
   "assembly-tools",
   "boolean-export",
