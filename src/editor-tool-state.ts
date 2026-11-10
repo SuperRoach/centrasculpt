@@ -1114,14 +1114,22 @@ export class EditorToolState {
       options.push(
         {
           id: "shape",
-          label: "Shape",
-          read: () => d.kind,
+          label: d.personal ? `Personal · ${d.personal.name}` : "Shape",
+          read: () => (d.personal ? "personal" : d.kind),
           write: (v) => {
+            if (v === "personal") return;
             const kind = v as ShapeKind;
-            set({ ...d, kind, dimensions: shapeDimensionsForKind(kind, d.dimensions) });
+            set({
+              ...d,
+              personal: undefined,
+              kind,
+              dimensions: shapeDimensionsForKind(kind, d.dimensions),
+            });
           },
-          choices: SHAPE_KINDS,
-          names: SHAPE_KINDS.map((k) => SHAPE_METADATA[k].name),
+          choices: d.personal ? ["personal", ...SHAPE_KINDS] : SHAPE_KINDS,
+          names: d.personal
+            ? [d.personal.name, ...SHAPE_KINDS.map((k) => SHAPE_METADATA[k].name)]
+            : SHAPE_KINDS.map((k) => SHAPE_METADATA[k].name),
           disabled: blocked,
         },
         {
@@ -1173,12 +1181,16 @@ export class EditorToolState {
       for (let i = 0; i < 3; i++)
         options.push({
           id: `dimension-${i}`,
-          label: rule === "diameter" && i === 0 ? "Diameter" : `Dimension ${"XYZ"[i]}`,
+          label: d.personal
+            ? "Size · longest dimension"
+            : rule === "diameter" && i === 0
+              ? "Diameter"
+              : `Dimension ${"XYZ"[i]}`,
           read: () => d.dimensions[i],
           write: (v) => {
             const dimensions = [...d.dimensions] as [number, number, number];
             dimensions[i] = Number(v);
-            if (rule === "diameter") dimensions.fill(Number(v));
+            if (d.personal || rule === "diameter") dimensions.fill(Number(v));
             if (rule === "square-base" && (i === 0 || i === 2))
               dimensions[0] = dimensions[2] = Number(v);
             set({ ...d, dimensions });
@@ -1187,7 +1199,9 @@ export class EditorToolState {
           max: 1000,
           step: 0.05,
           disabled:
-            blocked || (rule === "diameter" && i !== 0) || (rule === "square-base" && i === 2),
+            blocked ||
+            ((d.personal || rule === "diameter") && i !== 0) ||
+            (rule === "square-base" && i === 2),
         });
       for (let i = 0; i < 3; i++)
         options.push({

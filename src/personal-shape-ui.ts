@@ -8,6 +8,7 @@ import {
   encodePersonalShape,
   PersonalShapeLibrary,
 } from "./personal-shapes";
+import { createPersonalStamp } from "./personal-stamp";
 import { captureProjectThumbnail } from "./project-thumbnail";
 import { exportShapeBackup, previewShapeBackup, shapeMerge } from "./shape-backup";
 import { ChunkSurface } from "./surface";
@@ -17,6 +18,7 @@ export function installPersonalShapes(
   getLayers: () => IndependentLayers,
   renderer: WebGLRenderer,
   changed: () => void,
+  useStamp: (stamp: import("./personal-stamp").PersonalStamp) => void,
 ) {
   const library = new PersonalShapeLibrary(),
     dialog = document.createElement("dialog");
@@ -199,6 +201,37 @@ export function installPersonalShapes(
       row.append(
         title,
         detail,
+        button("Use as Stamp", async () => {
+          const layers = getLayers();
+          if (!layers.recoveryReady)
+            throw new Error("Finish the current edit before selecting a stamp.");
+          abort?.abort();
+          abort = new AbortController();
+          const signal = abort.signal;
+          if (
+            layers.trackedBytes + layers.composite.trackedBytes + record.masterBytes * 6 >
+            256 * 1024 ** 2
+          )
+            throw new Error("Loading this stamp exceeds memory limits; master detail was kept.");
+          status.textContent = "Preparing full-detail stamp…";
+          const { record: metadata, layer } = await library.master(record.id);
+          if (signal.aborted || layers !== getLayers())
+            throw new Error("Stamp selection cancelled.");
+          const stamp = createPersonalStamp(
+            layer,
+            metadata.millimetresPerUnit / layers.display.precision.millimetresPerUnit,
+            256 * 1024 ** 2 - layers.trackedBytes - layers.composite.trackedBytes,
+          );
+          // Tool selection is blocked while any modal is open. Finish preparation first.
+          close();
+          try {
+            useStamp(stamp);
+          } catch (error) {
+            dialog.showModal();
+            throw error;
+          }
+          changed();
+        }),
         button("Insert", async () => {
           abort?.abort();
           abort = new AbortController();

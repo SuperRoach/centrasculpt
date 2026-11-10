@@ -3,8 +3,9 @@ import { CLAY_TIP_REACH_METRES } from "./clay-path";
 import { planDenseGrowth } from "./dense-growth";
 import type { EditorToolState } from "./editor-tool-state";
 import type { IndependentLayers } from "./independent-layers";
+import { personalStampSource } from "./personal-stamp";
 import { SDFVolume } from "./sdf";
-import { localShapeBounds, transformedShapeBounds } from "./shape-library";
+import { prepareShape } from "./shape-library";
 import { ShapeGhost } from "./shape-preview";
 import type { ShapeDefinition } from "./shapes";
 import { transformMatrix } from "./transform";
@@ -18,8 +19,16 @@ export class XRShapeStamp implements XRStrokeInteraction {
   readonly ghost: ShapeGhost;
   readonly pendingPreview = new Group();
   private readonly trail: Group[] = [];
+  private trailSource = "";
   private pendingPose: Matrix4 | null = null;
   private paintPending(surface: Matrix4): void {
+    const sourceKey =
+      this.tools.port.shape.definition.personal?.id ?? this.tools.port.shape.definition.kind;
+    if (this.trailSource !== sourceKey) {
+      this.pendingPreview.clear();
+      this.trail.length = 0;
+      this.trailSource = sourceKey;
+    }
     const poses = [...(this.pendingPose ? [this.pendingPose] : []), ...this.queue].slice(0, 16);
     this.pendingPreview.visible = this.continuous && poses.length > 0;
     if (!this.pendingPreview.visible) return;
@@ -195,6 +204,9 @@ export class XRShapeStamp implements XRStrokeInteraction {
   cancel(): void {
     if (this.active) this.issue("cancel");
     this.pendingPreview.visible = false;
+    this.pendingPreview.clear();
+    this.trail.length = 0;
+    this.trailSource = "";
     this.pendingPose = null;
     this.pending?.return(false);
     this.pending = null;
@@ -213,6 +225,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
     this.project = undefined;
     this.message = "";
     this.failureUntil = 0;
+    this.ghost.sync(true);
     this.ghost.group.visible = false;
   }
   update(
@@ -345,10 +358,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
         stack,
       );
       const definition = model.definition,
-        box = transformedShapeBounds(
-          localShapeBounds(definition.kind, definition.dimensions),
-          transformMatrix(definition.transform),
-        ),
+        box = prepareShape(definition).worldBounds,
         volume = layers.active.volume,
         b = volume.bounds;
       if (layers.symmetry.enabled) {
@@ -404,7 +414,11 @@ export class XRShapeStamp implements XRStrokeInteraction {
           throw new Error("Stamp cancelled: target/workspace moved");
         if (!this.released) {
           const size =
-            Math.min(...definition.dimensions) *
+            (definition.personal
+              ? (personalStampSource(definition.personal).minimumDimension *
+                  definition.dimensions[0]) /
+                personalStampSource(definition.personal).size
+              : Math.min(...definition.dimensions)) *
             definition.transform.scale[0] *
             surface.getWorldScale(new Vector3()).x;
           this.sample(
@@ -440,6 +454,8 @@ export class XRShapeStamp implements XRStrokeInteraction {
           attachment: this.tools.stampAttachment,
           rotation: this.tools.stampRotation,
         });
+        // Preserve the opaque immutable master capability while freezing mutable pose/settings.
+        this.strokeSettings.definition.personal = definition.personal;
         this.continuous = true;
         this.strokeLayers = layers;
         this.previous = pose.clone();

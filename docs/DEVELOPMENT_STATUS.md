@@ -1,3 +1,55 @@
+# Phase 8.0.1 / 8.0.2 — Personal master stamping and measured limits — 2026-11-11
+
+Implemented from the clean fd14fe4 local checkout after inspecting the completion
+audit and version-1 fixture harness. Historical audits below describe their earlier
+checkout; the absent-feature statements are superseded by this entry.
+
+Personal Shapes now has **Use as Stamp**. A calibrated exact-value SDF snapshot,
+saved pivot and original rectangular/cubic lattice enter the built-in staged stamp
+pipeline. Desktop click capture/Apply/G/T and XR single/continuous queues preserve
+master identity, orientation, uniform size, scale, symmetry, masks, packed Undo/Redo
+and cancellation. The master is never used as a mutable destination. Restore →
+stamp tests compare independent `.cshapes` libraries and verify downstream brush
+edits cannot alter saved payloads. No source resolution changes or automatic
+master downgrades. Source preparation and both ghost budgets are bounded and charged
+to edit admission; switching sources releases stale preview/trail references.
+
+[Personal Stamp results](PERSONAL_STAMP_RESULTS.md) contains the complete method,
+quality table, limitations, raw local evidence paths and reproduction commands.
+The 66-case 11-fixture × 64/128/192 × Add/Subtract matrix admitted 53 first stamps
+and safely refused 13. All admitted meshes had closed/manifold welded edges, but
+thin-feature gates fail: the 1 mm bar loses its central cross-section at 64/128 and
+the 1 mm slot closes at 64. The matrix includes 1,037 completed warm observations,
+three source preparations and first/reapply timings where admitted. Three 192 Add
+thin-bar traces/reapplications exceed history/staging budgets and restore exact
+hashes. Refusals are acceptance results, not reasons to raise limits.
+
+Baseline-before-optimisation horn 64 Add: first/repeated 72.1/66.9 ms; scalar sampler
+immediate comparison 37.0/30.3 ms with unchanged measured geometry. Final matrix
+41.4/33.4 ms under other host load. Typed preview assembly reduced measured source
+preparation from 237–268 ms to 85–106 ms; process heap snapshots and browser
+retained/sampled memory are explicitly distinguished from peaks and allocations.
+No resampled SDF cache was introduced. Personal fields scan all target samples;
+unsafe analytic distance pruning is disabled. Dirty-chunk remeshing remains local.
+
+Validation: final unrestricted full check **1,721/1,721**, focused **97/97**, quick
+**21/21**, guide **8/8** and isolated Chromium restored selection/Add/Subtract/Undo/Redo,
+unchanged saved assets and independent insert/edit/.form/STL passed. The final full
+run includes the added rectangular-master regression. The sandbox attempt failed
+five unrelated HTTP/MCP tests on EPERM socket binding; the unrestricted rerun passed.
+Logs: `/tmp/personal-{focused-final,full-check-final,browser-memory}.log`;
+browser memory and desktop capture are under `work/personal-stamp-*`.
+
+Still open: physical Quest selection/re-entry/controller usability, sustained
+large-master browser/GPU/thermal peak memory and print-fit testing. The browser
+memory run uses restored starter shapes; it is not the 192³ fixture stress workload.
+This work does not claim all thin features survive, universal dense 192 Add admission,
+or real-time headset stamping. Sparse SDF, component collections and agent Personal
+Shape integration remain outside scope. No resource limits were raised. No commit,
+push, merge or deploy was performed.
+
+---
+
 # Phase 8.0.2 — Offline fixture/baseline preparation — 2026-11-10
 
 ## 1. Scope and preservation

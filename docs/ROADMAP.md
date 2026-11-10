@@ -7,6 +7,7 @@ acceptance is implied.
 
 | Phase | Implementation | Automated | Browser | Quest | Physical print |
 | --- | --- | --- | --- | --- | --- |
+| 8.0.1 / 8.0.2 | Saved/restored Personal SDF stamping; shared desktop/XR single and continuous path; scalar sampler and bounded preview buffers | Actual 66-case fixture matrix: 53 admitted, 13 safely refused; thin-feature failures recorded; see Personal Stamp results | Disposable restored Use as Stamp, Add/Subtract, Undo/Redo and asset independence passed | Physical controller/thermal/memory acceptance pending | Not run |
 | 8.0 | Personal Shapes Save → Browse → Insert; separate persistent SDF masters, genuine thumbnails, pivots, calibrated independent editable copies and native/export compatibility | Full check 1,706/1,706; personal 8/8; guide 8/8 | Chromium save/thumbnail/new-project/two insertions/reload/rename/delete passed | Project handoff implemented; physical acceptance pending | Not run |
 | 7.6.1 | Documentation polish: 26 pages, three illustrated tutorials, 17 authentic desktop captures with zoom, interactive source-accurate Tool Wheel schematic, glossary and tool-choice guide | Docs 8/8; full root check 1,698/1,698; screenshot dimensions/provenance and links checked | All 26 routes passed axe, Pagefind, keyboard/search, mobile layouts, touch/wheel/lightbox and reduced-motion checks; real holder prepared STL 110 × 27 × 50 mm | Authentic wheel/submenu captures pending; no fresh hardware acceptance | No new print test |
 | 7.6 | Public static field guide in read-the-docs-pls; 23 task-based guides, Pagefind, themes, mobile navigation and MCP holder examples | Docs 7/7; root check 1,696/1,696 | In-app browser harness 174 assertions; axe, 23 routes at 1440/390/320 px, actual search and subpath links; screenshots | Not run | Not run |
@@ -243,18 +244,21 @@ for app build/dev. App modelling/export/agent engines remain unchanged.
 
 Implemented locally: separate versioned IndexedDB library, evaluated selected sculpt/Boolean-root capture, actual thumbnail review, names/dimensions/dates, Centre/Base centre pivots, lossless gzip and integrity validation, explicit limits, confirmed rename/delete, independent editable insertions with Undo/redo and native/export compatibility. Source-history collections remain deferred. Quest Project entry exits XR for browser controls; no physical headset acceptance claimed.
 
-- 8.0.1: Personal shapes as stamps with optimised detail caches.
+- 8.0.1: Implemented locally: Personal Shape stamping from exact saved-master snapshots, calibrated pivots, shared desktop/XR pipeline and bounded derived previews.
+- 8.0.2: Actual fixture quality/performance measured; scalar sampling and preview allocation improvements. Thin-feature failures and dense-memory refusals are documented, not waived. Physical Quest, sustained browser peaks and print acceptance remain open.
 - 8.1: Editable component collections retaining construction.
 - 8.2: MCP/agent integration.
 
-See the latest six-part development handover for current verification and limitations.
+See [Personal Stamp results](PERSONAL_STAMP_RESULTS.md) and the current development handover for verification and limitations.
 
 ## Phase 8.0.0 — Shape Library Backup & Restore (2026-11-10)
 
-Implemented Personal Shapes export/download and import/validate/preview/confirm. Binary version 1 preserves exact stored masters and thumbnail strings with SHA-256 integrity; atomic merge preserves existing records and copies identifier conflicts. Imported fingerprints suppress repeat restores. Explicit memory/count/file/storage admission refuses excess without reducing geometry. Cross-profile Chromium acceptance includes restored insert/edit/.form/STL. Physical Quest file picker, downloads, storage estimates and memory acceptance remain pending. Custom stamps remain deferred; no modelling engine changes.
+Implemented Personal Shapes export/download and import/validate/preview/confirm. Binary version 1 preserves exact stored masters and thumbnail strings with SHA-256 integrity; atomic merge preserves existing records and copies identifier conflicts. Imported fingerprints suppress repeat restores. Explicit memory/count/file/storage admission refuses excess without reducing geometry. Cross-profile Chromium acceptance includes restored insert/edit/.form/STL. Physical Quest file picker, downloads, storage estimates and memory acceptance remain pending. Custom stamps were deferred at this backup/restore milestone and are now implemented in 8.0.1. The backup/restore milestone itself did not change the modelling engine.
 
 
-## Phase 8.0.1 / 8.0.2 audit and next acceptance — 2026-11-10
+## Historical pre-implementation audit — 2026-11-10
+
+Superseded by the Personal Stamp implementation and measurements in [PERSONAL_STAMP_RESULTS.md](PERSONAL_STAMP_RESULTS.md). The audit below records the checkout before that work.
 
 Local HEAD c94c893 plus uncommitted backup/restore work is authoritative. 8.0.0 is
 implemented with earlier two-profile restore/insert/edit/native/STL evidence. Fresh

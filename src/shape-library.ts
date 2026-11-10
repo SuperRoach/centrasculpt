@@ -1,5 +1,6 @@
 import { type Matrix4, Plane, Triangle, Vector3 } from "three";
 import type { SdfLayer } from "./layers";
+import { personalStampSource } from "./personal-stamp";
 import type { Point3 } from "./sdf";
 import type { ShapeKernel, ShapeKind } from "./shapes";
 import { SHAPE_METADATA, validateShapeDefinition, validateShapeDimensions } from "./shapes";
@@ -195,7 +196,17 @@ export function prepareShape(value: unknown, layer?: SdfLayer) {
   if (layer && layer.id !== definition.targetLayerId)
     throw new Error("Shape target layer does not match.");
   if (layer) validateTransform(layer.transform);
-  const primitive = preparePrimitive(definition.kind, definition.dimensions),
+  const source = definition.personal ? personalStampSource(definition.personal) : undefined;
+  const dimension = definition.dimensions[0];
+  const primitive = source
+      ? {
+          bounds: {
+            min: source.bounds.min.map((v) => v * dimension) as Vec3,
+            max: source.bounds.max.map((v) => v * dimension) as Vec3,
+          },
+          sampleLocal: (p: Point3) => source.sample(p, dimension),
+        }
+      : preparePrimitive(definition.kind, definition.dimensions),
     matrix = layer
       ? transformMatrix(layer.transform).multiply(transformMatrix(definition.transform))
       : transformMatrix(definition.transform),

@@ -16,6 +16,7 @@ import { exportFilename } from "./export-filename";
 import { exportFailure, exportInterruption } from "./export-outcome";
 import { questCapture } from "./performance-capture";
 import { installPersonalShapes } from "./personal-shape-ui";
+import { personalStampSource } from "./personal-stamp";
 import { exportSizing, physicalExportDimensionsMM, physicalGLBSources } from "./physical-units";
 import { PrecisionTools, selectionDimensions } from "./precision-tools";
 import { precisionUI } from "./precision-ui";
@@ -173,6 +174,7 @@ const shapeLibraryUI = createShapeLibraryUI(
   () => loadingProject || ui.modalOpen || xrBlocked(),
   stop,
   () => {
+    layers.personalStamp = shapeGhost.model.definition.personal;
     transformTools?.sync();
     cursor.visible = false;
     ui.status(
@@ -390,6 +392,7 @@ function syncTransformUI() {
   syncStats();
 }
 function refresh() {
+  layers.personalStamp = shapeGhost.model.definition.personal;
   exportEstimate();
   syncView();
   ui.layerRows(layers.project.layerStack.layers, layers.project.activeLayerId, (layer) =>
@@ -3721,5 +3724,30 @@ installPersonalShapes(
   renderer,
   () => {
     shapeLibraryUI.refresh();
+  },
+  (personal) => {
+    const stack = layers.project.layerStack;
+    const source = personalStampSource(personal);
+    if (layers.trackedBytes + layers.composite.trackedBytes + source.bytes > 256 * 1024 ** 2)
+      throw new Error(
+        "Personal stamp preview exceeds the memory safety limit; master detail was kept.",
+      );
+    editorTools!.select("stamp");
+    const size = personalStampSource(personal).size;
+    shapeGhost.model.set(
+      {
+        ...shapeGhost.model.definition,
+        kind: "box",
+        personal,
+        targetLayerId: stack.activeLayerId,
+        dimensions: [size, size, size],
+      },
+      stack,
+    );
+    layers.personalStamp = personal;
+    shapeGhost.model.setEnabled(true, stack);
+    const details = document.getElementById("shape-library") as HTMLDetailsElement;
+    details.open = true;
+    shapeGhost.sync();
   },
 );

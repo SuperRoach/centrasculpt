@@ -106,7 +106,7 @@ test("critical topics, commands, format units and deferred boundaries are docume
       "Allow editing",
       "get_capabilities",
     ],
-    faq: ["Personal Shapes", "8.0.1", "8.1", "8.2", "Quest hardware"],
+    faq: ["Personal Shapes", "Use as Stamp", "8.1", "8.2", "Quest hardware"],
   };
   for (const [id, words] of Object.entries(topics))
     for (const word of words) assert.ok(by(id).includes(word), `${id} missing ${word}`);

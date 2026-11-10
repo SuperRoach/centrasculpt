@@ -2,7 +2,7 @@ import { Vector3 } from "three";
 import type { LayerStack } from "./layers";
 import type { Point3 } from "./sdf";
 import type { ShapePreviewModel } from "./shape-preview";
-import type { ShapeDefinition } from "./shapes";
+import { type ShapeDefinition, validateShapeDefinition } from "./shapes";
 import { toLocal } from "./transform";
 
 /** Placement changes the preview only; orientation/dimensions/scale remain unchanged. */
@@ -46,7 +46,7 @@ export class StampClickGesture {
       this.cancel();
       return false;
     }
-    this.pending = { pointerId, x, y, definition: structuredClone(definition) };
+    this.pending = { pointerId, x, y, definition: validateShapeDefinition(definition) };
     return true;
   }
   move(pointerId: number, x: number, y: number, buttons: number): void {

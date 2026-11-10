@@ -14,6 +14,10 @@ export type StampPatch = {
   evaluationMs: number;
   scanned: number;
   evaluated: number;
+  allocatedStagingBytes: number;
+  peakStagingBytes: number;
+  stagingAllocations: number;
+  retainedStagingBytes: number;
 };
 /** Stage exact CSG deltas before any write. Shape pose and distances are target-layer-local.
  * A shape's geometric AABB alone is insufficient: min/max can change far-field distances.
@@ -69,9 +73,13 @@ export function* prepareStampSteps(
     );
   const limit = Math.fround(volume.extent * 4),
     padding = limit;
-  const lo = box.min.map((v, a) => Math.max(0, Math.ceil((v - padding - origin[a]) / volume.step)));
+  const lo = box.min.map((v, a) =>
+    d.personal ? 0 : Math.max(0, Math.ceil((v - padding - origin[a]) / volume.step)),
+  );
   const hi = box.max.map((v, a) =>
-    Math.min(dims[a] - 1, Math.floor((v + padding - origin[a]) / volume.step)),
+    d.personal
+      ? dims[a] - 1
+      : Math.min(dims[a] - 1, Math.floor((v + padding - origin[a]) / volume.step)),
   );
   if (
     maxStagingBytes !== Infinity &&
@@ -84,7 +92,10 @@ export function* prepareStampSteps(
     after = new Float32Array(initial),
     count = 0,
     scanned = 0,
-    evaluated = 0;
+    evaluated = 0,
+    allocatedStagingBytes = initial * 12,
+    peakStagingBytes = initial * 12,
+    stagingAllocations = 3;
   const bounds: Bounds = { min: [...dims], max: [0, 0, 0] },
     p = { x: 0, y: 0, z: 0 };
   for (let z = lo[2]; z <= hi[2]; z++)
@@ -103,7 +114,7 @@ export function* prepareStampSteps(
           dy = Math.max(box.min[1] - p.y, 0, p.y - box.max[1]),
           dz = Math.max(box.min[2] - p.z, 0, p.z - box.max[2]);
         const outside = dx > 0 || dy > 0 || dz > 0;
-        if (outside) {
+        if (outside && !d.personal) {
           const lower = Math.hypot(dx, dy, dz);
           if (d.operation === "add" ? old <= lower : old >= -lower) continue;
         }
@@ -145,6 +156,9 @@ export function* prepareStampSteps(
             throw new Error(
               "Stamp exceeds the staging/history memory safety limit. Source voxels and redo were kept.",
             );
+          allocatedStagingBytes += capacity * 12;
+          peakStagingBytes = Math.max(peakStagingBytes, (indices.length + capacity) * 12);
+          stagingAllocations += 3;
           const i = new Uint32Array(capacity),
             b = new Float32Array(capacity),
             a = new Float32Array(capacity);
@@ -172,5 +186,9 @@ export function* prepareStampSteps(
     evaluationMs: performance.now() - start,
     scanned,
     evaluated,
+    allocatedStagingBytes,
+    peakStagingBytes,
+    stagingAllocations,
+    retainedStagingBytes: indices.byteLength * 3,
   };
 }

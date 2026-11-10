@@ -1251,3 +1251,57 @@ for (const hand of ["left", "right"])
       f.dispose();
     }
   });
+
+test("personal master uses XR single/continuous pose, preview, symmetry and packed Undo without editing source", async () => {
+  const { createPersonalStamp, personalStampSource } = await import(
+    "../work/test-build/personal-stamp.mjs"
+  );
+  const f = fixture(),
+    p = createBaseProject(new SDFVolume(25), settings),
+    saved = p.activeLayer.volume.values.slice(),
+    personal = createPersonalStamp(p.activeLayer, 0.35),
+    size = personalStampSource(personal).size;
+  try {
+    f.shape.set(
+      { ...f.shape.definition, kind: "box", personal, dimensions: [size, size, size] },
+      f.layers.project.layerStack,
+    );
+    f.layers.symmetry = { enabled: true, axis: "x", offset: 0 };
+    const before = f.volume.values.slice();
+    f.release(poseAt(0.4));
+    f.press(poseAt(0.4));
+    assert.equal(f.layers.undoCount, 1);
+    assert.equal(f.shape.definition.personal, personal);
+    const after = f.volume.values.slice();
+    assert(after.some((v, i) => v !== before[i]));
+    f.layers.undo();
+    assert.deepEqual(f.volume.values, before);
+    f.layers.undo(true);
+    assert.deepEqual(f.volume.values, after);
+    f.tools.stampAttachment.mode = "continuous";
+    f.tools.stampAttachment.spacing = 0.5;
+    f.release(poseAt(-0.6));
+    f.press(poseAt(-0.6));
+    f.update(poseAt(0.6));
+    f.release(poseAt(0.6));
+    for (let i = 0; i < 10000 && f.stamp.active; i++) f.update(poseAt(0.6));
+    assert(!f.stamp.active, f.stamp.feedback);
+    assert.equal(f.layers.undoCount, 2);
+    const continuous = f.volume.values.slice();
+    f.layers.undo();
+    assert.deepEqual(f.volume.values, after);
+    f.layers.undo(true);
+    assert.deepEqual(f.volume.values, continuous);
+    assert.deepEqual(p.activeLayer.volume.values, saved);
+    // Switching the source replaces pending-trail geometry instead of reusing disposed buffers.
+    const replacement = createPersonalStamp(p.activeLayer, 0.2);
+    f.shape.set({ ...f.shape.definition, personal: replacement }, f.layers.project.layerStack);
+    f.release(poseAt());
+    f.press(poseAt());
+    f.update(poseAt(0.3));
+    f.stamp.cancel();
+    assert.deepEqual(f.volume.values, continuous);
+  } finally {
+    f.dispose();
+  }
+});

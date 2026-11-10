@@ -1,3 +1,9 @@
+### Personal Shape Stamps — Phase 8.0.1 / 8.0.2 (2026-11-11)
+
+- Personal Shapes → Use as Stamp selects a saved or restored SDF master with its calibrated size and saved Centre/Base centre pivot. Desktop placement and XR single/continuous stamping share Add/Subtract, transforms, symmetry, masks, previews and Undo/Redo.
+- Stamping uses an independent exact-value master snapshot. Editing a destination never changes saved assets. No master resampling, silent resolution changes or increased limits.
+- Fixture quality/performance measurement now covers actual restored-master stamping. Scalar interpolation removes per-sample temporary arrays. Coarse destinations can lose thin features; large dense operations can be refused by existing memory/history budgets. See `docs/PERSONAL_STAMP_RESULTS.md` for measurements and limits. Physical Quest and print acceptance remain pending.
+
 ### Shape Library Backup & Restore — Phase 8.0.0 (2026-11-10)
 
 - Personal Shapes exports portable versioned .cshapes backups with exact SDF masters, metadata, genuine thumbnails and SHA-256 checksums.
@@ -10,7 +16,7 @@
 - Browse your persistent browser-local Personal Shapes independently of projects. Rename or confirm deletion, and insert independent editable sculpt copies.
 - Masters retain full stored SDF detail with lossless compression and integrity checks. Unsupported evaluation, memory and storage sizes refuse explicitly; keep a .form backup or split the object.
 - Insertions support Undo/redo, normal transforms, sculpting, .form saves and STL/GLB export. Procedural construction history is flattened.
-- Quest Project navigation can leave XR for the browser workflow; physical headset acceptance remains pending. Personal stamps (8.0.1), component collections (8.1) and agent integration (8.2) are deferred.
+- Quest Project navigation can leave XR for the browser workflow; physical headset acceptance remains pending. At this milestone Personal stamps (8.0.1) were pending; see the later stamp release entry above. Component collections (8.1) and agent integration (8.2) remain deferred.
 
 ### Learn by making — Phase 7.6.1 (2026-11-10)
 

@@ -50,6 +50,7 @@ import {
   primitiveGeometry,
   validatePrimitive,
 } from "./parametric-primitive";
+import { type PersonalStamp, personalStampSource } from "./personal-stamp";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
 import { evaluateTube, type TubeSource, validateTube } from "./procedural-tube";
 import { MAX_PROJECT_LAYERS, MAX_PROJECT_TRIANGLES, MAX_PROJECT_VOXELS } from "./project";
@@ -311,7 +312,13 @@ export class IndependentLayers {
   private readonly runtimes = new Map<string, LayerRuntime>();
   viewMode: SurfaceView = "separate";
   lastBakeStats: BakeStats | null = null;
+  /** Session preview reservation, charged to every edit admission while selected. */
+  personalStamp?: PersonalStamp;
   lastStampStats: {
+    allocatedStagingBytes: number;
+    peakStagingBytes: number;
+    stagingAllocations: number;
+    retainedStagingBytes: number;
     evaluationMs: number;
     meshingMs: number;
     totalMs: number;
@@ -843,7 +850,9 @@ export class IndependentLayers {
     };
   }
   get trackedBytes(): number {
-    let bytes = this.assemblyPreview?.bytes() ?? 0;
+    let bytes =
+      (this.assemblyPreview?.bytes() ?? 0) +
+      (this.personalStamp ? personalStampSource(this.personalStamp).bytes : 0);
     const held = new Set(this.runtimes.values());
     for (const entry of this.historyEntries())
       if (entry.kind === "bake") held.add(entry.runtime);
@@ -1108,6 +1117,7 @@ export class IndependentLayers {
   private growRuntime(
     runtime: LayerRuntime,
     footprint: import("./volume-store").VolumeBounds,
+    extraBytes = 0,
   ): boolean {
     if (!(runtime.volume instanceof SDFVolume))
       throw new Error("Automatic growth requires a dense source.");
@@ -1117,7 +1127,7 @@ export class IndependentLayers {
       plan = planDenseGrowth(source, footprint, options);
     if (!plan) return false;
     this.assertCapacity(plan.samples, runtime.layer.id);
-    const otherTracked = this.trackedBytes - volumeSampleCount(source) * 8,
+    const otherTracked = this.trackedBytes + extraBytes - volumeSampleCount(source) * 8,
       remapEstimate = runtime.history.memoryBytes / 3 + runtime.history.pendingMemoryEstimate * 1.5;
     if (
       plan.transientStorageBytes + otherTracked + remapEstimate >
@@ -1757,6 +1767,15 @@ export class IndependentLayers {
       definition = validateShapeDefinition(value);
     if (definition.targetLayerId !== runtime.layer.id)
       throw new Error("Stamp must target the active layer.");
+    const sourceBytes =
+      definition.personal && definition.personal !== this.personalStamp
+        ? personalStampSource(definition.personal).bytes
+        : 0;
+    if (
+      this.trackedBytes + sourceBytes >
+      (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes)
+    )
+      throw new Error("Personal stamp exceeds the memory safety limit.");
     if (definition.operation === "add") {
       const box = prepareShape(definition).worldBounds;
       if (this.symmetry.enabled) {
@@ -1766,11 +1785,12 @@ export class IndependentLayers {
         box.min[a] = Math.min(lo, 2 * this.symmetry.offset - hi);
         box.max[a] = Math.max(hi, 2 * this.symmetry.offset - lo);
       }
-      this.growRuntime(runtime, box);
+      this.growRuntime(runtime, box, sourceBytes);
     }
     const remaining =
       (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes) -
       this.trackedBytes -
+      sourceBytes -
       runtime.history.pendingMemoryEstimate;
     const patch = yield* prepareStampSteps(
       runtime.layer,
@@ -1780,6 +1800,10 @@ export class IndependentLayers {
     );
     if (!patch.indices.length) {
       this.lastStampStats = {
+        allocatedStagingBytes: patch.allocatedStagingBytes,
+        peakStagingBytes: patch.peakStagingBytes,
+        stagingAllocations: patch.stagingAllocations,
+        retainedStagingBytes: patch.retainedStagingBytes,
         evaluationMs: patch.evaluationMs,
         scanned: patch.scanned,
         evaluated: patch.evaluated,
@@ -1817,6 +1841,10 @@ export class IndependentLayers {
       runtime.lastChanged = chunks;
     } else if (!deferMesh) rebuilt = runtime.rebuild();
     this.lastStampStats = {
+      allocatedStagingBytes: patch.allocatedStagingBytes,
+      peakStagingBytes: patch.peakStagingBytes,
+      stagingAllocations: patch.stagingAllocations,
+      retainedStagingBytes: patch.retainedStagingBytes,
       evaluationMs: patch.evaluationMs,
       meshingMs: performance.now() - meshStart,
       totalMs: performance.now() - start,
@@ -3648,6 +3676,7 @@ export class IndependentLayers {
     return group;
   }
   dispose(): void {
+    this.personalStamp = undefined;
     this.disposed = true;
     this.clearAssemblyPreview();
     this.composite.dispose();

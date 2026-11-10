@@ -13,6 +13,7 @@ import {
   Vector3,
 } from "three";
 import type { LayerStack } from "./layers";
+import { personalStampSource } from "./personal-stamp";
 import type { MirrorPlane } from "./sdf";
 import { shapePolyhedron } from "./shape-library";
 import type { ShapeDefinition, ShapeKind, ShapePreviewPort } from "./shapes";
@@ -261,7 +262,8 @@ export class ShapeGhost implements ShapePreviewPort {
   private mirrorEdges: LineSegments | null = null;
   private solid: Mesh | null = null;
   private edges: LineSegments | null = null;
-  private kind: ShapeKind | null = null;
+  private kind: string | null = null;
+  private personalGeometry: GeometryPair | undefined;
   private key = "";
   stats = { updates: 0, totalMs: 0, lastMs: 0, geometryBuilds: 0 };
   constructor(
@@ -305,9 +307,37 @@ export class ShapeGhost implements ShapePreviewPort {
     this.key = key;
     const start = performance.now();
     this.group.visible = this.model.enabled && !busy && !this.model.availability(stack);
+    if (
+      this.personalGeometry &&
+      (this.kind !== (d.personal?.id ?? d.kind) || !this.model.enabled)
+    ) {
+      this.personalGeometry.solid.dispose();
+      this.personalGeometry.edges.dispose();
+      this.personalGeometry = undefined;
+      this.pose.clear();
+      this.mirrorPose.clear();
+      this.solid = this.mirrorSolid = null;
+      this.edges = this.mirrorEdges = null;
+      this.kind = null;
+    }
     if (this.group.visible) {
-      if (this.kind !== d.kind) {
-        let geometry = this.cache.get(d.kind);
+      const geometryKey = d.personal?.id ?? d.kind;
+      if (this.kind !== geometryKey) {
+        this.personalGeometry?.solid.dispose();
+        this.personalGeometry?.edges.dispose();
+        this.personalGeometry = undefined;
+        let geometry = d.personal ? undefined : this.cache.get(d.kind);
+        if (d.personal) {
+          const solid = new BufferGeometry();
+          solid.setAttribute(
+            "position",
+            new Float32BufferAttribute(personalStampSource(d.personal).positions, 3),
+          );
+          solid.computeVertexNormals();
+          geometry = { solid, edges: new EdgesGeometry(solid) };
+          this.personalGeometry = geometry;
+          this.stats.geometryBuilds++;
+        }
         if (!geometry) {
           geometry = createPreviewGeometry(d.kind);
           this.cache.set(d.kind, geometry);
@@ -330,7 +360,7 @@ export class ShapeGhost implements ShapePreviewPort {
           this.mirrorSolid!.geometry = geometry.solid;
           this.mirrorEdges!.geometry = geometry.edges;
         }
-        this.kind = d.kind;
+        this.kind = geometryKey;
       }
       this.mirrorPose.visible = !!this.mirror?.enabled;
       if (this.mirror?.enabled) {
@@ -364,7 +394,7 @@ export class ShapeGhost implements ShapePreviewPort {
     this.edgeMaterial.color.set(warning ? "#ffc66e" : subtract ? "#a83f2c" : "#267c78");
   }
   get cachedShapes(): number {
-    return this.cache.size;
+    return this.cache.size + Number(!!this.personalGeometry);
   }
   reset(): void {
     this.model.reset(this.stack().activeLayerId);
@@ -372,6 +402,9 @@ export class ShapeGhost implements ShapePreviewPort {
     this.sync();
   }
   dispose(): void {
+    this.personalGeometry?.solid.dispose();
+    this.personalGeometry?.edges.dispose();
+    this.personalGeometry = undefined;
     for (const geometry of this.cache.values()) {
       geometry.solid.dispose();
       geometry.edges.dispose();

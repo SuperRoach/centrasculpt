@@ -13,6 +13,7 @@ Centra Sculpt is a browser-based 3D sculpting and modelling app for desktop and 
 ## What you can do
 
 - Sculpt with Add, Subtract, Smooth and deformation tools; use masks, colour painting, mirrors and a turntable.
+- Save evaluated sculpts in Personal Shapes, restore portable `.cshapes` libraries, and choose **Use as Stamp** for Add/Subtract through desktop and XR Stamp controls. Saved masters retain their resolution; destination voxel spacing controls stamped detail.
 - Assemble editable shapes with transforms, nested layer groups, live Booleans, arrays and procedural tubes.
 - Work on desktop or enter VR in a compatible WebXR browser, with controller tools and workspace manipulation.
 - Keep editable `.form` projects, use the browser Project Library, and export GLB or STL with print diagnostics.

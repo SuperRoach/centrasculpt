@@ -1,5 +1,7 @@
 import type { LayerStack } from "./layers";
 import { newId, validateId } from "./layers";
+import type { PersonalStamp } from "./personal-stamp";
+import { personalStampSource } from "./personal-stamp";
 import type { Point3 } from "./sdf";
 import type { Vec3, VolumeTransform } from "./transform";
 import { hasUniformScale, validateTransform, validateVector } from "./transform";
@@ -59,6 +61,7 @@ export function validateShapeDimensions(kind: ShapeKind, value: unknown): Vec3 {
 }
 export type ShapeDefinition = {
   id: string;
+  personal?: PersonalStamp;
   kind: ShapeKind;
   targetLayerId: string;
   operation: "add" | "subtract";
@@ -86,7 +89,13 @@ export function validateShapeDefinition(value: unknown): ShapeDefinition {
     throw new Error(
       "Shape pose scale must be uniform. Use dimensions to change a box or prism aspect ratio.",
     );
+  if (data.personal !== undefined) {
+    personalStampSource(data.personal as PersonalStamp);
+    if (data.kind !== "box" || !dimensions.every((v) => v === dimensions[0]))
+      throw new Error("Personal stamps require uniform dimensions. Use uniform scale.");
+  }
   return {
+    ...(data.personal ? { personal: data.personal as PersonalStamp } : {}),
     id: validateId(data.id),
     kind: data.kind as ShapeKind,
     targetLayerId: validateId(data.targetLayerId),
@@ -120,7 +129,7 @@ export function shapeStampIntent(value: unknown, stack?: LayerStack): ShapeStamp
     kind: "shape-stamp",
     targetLayerId: definition.targetLayerId,
     definition,
-    historyLabel: `${definition.operation} ${definition.kind}`,
+    historyLabel: `${definition.operation} ${definition.personal?.name ?? definition.kind}`,
   };
 }
 export type ShapeToolInput =

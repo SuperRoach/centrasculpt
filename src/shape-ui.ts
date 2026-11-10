@@ -1,5 +1,5 @@
 import type { LayerStack } from "./layers";
-import { localShapeBounds } from "./shape-library";
+import { prepareShape } from "./shape-library";
 import type { ShapeGhost } from "./shape-preview";
 import { shapeDimensionsForKind } from "./shape-preview";
 import type { ShapeKind } from "./shapes";
@@ -102,7 +102,12 @@ export function createShapeLibraryUI(
         const definition = ghost.model.definition,
           kind = button.dataset.shapeKind as ShapeKind;
         ghost.model.set(
-          { ...definition, kind, dimensions: shapeDimensionsForKind(kind, definition.dimensions) },
+          {
+            ...definition,
+            personal: undefined,
+            kind,
+            dimensions: shapeDimensionsForKind(kind, definition.dimensions),
+          },
           stack(),
         );
         ghost.model.setEnabled(true, stack());
@@ -129,7 +134,8 @@ export function createShapeLibraryUI(
         if (name[0] === "d") {
           definition.dimensions[axis] = value;
           const rule = SHAPE_METADATA[definition.kind].dimensionRule;
-          if (rule === "diameter") definition.dimensions = [value, value, value];
+          if (definition.personal || rule === "diameter")
+            definition.dimensions = [value, value, value];
           else if (rule === "square-base" && (axis === 0 || axis === 2)) {
             definition.dimensions[0] = value;
             definition.dimensions[2] = value;
@@ -223,7 +229,7 @@ export function createShapeLibraryUI(
     host.querySelector<HTMLInputElement>("#shape-follow")!.disabled =
       blocked || ghost.model.rotationMode || ghost.model.dragging;
     for (const button of host.querySelectorAll<HTMLButtonElement>("[data-shape-kind]")) {
-      const selected = button.dataset.shapeKind === d.kind;
+      const selected = !d.personal && button.dataset.shapeKind === d.kind;
       button.setAttribute("aria-pressed", String(selected));
       button.classList.toggle("active", selected);
       button.disabled = blocked;
@@ -256,17 +262,26 @@ export function createShapeLibraryUI(
         input.max = String(1000 * parent);
       }
       const rule = SHAPE_METADATA[d.kind].dimensionRule;
+      if (field[0] === "d") {
+        const label = input.closest("label");
+        if (label) label.hidden = !!d.personal && axis !== 0;
+        if (axis === 0 && label?.firstChild)
+          label.firstChild.textContent = d.personal ? "Size · longest dimension" : "X / Diameter";
+      }
       input.disabled =
         blocked ||
         (field[0] === "d" &&
-          ((rule === "diameter" && axis !== 0) || (rule === "square-base" && axis === 2)));
+          (((d.personal || rule === "diameter") && axis !== 0) ||
+            (rule === "square-base" && axis === 2)));
     }
     space.disabled = busy();
     host.querySelector<HTMLButtonElement>("#reset-shape-pose")!.disabled = blocked;
-    host.querySelector("#shape-description")!.textContent = SHAPE_METADATA[d.kind].description;
+    host.querySelector("#shape-description")!.textContent = d.personal
+      ? `${d.personal.name} · saved SDF master, saved pivot. Uniform size and scale preserve proportions. Destination voxel spacing controls stamped detail.`
+      : SHAPE_METADATA[d.kind].description;
     host.querySelector("#shape-target")!.textContent =
       `Target: ${layers.active.name} · ${volumeLabel(layers.active.volume)}. Pose is ${space.value === "world" ? "world-space; converted into the layer" : "relative to this layer"}.`;
-    const bounds = localShapeBounds(d.kind, d.dimensions);
+    const bounds = prepareShape(d).localBounds;
     host.querySelector("#shape-bounds")!.textContent =
       `Local bounds: [${bounds.min.map((v) => v.toFixed(2)).join(", ")}] to [${bounds.max.map((v) => v.toFixed(2)).join(", ")}]. ${d.kind === "sphere" ? "One diameter controls all axes." : d.kind === "pyramid" ? "Width also controls depth for a square base." : ""}`;
     host.querySelector("#shape-feedback")!.textContent = busy()
@@ -283,7 +298,7 @@ export function createShapeLibraryUI(
               : "Ghost hidden · sculpting available."));
     host.querySelector("#shape-error")!.textContent = error;
     host.querySelector("#shape-performance")!.textContent =
-      `Preview update ${ghost.stats.lastMs.toFixed(3)} ms · ${ghost.cachedShapes}/4 cached shapes`;
+      `Preview update ${ghost.stats.lastMs.toFixed(3)} ms · ${ghost.cachedShapes} preview geometries`;
   }
   refresh();
   return {

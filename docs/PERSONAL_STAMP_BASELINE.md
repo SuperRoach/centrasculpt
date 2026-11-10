@@ -1,6 +1,6 @@
 # Personal stamp baseline preparation — 2026-11-10
 
-This is an offline fixture and sampling harness for future Phase 8.0.1/8.0.2 work.
+This is the unchanged offline fixture and sampling harness used to prepare Phase 8.0.1/8.0.2. Actual restored-master stamping, destination detail, geometry, topology, CPU, allocations and chunk measurements are now in [PERSONAL_STAMP_RESULTS.md](PERSONAL_STAMP_RESULTS.md). The scope descriptions below apply to this preparation harness only.
 It does not implement Personal Shape stamping. It never opens IndexedDB, connects to
 an editor, or reads user projects. Generated files are ordinary evaluated `.form`
 projects, not entries added to the user's shape library or `.cshapes` backups.
@@ -70,7 +70,7 @@ geometry tests pass 3/3: finite positive cube-boundary probes, specified interio
 probes, through-hole/slot centerline and width checks, thin-bar width and pose bounds.
 These tests check procedural reference geometry; they do not certify sampled topology.
 
-## Next gates
+## Original next gates (now tracked in Personal Stamp results)
 
 1. Add actual restored Personal Shape → stamp integration when 8.0.1 is implemented.
    Use a disposable library and compare original/restored stamp results and master hashes.
