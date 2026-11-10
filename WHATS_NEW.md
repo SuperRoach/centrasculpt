@@ -1,3 +1,10 @@
+### Learn by making — Phase 7.6.1 (2026-11-10)
+
+- Three illustrated tutorials cover a first clay sculpt, a measured three-slot holder and a box with a separate lid.
+- Real desktop screenshots enlarge to their original resolution. Explore the source-accurate Tool Wheel schematic with keyboard, mouse or touch; Quest captures remain pending.
+- The 26-page guide adds tool-choice advice, a modelling glossary, practical troubleshooting and experimental curved STL safeguards.
+- Documentation remains local pending publication authorisation. No modelling or export algorithms changed.
+
 ### Help on the same site (2026-11-10)
 
 - **Centra Sculpt → Help ↗** opens the field guide in a new tab while your editor stays open.

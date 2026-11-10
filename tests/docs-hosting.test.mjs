@@ -13,7 +13,13 @@ test("the app build includes the complete guide and generated search, without QA
     assert.match(html, /data-pagefind-body/);
     assert.match(html, /href="pagefind\/pagefind-ui.css"/);
   }
-  for (const asset of ["style.css", "app.js", "favicon.svg", "pagefind/pagefind.js"]) {
+  for (const asset of [
+    "style.css",
+    "app.js",
+    "favicon.svg",
+    "pagefind/pagefind.js",
+    "screenshots/workspace.png",
+  ]) {
     assert.ok((await readFile(`dist/read-the-docs/${asset}`)).length);
   }
   await assert.rejects(readFile("dist/read-the-docs/browser-qa.html"), { code: "ENOENT" });
@@ -39,6 +45,10 @@ test("development guide routing serves assets, redirects the directory and refus
     const script = await fetch(`${origin}/sculpt/read-the-docs/pagefind/pagefind.js`);
     assert.equal(script.status, 200);
     assert.equal(script.headers.get("content-type"), "text/javascript");
+    const screenshot = await fetch(`${origin}/sculpt/read-the-docs/screenshots/workspace.png`);
+    assert.equal(screenshot.status, 200);
+    assert.equal(screenshot.headers.get("content-type"), "image/png");
+    assert.ok((await screenshot.arrayBuffer()).byteLength > 1000);
     const head = await fetch(`${origin}/sculpt/read-the-docs/`, { method: "HEAD" });
     assert.equal(head.status, 200);
     assert.equal(await head.text(), "");

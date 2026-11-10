@@ -1,0 +1,138 @@
+[
+  {
+    "name": "workspace",
+    "caption": "Desktop workspace: brushes on the left, the starter sphere in the centre and Layers on the right.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:14.393Z"
+  },
+  {
+    "name": "clay-before",
+    "caption": "Before: the untouched 64³ starter sphere, with Add selected.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:15.058Z"
+  },
+  {
+    "name": "clay-after",
+    "caption": "After: short repeated Add dabs followed by Smooth. The history records the real edits.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:19.237Z"
+  },
+  {
+    "name": "primitives",
+    "caption": "Primitives: actual desktop controls in the current application.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:19.952Z"
+  },
+  {
+    "name": "precision",
+    "caption": "Measure & precision: actual desktop controls in the current application.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:20.684Z"
+  },
+  {
+    "name": "enclosures",
+    "caption": "Enclosure: actual desktop controls in the current application.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:21.401Z"
+  },
+  {
+    "name": "assemblies",
+    "caption": "Assembly: actual desktop controls in the current application.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:22.124Z"
+  },
+  {
+    "name": "arrays",
+    "caption": "Primitives → Array / Repeat: linear and radial repetition settings for the selected Box.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:24.408Z"
+  },
+  {
+    "name": "booleans",
+    "caption": "Live Boolean Shapes: choose another layer as an operand, then Add / Union, Subtract / Difference or Intersect.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:26.733Z"
+  },
+  {
+    "name": "layers",
+    "caption": "Layers retains the starter sculpt and two separately editable Box sources.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:27.430Z"
+  },
+  {
+    "name": "library",
+    "caption": "Project Library in a fresh browser context, after saving this disposable demonstration.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:28.860Z"
+  },
+  {
+    "name": "export",
+    "caption": "Export dialog: file type, quality, Actual size (1:1) and optional experimental STL controls.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-09T15:48:29.572Z"
+  },
+  {
+    "name": "holder-body",
+    "caption": "Holder step 1: Body source, 90 × 20 × 40 mm at Y 13 mm.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-10T00:26:06.764Z"
+  },
+  {
+    "name": "holder-result",
+    "caption": "Holder step 3: evaluated body with one union and three differences, with operand roots hidden.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-10T00:26:25.263Z"
+  },
+  {
+    "name": "holder-export",
+    "caption": "Prepared Unified Boolean STL for the tutorial holder. Review its evaluated XYZ dimensions and Print report before downloading.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-10T00:26:42.662Z"
+  },
+  {
+    "name": "enclosure-result",
+    "caption": "Separate enclosure base and lid created through Preview changes → Create enclosure, using the tutorial dimensions.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-10T00:28:57.526Z"
+  },
+  {
+    "name": "enclosure-open",
+    "caption": "The generated lid moved 45 mm along X for inspection. The base opening and lid lip remain separate editable components.",
+    "width": 1600,
+    "height": 1000,
+    "url": "http://127.0.0.1:5261/",
+    "captured": "2026-11-10T00:29:05.412Z"
+  }
+]

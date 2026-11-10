@@ -50,3 +50,28 @@ The user's follow-up authorises the Help menu and app build integration. Added
 Pagefind development dependency. No modelling/export/agent engine changes. The
 initial docs-only scope statement above describes the first delivery; this
 follow-up adds the requested app access and combined deployment output.
+
+## Phase 7.6.1 audit — 10 November 2026
+
+Starting commit `8ff582f`; clean Git status. Reviewed all 23 existing public
+articles and the latest status/roadmap, then added three routes. Current source
+and real UI take precedence over historical handover text. Corrected desktop
+panel location (modelling panels left), New Project's current library form,
+Enter-to-rename, and enclosure New enclosure / Preview changes / Create enclosure.
+`enclosure-feature-ui.ts` provides desktop Wall cutout and Mounting posts;
+the earlier claim that features were only in MCP was stale. Built-in SHAPE
+LIBRARY is distinct from the planned Personal Shape Library/custom stamps.
+
+Tool Wheel sectors match `VR_WHEEL_TOOLS` in `editor-tool-state.ts`; surrounding
+controls and nested paths retain the existing audited source references. The
+interactive layout is explicitly schematic. `primitive-ui.ts`, `boolean-ui.ts`,
+`enclosure-ui.ts`, `assembly-ui.ts`, `layer-palette.ts`, `project-library-ui.ts`
+and `project-browser.ts` were checked against fresh-browser controls. Holder
+source dimensions retain the schema-tested canonical fixture. New tutorial
+values are teaching examples; no new claim about historical user prints.
+
+PNG captures are browser screenshots of the running application, not composites
+or generated UI. Capture provenance is in screenshots/manifest.json. Earlier
+headless-shell clay attempts hit the tracking guard; accepted captures use full
+installed Chromium and real committed dabs. No app/engine/export source edits,
+user project access, commit, push or publication.

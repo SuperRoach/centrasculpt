@@ -1,3 +1,101 @@
+# Phase 7.6.1 — Documentation experience & visual polish — 2026-11-10
+
+## Scope and preservation
+
+Worked in active `/Users/brettjames/development/vrappPOC`, starting at `8ff582f`.
+Initial Git status was clean. Inspected this status, roadmap, all 23 public guide
+articles, site generator/tests and current UI/controller/export source. No user
+projects, native files, imported assets or recovery data were opened or changed.
+All demo editing used fresh disposable browser contexts. No modelling engine or
+export algorithm changed. No commit, push, deploy or merge.
+
+## Delivered pages and interaction
+
+Reviewed every existing public page and corrected current control/path details.
+There are now 26 routes. Complete illustrated tutorials: `quick-start.html`
+(Your first clay sculpt), `holder.html` (Build a practical holder), and
+`enclosure-tutorial.html` (Make a printable enclosure). Each has prerequisites,
+numbered tasks, expected outcomes, troubleshooting, desktop/Quest distinctions
+and next steps. The canonical schema-tested agent holder batch remains available.
+New `choose-tools.html` and `glossary.html` explain modelling choices and terms.
+Desktop, brushes, primitives, precision, layers, Booleans/arrays, enclosures,
+assemblies, projects and export have authentic captures and descriptive captions.
+FAQ/export explain preview/export scopes, physical size, resource refusals and
+optional experimental curved STL reduction safeguards without a fit guarantee.
+
+Tool Wheel reference uses the actual nine VR_WHEEL_TOOLS sectors, with purposes,
+Options/nested paths and documentation links. It is explicitly a source-accurate
+schematic with adapted documentation layout, not a Quest screenshot. Native
+buttons support keyboard (Tab, arrows, Home/End, Enter/Space), mouse and touch;
+all details remain readable without JavaScript. Native image dialogs preserve
+original pixels and support Escape, focus return, mouse/touch and scroll. Plain
+image links work without JavaScript. Added captions, responsive image/wheel
+layout, theme-aware contrast, reduced-motion rules and proper PNG content types
+for standalone preview and the app's same-site Help route.
+
+## Real application verification and corrections
+
+17 original 1600 × 1000 PNG screenshots in `read-the-docs-pls/screenshots/`;
+`manifest.json` records original loopback origin, UTC time, captions and pixels.
+Coverage: workspace, clay before/after, primitive tools, precision, enclosures,
+assemblies, arrays, live Booleans, layers, project library, export controls,
+holder body/result/prepared STL, assembled enclosure and lid moved aside.
+Captions annotate outside the unchanged screenshot pixels. Captures are not
+fabricated/composited UI and do not claim physical print acceptance.
+
+The full installed Chromium rendered 12 committed Add dabs and three Smooth
+edits (15 Undo entries). Early headless-shell attempts hit the tracking guard;
+those were replaced. Holder walkthrough verified all source dimensions/positions,
+one union + three differences, and real prepared Unified Boolean STL:
+**110.000 × 27.000 × 50.000 mm**, Standard, actual size 1:1, 143³ evaluation
+(max 192³), 84,000 triangles. This is prepared mesh evidence, not a print test.
+Enclosure walkthrough created the 24 × 20 × 14 mm inside recipe with 3 mm walls/
+floor, radius 4, 0.3 clearance, lip depth 4 and lid thickness 3 mm; base readout
+30 × 26 × 17 mm. It evaluated the assembled result and moved the separate lid
+45 mm in X for inspection. No sampled or physical fit pass is claimed.
+
+Corrections from actual UI: modelling panels are on the left; New Project uses
+the library form's name/Start with/Create Project; layer rename requires Enter;
+Enclosure uses New enclosure → Preview changes → Create enclosure (or Apply
+changes); Wall cutout and Mounting posts now have desktop controls. Cutter entry
+must reduce height/depth before the 8 mm width to avoid an intermediate extreme
+aspect-ratio refusal; the tutorial now checks created dimensions before proceeding.
+No engine workaround or limit change was introduced.
+
+## Verification
+
+- Docs build: 26 generated/indexed pages, Pagefind en-au index.
+- Docs tests: **8/8** passed, covering routes, internal href/src/fragments, IDs,
+  landmarks, Pagefind assets, current source/schema facts and screenshot PNG
+  signatures/dimensions/provenance/alt text.
+- Browser: **26/26** routes with zero axe WCAG A/AA violations; 1440 px desktop
+  and 390/320 px responsive checks, actual Pagefind search and nested-prefix
+  results, Ctrl/Meta+K, Escape/focus return, themes, mobile navigation, clicked
+  previous/next links, every article screenshot decoded at 1600 px, native
+  image modal, full-resolution images, Tool Wheel keys and actual touch taps,
+  reduced-motion computed style. Browser script and evidence remain local.
+- Quick: **21/21** passed. Final full `npm run check`: format/lint, strict TS,
+  production build and **1,698/1,698 tests**, no failures/skips/cancellations;
+  82.14 s test wall. PNG MIME/copy assertions added to the existing hosting test.
+- The initial sandbox full run failed only because its HTTP-server test could
+  not bind loopback (EPERM). The authorised unrestricted reruns passed.
+
+Logs: `/tmp/centra-761-{final-build,final-doc-tests,final-browser,quick,final-check,
+tutorial-capture,enclosure-capture}.log`. Browser evidence in ignored `work/docs-7-6/`.
+`SOURCE_AUDIT.md`, the guide README, roadmap and WHATS_NEW are updated. Run the
+README build/preview commands to review locally. The root build includes the
+public guide and screenshot assets at `dist/read-the-docs/`.
+
+## Remaining acceptance
+
+Authentic Quest captures remain pending: Tool Wheel, Options/Move variants,
+Paint/Mask, Layers/Boolean order, World Settings/precision, project library,
+enclosure and assembly controls. Pending labels remain visible. No fresh Quest
+hardware test, physical print, or complete assistive-technology user testing is
+claimed. Publication requires separate explicit authorisation.
+
+---
+
 # Phase 7.6 follow-up — Same-site Help — 2026-11-10
 
 ## 1. Request and preservation

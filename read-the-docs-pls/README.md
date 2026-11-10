@@ -1,6 +1,7 @@
 # Centra Sculpt field guide
 
-Phase 7.6 public user documentation. This independent static site lives here;
+Phase 7.6.1 public user documentation: 26 pages, three illustrated tutorials, an
+interactive Tool Wheel schematic, a glossary and a tool-choice guide. This independent static site lives here;
 `../docs/` remains the technical engineering/handover archive. No app/engine imports
 are shipped to readers. No runtime API, account, CDN, analytics or external font.
 
@@ -113,3 +114,36 @@ for app UX gaps deliberately left outside this phase. Verify changed commands
 against `scripts/agent-schemas.mjs` and current UI, not historical engineering
 plans. Run tests after changing content; the holder JSON is validated against the
 executable proposal schema. Manual Quest/hardware/print acceptance is separate.
+
+## Phase 7.6.1 screenshots and interaction
+
+`screenshots/` contains original 1600 × 1000 PNG captures from the running app in
+fresh disposable Chromium contexts. `manifest.json` records capture time, origin,
+size and caption. No user browser profile, saved scene or recovery data is used.
+Captions provide readable annotations outside the original image. Images link to
+original pixels without JavaScript; the native modal adds Escape, focus return,
+mouse/touch interaction and horizontal scrolling at full resolution.
+
+Reproduce with the app at loopback port 5261, then `node
+read-the-docs-pls/capture.mjs`. `CENTRA_CAPTURE_URL` overrides the app URL;
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` selects an installed Chromium. The separate
+`capture-tutorials.mjs` exercises numeric holder and enclosure controls. All
+modelling is confined to disposable browser storage. These scripts write only
+this guide's captures, never user projects. Inspect captures before accepting a
+new manifest; do not substitute generated illustrations for screenshots.
+
+The Tool Wheel uses the nine `VR_WHEEL_TOOLS` sectors in source order. It is a
+labelled schematic, with layout adapted for reading, rather than a Quest capture.
+Native buttons support Tab, Enter/Space, arrows, Home/End and touch. All detail
+sections and image links remain available without JavaScript.
+
+Authentic Quest captures still needed: wheel, tool Options (especially Move
+variants), Paint/Mask, Layers and Boolean order, World Settings/precision,
+project library, enclosure and assembly interactions. No headset or physical
+print acceptance is claimed. Keep pending labels until real captures are checked.
+
+Validation: build then `npm --prefix read-the-docs-pls test` (links, assets,
+provenance and source/schema checks), then `npm --prefix read-the-docs-pls run
+test:browser` (26 routes, axe, actual Pagefind search, responsive layouts,
+keyboard/touch, lightbox and reduced motion). Repository `npm run check` is also
+required. See `docs/DEVELOPMENT_STATUS.md` for this run's exact results.

@@ -14,7 +14,7 @@ test("stable public routes are unique, intentional and fully generated", async (
     routes,
   );
   assert.equal(new Set(routes).size, routes.length);
-  assert.equal(routes.length, 23);
+  assert.equal(routes.length, 26);
   assert.deepEqual(JSON.parse(await read("dist/routes.json")), routes);
 });
 test("every internal link, fragment, script and stylesheet resolves inside output", async () => {
@@ -143,4 +143,22 @@ test("documentation source facts still match app bindings and limits", async () 
     assert.ok(shortcuts.includes(action));
   assert.ok((await read("../src/project.ts")).includes("MAX_PROJECT_LAYERS = 16"));
   assert.ok((await read("../src/export-dialog.ts")).includes("Actual size (1:1)"));
+});
+
+test('real screenshot assets have consistent pixels, captions and capture provenance', async () => {
+  const manifest = JSON.parse(await read('screenshots/manifest.json'));
+  assert.ok(manifest.length >= 12);
+  const names = new Set(manifest.map(x=>x.name));
+  for (const name of ['workspace','clay-before','clay-after','primitives','layers','booleans','arrays','precision','enclosures','assemblies','library','export']) assert.ok(names.has(name));
+  for (const item of manifest) {
+    const png = await readFile(resolve(root,'screenshots',item.name+'.png'));
+    assert.equal(png.subarray(1,4).toString(),'PNG');
+    assert.equal(png.readUInt32BE(16),1600);
+    assert.equal(png.readUInt32BE(20),1000);
+    assert.ok(item.caption && item.captured && item.url.startsWith('http://127.0.0.1:'));
+  }
+  for (const page of pages) for(const match of page.body.matchAll(/<img [^>]+>/g)) {
+    assert.match(match[0],/alt="[^"]+"/);
+    assert.match(match[0],/width="1600" height="1000"/);
+  }
 });

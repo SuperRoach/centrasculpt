@@ -26,6 +26,13 @@ try {
   const report = [];
   for (const route of routes) {
     assert.equal((await page.goto(`${base}/${route}`)).status(), 200);
+    for (const image of await page.locator('article img').all()) {
+      await image.scrollIntoViewIfNeeded();
+      await image.evaluate(e=>e.decode());
+      assert.equal(await image.evaluate(e=>e.naturalWidth),1600, `${route} screenshot pixels`);
+    }
+    await page.evaluate(()=>scrollTo(0,0));
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${route} desktop overflow`);
     await page.addScriptTag({ content: axe });
     const result = await page.evaluate(
       async () =>
@@ -142,6 +149,43 @@ try {
     ).violations.map((v) => v.id),
     [],
   );
+  await page.goto(base);
+  await page.locator('.pagination a').last().click();
+  assert.ok(page.url().endsWith('/quick-start.html'));
+  await page.locator('.pagination a').first().click();
+  assert.ok(page.url().endsWith('/index.html'));
+  await page.goto(base + "/tool-wheel.html");
+  await page.screenshot({path:new URL('tool-wheel-final.png',evidence).pathname,fullPage:true});
+  const wheel = page.locator('[data-wheel]');
+  assert.equal(await wheel.count(), 9);
+  await wheel.first().focus();
+  await page.keyboard.press('End');
+  assert.equal(await page.locator('[data-wheel][aria-pressed="true"]').innerText(), 'Cut');
+  assert.equal(await page.locator('[data-wheel-panel="8"]').isVisible(), true);
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('[data-wheel][aria-pressed="true"]').innerText(), 'Clay');
+  await wheel.nth(5).click();
+  assert.match(await page.locator('#wheel-detail').innerText(), /Elastic Move/);
+  await page.goto(base + '/quick-start.html');
+  const screenshot = page.locator('[data-zoom]').first();
+  await screenshot.click();
+  await page.waitForFunction(()=>document.querySelector('.image-dialog img')?.naturalWidth===1600);
+  assert.equal(await page.locator('.image-dialog').evaluate(e=>e.open), true);
+  assert.equal(await page.locator('.image-dialog img').evaluate(e=>e.naturalWidth),1600);
+  await page.addScriptTag({content:axe});
+  assert.deepEqual((await page.evaluate(async()=>await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}}))).violations.map(v=>v.id),[]);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.activeElement?.hasAttribute('data-zoom'));
+  await page.emulateMedia({reducedMotion:'reduce'});
+  assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).scrollBehavior),'auto');
+  const touch = await browser.newContext({hasTouch:true,viewport:{width:390,height:844}});
+  const tp=await touch.newPage();await tp.goto(base+'/tool-wheel.html');
+  await tp.locator('[data-wheel="8"]').tap();
+  assert.equal(await tp.locator('[data-wheel-panel="8"]').isVisible(),true);
+  await tp.goto(base+'/quick-start.html');await tp.locator('[data-zoom]').first().tap();
+  assert.equal(await tp.locator('.image-dialog').evaluate(e=>e.open),true);
+  await tp.getByRole('button',{name:'Close image · Esc',exact:true}).tap();
+  await touch.close();
   assert.deepEqual(errors, []);
   await writeFile(
     new URL("browser-report.json", evidence),
@@ -151,6 +195,7 @@ try {
         search,
         mobileWidths: [390, 320],
         keyboard: ["skip", "Control+K", "Meta+K", "Escape", "focus return"],
+        newInteractions: ['wheel keyboard/mouse/touch', 'lightbox pixels/Escape/focus/touch', 'reduced motion', 'previous/next navigation', 'all article image decoding'],
         errors,
       },
       null,

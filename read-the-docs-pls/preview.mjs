@@ -10,6 +10,7 @@ export function serve(port = 4176) {
     ".js": "text/javascript",
     ".json": "application/json",
     ".svg": "image/svg+xml",
+    ".png": "image/png",
     ".wasm": "application/wasm",
   };
   const server = createServer(async (req, res) => {
