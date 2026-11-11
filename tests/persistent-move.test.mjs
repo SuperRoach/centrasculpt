@@ -325,6 +325,7 @@ for (const deformationMode of ["non-elastic", "elastic"]) {
         changed() {},
       });
     tools.select("move");
+    tools.move.placement = "surface";
     tools.move.mode = deformationMode;
     tools.move.interaction = "translate";
     const notifications = { commits: 0 };

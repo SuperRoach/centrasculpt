@@ -219,7 +219,7 @@ test("native and actual recovery retain remembered brush while another tool is a
     f.tools.selectMoveGroup();
     assert.equal(f.tools.move.mode, "elastic");
     assert.equal(f.tools.lastMoveVariant, "elastic");
-    assert.equal(f.tools.move.placement, "surface");
+    assert.equal(f.tools.move.placement, "free");
     old.move.interaction = "twist";
     old.move.mode = "preview";
     f.tools.select("clay");

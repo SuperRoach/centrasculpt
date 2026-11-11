@@ -32,6 +32,8 @@ import type { XRControllerState } from "./xr-input";
 import { XRSnapGuide } from "./xr-snap-guide";
 export interface XRStrokeInteraction {
   readonly active: boolean;
+  readonly processing?: boolean;
+  readonly processingProgress?: number;
   readonly feedback?: string;
   readonly liveSizing?: import("./xr-brush-sizing").XRLiveSizing | null;
   update(
@@ -114,6 +116,12 @@ export class XRClayStroke implements XRStrokeInteraction {
     return this.session.phase === "drawing" && toolAllowsLiveBrushSizing(this.capturedTool)
       ? ("clay-radius" as const)
       : null;
+  }
+  get processingProgress(): number {
+    return this.session.commitProgress;
+  }
+  get processing(): boolean {
+    return this.session.phase === "committing";
   }
   get active(): boolean {
     return this.session.active;

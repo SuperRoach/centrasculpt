@@ -219,6 +219,7 @@ export function* evaluateTube(
   extent = 1.6,
   maxSamples = 2 * 192 ** 3,
   onAllocate?: (samples: number) => void,
+  onProgress?: (fraction: number) => void,
 ): Generator<void, SDFVolume> {
   const step = (2 * extent) / (resolution - 1),
     prepared = new PreparedTube(source, step * 0.5),
@@ -249,7 +250,10 @@ export function* evaluateTube(
             ),
           ),
         );
-        if (i % 128 === 0) yield;
+        if (i % 128 === 0) {
+          onProgress?.(i / volume.values.length);
+          yield;
+        }
       }
   return volume;
 }

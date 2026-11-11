@@ -63,6 +63,7 @@ export function fixture(n = 33) {
       },
     };
   tools.select("move");
+  tools.move.placement = "surface";
   return {
     get l() {
       return l;

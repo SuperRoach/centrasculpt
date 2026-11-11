@@ -30,6 +30,7 @@ export class ClayStrokeSession {
   private stagedDeformation = false;
   private queue: PathPoint[] = [];
   private cursor = 0;
+  private commitMeshChunks = 0;
   private replayTime = 0;
   constructor(
     private readonly layers: () => IndependentLayers,
@@ -226,6 +227,7 @@ export class ClayStrokeSession {
   end(): void {
     if (this.phase !== "drawing") return;
     if (!this.valid()) throw new Error("Clay target changed.");
+    this.commitMeshChunks = 0;
     if (!this.buffered) {
       this.preview = this.raw;
       if (this.stagedMesh || this.stagedDeformation) {
@@ -243,6 +245,12 @@ export class ClayStrokeSession {
     if (this.layers().metrics.enabled)
       this.layers().metrics.record("path", performance.now() - start);
     this.phase = "committing";
+  }
+  get commitProgress(): number {
+    const remaining = this.layers().active.mesher.pendingChunks;
+    const meshProgress = this.commitMeshChunks ? 1 - remaining / this.commitMeshChunks : 0;
+    if (!this.queue.length) return 0.96 * meshProgress;
+    return (0.8 * (this.cursor - Number(!!this.pending))) / this.queue.length + 0.16 * meshProgress;
   }
   pump(budgetMs = 4): boolean {
     if (
@@ -300,6 +308,8 @@ export class ClayStrokeSession {
     }
     if (this.phase === "drawing") return false;
     if (this.stagedMesh || this.stagedDeformation) {
+      if (!this.pending && this.cursor === this.queue.length && !this.commitMeshChunks)
+        this.commitMeshChunks = this.layers().active.mesher.pendingChunks;
       this.layers().active.rebuild(
         CLAY_MESH_CHUNKS,
         Math.min(CLAY_MESH_BUDGET_MS, Math.max(0, budgetMs - (performance.now() - started))),

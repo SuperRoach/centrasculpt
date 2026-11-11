@@ -68,6 +68,7 @@ for (const resolution of [64, 128, 192]) {
         changed() {},
       });
       tools.select("move");
+      tools.move.placement = "surface";
       tools.move.radius = radius;
       const interaction = new XRMoveTool(() => l, tools, new Group()),
         tool = {

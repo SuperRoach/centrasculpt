@@ -3131,8 +3131,13 @@ export class IndependentLayers {
   }
   /** Source-first atomic regeneration. No source/cache publication before all slices
    * and chunks succeed. One in-flight candidate, cancelled on ownership changes. */
-  async regenerateTube(value: TubeSource, id?: string, signal?: AbortSignal): Promise<SdfLayer> {
-    return this.regenerateSource(value, id, signal);
+  async regenerateTube(
+    value: TubeSource,
+    id?: string,
+    signal?: AbortSignal,
+    progress?: (fraction: number) => void,
+  ): Promise<SdfLayer> {
+    return this.regenerateSource(value, id, signal, undefined, progress);
   }
   async regeneratePrimitive(
     value: PrimitiveSource,
@@ -3147,6 +3152,7 @@ export class IndependentLayers {
     id?: string,
     signal?: AbortSignal,
     placement?: VolumeTransform,
+    progress?: (fraction: number) => void,
   ): Promise<SdfLayer> {
     this.assertAvailable();
     if (this.selectedGroupId) throw new Error("Select a child layer for procedural editing.");
@@ -3191,7 +3197,14 @@ export class IndependentLayers {
       };
       const work =
         source.kind === "tube"
-          ? evaluateTube(source, n, extent, maxSamples, allocate)
+          ? evaluateTube(
+              source,
+              n,
+              extent,
+              maxSamples,
+              allocate,
+              progress && ((fraction) => progress(fraction * 0.65)),
+            )
           : evaluatePrimitive(source, n, maxSamples, allocate);
       let result = work.next(),
         deadline = performance.now() + 3;
@@ -3240,9 +3253,12 @@ export class IndependentLayers {
       const triangleBudget =
         MAX_PROJECT_TRIANGLES -
         [...this.runtimes.values()].reduce((n, r) => n + (r === old ? 0 : r.triangles), 0);
+      const meshChunks = candidate.mesher.pendingChunks;
+      progress?.(0.65);
       while (candidate.mesher.pendingChunks) {
         check();
         candidate.rebuild(2, 3);
+        progress?.(0.65 + 0.31 * (1 - candidate.mesher.pendingChunks / meshChunks));
         this.tubeStagingBytes =
           volumeSampleCount(volume) * 8 +
           candidate.mesher.ownedGeometryBytes +

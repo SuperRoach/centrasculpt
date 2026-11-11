@@ -282,6 +282,7 @@ test("Elastic captured grab changes only edge softness; CPU/GPU falloff agree an
     pose = new Matrix4().makeTranslation(0, 0, 1.5);
   try {
     f.tools.select("move");
+    f.tools.move.placement = "surface";
     f.tools.move.mode = "elastic";
     f.tools.move.interaction = "translate";
     const before = f.layers.active.volume.values.slice();

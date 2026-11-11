@@ -72,6 +72,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   private commitAbort: AbortController | null = null;
   private commitGeneration = 0;
   private commitMessage = "";
+  processingProgress = 0;
   private currentTime = 0;
   private commitStartedAt = 0;
   private armed = false;
@@ -208,6 +209,9 @@ export class XRMoveTool implements XRStrokeInteraction {
   get liveSizing() {
     if (!this.grabbing || this.commitAbort || !this.capture) return null;
     return this.capture.mode === "elastic" ? ("move-falloff" as const) : this.radiusSizing;
+  }
+  get processing(): boolean {
+    return !!this.commitAbort;
   }
   get active(): boolean {
     return this.grabbing;
@@ -554,6 +558,7 @@ export class XRMoveTool implements XRStrokeInteraction {
       abort = new AbortController();
     this.commitAbort = abort;
     this.commitStartedAt = this.currentTime;
+    this.processingProgress = 0;
     this.commitMessage = "Move · reconstructing · preview held · Support grip cancels";
     this.armed = false;
     const owned = () =>
@@ -572,8 +577,11 @@ export class XRMoveTool implements XRStrokeInteraction {
         this.preview.field,
         abort.signal,
         (p) => {
-          if (guard())
-            this.commitMessage = `Move · ${p.stage} ${Math.round((p.completed / Math.max(1, p.total)) * 100)}% · preview held`;
+          if (!guard()) return;
+          const fraction = Math.min(1, p.completed / Math.max(1, p.total));
+          const stage = { copying: 0, indexing: 1, reconstruction: 2, meshing: 3 }[p.stage];
+          this.processingProgress = Math.max(this.processingProgress, (stage + fraction) * 0.24);
+          this.commitMessage = `Move · ${p.stage} ${Math.round(fraction * 100)}% · preview held`;
         },
         () => {
           if (!guard()) throw new Error("Move cancelled.");

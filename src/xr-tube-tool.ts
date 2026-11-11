@@ -95,6 +95,10 @@ export class XRTubeTool implements XRStrokeInteraction {
   private note = "";
   private capturedMode = "";
   private capturedLayers?: IndependentLayers;
+  processingProgress = 0;
+  get processing(): boolean {
+    return !!this.pending;
+  }
   get active(): boolean {
     return this.held || this.radiusHeld || !!this.pending;
   }
@@ -196,8 +200,11 @@ export class XRTubeTool implements XRStrokeInteraction {
     }
     const abort = new AbortController();
     this.pending = abort;
+    this.processingProgress = 0;
     void l
-      .regenerateTube(source, id, abort.signal)
+      .regenerateTube(source, id, abort.signal, (fraction) => {
+        if (this.pending === abort) this.processingProgress = fraction;
+      })
       .then(() => {
         if (this.pending !== abort) return;
         this.note = "Tube ready · grab a spline point to reshape";

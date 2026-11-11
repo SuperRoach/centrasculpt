@@ -70,6 +70,7 @@ function fixture(n = 33) {
       },
     };
   tools.select("move");
+  tools.move.placement = "surface";
   tools.move.interaction = "translate";
   return {
     l,

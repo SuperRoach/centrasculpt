@@ -94,6 +94,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
   private remainder = 0;
   private queue: Matrix4[] = [];
   private emitted = 0;
+  private commitMeshChunks = 0;
   private attachmentPose(controller: Matrix4): Matrix4 {
     const a = this.strokeSettings?.attachment ?? this.tools.stampAttachment,
       q = new Quaternion().setFromEuler(
@@ -191,6 +192,16 @@ export class XRShapeStamp implements XRStrokeInteraction {
     this.pendingPreview.visible = false;
     this.pendingPreview.name = "Pending Stamp preview · at most 16 samples · not source geometry";
     root.add(this.pendingPreview);
+  }
+  get processingProgress(): number {
+    const total = this.emitted + this.queue.length;
+    if (!total) return 0;
+    const remaining = this.strokeLayers?.active.mesher.pendingChunks ?? 0;
+    const meshProgress = this.commitMeshChunks ? 1 - remaining / this.commitMeshChunks : 0;
+    return (0.8 * (this.emitted - Number(!!this.pending))) / total + 0.16 * meshProgress;
+  }
+  get processing(): boolean {
+    return this.draining;
   }
   get active(): boolean {
     return this.held || this.adjusting || this.continuous;
@@ -449,6 +460,7 @@ export class XRShapeStamp implements XRStrokeInteraction {
         this.trail.length = 0;
         layers.beginStroke();
         this.released = false;
+        this.commitMeshChunks = 0;
         this.strokeSettings = structuredClone({
           definition,
           attachment: this.tools.stampAttachment,
@@ -529,6 +541,8 @@ export class XRShapeStamp implements XRStrokeInteraction {
     }
     // Coalesce dirty chunks across stamps instead of draining a whole stamp
     // before the next pose. Finish only after the existing two-chunk drain.
+    if (this.released && !this.queue.length && !this.pending && !this.commitMeshChunks)
+      this.commitMeshChunks = layers.active.mesher.pendingChunks;
     layers.active.rebuild(2, Math.min(3, Math.max(0, 4 - (performance.now() - workStart))));
     if (
       this.released &&
@@ -595,6 +609,12 @@ export class XRToolInteraction implements XRStrokeInteraction {
       this.stamp.active ||
       !!this.move?.active
     );
+  }
+  get processingProgress(): number | undefined {
+    return this.current?.processingProgress;
+  }
+  get processing(): boolean {
+    return this.current?.processing ?? false;
   }
   get liveSizing() {
     return this.current?.liveSizing ?? null;

@@ -1,6 +1,7 @@
 import type { Intersection, Material, Matrix4, Object3D, WebXRManager } from "three";
 import {
   BoxGeometry,
+  Color,
   CylinderGeometry,
   DoubleSide,
   Group,
@@ -66,6 +67,11 @@ export class XRControllers {
   readonly shortcuts: XRSupportShortcuts;
   readonly supportGuide?: XRSupportGuide;
   readonly sizeRuler?: XRSizeRuler;
+  private readonly processingSpinner: Mesh<RingGeometry, MeshBasicMaterial>;
+  private readonly spinnerStart = new Color("#ffba63");
+  private readonly spinnerEnd = new Color("#64ffa1");
+  private readonly spinnerEye = new Vector3();
+  private readonly spinnerSide = new Vector3();
   private viewer: { x: number; y: number; z: number } | null = null;
   setGuideViewer(viewer: { x: number; y: number; z: number } | null): void {
     this.viewer = viewer;
@@ -153,6 +159,7 @@ export class XRControllers {
     this.layerGrab?.cancel();
     this.haptics.clearIssues();
     this.supportGuide?.hide();
+    this.processingSpinner.visible = false;
     this.sizeRuler?.hide();
     this.root.visible = false;
   }
@@ -203,6 +210,18 @@ export class XRControllers {
       );
     if (options.workspace) this.grab = new WorkspaceNavigation(options.workspace);
     root.visible = false;
+    const spinnerGeometry = new RingGeometry(0.0065, 0.009, 28, 1, 0, Math.PI * 1.55);
+    const spinnerMaterial = new MeshBasicMaterial({
+      color: this.spinnerStart,
+      side: DoubleSide,
+      toneMapped: false,
+    });
+    this.processingSpinner = new Mesh(spinnerGeometry, spinnerMaterial);
+    this.processingSpinner.name = "Tool controller processing spinner";
+    this.processingSpinner.visible = false;
+    this.processingSpinner.raycast = () => {};
+    root.add(this.processingSpinner);
+    this.resources.push(spinnerGeometry, spinnerMaterial);
     if (options.sizing?.ruler) this.sizeRuler = new XRSizeRuler(root);
     const bodyGeometry = new BoxGeometry(0.035, 0.075, 0.045),
       indicatorGeometry = new SphereGeometry(0.008, 8, 6),
@@ -271,6 +290,7 @@ export class XRControllers {
           this.options.models?.disconnect(index);
           this.input.disconnect(index);
           this.supportGuide?.hide();
+          this.processingSpinner.visible = false;
           rayVisual.visible = gripVisual.visible = false;
           this.panel?.invalidate();
         };
@@ -332,6 +352,7 @@ export class XRControllers {
     this.options.lighting?.cancel();
     this.roles.setDominant(hand);
     this.supportGuide?.hide();
+    this.processingSpinner.visible = false;
     this.shortcuts.reset();
     this.options.menus?.close();
     this.options.stroke?.cancel();
@@ -841,6 +862,33 @@ export class XRControllers {
         ),
       strokeTool ? this.slots[strokeTool.slot].grip.matrixWorld : undefined,
     );
+    const spinner = this.processingSpinner;
+    const toolGrip = strokeTool ? this.slots[strokeTool.slot].grip : undefined;
+    spinner.visible = !!(
+      active &&
+      strokeTool?.gripTracked &&
+      toolGrip &&
+      this.viewer &&
+      this.options.stroke?.processing
+    );
+    if (spinner.visible && toolGrip && this.viewer) {
+      toolGrip.updateWorldMatrix(true, false);
+      const position = this.root.worldToLocal(
+        spinner.position.setFromMatrixPosition(toolGrip.matrixWorld),
+      );
+      const { x, y, z } = this.viewer;
+      this.spinnerSide.set(z - position.z, 0, position.x - x);
+      if (this.spinnerSide.lengthSq() < 1e-8) this.spinnerSide.set(1, 0, 0);
+      position.addScaledVector(
+        this.spinnerSide.normalize(),
+        strokeTool?.handedness === "left" ? -0.07 : 0.07,
+      );
+      position.y += 0.02;
+      spinner.lookAt(this.root.localToWorld(this.spinnerEye.set(x, y, z)));
+      spinner.rotateZ((-time * 2 * Math.PI) / 1600);
+      const progress = this.options.stroke?.processingProgress ?? 0;
+      spinner.material.color.copy(this.spinnerStart).lerp(this.spinnerEnd, progress);
+    }
     const issueOwned = this.haptics.flush(strokeTool, time);
     if (
       !issueOwned &&
@@ -948,6 +996,7 @@ export class XRControllers {
     this.options.models?.stop();
     this.input.reset();
     this.supportGuide?.hide();
+    this.processingSpinner.visible = false;
     this.sizeRuler?.hide();
     this.root.visible = false;
     this.panel?.stop();
@@ -977,6 +1026,7 @@ export class XRControllers {
       slot.ray.removeEventListener("disconnected", slot.disconnected);
       this.root.remove(slot.ray, slot.grip);
     }
+    this.processingSpinner.removeFromParent();
     for (const resource of this.resources) resource.dispose();
     this.panel?.dispose();
     this.options.models?.dispose();

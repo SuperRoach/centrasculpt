@@ -240,7 +240,7 @@ export class EditorToolState {
     snap: 0 as 0 | 15 | 45 | 90,
     precision: false,
     interaction: "free" as MoveInteraction,
-    placement: "surface" as "surface" | "free",
+    placement: "free" as "surface" | "free",
     axis: "free" as "free" | "x" | "y" | "z",
     angularStrength: 1,
     angleClamp: 120,

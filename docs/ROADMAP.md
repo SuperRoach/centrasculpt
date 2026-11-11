@@ -4,7 +4,7 @@
 
 - **8.4a Move.** Default Free Move combines translation and wrist rotation in
   one persistent gesture. Existing Translate, Elastic, Rotate and Twist
-  settings reopen as saved. Surface and controller-tip placement share the
+  settings reopen as saved. Default controller-tip and optional Surface placement share the
   frozen layer frame. Live non-elastic radius growth is capped at 25% over
   the starting size and the existing maximum. Elastic retains live softness.
 - **8.4b Feedback.** Two translucent, depth-tested Move shells and a shared

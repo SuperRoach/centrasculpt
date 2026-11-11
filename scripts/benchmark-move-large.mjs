@@ -80,6 +80,7 @@ for (const [target, resolution] of [
       changed() {},
     });
   tools.select("move");
+  tools.move.placement = "surface";
   const move = new XRMoveTool(() => l, tools, new Group()),
     tool = {
       role: "tool",

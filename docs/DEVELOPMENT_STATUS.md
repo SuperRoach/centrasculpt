@@ -27,7 +27,7 @@ the CPU and GPU radius together while keeping source positions and voxels
 frozen. Release snapshots the final field and uses the existing guarded
 reconstruction and one-action publication. Shrinking the influence clear
 of the surface yields an empty patch. Elastic Translate retains its held
-stick softness binding. Legacy placement defaults to Surface when absent.
+stick softness binding. Move defaults to controller-tip placement when no placement is saved.
 
 ## 3. VR feedback and navigation
 

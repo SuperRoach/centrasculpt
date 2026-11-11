@@ -236,7 +236,7 @@ class FakeSession extends EventTarget {
     return [...this.listeners.values()].reduce((n, s) => n + s.size, 0);
   }
 }
-function harness() {
+function harness(options) {
   const rays = [new Group(), new Group()],
     grips = [new Group(), new Group()],
     root = new Group(),
@@ -245,6 +245,9 @@ function harness() {
       { getController: (i) => rays[i], getControllerGrip: (i) => grips[i] },
       root,
       roles,
+      undefined,
+      undefined,
+      options,
     );
   return { bridge, rays, grips, root };
 }
@@ -278,6 +281,51 @@ test("controller bridge uses native ray/grip parents and cleans temporary visual
     bridge.dispose();
   }
   assert.equal(rays[1]._listeners.connected.length, 0);
+});
+test("processing spinner follows the Tool hand and hides when work or tracking ends", () => {
+  const stroke = {
+    active: true,
+    processing: false,
+    processingProgress: 0,
+    update() {},
+    cancel() {},
+  };
+  const { bridge, rays, grips, root } = harness({ stroke });
+  try {
+    rays[0].dispatchEvent({ type: "connected", data: source("right") });
+    rays[1].dispatchEvent({ type: "connected", data: source("left") });
+    grips[0].position.set(0.2, 1.1, -0.4);
+    grips[1].position.set(-0.2, 1.1, -0.4);
+    bridge.start(new FakeSession());
+    bridge.setGuideViewer({ x: 0, y: 1.6, z: 0 });
+    const spinner = root.getObjectByName("Tool controller processing spinner");
+    bridge.update(0);
+    assert.equal(spinner.visible, false);
+    stroke.processing = true;
+    bridge.update(16);
+    assert(spinner.visible && spinner.position.x > 0.2);
+    assert.equal(spinner.material.color.getHexString(), "ffba63");
+    stroke.processingProgress = 1;
+    const initial = spinner.quaternion.clone();
+    bridge.update(32);
+    assert(spinner.quaternion.angleTo(initial) > 0);
+    assert.equal(spinner.material.color.getHexString(), "64ffa1");
+    bridge.setDominant("left");
+    bridge.update(48);
+    assert(spinner.visible && spinner.position.x < -0.2);
+    stroke.processing = false;
+    bridge.update(64);
+    assert.equal(spinner.visible, false);
+    stroke.processing = true;
+    bridge.update(80);
+    assert(spinner.visible);
+    bridge.setGuideViewer(null);
+    bridge.update(96);
+    assert.equal(spinner.visible, false);
+  } finally {
+    bridge.dispose();
+  }
+  assert.equal(root.getObjectByName("Tool controller processing spinner"), undefined);
 });
 test("bridge hides lost/hand tracking, handles visibility cancellation, and role changes never move tracked poses", () => {
   const { bridge, rays, grips } = harness(),
