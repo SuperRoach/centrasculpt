@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Centra compact sculpt benchmark</title>
+    <style>
+      body { background: #191a20; color: #f4f0ed; font: 16px system-ui; margin: 1.5rem auto; padding: 0 1rem; max-width: 48rem; }
+      canvas { background: #23252d; display: block; width: 100%; height: min(44vh, 360px); margin-block: 1rem; }
+      button, select { font: inherit; padding: 0.45em 0.7em; }
+      a { color: #b3d6ff; }
+      pre { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Compact sculpt benchmark</h1>
+    <p>Replay the same 1 mm bust, Clay, Smooth, Undo and Redo sequence on both backends.</p>
+    <label>Order
+      <select id="order">
+        <option value="dense,sparse">Dense first</option>
+        <option value="sparse,dense">Sparse first</option>
+      </select>
+    </label>
+    <button id="desktop">Run browser benchmark</button>
+    <button id="vr" disabled>Enter VR and run</button>
+    <canvas aria-label="Bust in progress"></canvas>
+    <pre role="status">Ready.</pre>
+    <a id="download" hidden>Download results</a>
+    <script type="module" src="./browser.mjs"></script>
+  </body>
+</html>

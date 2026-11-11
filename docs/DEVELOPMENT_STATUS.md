@@ -87,6 +87,113 @@ canvas. The public field guide describes the shipped controls.
 
 ---
 
+# Phase 8.3b — Narrow-band sparse SDF and large sculpt space — 2026-11-12
+
+## 1. Scope and preservation
+
+The original run used `/Users/brettjames/development/vrappPOC` at
+`da895ee` with a clean checkout. Reviewed repo instructions, Phase 8.3a harness/results and production
+VolumeStore, SDFVolume, growth, brush, mesher, history, native, Personal Shapes,
+backup and stamp contracts. Research scripts and disposable fixtures only.
+Production source, limits, native formats, saved user projects, library and
+recovery records were untouched. No commit, push, merge, deployment or
+What’s New entry. The 2026-11-12 follow-up confirmed the prior Codex research
+was complete and preserved the original matrix. It adds the missing
+empty-field growth run in the active checkout at `71d6419`.
+
+## 2. Isolated implementation
+
+8³ bricks use bounded numeric keys on a global lattice. Three 2/3/4-voxel bands
+use signed far fields and two-sample support for crossing interpolation and
+gradient stencils. Exact masters provide full distances for existing shapes.
+A separate capped analytic capsule field with exact Float32 edit pages tests
+large-space allocation and local Add/Subtract/Smooth. Staged writes support
+prepublication cancellation, budget refusal, Undo and Redo in the harness.
+The follow-up retains committed edits on both ends of the growing tube and
+keeps four Undo patches. It bounds total exact edit pages as well as per-edit
+staging and cache pages.
+
+## 3. Measurements
+
+Completed **69 master/grown cases and 27 large-space cases**. At 1 mm
+spacing, 3-voxel tube/branch payloads grew from 196/298 bricks at 100 mm
+to 1,756/2,741 at 1,000 mm. Five clusters remained at 230–238 bricks.
+The metre branch used a modeled 36.74 MiB during a stroke including CPU
+mesh and history, versus a 4.31 GiB dense tight-box values+scratch
+projection. Median local stroke plus dirty rebuild stayed near 30 ms.
+All 33 selected master/grown meshes and all large-space baseline meshes
+matched their exact references. Tested near-surface interpolation and
+normals meet the proposed tolerances.
+
+The empty-field follow-up committed 360 actions across the three bands,
+including 60 Subtract dabs. The continuous 1,011.99 mm tube remained closed
+and matched its exact edited reference. For the 3-voxel band, 252 → 2,208
+exact edit pages and 224 → 1,889 cache pages covered a 10× nominal span
+increase. At the metre checkpoint, modeled resident/stroke high-water was
+34.98/35.79 MiB including CPU mesh and four patches. The dense tight-box
+projection was 22.91 MiB and the equal-axis projection was 8.21 GiB, both
+with scratch. The 3-voxel CPU stroke medians were 26.69/29.20/27.84 ms
+across the three span windows. Worst observed across bands was 46.83 ms.
+
+At 192³, modeled co-resident cache working memory is 1.075–1.078×
+dense values+scratch by band median. Even the optimistic values-only
+scenario exceeds dense values by 15.1–15.7%. Master lookup met the host
+thresholds (1.35–1.65× warm medians, 2.31× worst). The tightest transformed
+stamp workload missed 1.5×, and the synthetic exact local lookup measured
+5.11× median and 7.29× worst. Whole-process maxRSS was 717.33 MiB,
+including fixture decoding, validation and runtime.
+
+## 4. Verification
+
+In the original run, focused **178/178** and quick **21/21** passed. Full `npm run check` passed
+format, lint, strict TypeScript and build. **1,724/1,729 tests passed**, five
+loopback socket tests failed with sandbox `listen EPERM`, and none were
+skipped. The failures cover agent bridge/MCP, binary preview and docs hosting,
+matching the Phase 8.3a environment limitation. No unrestricted rerun or
+physical device acceptance was performed. All eleven original disposable
+master file and sample hashes match their baseline. A disposable .form and
+gzip Personal Shape backup restore preserves exact values and metadata.
+
+The follow-up verified dirty mesh bytes for every action and audited the
+complete metre tube. Undo removed new pages at each checkpoint, staged
+cancellation and budget refusal preserved the undone state, and Redo
+restored identical mesh bytes. Current-checkout focused **179/179** and
+quick **21/21** passed. The follow-up `npm run check` passed formatting, lint,
+strict TypeScript and build, then **1,737/1,742** tests passed with the same
+five sandbox loopback failures and zero skips.
+
+### Compact bust follow-up on Quest 3
+
+The 2026-11-12 paired 90 Hz WebXR replay grew a bust from empty at 1 mm
+spacing, with Clay, Smooth, Undo and Redo. Both backends matched exact
+field and ordered mesh checksums at all seven checkpoints. Sparse modeled
+10.43 MiB retained at finish versus 24.07 MiB dense, and 15.16 MiB stroke
+high-water versus 28.13 MiB dense. Median synchronous CPU times were
+82.9/47.7/46.8 ms dense versus 317.5/202.1/203.6 ms sparse for constructive
+Clay, surface Clay and Smooth. Dirty remeshing dominated. Keep dense as
+the everyday default for this implementation. The harness drains dirty
+chunks per edit and does not measure normal application scheduling or
+compositor timing. Follow-up full check passed **1,742/1,742** after
+loopback access was granted.
+[Compact sculpt results and reproduction](SPARSE_SDF_COMPACT_SCULPT_RESULTS.md)
+
+## 5. Remaining gates and decision
+
+**No-go for Phase 8.3c integration.** Co-resident exact Float32 masters and
+cache exceed both dense memory thresholds. Prototype commit is synchronous.
+Mid-publication failure, concurrent work, real stamps, growth/history rebind,
+full mutable VolumeStore, masks/paint, renderer upload and sparse native,
+recovery and export roundtrips remain unproven.
+
+## 6. Handoff
+
+See the [reproducible Phase 8.3b report and Quest 3 checklist](SPARSE_SDF_83B_RESULTS.md).
+Before reconsidering integration, prove exact storage for arbitrary imported
+and edited fields with working and transient savings under existing budgets,
+then validate complete transactions and physical headset frame times.
+
+---
+
 # Phase 8.3a — Dense vs sparse brick research — 2026-11-11
 
 ## 1. Scope, authority and preservation
@@ -168,7 +275,8 @@ The report enumerates concrete call-site dependencies and required changes.
 
 ## 6. Next acceptance gates
 
-8.3b remains unstarted. Require median 128/192 working footprint savings ≥50% vs
+The Phase 8.3b study above evaluates these gates. Require median 128/192
+working footprint savings ≥50% vs
 values+scratch and ≥25% vs values alone, including metadata/halos/mutable scratch
 and any co-resident exact master; no case above dense values+scratch. Warm lookup
 median ≤2× dense/no case >3×; repeated field sampling ≤1.5×. Preserve surface signs,

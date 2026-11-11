@@ -20,6 +20,71 @@
   remain physical acceptance gates. See the
   [Phase 8.4 development handover](DEVELOPMENT_STATUS.md#phase-84--vr-sculpting-experience-polish--2026-11-12).
 
+## Phase 8.3b — Narrow-band SDF and large sculpt space (2026-11-12)
+
+Offline 8³ prototype evaluated 2/3/4-voxel bands, explicit signed far fields,
+exact fallback, negative/grown lattices and local staged edits. At 1 mm spacing,
+the analytic tube and branch allocate approximately in proportion to occupied
+length. Five separated clusters use nearly constant storage as the space
+between them grows. The existing exact masters plus cache fail the working
+memory gates. The 2026-11-12 follow-up grew a connected 1,011.99 mm tube
+from empty with retained edits at 1 mm spacing and verified new-page Undo
+and Redo at 100/500/1,000 mm. The 3-voxel stroke high-water model reached
+35.79 MiB including the CPU mesh and four edit patches. Median CPU stroke
+time stayed within 26.69–29.20 ms across the span windows.
+[Results and Quest 3 checklist](SPARSE_SDF_83B_RESULTS.md)
+
+**Production integration remains gated.** Require a bounded, lossless
+editable representation for arbitrary Float32 projects and measured working
+savings of ≥50% vs values+scratch and ≥25% vs values alone. Warm lookup must
+remain ≤2× dense median with no case >3×, repeated field evaluation ≤1.5×, and
+crossing signs, topology and full native/master fidelity must agree. Keep the
+interpolation ≤1e-6 model-unit, normal component ≤1e-4 and mesh ≤0.01-voxel
+geometry gates. Production transaction and failure handling, growth and Undo,
+masks/paint, Boolean far fields, exact stamp source snapshots, export/workers,
+native/recovery/backup roundtrips and physical headset acceptance remain open.
+
+The compact-bust follow-up on Quest 3 matched dense and sparse field and
+mesh checksums at 1 mm detail. Sparse lowered the modeled finished footprint
+by 57%. Synchronous CPU brush and remesh medians were 3.8–4.4× dense, with
+dirty remeshing dominant. Dense remains the everyday default.
+[Compact sculpt comparison](SPARSE_SDF_COMPACT_SCULPT_RESULTS.md)
+
+## Phase 8.3c — Sparse performance for everyday sculpting (planned 2026-11-12)
+
+Evaluate whether exact sparse storage can become the default for new sculpts.
+Start with the compact Quest 3 replay, where Smooth remeshing alone took
+198.9 ms sparse versus 45.8 ms dense. Use that replay to isolate costs, then
+compare the backends under Centra's normal frame scheduling.
+
+1. **Speed up dirty remeshing.** Profile brick lookup, sample gathering,
+   gradient stencils and extraction separately. Prototype gathering a dirty
+   chunk and its halo into reusable contiguous Float32 scratch once per
+   rebuild. Reuse those reads for crossings and normals, skip chunks proven
+   to contain no crossings, and compare each change with the dense mesher
+   on identical fields and dirty regions.
+2. **Keep meshes current during continuous strokes.** Compare both backends
+   with the same in-app mesh budget. Coalesce repeated invalidations, prioritize
+   chunks under the brush, and bound queued work and scratch. Check Undo,
+   Redo and cancellation while rebuilds are pending. Measure stroke-to-visible
+   mesh latency and time to clear the queue after release.
+3. **Verify on Quest 3.** Alternate backend order in repeated compact-bust
+   runs with Clay, Smooth and Undo. Repeat at 1 mm spacing across
+   100/500/1,000 mm using a connected sculpt, a branch and separated pieces.
+   Record p50/p95/p99 stroke-to-visible latency, frame times, missed frames
+   and peak memory over sustained sculpting. At the same detail and refresh
+   rate, require sparse to match dense p95/p99 stroke-to-visible latency
+   and missed-frame rate on the compact workloads, with a bounded mesh queue.
+   At sizes beyond dense admission, verify sustained latency, quality and
+   safe budget refusal directly on sparse.
+4. **Gate a default switch.** Verify the Phase 8.3b savings thresholds with
+   measured retained and peak memory, including histories, masks, paint,
+   source snapshots, staging, CPU meshes and GPU allocations. Pass the
+   existing geometry, sampling, transaction, Boolean, Stamp and exact
+   save/recovery/backup gates. Trial sparse as an opt-in backend for new
+   sculpts before considering it as the default. Keep the dense open path
+   for existing projects until lossless compatibility is demonstrated.
+
 ## Phase 8.3a — Dense vs sparse research (2026-11-11)
 
 Standalone 8³/16³ lossless read-only brick prototype and 78-case 64/128/192 matrix
@@ -30,19 +95,6 @@ and mesh buffers agree. All fixture payload bricks remain allocated; modeled
 metadata increases values-only footprint. Simple Map lookup is about 4× slower.
 Four-voxel candidate occupancy suggests further research, not achieved savings.
 Full check: 1,720/1,725, five socket `listen EPERM` failures; focused 7/7, quick 21/21.
-
-- **8.3b: conditional research recommendation, not started.** Compare 2/3/4-voxel
-  bands with explicit signed far fields, coherent halos and lossless-master fallback.
-  Go gates: ≥50% working savings vs values+scratch and ≥25% vs values alone,
-  including co-resident exact data; warm lookup median ≤2×/no case >3× and repeated
-  field evaluation ≤1.5×; exact crossing signs/topology, interpolation ≤1e-6 units,
-  normal component ≤1e-4 and geometry ≤0.01 voxel when differing. Preserve full
-  master/native/backup/recovery/Undo values and current caps; stop if gates fail.
-- **8.3c: deferred integration decision.** Mutable VolumeStore/brush scratch,
-  growth/crops, history, masks/paint, Boolean far fields, source snapshots,
-  mesher invalidation, export/workers and native project roundtrips remain unintegrated.
-  Sparse storage does not restore 1 mm features at coarse 64/128 resolution.
-
 
 Implementation and verification are separate gates. Historical results below are
 not fresh acceptance runs; consult the corresponding DEVELOPMENT_STATUS.md handover
