@@ -917,7 +917,9 @@ export class XRMenuView implements XRMenuInteraction {
       );
       return;
     }
-    const pad = b.colour ? 36 : 16,
+    const deleteLayer = b.id === "hier:delete-layer";
+    if (deleteLayer) this.icon("trash", r.x + 52, r.y + r.height / 2, style.text);
+    const pad = deleteLayer ? 88 : b.colour ? 36 : 16,
       size = ["+", "-", "‹", "›"].includes(b.label)
         ? VR_UI.control
         : r.width < 210
@@ -967,7 +969,22 @@ export class XRMenuView implements XRMenuInteraction {
     c.lineCap = "round";
     c.lineJoin = "round";
     c.beginPath();
-    if (id === "clay" || id === "inflate") {
+    if (id === "trash") {
+      c.moveTo(-24, -15);
+      c.lineTo(24, -15);
+      c.moveTo(-8, -15);
+      c.lineTo(-8, -23);
+      c.lineTo(8, -23);
+      c.lineTo(8, -15);
+      c.moveTo(-18, -8);
+      c.lineTo(-15, 23);
+      c.lineTo(15, 23);
+      c.lineTo(18, -8);
+      for (const x of [-6, 6]) {
+        c.moveTo(x, -6);
+        c.lineTo(x, 14);
+      }
+    } else if (id === "clay" || id === "inflate") {
       c.arc(0, 0, 14, 0, Math.PI * 2);
       c.moveTo(-7, 0);
       c.lineTo(7, 0);

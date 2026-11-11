@@ -432,7 +432,7 @@ export class LayerPaletteModel {
         );
       }
       add("hier:duplicate", "Duplicate", 40, 524, 524, 110, busy || group || !n.editable);
-      add("hier:rename", "Rename", 588, 524, 524, 110, busy || n.locked);
+      add("hier:rename", "Rename", 588, group ? 524 : 914, 524, 110, busy || n.locked);
       add("hier:parents", "Attach to layer", 40, 654, 524, 110, busy || !n.editable);
       add(
         `hier:fold:${n.id}`,
@@ -453,8 +453,20 @@ export class LayerPaletteModel {
         110,
         busy || index === siblings.length - 1 || !n.editable,
       );
-      if (!group) add("hier:boolean", "Boolean order…", 40, 914, 1072, 110, busy || n.locked);
-      else {
+      if (!group) {
+        const lastLayer = l.project.layerStack.layers.length === 1;
+        add("hier:boolean", "Boolean order…", 40, 914, 524, 110, busy || n.locked);
+        add(
+          "hier:delete-layer",
+          "Delete layer",
+          588,
+          524,
+          524,
+          110,
+          busy || !n.editable || lastLayer,
+          lastLayer ? "Keep at least one sculpt layer" : undefined,
+        );
+      } else {
         add("hier:ungroup", "Ungroup", 588, 244, 524, 110, busy || !n.editable);
         add("hier:delete", "Delete group…", 588, 374, 524, 110, busy || !n.editable);
       }
@@ -707,7 +719,12 @@ export class LayerPaletteModel {
         this.view = "list";
         this.context = null;
       } else if (action === "delete") this.view = "delete";
-      else if (action === "delete-children") {
+      else if (action === "delete-layer" && this.view === "node" && !(n instanceof LayerGroup)) {
+        l.deleteObject(n.id);
+        this.view = "list";
+        this.context = null;
+        this.feedback = `Deleted ${n.name}`;
+      } else if (action === "delete-children") {
         l.deleteGroup(n.id, "delete");
         this.view = "list";
         this.context = null;

@@ -730,6 +730,37 @@ test("XR palette hierarchy pages, expansion, actions, parent choices and rename 
     l.dispose();
   }
 });
+test("VR Layer Options deletes the chosen layer with Undo and protects the last layer", () => {
+  const { l, menu } = setup();
+  try {
+    const original = l.active.layer;
+    const deleteButton = () => menu.content().buttons.find((b) => b.id === "hier:delete-layer");
+    menu.setRequest("layers");
+    menu.activate(`hier:node:${original.id}`);
+    assert.equal(deleteButton().disabled, true);
+    menu.activate("hier:delete-layer");
+    assert.equal(l.project.layerStack.layers.length, 1);
+
+    const remaining = l.create(64, true);
+    assert.equal(l.project.activeLayerId, remaining.id);
+    l.setFlag(original.id, "locked", true);
+    assert.equal(deleteButton().disabled, true);
+    l.setFlag(original.id, "locked", false);
+    assert.equal(deleteButton().disabled, false);
+    const count = l.undoCount;
+    menu.activate("hier:delete-layer");
+    assert.equal(menu.content().title, "LAYERS");
+    assert.deepEqual(
+      l.project.layerStack.layers.map((layer) => layer.id),
+      [remaining.id],
+    );
+    assert.equal(l.undoCount, count + 1);
+    l.undo();
+    assert.equal(l.project.layerStack.get(original.id), original);
+  } finally {
+    l.dispose();
+  }
+});
 test("VR duplicate action is one transaction and menu interruption cancels an unfinished copy", async () => {
   const { l, menu } = setup();
   try {
