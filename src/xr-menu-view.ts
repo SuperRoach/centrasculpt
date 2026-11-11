@@ -917,9 +917,10 @@ export class XRMenuView implements XRMenuInteraction {
       );
       return;
     }
-    const deleteLayer = b.id === "hier:delete-layer";
-    if (deleteLayer) this.icon("trash", r.x + 52, r.y + r.height / 2, style.text);
-    const pad = deleteLayer ? 88 : b.colour ? 36 : 16,
+    const layerActionIcon =
+      b.id === "hier:duplicate" ? "duplicate" : b.id === "hier:delete-layer" ? "trash" : null;
+    if (layerActionIcon) this.icon(layerActionIcon, r.x + 52, r.y + r.height / 2, style.text);
+    const pad = layerActionIcon ? 88 : b.colour ? 36 : 16,
       size = ["+", "-", "‹", "›"].includes(b.label)
         ? VR_UI.control
         : r.width < 210
@@ -969,7 +970,15 @@ export class XRMenuView implements XRMenuInteraction {
     c.lineCap = "round";
     c.lineJoin = "round";
     c.beginPath();
-    if (id === "trash") {
+    if (id === "duplicate") {
+      c.rect(-7, -7, 29, 29);
+      c.moveTo(-22, 7);
+      c.lineTo(-22, -22);
+      c.lineTo(7, -22);
+      c.lineTo(7, -7);
+      c.moveTo(-22, 7);
+      c.lineTo(-7, 7);
+    } else if (id === "trash") {
       c.moveTo(-24, -15);
       c.lineTo(24, -15);
       c.moveTo(-8, -15);
