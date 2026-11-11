@@ -1,5 +1,29 @@
 # Centra Sculpt roadmap
 
+## Phase 8.3a — Dense vs sparse research (2026-11-11)
+
+Standalone 8³/16³ lossless read-only brick prototype and 78-case 64/128/192 matrix
+complete; [research report](SPARSE_SDF_83A_RESULTS.md) contains raw evidence,
+fresh-process cold/warm timings, source/target bounds study and integration audit.
+No production storage or quality/cap change. Exact samples, interpolation, normals
+and mesh buffers agree. All fixture payload bricks remain allocated; modeled
+metadata increases values-only footprint. Simple Map lookup is about 4× slower.
+Four-voxel candidate occupancy suggests further research, not achieved savings.
+Full check: 1,720/1,725, five socket `listen EPERM` failures; focused 7/7, quick 21/21.
+
+- **8.3b: conditional research recommendation, not started.** Compare 2/3/4-voxel
+  bands with explicit signed far fields, coherent halos and lossless-master fallback.
+  Go gates: ≥50% working savings vs values+scratch and ≥25% vs values alone,
+  including co-resident exact data; warm lookup median ≤2×/no case >3× and repeated
+  field evaluation ≤1.5×; exact crossing signs/topology, interpolation ≤1e-6 units,
+  normal component ≤1e-4 and geometry ≤0.01 voxel when differing. Preserve full
+  master/native/backup/recovery/Undo values and current caps; stop if gates fail.
+- **8.3c: deferred integration decision.** Mutable VolumeStore/brush scratch,
+  growth/crops, history, masks/paint, Boolean far fields, source snapshots,
+  mesher invalidation, export/workers and native project roundtrips remain unintegrated.
+  Sparse storage does not restore 1 mm features at coarse 64/128 resolution.
+
+
 Implementation and verification are separate gates. Historical results below are
 not fresh acceptance runs; consult the corresponding DEVELOPMENT_STATUS.md handover
 for counts, evidence and outstanding limitations. No blanket hardware or print

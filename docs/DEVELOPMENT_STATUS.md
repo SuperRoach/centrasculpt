@@ -1,3 +1,98 @@
+# Phase 8.3a — Dense vs sparse brick research — 2026-11-11
+
+## 1. Scope, authority and preservation
+
+Active local `/Users/brettjames/development/vrappPOC`, HEAD `b80d1be`, initially
+clean. The supplied Documents directory is not a repository. Inspected current
+handover/roadmap, Personal Stamp results/fixture/baseline harness, SDFVolume and
+VolumeStore, dense growth, extraction/chunk cache, brush/stamp, history, native
+project codec, Personal Shapes and backup contracts. Existing eleven disposable
+masters were read only; their hashes match the prior baseline. No production src,
+quality semantics, caps, user project/library/recovery, WHATS_NEW or public model
+claims changed. No commit, push, merge or deployment.
+
+## 2. Isolated implementation and correctness
+
+Offline `scripts/research/brick-volume.mjs` implements 8³ sample bricks and 16³
+sensitivity via the mesher's read-only subset, not the mutable VolumeStore API.
+Explicit signed constant-region entries preserve positive, negative and ±0 values;
+varying inside/outside regions retain all original Float32 samples. Unknown regions
+throw. Stable floor-divided global keys support negative/grown/cropped origins.
+Canonical neighboring sample reads provide interpolation and normal-stencil halos
+without duplicated halo arrays. Exact-zero and no-surface semantics stay shared
+with the current mesher. No narrow-band behavior is claimed.
+
+## 3. Measurements and limitations
+
+Full matrix: 11 stored masters plus diagonal capsule and Boolean shell × 64/128/192
+× 8³/16³ = **78/78**. Zero sample/interpolation/normalized-gradient deviations and
+identical position/normal mesh hashes; all welded meshes have zero boundary and
+nonmanifold edges. The 1 mm bar still has no surface at 64³. Coarse resolution
+feature failures are not repaired by bricks.
+
+All fixture brick payloads are **100% allocated**. With modeled metadata, 8³ uses
+112.5% of dense values alone (16³: 101.56%). Apparent savings vs dense values plus
+scratch reflect omitted editing scratch, not payload compression. Main-matrix 8³
+warm random/local/scan medians are **4.15/4.46/4.54× dense**, repeated transformed
+sampling **4.57×**; conversion median 114.1 ms. Four-voxel candidate payload occupancy
+medians are 4.05%/2.40% at 128/192 for 8³, before far fields, halos, metadata,
+mutable scratch or co-resident exact masters. These are candidate estimates only.
+Modeled 192 conversion working peak 84.44 MiB excludes original master/meshes/etc;
+observed whole-process high-water RSS 771.95 MiB has a different scope. JS metadata
+and conversion scratch are allowances, not measured allocation/peak guarantees.
+
+Fresh-process cold/warm pairs and supplemental source-crop/growth/target-bound
+measurements are in the report below. Same-process matrix timings overlapped full
+checks; final fresh-process trials ran separately. Repeated stamp timings are
+read-only transformed field evaluation, not production transactions or Quest latency.
+Changing source bounds changes exterior extension even with overlapping samples
+unchanged; cropping is not a semantics-neutral sparse optimization.
+
+## 4. Verification and reproducibility
+
+Focused prototype + baseline fixtures **7/7**, quick **21/21**. Final full check
+passed format, lint, strict TS and build; **1,720/1,725 tests passed, five failed
+on sandbox `listen EPERM`** in HTTP/MCP/docs-hosting tests, no skips. This is not a
+full pass. Final offline-file Biome check passed after supplemental harness and
+accounting-label edits; final focused rerun passed. No unrestricted/socket or
+browser/physical Quest rerun is claimed.
+
+Raw complete matrix: `work/sparse-bricks/2026-11-10T13-09-54.092Z/metrics.json`;
+paired process observations: adjacent `cold-trials.json` (final isolated) and
+`cold-trials-loaded.json` (earlier loaded host); bounds: `source-bounds.json`.
+An earlier interrupted formula-only run is superseded, not acceptance evidence.
+Logs: `/tmp/83a-{benchmark-final,cold-isolated,source-bounds,focused-final,quick,check-final}.log`.
+Full method, per-metric definitions, commands and limitations:
+[Phase 8.3a research report](SPARSE_SDF_83A_RESULTS.md).
+
+## 5. Integration gaps and recommendation
+
+**No-go for production replacement; conditional go for isolated 8.3b research.**
+The current simple Map path fails lookup gates and exact bricks do not reduce
+fixture payloads. Candidate surface locality merits a separate 2/3/4-voxel band
+experiment only. Future integration needs full mutable APIs, brush/Jacobi scratch,
+stencil invalidation, transactional growth, exact history/Undo, masks/paint remap,
+worker/export/native/project/recovery roundtrips and lossless Personal master/backup
+fidelity. PersonalStamp currently copies all samples even from a generic store.
+Sign-only far fields cannot preserve exact Boolean and full Float32 semantics.
+The report enumerates concrete call-site dependencies and required changes.
+
+## 6. Next acceptance gates
+
+8.3b remains unstarted. Require median 128/192 working footprint savings ≥50% vs
+values+scratch and ≥25% vs values alone, including metadata/halos/mutable scratch
+and any co-resident exact master; no case above dense values+scratch. Warm lookup
+median ≤2× dense/no case >3×; repeated field sampling ≤1.5×. Preserve surface signs,
+band samples and topology; interpolation ≤1e-6 units, normalized gradient component
+≤1e-4, no added holes/lost components/silhouette differences, and geometric deviation
+≤0.01 voxel if meshes differ. Exact full Float32 master/project/backup/recovery and
+Undo roundtrips plus Boolean far-field equivalence or explicit lossless fallback
+are mandatory. Existing work/memory/triangle limits remain fixed. Stop if total
+footprint fails after including exact-data retention. See report for detailed gates;
+8.3c production integration is a later decision, not authorized by this research.
+
+---
+
 # Phase 8.0.1 / 8.0.2 — Personal master stamping and measured limits — 2026-11-11
 
 Implemented from the clean fd14fe4 local checkout after inspecting the completion
