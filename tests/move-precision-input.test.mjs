@@ -10,7 +10,7 @@ import { XRControllers } from "../work/test-build/xr-controllers.mjs";
 import { XRShapeStamp, XRToolInteraction } from "../work/test-build/xr-shape-stamp.mjs";
 
 for (const dominant of ["left", "right"])
-  test(`${dominant} precision controller bridge: alternate Smooth, sizing, menu, Support and both-grip priorities`, () => {
+  test(`${dominant} precision controller bridge: alternate Smooth, sizing, menu, Support and both-grip priorities`, async () => {
     const f = fixture(),
       roles = new XRControllerRoles();
     roles.setDominant(dominant);
@@ -89,8 +89,10 @@ for (const dominant of ["left", "right"])
       button(support, 0, 1);
       update();
       assert.equal(f.tools.active, "move");
+      grips[1].position.x = 0;
       button(tool, 0, 0);
       update();
+      await Promise.resolve();
       update();
       assert.equal(f.tools.active, "smooth");
       assert(alternate.active);

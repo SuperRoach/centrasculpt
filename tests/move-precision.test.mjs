@@ -9,9 +9,11 @@ import {
   start,
 } from "../scripts/fixtures/move-precision-fixture.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
+import { FREE_MOVE_CORE, RadialMoveField } from "../work/test-build/move-field.mjs";
 import { MoveGesture } from "../work/test-build/move-gesture.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { XRAlternateTool } from "../work/test-build/xr-alternate-tool.mjs";
+import { XRBrushSizing } from "../work/test-build/xr-brush-sizing.mjs";
 import { XRMenuModel } from "../work/test-build/xr-menu-model.mjs";
 
 const near = (a, b, e = 1e-9) => assert(Math.abs(a - b) < e, `${a} != ${b}`),
@@ -45,6 +47,7 @@ for (const mode of ["non-elastic", "elastic"])
       const f = fixture();
       try {
         f.tools.move.mode = mode;
+        f.tools.move.interaction = "translate";
         f.tools.move.precision = precision;
         f.tools.move.strength = 0.6;
         const before = bytes(f.l),
@@ -140,7 +143,8 @@ test("target outlines are exact, stable on coincident chunks, amber for locked, 
     f.move.update(f.s, pose(), 0, true);
     assert.equal(f.move.targetState, "valid");
     assert(f.move.marker.visible);
-    assert(!f.move.influence.mesh.visible);
+    assert(f.move.influence.mesh.visible);
+    assert(f.move.influence.mesh.material.depthTest && f.move.core.material.depthTest);
     assert(f.move.boundary.material.depthTest);
     near(f.move.influence.localRadius, f.tools.move.radius);
     const point = f.move.marker.getWorldPosition(new Vector3());
@@ -251,15 +255,21 @@ for (const interaction of ["translate", "rotate", "twist"])
       start(f);
       const hand = pose(0.12, 0, 1.58).multiply(new Matrix4().makeRotationY(0.8));
       f.move.update(f.s, pose(), 32, true, hand);
+      const restingOpacity = f.move.boundary.material.opacity;
       release(f.s);
       f.move.update(f.s, pose(), 48, true, hand);
       assert(f.l.deforming);
       assert(f.move.preview.active);
+      f.move.update(f.s, pose(), 298, true, hand);
+      assert(f.move.boundary.material.opacity > restingOpacity);
+      f.move.update(f.s, pose(), 798, true, hand);
+      assert(f.move.boundary.material.opacity < restingOpacity);
       assert.deepEqual(bytes(f.l), before);
       for (let i = 0; f.l.deforming && i < 5000; i++) await wait();
       assert(!f.l.deforming);
       assert.equal(f.l.undoCount, 1);
       assert(!f.move.preview.active);
+      assert.equal(f.move.boundary.material.opacity, restingOpacity);
       assert.match(f.move.feedback, /ready to edit/);
       const after = bytes(f.l);
       assert.deepEqual(
@@ -400,6 +410,166 @@ test("coincident-hit tie break retains prior chunk but follows a meaningfully ne
     f.move.update(f.s, pose(), 32, true);
     assert.equal(f.move.hoverChunk, b);
     near(f.move.marker.getWorldPosition(new Vector3()).z, 0.86);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("Free Move uses a rigid core and smooth compact support with the combined Jacobian", () => {
+  const field = new RadialMoveField(),
+    center = new Vector3(0.15, -0.08, 0.12),
+    delta = new Vector3(0.27, -0.05, 0.03),
+    axis = new Vector3(1, 2, 3).normalize();
+  field.capture(center, 0.4, 2, 1);
+  field.interaction = "free";
+  field.setDisplacement(delta);
+  field.setRotation(axis, 0.65);
+  const pointAt = (x) => center.clone().add(new Vector3(x, 0, 0)),
+    inside = pointAt(field.radius * FREE_MOVE_CORE * 0.99);
+  const expected = inside
+    .clone()
+    .sub(center)
+    .applyAxisAngle(axis, field.angle)
+    .add(center)
+    .add(delta);
+  assert(field.position(inside, new Vector3()).distanceTo(expected) < 1e-12);
+  near(field.weight(inside), 1);
+  assert(field.weight(pointAt(0.22)) < 1);
+  const outside = pointAt(0.41);
+  near(field.position(outside, new Vector3()).distanceTo(outside), 0);
+  const h = 1e-6,
+    x = new Vector3(h, 0, 0),
+    y = new Vector3(0, h, 0);
+  for (const r of [field.radius * FREE_MOVE_CORE, 0.22, field.radius]) {
+    const p = pointAt(r),
+      sample = (offset, sign) =>
+        field.position(p.clone().addScaledVector(offset, sign), new Vector3()),
+      tx = sample(x, 1).sub(sample(x, -1)),
+      ty = sample(y, 1).sub(sample(y, -1)),
+      numerical = tx.cross(ty).normalize(),
+      actual = field.normal(p, new Vector3(0, 0, 1), new Vector3());
+    assert(actual.distanceTo(numerical) < 1e-5);
+  }
+  const { min, max } = field.affectedBounds();
+  near(max[0], center.x + field.radius + delta.x);
+  near(min[1], center.y - field.radius + delta.y);
+});
+
+test("Free placement reaches both sides of the surface and empty influence refuses without edits", () => {
+  const f = fixture();
+  try {
+    assert.equal(f.tools.move.interaction, "free");
+    f.move.update(f.s, pose(), 0, true);
+    const target = f.move.marker.getWorldPosition(new Vector3());
+    near(f.l.active.volume.sampleLocal(target), 0, 0.005);
+    f.tools.move.placement = "free";
+    const before = bytes(f.l);
+    for (const offset of [-0.06, 0.06]) {
+      const aim = pose(0, 0, target.z + 0.12 + offset);
+      start(f, aim);
+      near(f.move.capture.target[2], target.z + offset);
+      assert.equal(
+        Math.sign(f.l.active.volume.sampleLocal(f.move.preview.field.center)),
+        Math.sign(offset),
+      );
+      assert(f.move.core.visible && f.move.core.material.depthTest);
+      near(f.move.core.scale.x, FREE_MOVE_CORE);
+      f.move.cancel();
+      release(f.s);
+    }
+    const far = pose(1.5, 0, 2);
+    f.move.update(f.s, far, 32, true);
+    press(f.s);
+    f.move.update(f.s, far, 48, true);
+    assert.match(f.move.feedback, /No vertices/);
+    assert(!f.move.active && !f.move.influence.group.visible);
+    assert.deepEqual(bytes(f.l), before);
+    assert.equal(f.l.undoCount, 0);
+  } finally {
+    f.dispose();
+  }
+});
+
+test("Free Move resize is bounded, leaves the source frozen, and commits exactly the final field", async () => {
+  const f = fixture(64),
+    control = fixture(64),
+    sizing = new XRBrushSizing(f.tools);
+  try {
+    f.tools.move.radius = 0.22;
+    const before = bytes(f.l),
+      source = f.l.active.volume,
+      angle = 0.4,
+      hand = pose(0.075, 0, 1.525).multiply(new Matrix4().makeRotationZ(angle));
+    sizing.update(f.s, [f.s], 0, true, false);
+    start(f);
+    const capture = f.move.capture,
+      geometry = f.l.active.surface.group.children.map((mesh) => mesh.geometry),
+      bindings = f.move.preview.affectedChunks;
+    f.s.stick.y = -1;
+    for (let time = 50; time <= 500; time += 50) {
+      sizing.update(f.s, [f.s], time, true, true, false, f.move.liveSizing);
+      f.move.update(f.s, pose(), time, true, hand);
+    }
+    near(f.move.preview.field.radius, capture.maxRadius);
+    near(f.move.preview.uniforms.moveRadius.value, capture.maxRadius);
+    assert(sizing.ruler(500));
+    assert.equal(f.move.capture, capture);
+    assert.equal(f.move.preview.affectedChunks, bindings);
+    assert.equal(f.l.active.volume, source);
+    assert.deepEqual(
+      f.l.active.surface.group.children.map((mesh) => mesh.geometry),
+      geometry,
+    );
+    assert.deepEqual(bytes(f.l), before);
+    near(f.move.preview.field.angle, angle);
+    near(f.move.preview.field.delta.x, 0.075);
+    assert.equal(f.move.preview.uniforms.moveInteraction.value, 3);
+    const committedRadius = f.move.preview.field.radius;
+    for (const current of [f, control]) {
+      if (current === control) {
+        current.tools.move.radius = committedRadius;
+        start(current);
+      }
+      release(current.s);
+      current.move.update(current.s, pose(), 550, true, hand);
+      assert(current.l.deforming);
+      assert.equal(current.move.liveSizing, null);
+      for (let i = 0; current.l.deforming && i < 5000; i++) await wait();
+      assert(!current.l.deforming);
+      assert.equal(current.l.undoCount, 1);
+    }
+    assert.equal(f.l.active.volume.values.length, control.l.active.volume.values.length);
+    assert(
+      f.l.active.volume.values.every((value, i) => value === control.l.active.volume.values[i]),
+    );
+    assert.equal(f.l.active.volume.resolution, source.resolution);
+    const after = bytes(f.l);
+    f.l.undo();
+    assert(Buffer.from(bytes(f.l)).equals(before));
+    f.l.undo(true);
+    assert(Buffer.from(bytes(f.l)).equals(after));
+  } finally {
+    f.dispose();
+    control.dispose();
+  }
+});
+
+test("shrinking a Free placement away from the surface produces no reconstruction patch", async () => {
+  const f = fixture();
+  try {
+    const before = bytes(f.l);
+    f.tools.move.placement = "free";
+    f.tools.move.radius = 0.5;
+    // Start inside the clay where the original radius reaches the sphere.
+    const interior = pose(0, 0, 0.72);
+    start(f, interior);
+    assert(f.move.liveSizing.setMoveRadius(0.12));
+    release(f.s);
+    f.move.update(f.s, interior, 32, true, pose(0.1, 0, 0.72));
+    while (f.l.deforming) await wait();
+    assert.equal(f.l.undoCount, 0);
+    assert.deepEqual(bytes(f.l), before);
+    assert.match(f.move.feedback, /unchanged/);
   } finally {
     f.dispose();
   }

@@ -70,7 +70,7 @@ function fixture(n = 33) {
       },
     };
   tools.select("move");
-  tools.move.mode = "preview";
+  tools.move.interaction = "translate";
   return {
     l,
     shape,
@@ -99,7 +99,7 @@ const start = (f) => {
 };
 const near = (a, b, tolerance = 1e-8) => assert(Math.abs(a - b) < tolerance, `${a} != ${b}`);
 const snapshot = (l) => new Uint8Array(saveSculptProject(l.project));
-test("Move wheel selection is dedicated, exposes experimental mode/planned modes and independent radius sizing", () => {
+test("Move wheel exposes the two commit modes and independent radius sizing", () => {
   const f = fixture();
   try {
     const menu = new XRMenuModel(f.tools);
@@ -110,9 +110,15 @@ test("Move wheel selection is dedicated, exposes experimental mode/planned modes
     const options = f.tools.options();
     for (const id of ["move-mode", "move-radius", "move-falloff", "move-strength"])
       assert(options.find((o) => o.id === id));
-    assert.match(options.find((o) => o.id === "move-mode").value, /preview only/i);
-    assert(MOVE_DEFORMATION_MODES.find((m) => m.id === "non-elastic").enabled);
-    assert(MOVE_DEFORMATION_MODES.find((m) => m.id === "elastic").enabled);
+    assert.match(options.find((o) => o.id === "move-mode").value, /Non-Elastic/);
+    f.tools.adjust("move-mode", 1);
+    assert.equal(f.tools.move.mode, "elastic");
+    f.tools.adjust("move-mode", 1);
+    assert.equal(f.tools.move.mode, "non-elastic");
+    assert.deepEqual(
+      MOVE_DEFORMATION_MODES.map((m) => m.id),
+      ["non-elastic", "elastic"],
+    );
     f.tools.adjust("move-falloff", 1);
     assert.equal(f.tools.move.falloff, 2.5);
     const size = new XRBrushSizing(f.tools),
@@ -197,17 +203,15 @@ test("mesh preview patches only affected materials; original position/normal buf
     const exported = f.l.exportGroup();
     exported.traverse((o) => o.geometry?.dispose());
     assert.equal(f.l.undoCount, 0);
-    release(f.s);
-    f.move.update(f.s, pose(), 48, true);
+    f.move.cancel();
     assert(!p.active);
     assert(!f.l.previewing);
     assert(!f.tools.busy);
-    assert.match(f.move.feedback, /original SDF surface restored/);
     for (const b of geometry) {
       assert.equal(b.mesh.material, b.material);
       assert.equal(b.mesh.frustumCulled, b.culled);
     }
-    assert.deepEqual(f.events, ["grab", "release"]);
+    assert.deepEqual(f.events, ["grab"]);
     assert.equal(f.l.active.mesher.rebuildChunks(), null);
   } finally {
     f.dispose();
@@ -336,7 +340,7 @@ test("preview locks guard edits/layer selection/options/history but explicit too
     f.dispose();
   }
 });
-test("preview cache reuses materials on release, frees them once on cancel and never disposes originals", () => {
+test("preview cache reuses materials after a no-op release and frees them once on cancel", async () => {
   const f = fixture();
   try {
     start(f);
@@ -349,9 +353,12 @@ test("preview cache reuses materials on release, frees them once on cancel and n
     for (const m of clones) m.addEventListener("dispose", () => counts.set(m, counts.get(m) + 1));
     release(f.s);
     f.move.update(f.s, pose(), 32, true);
+    await Promise.resolve();
+    assert.match(f.move.feedback, /Move unchanged/);
     f.move.update(f.s, pose(), 48, true);
     press(f.s);
     f.move.update(f.s, pose(), 64, true);
+    assert(f.move.active);
     const second = f.l.active.surface.group.children
       .map((m) => m.material)
       .filter((m) => m.name.includes("Experimental"));
@@ -372,7 +379,6 @@ test("expanded layer targeting beyond original cube works and never expands its 
     f.l.applyStrokeLocal({ x: 2.5, y: 0, z: 0 }, 0.35, "add", 0.5, 1 / 90, 0.5, true);
     f.l.finishStroke();
     f.tools.select("move");
-    f.tools.move.mode = "preview";
     const before = snapshot(f.l),
       dimensions = f.l.active.volume.dimensions,
       count = f.l.active.expansions;
@@ -646,7 +652,7 @@ test("cofactor normals match oriented tangents for long pulls, inversions and a 
   near(alias.length(), 1);
   assert.throws(() => field.setDisplacement(new Vector3(1e100, 0, 0)), /Invalid Move/);
 });
-test("transformed long controller pull follows full local displacement and restores exact source on release", () => {
+test("transformed long controller pull follows full local displacement and restores exact source on cancel", () => {
   const f = fixture(),
     parent = new Group();
   parent.add(f.l.group);
@@ -675,10 +681,9 @@ test("transformed long controller pull follows full local displacement and resto
     near(d.x, 2);
     near(d.y, -1);
     near(d.z, 3);
-    assert.match(f.move.feedback, /full hand travel/);
+    assert.match(f.move.feedback, /release commits/);
     assert.deepEqual(snapshot(f.l), before);
-    release(f.s);
-    f.move.update(f.s, aim, 48, true, hand);
+    f.move.cancel();
     assert(!f.move.active);
     assert.deepEqual(snapshot(f.l), before);
     assert.equal(f.l.undoCount, history);
@@ -773,6 +778,7 @@ for (const hand of ["left", "right"])
       release(f.s);
       f.move.update(f.s, pose(), 48, true, rotated);
       assert(!f.move.snapGuide.line.visible);
+      f.move.cancel();
       assert.deepEqual(snapshot(f.l), before);
     } finally {
       f.dispose();

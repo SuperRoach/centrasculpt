@@ -1,12 +1,9 @@
 import type { Intersection, Material, Matrix4, Object3D, WebXRManager } from "three";
 import {
   BoxGeometry,
-  BufferGeometry,
+  CylinderGeometry,
   DoubleSide,
-  Float32BufferAttribute,
   Group,
-  Line,
-  LineBasicMaterial,
   Mesh,
   MeshBasicMaterial,
   Raycaster,
@@ -36,6 +33,7 @@ import { XRControllerInput } from "./xr-input";
 import { XRLayerGrab } from "./xr-layer-grab";
 import type { XRLayerSelection } from "./xr-layer-selection";
 import type { XRMenuInteraction } from "./xr-menu-view";
+import { XRSizeRuler } from "./xr-size-ruler";
 import type { XRSupportGuide } from "./xr-support-guide";
 import type { XRShortcutOptions } from "./xr-support-shortcuts";
 import { XRSupportShortcuts } from "./xr-support-shortcuts";
@@ -50,7 +48,7 @@ type Slot = {
   grip: GripGroup;
   rayVisual: Group;
   gripVisual: Group;
-  line: Line<BufferGeometry, LineBasicMaterial>;
+  line: Mesh<CylinderGeometry, MeshBasicMaterial>;
   body: Mesh<BoxGeometry, MeshBasicMaterial>;
   indicator: Mesh<SphereGeometry, MeshBasicMaterial>;
   hand: XRHandedness | null;
@@ -67,6 +65,7 @@ export class XRControllers {
   readonly input: XRControllerInput;
   readonly shortcuts: XRSupportShortcuts;
   readonly supportGuide?: XRSupportGuide;
+  readonly sizeRuler?: XRSizeRuler;
   private viewer: { x: number; y: number; z: number } | null = null;
   setGuideViewer(viewer: { x: number; y: number; z: number } | null): void {
     this.viewer = viewer;
@@ -154,6 +153,7 @@ export class XRControllers {
     this.layerGrab?.cancel();
     this.haptics.clearIssues();
     this.supportGuide?.hide();
+    this.sizeRuler?.hide();
     this.root.visible = false;
   }
   private readonly ended = () => this.stop();
@@ -203,11 +203,12 @@ export class XRControllers {
       );
     if (options.workspace) this.grab = new WorkspaceNavigation(options.workspace);
     root.visible = false;
+    if (options.sizing?.ruler) this.sizeRuler = new XRSizeRuler(root);
     const bodyGeometry = new BoxGeometry(0.035, 0.075, 0.045),
       indicatorGeometry = new SphereGeometry(0.008, 8, 6),
       ringGeometry = new RingGeometry(0.03, 0.032, 24),
-      lineGeometry = new BufferGeometry();
-    lineGeometry.setAttribute("position", new Float32BufferAttribute([0, 0, 0, 0, 0, -1.5], 3));
+      lineGeometry = new CylinderGeometry(0.0018, 0.0018, 1.5, 6, 1, true);
+    lineGeometry.rotateX(Math.PI / 2).translate(0, 0, -0.75);
     this.resources.push(bodyGeometry, indicatorGeometry, ringGeometry, lineGeometry);
     const slots: Slot[] = [];
     for (let index = 0; index < 2; index++) {
@@ -219,7 +220,7 @@ export class XRControllers {
       grip.name = `XR grip ${index}`;
       const material = new MeshBasicMaterial({ color: "#79cde5", toneMapped: false }),
         indicatorMaterial = new MeshBasicMaterial({ color: "#ffffff", toneMapped: false }),
-        lineMaterial = new LineBasicMaterial({
+        lineMaterial = new MeshBasicMaterial({
           color: "#79cde5",
           toneMapped: false,
           transparent: true,
@@ -235,7 +236,8 @@ export class XRControllers {
       this.resources.push(material, indicatorMaterial, lineMaterial, haloMaterial);
       const body = new Mesh(bodyGeometry, material),
         indicator = new Mesh(indicatorGeometry, indicatorMaterial),
-        line = new Line(lineGeometry, lineMaterial);
+        line = new Mesh(lineGeometry, lineMaterial);
+      line.raycast = () => {};
       body.position.y = -0.025;
       indicator.position.set(0, 0.02, -0.02);
       const halo = new Mesh(ringGeometry, haloMaterial);
@@ -656,7 +658,8 @@ export class XRControllers {
       );
       if (state.buttons.trigger.pressed && !this.grab?.active && !this.layerGrab?.active)
         slot.rayVisual.visible = !!tracked && state.tracked;
-      slot.line.scale.z = 1;
+      const beamWidth = this.shortcuts.menu ? 1 : 0.3;
+      slot.line.scale.set(beamWidth, beamWidth, 1);
       slot.line.renderOrder = this.shortcuts.menu ? 1001 : 0;
       slot.line.material.depthTest = !this.shortcuts.menu;
       slot.line.material.depthWrite = !this.shortcuts.menu;
@@ -800,6 +803,13 @@ export class XRControllers {
       !!this.options.alternate?.active,
       this.options.stroke?.liveSizing,
     );
+    this.sizeRuler?.update(
+      this.options.sizing?.ruler?.(time) ?? null,
+      strokeTool?.gripTracked ? this.slots[strokeTool.slot].grip.matrixWorld : undefined,
+      this.viewer,
+      time,
+      strokeTool?.handedness === "left",
+    );
     this.options.presentationStep?.(
       time,
       !!this.options.lighting?.active ||
@@ -938,6 +948,7 @@ export class XRControllers {
     this.options.models?.stop();
     this.input.reset();
     this.supportGuide?.hide();
+    this.sizeRuler?.hide();
     this.root.visible = false;
     this.panel?.stop();
     for (const slot of this.slots) {
@@ -970,5 +981,6 @@ export class XRControllers {
     this.panel?.dispose();
     this.options.models?.dispose();
     this.supportGuide?.dispose();
+    this.sizeRuler?.dispose();
   }
 }

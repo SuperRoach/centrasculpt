@@ -326,6 +326,7 @@ for (const deformationMode of ["non-elastic", "elastic"]) {
       });
     tools.select("move");
     tools.move.mode = deformationMode;
+    tools.move.interaction = "translate";
     const notifications = { commits: 0 };
     const move = new XRMoveTool(
         () => l,

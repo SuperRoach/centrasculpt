@@ -127,7 +127,7 @@ for (const variant of MOVE_VARIANTS)
         assert(ids.includes("move-radius"));
         assert(!ids.includes("hardness"));
         assert.equal(ids.includes("move-stiffness"), variant === "elastic");
-        assert.equal(ids.includes("move-snap"), variant === "rotate-twist");
+        assert.equal(ids.includes("move-snap"), variant === "rotate-twist" || variant === "free");
         assert.equal(ids.includes("move-strength"), variant !== "rotate-twist");
       }
       f.model.setRequest(null);
@@ -212,18 +212,21 @@ test("native and actual recovery retain remembered brush while another tool is a
     }
     const old = defaultToolPreferences();
     old.move.mode = "elastic";
+    old.move.interaction = "translate";
+    delete old.move.placement;
     f.tools.select("clay");
     f.tools.restorePreferences(old);
     f.tools.selectMoveGroup();
     assert.equal(f.tools.move.mode, "elastic");
     assert.equal(f.tools.lastMoveVariant, "elastic");
+    assert.equal(f.tools.move.placement, "surface");
     old.move.interaction = "twist";
     old.move.mode = "preview";
     f.tools.select("clay");
     f.tools.restorePreferences(old);
     f.tools.selectMoveGroup();
     assert.equal(f.tools.move.interaction, "twist");
-    assert.equal(f.tools.move.mode, "preview");
+    assert.equal(f.tools.move.mode, "non-elastic");
     assert.equal(f.tools.lastMoveVariant, "rotate-twist");
     assert.throws(() => validateToolPreferences({ ...old, moveVariant: "unknown" }));
   } finally {

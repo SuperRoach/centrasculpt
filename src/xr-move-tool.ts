@@ -1,6 +1,7 @@
 import type { Intersection, Object3D } from "three";
 import {
   BufferGeometry,
+  DoubleSide,
   Float32BufferAttribute,
   type Group,
   LineBasicMaterial,
@@ -14,10 +15,14 @@ import {
   SphereGeometry,
   Vector3,
 } from "three";
+import { BRUSH_RADIUS_LIMITS } from "./brush-settings";
+import { CLAY_TIP_REACH_METRES } from "./clay-path";
 import type { EditorToolState } from "./editor-tool-state";
 import type { IndependentLayers, LayerRuntime } from "./independent-layers";
+import { FREE_MOVE_CORE } from "./move-field";
 import { MoveGesture } from "./move-gesture";
 import { MOVE_PREPARATION_BUDGET_MS, MoveMeshPreview } from "./move-mesh-preview";
+import type { MoveInteraction } from "./tool-preferences";
 import { uniformScale } from "./transform";
 import type { VolumeStore } from "./volume-store";
 import { XRBrushPreview } from "./xr-brush-preview";
@@ -34,17 +39,20 @@ export type MovePreviewCapture = Readonly<{
   worldMatrix: readonly number[];
   controllerPose: readonly number[];
   radius: number;
+  maxRadius: number;
   falloff: number;
   strength: number;
   stiffness: number;
-  mode: "preview" | "non-elastic" | "elastic";
-  interaction: "translate" | "rotate" | "twist";
+  mode: "non-elastic" | "elastic";
+  interaction: MoveInteraction;
   axis: "free" | "x" | "y" | "z";
   angularStrength: number;
   angleClamp: number;
   precision: boolean;
   snap: number;
 }>;
+const MOVE_BOUNDARY_OPACITY = 0.34;
+
 /** Surface targeting and noncumulative preview in a frozen layer frame.
  * Release delegates one atomic persistent command to IndependentLayers. */
 export class XRMoveTool implements XRStrokeInteraction {
@@ -56,6 +64,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   targetState: "none" | "valid" | "locked" | "unavailable" = "none";
   private hoverChunk: Object3D | null = null;
   readonly influence: XRBrushPreview;
+  readonly core: Mesh<SphereGeometry, MeshBasicMaterial>;
   readonly marker: Mesh<SphereGeometry, MeshBasicMaterial>;
   capture: MovePreviewCapture | null = null;
   feedback = "";
@@ -64,6 +73,7 @@ export class XRMoveTool implements XRStrokeInteraction {
   private commitGeneration = 0;
   private commitMessage = "";
   private currentTime = 0;
+  private commitStartedAt = 0;
   private armed = false;
   private owner = 0;
   private grabbing = false;
@@ -101,7 +111,29 @@ export class XRMoveTool implements XRStrokeInteraction {
     this.snapGuide = new XRSnapGuide(root);
     this.influence = new XRBrushPreview(root);
     this.influence.group.name = "Move influence · not project data";
-    this.influence.mesh.visible = false;
+    const outer = this.influence.mesh;
+    outer.material.wireframe = false;
+    outer.material.opacity = 0.12;
+    outer.material.side = DoubleSide;
+    outer.material.forceSinglePass = true;
+    outer.name = "Move outer falloff";
+    this.core = new Mesh(
+      outer.geometry,
+      new MeshBasicMaterial({
+        color: "#cee8ff",
+        transparent: true,
+        opacity: 0.27,
+        side: DoubleSide,
+        forceSinglePass: true,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    this.core.name = "Move inner strength";
+    this.core.raycast = () => {};
+    this.core.frustumCulled = false;
+    this.core.renderOrder = 25;
+    this.influence.group.add(this.core);
     const points: number[] = [];
     for (let plane = 0; plane < 3; plane++)
       for (let i = 0; i < 64; i++)
@@ -118,7 +150,7 @@ export class XRMoveTool implements XRStrokeInteraction {
       new LineBasicMaterial({
         color: "#aec4de",
         transparent: true,
-        opacity: 0.65,
+        opacity: MOVE_BOUNDARY_OPACITY,
         depthTest: true,
         depthWrite: false,
         toneMapped: false,
@@ -144,13 +176,38 @@ export class XRMoveTool implements XRStrokeInteraction {
     this.marker.name = "Move surface target · not project data";
     root.add(this.marker);
   }
+  private readonly radiusSizing = {
+    setMoveRadius: (radius: number) => {
+      const capture = this.capture;
+      const layers = this.layers();
+      if (
+        !capture ||
+        !this.grabbing ||
+        this.commitAbort ||
+        this.tools.active !== "move" ||
+        this.tools.port.busy() ||
+        layers.viewMode !== "separate" ||
+        layers !== this.capturedLayers ||
+        layers.active !== this.runtime ||
+        !this.runtime.layer.editable ||
+        this.runtime.volume !== capture.volume ||
+        this.runtime.surface.revision !== capture.surfaceRevision
+      )
+        return false;
+      const scale = capture.nativeTransform[6],
+        local = Math.max(
+          BRUSH_RADIUS_LIMITS.min / scale,
+          Math.min(capture.maxRadius, radius / scale),
+        );
+      if (!Number.isFinite(radius)) return false;
+      if (!this.preview.setRadius(local)) return false;
+      this.tools.move.radius = local * scale;
+      return true;
+    },
+  };
   get liveSizing() {
-    return this.grabbing &&
-      !this.commitAbort &&
-      this.capture?.mode === "elastic" &&
-      this.capture.interaction === "translate"
-      ? ("move-falloff" as const)
-      : null;
+    if (!this.grabbing || this.commitAbort || !this.capture) return null;
+    return this.capture.mode === "elastic" ? ("move-falloff" as const) : this.radiusSizing;
   }
   get active(): boolean {
     return this.grabbing;
@@ -169,6 +226,7 @@ export class XRMoveTool implements XRStrokeInteraction {
     this.capture = null;
     this.owner = 0;
     this.influence.hide();
+    this.boundary.material.opacity = MOVE_BOUNDARY_OPACITY;
     this.marker.visible = false;
   }
   cancel(): void {
@@ -296,25 +354,9 @@ export class XRMoveTool implements XRStrokeInteraction {
         return;
       }
       if (this.commitAbort) {
+        const phase = ((this.currentTime - this.commitStartedAt) / 1000) * 2 * Math.PI;
+        this.boundary.material.opacity = MOVE_BOUNDARY_OPACITY + 0.14 * Math.sin(phase);
         this.feedback = this.commitMessage;
-        return;
-      }
-      if (!tool!.buttons.trigger.pressed && this.capture!.mode !== "preview") {
-        this.displacement
-          .setFromMatrixPosition(pose!)
-          .applyMatrix4(this.inverse)
-          .sub(this.controllerStart);
-        this.updatePose(pose!);
-        this.paint(surface, this.preview.field.center, this.preview.field.radius, true);
-        this.startCommit(l, time);
-        return;
-      }
-      if (!tool!.buttons.trigger.pressed) {
-        this.release();
-        this.armed = true;
-        this.feedback = "Move preview finished · original SDF surface restored · no undo action";
-        this.until = time + 1200;
-        this.pulse("release");
         return;
       }
       this.displacement
@@ -323,56 +365,43 @@ export class XRMoveTool implements XRStrokeInteraction {
         .sub(this.controllerStart);
       this.updatePose(pose!);
       this.paint(surface, this.preview.field.center, this.preview.field.radius, true);
+      if (!tool!.buttons.trigger.pressed) {
+        this.startCommit(l);
+        return;
+      }
       this.feedback = this.capture!.precision
-        ? `Move · Precision ¼ sensitivity · ${this.capture!.mode === "preview" ? "release restores" : "release commits"}`
-        : this.capture!.mode === "preview"
-          ? `Move · preview only · ${this.capture!.interaction === "translate" ? "full hand travel" : "wrist " + this.capture!.interaction} · release restores`
-          : `Move · ${this.capture!.mode} · ${this.capture!.interaction} · release commits`;
-      if (this.liveSizing)
+        ? "Move · Precision ¼ sensitivity · release commits"
+        : `${this.tools.contextLabel} · release commits`;
+      if (this.liveSizing === "move-falloff")
         this.feedback += ` · Tool stick: edge softness ${this.preview.field.falloff.toFixed(2)}`;
       return;
     }
     if (!tool!.buttons.trigger.pressed && tool!.buttons.trigger.rawValue < 0.45) this.armed = true;
-    this.raycaster.ray.origin.setFromMatrixPosition(aim!);
-    this.direction.set(0, 0, -1).transformDirection(aim!);
-    this.raycaster.ray.direction.copy(this.direction);
-    this.raycaster.far = 5;
-    this.hits.length = 0;
     this.inverse.copy(surface.matrixWorld).invert();
-    this.localRay.copy(this.raycaster.ray).applyMatrix4(this.inverse);
-    runtime.surface.spatial.ray(this.localRay, this.rayChunks);
-    for (const chunk of this.rayChunks) {
-      chunk.updateWorldMatrix(false, false);
-      this.raycaster.intersectObject(chunk, false, this.hits);
-    }
-    this.rayChunks.length = 0;
+    this.direction.set(0, 0, -1).transformDirection(aim!);
+    const freePlacement = this.tools.move.placement === "free";
     let hit: Intersection<Object3D> | undefined;
-    for (const candidate of this.hits)
-      if (!hit || candidate.distance < hit.distance) hit = candidate;
-    // Stable tie-break only for effectively coincident chunk hits; never smooth off-surface.
-    if (hit && this.hoverChunk)
-      for (const candidate of this.hits)
-        if (candidate.object === this.hoverChunk && candidate.distance <= hit.distance + 1e-5) {
-          hit = candidate;
-          break;
-        }
-    this.hoverChunk = hit?.object ?? null;
-    if (!hit || !runtime.layer.visible) {
+    if (runtime.layer.visible && !freePlacement) hit = this.surfaceHit(runtime, aim!);
+    if (!runtime.layer.visible || (!freePlacement && !hit)) {
       this.targetState = "none";
       this.influence.hide();
       this.marker.visible = false;
       if (time >= this.until)
         this.feedback = !runtime.layer.visible
           ? "Move · hidden target · show layer to edit"
-          : this.tools.move.mode === "preview"
-            ? "Move · preview only · point at the active layer surface"
-            : `Move · ${this.tools.move.mode} · point at the active layer surface`;
+          : "Move · point at the active layer surface";
       if (tool!.buttons.trigger.pressed) this.armed = false;
       return;
     }
-    this.inverse.copy(surface.matrixWorld).invert();
-    this.center.copy(hit.point).applyMatrix4(this.inverse);
-    const radius = this.tools.move.radius / uniformScale(runtime.layer.transform);
+    if (hit) this.center.copy(hit.point);
+    else
+      this.center
+        .setFromMatrixPosition(aim!)
+        .addScaledVector(this.direction, CLAY_TIP_REACH_METRES);
+    this.center.applyMatrix4(this.inverse);
+    const layerScale = uniformScale(runtime.layer.transform),
+      radius = this.tools.move.radius / layerScale,
+      elastic = this.tools.move.interaction === "translate" && this.tools.move.mode === "elastic";
     this.targetState = runtime.layer.locked ? "locked" : "valid";
     this.paint(surface, this.center, radius, false);
     if (runtime.layer.locked) {
@@ -381,7 +410,7 @@ export class XRMoveTool implements XRStrokeInteraction {
       return;
     }
     if (time >= this.until)
-      this.feedback = `Move ${this.tools.move.mode === "preview" ? "preview only" : this.tools.move.mode} · target ${this.center.x.toFixed(2)}, ${this.center.y.toFixed(2)}, ${this.center.z.toFixed(2)} · hold Tool trigger`;
+      this.feedback = `${this.tools.contextLabel} · target ${this.center.x.toFixed(2)}, ${this.center.y.toFixed(2)}, ${this.center.z.toFixed(2)} · hold Tool trigger`;
     const start = this.armed && tool!.buttons.trigger.justPressed && tool!.buttons.trigger.pressed;
     if (tool!.buttons.trigger.pressed) this.armed = false;
     if (!start) return;
@@ -406,15 +435,11 @@ export class XRMoveTool implements XRStrokeInteraction {
       worldMatrix: Object.freeze(this.anchor.toArray()),
       controllerPose: Object.freeze(pose!.toArray()),
       radius,
+      maxRadius: elastic ? radius : Math.min(radius * 1.25, BRUSH_RADIUS_LIMITS.max / layerScale),
       falloff: this.tools.move.falloff,
       strength: this.tools.move.strength,
       stiffness: this.tools.move.stiffness,
-      mode:
-        this.tools.move.mode === "preview"
-          ? "preview"
-          : this.tools.move.interaction === "translate"
-            ? this.tools.move.mode
-            : "non-elastic",
+      mode: this.tools.move.interaction === "translate" ? this.tools.move.mode : "non-elastic",
       interaction: this.tools.move.interaction,
       axis: this.tools.move.axis,
       angularStrength: this.tools.move.angularStrength,
@@ -434,6 +459,7 @@ export class XRMoveTool implements XRStrokeInteraction {
       runtime.surface.spatial,
       this.capture.mode === "elastic" ? "elastic" : "non-elastic",
       this.capture.stiffness,
+      this.capture.maxRadius,
     );
     surface.getWorldScale(this.worldScale);
     this.gesture.capture(this.capture.precision, 1 / this.worldScale.x);
@@ -441,23 +467,54 @@ export class XRMoveTool implements XRStrokeInteraction {
     this.displacement.set(0, 0, 0);
     this.updatePose(pose!);
     this.paint(surface, this.center, radius, true);
-    this.feedback =
-      this.capture.mode === "preview"
-        ? `Move · preview only · ${this.capture.interaction === "translate" ? "pull controller" : "turn wrist"}; release restores`
-        : `Move · ${this.capture.mode} · ${this.capture.interaction === "translate" ? "pull controller" : "turn wrist"}; release commits`;
+    const instruction =
+      this.capture.interaction === "free"
+        ? "pull and turn wrist"
+        : this.capture.interaction === "translate"
+          ? "pull controller"
+          : "turn wrist";
+    this.feedback = `Move · ${instruction} · release commits`;
     this.pulse("grab");
+  }
+  private surfaceHit(runtime: LayerRuntime, aim: Matrix4): Intersection<Object3D> | undefined {
+    const ray = this.raycaster.ray;
+    ray.origin.setFromMatrixPosition(aim);
+    ray.direction.copy(this.direction);
+    this.raycaster.far = 5;
+    this.hits.length = 0;
+    this.localRay.copy(ray).applyMatrix4(this.inverse);
+    runtime.surface.spatial.ray(this.localRay, this.rayChunks);
+    for (const chunk of this.rayChunks) {
+      chunk.updateWorldMatrix(false, false);
+      this.raycaster.intersectObject(chunk, false, this.hits);
+    }
+    this.rayChunks.length = 0;
+    let hit: Intersection<Object3D> | undefined;
+    for (const candidate of this.hits)
+      if (!hit || candidate.distance < hit.distance) hit = candidate;
+    // Retain the prior chunk on coincident hits without smoothing away from the surface.
+    if (hit && this.hoverChunk)
+      for (const candidate of this.hits)
+        if (candidate.object === this.hoverChunk && candidate.distance <= hit.distance + 1e-5) {
+          hit = candidate;
+          break;
+        }
+    this.hoverChunk = hit?.object ?? null;
+    this.hits.length = 0;
+    return hit;
   }
   private updatePose(pose: Matrix4): void {
     const capture = this.capture!;
-    if (this.liveSizing) {
+    if (this.liveSizing === "move-falloff") {
       this.preview.field.falloff = this.tools.move.falloff;
       this.preview.uniforms.moveExponent.value = this.tools.move.falloff + 1;
     }
-    if (capture.interaction === "translate") {
-      this.snapGuide.hide();
+    if (capture.interaction === "translate" || capture.interaction === "free")
       this.preview.update(
         this.gesture.translation(this.displacement, this.filteredDisplacement, capture.axis),
       );
+    if (capture.interaction === "translate") {
+      this.snapGuide.hide();
       return;
     }
     this.poseRotation.multiplyMatrices(this.inverse, pose).extractRotation(this.poseRotation);
@@ -480,22 +537,23 @@ export class XRMoveTool implements XRStrokeInteraction {
         .addScaledVector(axis, -(Math.abs(axis.x) < 0.8 ? axis.x : axis.y))
         .normalize()
         .applyAxisAngle(axis, this.gesture.angle)
-        .multiplyScalar(capture.radius)
+        .multiplyScalar(this.preview.field.radius)
         .add(this.preview.field.center);
       this.snapGuide.show(
         this.anchor,
         this.preview.field.center,
         this.snapSpoke,
-        capture.radius * 1.5,
+        this.preview.field.radius * 1.5,
       );
     } else this.snapGuide.hide();
   }
-  private startCommit(l: IndependentLayers, time: number): void {
+  private startCommit(l: IndependentLayers): void {
     this.snapGuide.hide();
     const capture = this.capture!,
       generation = ++this.commitGeneration,
       abort = new AbortController();
     this.commitAbort = abort;
+    this.commitStartedAt = this.currentTime;
     this.commitMessage = "Move · reconstructing · preview held · Support grip cancels";
     this.armed = false;
     const owned = () =>
@@ -549,9 +607,16 @@ export class XRMoveTool implements XRStrokeInteraction {
       });
   }
   private paint(surface: Object3D, center: Vector3, radius: number, held: boolean): void {
-    this.influence.show(surface, center, radius);
-    this.influence.mesh.material.color.set(held ? "#99cfff" : "#aec4de");
+    this.influence.show(surface, center, radius, true);
     const color = this.targetState === "locked" ? "#e8b174" : held ? "#99cfff" : "#aec4de";
+    const interaction = held ? this.capture!.interaction : this.tools.move.interaction;
+    const falloff = held ? this.preview.field.falloff : this.tools.move.falloff;
+    // Legacy modes taper immediately. The inner shell marks the high-weight region.
+    const inner =
+      interaction === "free" ? FREE_MOVE_CORE : Math.sqrt(1 - 0.8 ** (1 / (falloff + 1)));
+    this.core.scale.setScalar(inner);
+    this.core.material.color.set(this.targetState === "locked" ? "#ffd9a8" : "#cce8ff");
+    this.influence.mesh.material.color.set(color);
     this.boundary.material.color.set(color);
     this.marker.material.color.set(color);
     this.markerPoint.copy(center);
@@ -572,6 +637,7 @@ export class XRMoveTool implements XRStrokeInteraction {
     this.snapGuide.dispose();
     this.boundary.geometry.dispose();
     this.boundary.material.dispose();
+    this.core.material.dispose();
     this.influence.dispose();
     this.marker.removeFromParent();
     this.marker.geometry.dispose();

@@ -359,7 +359,7 @@ test("Layers panel selects visible, hidden or locked rows and toggles flags usin
       b = second.volume.getDenseView().slice(),
       m = f.model;
     m.setRequest("layers");
-    assert.equal(m.content().buttons.length, 16);
+    assert.equal(m.content().buttons.length, 20);
     m.activate(`select:${first.id}`);
     assert.equal(f.layers.project.activeLayerId, first.id);
     assert(m.content().buttons.find((b) => b.id === `select:${first.id}`).selected);
@@ -838,11 +838,11 @@ test("eight layer rows, paginated options and radial targets stay within the usa
   try {
     for (let i = 1; i < 8; i++) f.layers.create(64);
     f.model.setRequest("layers");
-    assert.equal(f.model.content().buttons.length, 26);
+    assert.equal(f.model.content().buttons.length, 30);
     for (const button of f.model.content().buttons) {
       const r = button.rect;
       assert(r.x >= 0 && r.x + r.width <= MENU_SIZE);
-      assert(r.y >= 0 && r.y + r.height < 1040);
+      assert(r.y >= 0 && r.y + r.height <= (button.glyph ? MENU_SIZE : 1039));
       assert.equal(f.model.hit(...buttonPoint(f.model, button.id)), button.id);
     }
     f.model.setRequest("tool-wheel");
@@ -928,7 +928,7 @@ test("VR new-layer action is guarded during edits, at layer capacity, and report
     f.model.activate("new-layer");
     assert.equal(f.layers.project.layerStack.layers.length, 16);
     for (const b of content.buttons) {
-      assert(b.rect.y + b.rect.height < 1092);
+      assert(b.rect.y + b.rect.height <= (b.glyph ? MENU_SIZE : 1091));
       assert.equal(f.model.hit(...buttonPoint(f.model, b.id)), b.id);
     }
   } finally {
@@ -1601,5 +1601,71 @@ test("VR library scrolls all thumbnail rows, clips ray targets and resets on det
     view?.dispose();
     f.layers.dispose();
     restore();
+  }
+});
+
+test("icon navigation uses the palette, immersive reference tools and guarded Personal Shapes handoff", async () => {
+  const calls = [];
+  let finish;
+  const f = fixture({
+      references: { selected: null },
+      importReferences: () => calls.push("import"),
+      projectAction: (action) => {
+        calls.push(action);
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      },
+    }),
+    preview = new XRMenuModel(f.tools);
+  try {
+    const { model } = f;
+    model.setRequest("tool-wheel");
+    const wheel = model.content();
+    for (const [id, label, glyph] of [
+      ["tool:mask", "Mask", "mask"],
+      ["tool:paint", "Paint", "paint"],
+      ["project", "Project", "project"],
+      ["nav:layers", "Layers", "layers"],
+      ["world", "World", "world"],
+      ["nav:references", "References", "references"],
+      ["nav:personal-library", "Personal Library", "personal-library"],
+    ]) {
+      const button = wheel.buttons.find((b) => b.id === id);
+      assert.equal(button.label, label);
+      assert.equal(button.glyph, glyph);
+      assert(button.colour && button.detail);
+      assert.equal(model.hit(...buttonPoint(model, id)), id);
+    }
+    model.activate("nav:layers");
+    assert(model.layerSelectionActive);
+    assert(model.content().buttons.find((b) => b.id === "nav:layers").selected);
+    model.activate("world");
+    assert.equal(model.page, "world");
+    assert.equal(model.world.section, "home");
+    model.activate("nav:references");
+    assert.equal(model.world.section, "references");
+    assert(model.content().buttons.find((b) => b.id === "nav:references").selected);
+    model.activate("reference-import");
+    assert.deepEqual(calls, ["import"]);
+    f.busy = true;
+    model.activate("nav:personal-library");
+    assert.deepEqual(calls, ["import"]);
+    f.busy = false;
+    model.activate("nav:personal-library");
+    model.activate("nav:personal-library");
+    assert.deepEqual(calls, ["import", "shapes"]);
+    finish();
+    await Promise.resolve();
+    preview.setRequest("layers");
+    for (const id of ["nav:references", "nav:personal-library"]) {
+      const button = preview.content().buttons.find((b) => b.id === id);
+      assert(button.disabled);
+      preview.activate(id);
+      assert.equal(preview.page, "layers");
+    }
+    assert.equal(f.layers.undoCount, 0);
+  } finally {
+    f.dispose();
   }
 });

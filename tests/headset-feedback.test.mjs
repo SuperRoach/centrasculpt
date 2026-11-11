@@ -110,52 +110,54 @@ test("fresh Clay alternate reverses Add/Subtract and restores exact settings; le
   }
 });
 
-test("Tool stick resizes drawing Clay, respects menu/grip gates, and frozen replay retains each recorded radius", () => {
-  for (const steady of [0, 100]) {
-    const f = fixture(),
-      stroke = new XRClayStroke(() => f.layers, f.tools, f.root),
-      sizing = new XRBrushSizing(f.tools),
-      tool = state(),
-      pose = new Matrix4().makeTranslation(0.5, 0, 0.8);
-    try {
-      f.tools.path.steady = steady;
-      stroke.update(tool, pose, 0, true);
-      sizing.update(tool, [tool], 0, true, false);
-      press(tool);
-      stroke.update(tool, pose, 16, true);
-      assert.equal(stroke.liveSizing, "clay-radius");
-      tool.stick.y = -1;
-      assert(sizing.update(tool, [tool], 66, true, true, false, stroke.liveSizing));
-      const grown = f.tools.brushRadius;
-      assert(grown > 0.22);
-      tool.buttons.trigger.justPressed = false;
-      stroke.update(tool, pose, 66, true);
-      near(stroke.session.localRadius, grown);
-      near(stroke.session.raw[0].radius, 0.22);
-      near(stroke.session.raw.at(-1).radius, grown);
-      assert(!sizing.update(tool, [tool], 82, false, true, false, stroke.liveSizing));
-      near(f.tools.brushRadius, grown);
-      tool.buttons.grip.pressed = true;
-      assert(!sizing.update(tool, [tool], 98, true, true, false, stroke.liveSizing));
-      tool.buttons.grip.pressed = false;
-      release(tool);
-      stroke.update(tool, pose, 114, true);
-      assert.equal(stroke.liveSizing, null);
-      for (let t = 130; stroke.active; t += 16) {
-        assert(t < 10000);
-        stroke.update(tool, pose, t, true);
+for (const mode of ["clay", "inflate"])
+  test(`Tool stick resizes drawing ${mode}, respects menu/grip gates, and replay retains each radius`, () => {
+    for (const steady of [0, 100]) {
+      const f = fixture(),
+        stroke = new XRClayStroke(() => f.layers, f.tools, f.root),
+        sizing = new XRBrushSizing(f.tools),
+        tool = state(),
+        pose = new Matrix4().makeTranslation(0.5, 0, 0.8);
+      try {
+        f.tools.select(mode);
+        f.tools.path.steady = steady;
+        stroke.update(tool, pose, 0, true);
+        sizing.update(tool, [tool], 0, true, false);
+        press(tool);
+        stroke.update(tool, pose, 16, true);
+        assert.equal(stroke.liveSizing, "clay-radius");
+        tool.stick.y = -1;
+        assert(sizing.update(tool, [tool], 66, true, true, false, stroke.liveSizing));
+        const grown = f.tools.brushRadius;
+        assert(grown > 0.22);
+        tool.buttons.trigger.justPressed = false;
+        stroke.update(tool, pose, 66, true);
+        near(stroke.session.localRadius, grown);
+        near(stroke.session.raw[0].radius, 0.22);
+        near(stroke.session.raw.at(-1).radius, grown);
+        assert(!sizing.update(tool, [tool], 82, false, true, false, stroke.liveSizing));
+        near(f.tools.brushRadius, grown);
+        tool.buttons.grip.pressed = true;
+        assert(!sizing.update(tool, [tool], 98, true, true, false, stroke.liveSizing));
+        tool.buttons.grip.pressed = false;
+        release(tool);
+        stroke.update(tool, pose, 114, true);
+        assert.equal(stroke.liveSizing, null);
+        for (let t = 130; stroke.active; t += 16) {
+          assert(t < 10000);
+          stroke.update(tool, pose, t, true);
+        }
+        assert.equal(f.layers.undoCount, 1);
+        const after = f.layers.active.volume.values.slice();
+        f.layers.undo();
+        f.layers.undo(true);
+        assert.deepEqual(f.layers.active.volume.values, after);
+      } finally {
+        stroke.dispose();
+        f.dispose();
       }
-      assert.equal(f.layers.undoCount, 1);
-      const after = f.layers.active.volume.values.slice();
-      f.layers.undo();
-      f.layers.undo(true);
-      assert.deepEqual(f.layers.active.volume.values, after);
-    } finally {
-      stroke.dispose();
-      f.dispose();
     }
-  }
-});
+  });
 
 test("buffered variable-radius replay exactly matches the displayed path radii under layer scaling", () => {
   const f = fixture(),
@@ -281,6 +283,7 @@ test("Elastic captured grab changes only edge softness; CPU/GPU falloff agree an
   try {
     f.tools.select("move");
     f.tools.move.mode = "elastic";
+    f.tools.move.interaction = "translate";
     const before = f.layers.active.volume.values.slice();
     move.update(tool, pose, 0, true);
     sizing.update(tool, [tool], 0, true, false);
@@ -550,6 +553,30 @@ test("mirror centre is grabbable edge-on on the default X plane without capturin
   }
 });
 
+test("Smooth and mirrored Smooth cursors respect sculpt depth in VR", () => {
+  const f = fixture(),
+    stroke = new XRClayStroke(() => f.layers, f.tools, f.root),
+    tool = state(),
+    pose = new Matrix4().makeTranslation(0.5, 0, 0.8);
+  try {
+    f.layers.symmetry.enabled = true;
+    f.tools.select("smooth");
+    stroke.update(tool, pose, 0, true);
+    for (const cursor of [stroke.cursor, stroke.mirrorCursor]) {
+      assert(cursor.group.visible);
+      assert(cursor.mesh.material.depthTest);
+      assert(!cursor.mesh.material.depthWrite);
+    }
+    f.tools.select("clay");
+    stroke.update(tool, pose, 16, true);
+    assert(!stroke.cursor.mesh.material.depthTest);
+    assert(!stroke.mirrorCursor.mesh.material.depthTest);
+  } finally {
+    stroke.dispose();
+    f.dispose();
+  }
+});
+
 test("alternate Subtract colours the Clay and mirrored previews identically to manual Subtract and restores Add", () => {
   const f = fixture(),
     a = new XRAlternateTool(f.tools),
@@ -758,6 +785,8 @@ test("Snap dims only for inapplicable tools and stays clickable as a remembered 
     f.tools.select("stamp");
     assert(snap().muted);
     f.tools.select("move");
+    assert(!snap().muted);
+    f.tools.move.interaction = "translate";
     assert(snap().muted);
     f.tools.move.interaction = "rotate";
     assert(!snap().muted);

@@ -16,6 +16,7 @@ export type MenuButton = {
   colour?: string;
   thumbnail?: string;
   icon?: string;
+  glyph?: "layers" | "world" | "references" | "personal-library" | "mask" | "paint" | "project";
   muted?: boolean;
   swatch?: boolean;
   selected?: boolean;
@@ -91,6 +92,7 @@ export class XRMenuModel {
     this.optionPage = 0;
     this.moveVariants = false;
     this.world.section = "home";
+    this.world.clearProjectActionError();
     this.hover = null;
     this.feedback = "";
   }
@@ -106,10 +108,66 @@ export class XRMenuModel {
           ? "15° direction snapping"
           : "Applies to Straight Line strokes and Move rotation";
       }
-    if (this.feedback) {
-      content.footer = this.feedback;
-      if (this.page === "tool-wheel") content.subtitle = this.feedback;
+    const notice = this.feedback || this.world.projectActionError;
+    if (notice) {
+      content.footer = notice;
+      if (this.page === "tool-wheel") content.subtitle = notice;
     } else if (this.tools.busy) content.footer = "Working… · Finish or cancel the current edit";
+    const layerNav = this.page === "layers" && !this.merge && this.palette.view === "list",
+      worldNav = this.page === "world" && ["home", "references"].includes(this.world.section);
+    if (layerNav || worldNav || this.page === "tool-wheel") {
+      const busy = this.tools.busy || !!this.palette.dragged;
+      const entries = [
+        ["nav:layers", "Layers", "layers", "#8acaff", "Show the layer palette", layerNav, busy],
+        [
+          "world",
+          "World",
+          "world",
+          "#79e4bc",
+          "Open World settings",
+          worldNav && this.world.section === "home",
+          busy,
+        ],
+        [
+          "nav:references",
+          "References",
+          "references",
+          "#ffd287",
+          this.world.referencesAvailable
+            ? "Place and inspect references in VR"
+            : "Reference tools unavailable",
+          worldNav && this.world.section === "references",
+          busy || !this.world.referencesAvailable,
+        ],
+        [
+          "nav:personal-library",
+          "Personal Library",
+          "personal-library",
+          "#d7b3ff",
+          this.world.personalLibraryAvailable
+            ? "Exit VR to open Personal Shapes in the browser"
+            : "Personal Shapes is available in the browser",
+          false,
+          busy || !this.world.personalLibraryAvailable,
+        ],
+      ] as const;
+      entries.forEach(([id, label, glyph, colour, detail, selected, disabled], i) => {
+        content.buttons.push({
+          id,
+          label,
+          glyph,
+          colour,
+          detail,
+          selected,
+          disabled,
+          rect: layerNav
+            ? { x: 40 + i * 274, y: 1050, width: 250, height: 76 }
+            : worldNav
+              ? { x: 540 + i * 144, y: 140, width: 140, height: 74 }
+              : { x: 654 + i * 116, y: 140, width: 110, height: 74 },
+        });
+      });
+    }
     content.buttons.push({
       id: "ui-scale",
       label: "Menu size",
@@ -392,9 +450,9 @@ export class XRMenuModel {
           disabled: this.tools.busy,
           rect: {
             x: 40 + (i % 2) * 548,
-            y: 244 + Math.floor(i / 2) * 180,
+            y: 244 + Math.floor(i / 2) * 145,
             width: 524,
-            height: 156,
+            height: 128,
           },
         });
       });
@@ -428,19 +486,37 @@ export class XRMenuModel {
       detail?: string,
     ) => buttons.push({ id, label, rect: { x, y, width, height }, selected, disabled, detail });
     if (this.page === "tool-wheel") {
-      add(
-        "tool:paint",
-        "Paint",
-        392,
-        1030,
-        320,
-        78,
-        this.tools.active === "paint",
-        this.tools.busy,
+      buttons.push(
+        {
+          id: "tool:mask",
+          label: "Mask",
+          glyph: "mask",
+          colour: "#8acaff",
+          detail: "Paint or erase protection",
+          selected: this.tools.active === "mask",
+          disabled: this.tools.busy,
+          rect: { x: 40, y: 1030, width: 320, height: 78 },
+        },
+        {
+          id: "tool:paint",
+          label: "Paint",
+          glyph: "paint",
+          colour: "#f5b4ca",
+          detail: "Paint or erase colour",
+          selected: this.tools.active === "paint",
+          disabled: this.tools.busy,
+          rect: { x: 392, y: 1030, width: 320, height: 78 },
+        },
+        {
+          id: "project",
+          label: "Project",
+          glyph: "project",
+          colour: "#ffd287",
+          detail: "Open the project menu",
+          disabled: this.tools.busy,
+          rect: { x: 744, y: 1030, width: 368, height: 78 },
+        },
       );
-      add("tool:mask", "Mask", 40, 1030, 320, 78, this.tools.active === "mask", this.tools.busy);
-      add("project", "Project", 744, 1030, 368, 78, false, this.tools.busy);
-      add("world", "World Settings", 760, 140, 352, 74, false, this.tools.busy);
       add(
         "snap-toggle",
         this.tools.path.snap ? "Snap 15° · On" : "Snap 15° · Off",
@@ -695,8 +771,13 @@ export class XRMenuModel {
   activate(id: string, rendered?: MenuContent): void {
     if (!this.request) return;
     const button = (rendered ?? this.content()).buttons.find((b) => b.id === id);
-    if (!button || button.disabled) {
-      this.feedback = "Unavailable";
+    if (!button || button.disabled || (button.glyph && (this.tools.busy || this.palette.dragged))) {
+      this.feedback =
+        button?.glyph && this.tools.busy
+          ? "Finish or cancel the current edit"
+          : button?.disabled && button.glyph
+            ? (button.detail ?? "Unavailable")
+            : "Unavailable";
       return;
     }
     try {
@@ -707,9 +788,15 @@ export class XRMenuModel {
       } else if (id === "project") {
         this.page = "world";
         this.world.section = "project";
-      } else if (id === "world") {
+      } else if (id === "nav:layers") {
+        this.world.stopPrecision();
+        this.page = "layers";
+        this.palette.close();
+      } else if (id === "world" || id === "nav:references") {
         this.page = "world";
-        this.world.section = "home";
+        this.world.section = id === "world" ? "home" : "references";
+      } else if (id === "nav:personal-library") {
+        this.world.activate("project:shapes");
       } else if (this.page === "world" && this.world.activate(id)) {
       } else if (id === "ui-scale" || id === "world-ui-scale") {
         const l = this.tools.port.layers();

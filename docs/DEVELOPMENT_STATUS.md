@@ -1,3 +1,92 @@
+# Phase 8.4 — VR Sculpting Experience Polish — 2026-11-12
+
+## 1. Scope and preservation
+
+Worked in the active `/Users/brettjames/development/vrappPOC` checkout over
+existing local XR and editor work. Reviewed the Medium screenshots and the
+Move, ownership, sizing, menu, layer, project and recovery paths. All live
+validation used generated clay or a separate loopback browser origin.
+Existing projects, Personal Shapes and recovery records were preserved.
+Phase 8.3b stays isolated. Production dense storage and voxel-resolution
+limits were untouched.
+
+## 2. Move gesture and transactions
+
+Free Move is the default for new settings. It combines pose-relative
+translation and wrist rotation around the captured layer-local centre.
+The compact field has a full-strength core at one quarter of the influence
+radius and a smooth taper. CPU reconstruction and GPU preview evaluate the
+same source-space field. Separate Translate, Rotate and Twist gestures
+retain their previous deformation and saved preference semantics. Surface
+placement targets the selected layer's ray hit. Free places the centre
+12 cm ahead of the controller, including inside or outside the clay.
+
+The preview reserves chunks under the existing preparation budget, allowing
+up to 25% radius growth within the normal size limits. Held changes update
+the CPU and GPU radius together while keeping source positions and voxels
+frozen. Release snapshots the final field and uses the existing guarded
+reconstruction and one-action publication. Shrinking the influence clear
+of the surface yields an empty patch. Elastic Translate retains its held
+stick softness binding. Legacy placement defaults to Surface when absent.
+
+## 3. VR feedback and navigation
+
+The two Move shells use depth testing, lightweight sphere geometry and
+transparent materials. The inner shell shows the full-strength Free Move
+core. In precise modes it indicates the high-weight region. The green
+controller-side ruler uses a logarithmic scale, a smoothed pointer, dark
+outlines and a brief fade. It uses the current brush radius or Stamp scale
+through the existing sizing ownership.
+
+The Layers, World and References panels and Tool Wheel provide coloured
+navigation with hover descriptions. References uses the existing immersive
+reference panel and browser import handoff. Personal Library uses the
+guarded browser Personal Shapes handoff and disables when unavailable.
+Mask, Paint and Project use icon-only Tool Wheel controls. A cylinder mesh
+renders the thicker menu ray. A circular hover tip and halo use the same
+underlying UV hit and trigger ownership.
+
+## 4. Verification
+
+The targeted Move, XR input, menu, layer, sizing and recovery suite passed
+381 tests. Free Move resize matched the fixed-final-radius reconstruction
+sample for sample. Tests cover the combined normal Jacobian, compact
+support, inside/outside placement, zero-effect shrink, exact Undo/Redo,
+controller priorities, and unavailable or busy navigation. Quick checks passed
+21/21 and worker-backed Move checks passed 93/93. Full `npm run check` passed
+formatting, lint, strict TypeScript and production build. The full suite
+passed 1,736/1,741 with no skips. The five failures were loopback server
+starts blocked by sandbox `listen EPERM` in the agent bridge, binary preview
+and development guide routing tests. With loopback permissions, an isolated
+copy of the staged Phase 8.4 changes passed the complete `npm run check`
+with 1,736/1,736 tests and no skips.
+
+Disposable Chromium WebGL showed a simultaneous 0.079 model-unit pull
+and 22.92° wrist rotation as radius grew from 0.220 to 0.230. The fixture
+reported a visible ruler, zero shader errors, exact native round-trip and
+one Undo step with Redo. Free placement with tracking loss kept the
+original source bytes and empty history. The production menu canvas showed
+the icon rows on a bright fixture background. The local Quest emulator
+rendered stereo Studio and returned to desktop. Browser tests used virtual
+controllers and generated clay.
+
+## 5. Remaining gates
+
+Physical Quest controller ergonomics, Passthrough contrast, thermal
+performance and frame timing remain unverified. A preview can refuse a
+large influence under the existing preparation budget. Free placement
+requires overlap with the active layer's surface to start. The browser
+handoff is exposed as such and can be refused while another edit owns
+the project.
+
+## 6. Handoff
+
+Use `scripts/move-precision-browser.html` for the disposable WebGL Move
+fixture and `scripts/fixtures/vr-menu-design.html` for the production menu
+canvas. The public field guide describes the shipped controls.
+
+---
+
 # Phase 8.3a — Dense vs sparse brick research — 2026-11-11
 
 ## 1. Scope, authority and preservation

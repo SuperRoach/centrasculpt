@@ -150,6 +150,7 @@ export class XRBrushPreview {
       this.group.matrix.premultiply(this.inverse);
     }
     this.group.visible = true;
+    this.mesh.material.depthTest = smooth;
     this.mesh.material.color.set(
       !available ? "#e8b174" : smooth ? "#a8c9ee" : subtract ? "#a04b36" : "#9de6cf",
     );

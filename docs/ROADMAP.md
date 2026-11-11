@@ -1,5 +1,25 @@
 # Centra Sculpt roadmap
 
+## Phase 8.4 — VR Sculpting Experience Polish (2026-11-12)
+
+- **8.4a Move.** Default Free Move combines translation and wrist rotation in
+  one persistent gesture. Existing Translate, Elastic, Rotate and Twist
+  settings reopen as saved. Surface and controller-tip placement share the
+  frozen layer frame. Live non-elastic radius growth is capped at 25% over
+  the starting size and the existing maximum. Elastic retains live softness.
+- **8.4b Feedback.** Two translucent, depth-tested Move shells and a shared
+  logarithmic Tool-controller ruler. The ruler reflects brush radius or Stamp
+  scale and fades when sizing stops.
+- **8.4c Menus.** Coloured icon navigation for Layers, World, References and
+  Personal Library. References has immersive placement and browser import.
+  Personal Library hands off to browser Personal Shapes. The Tool Wheel has
+  icon-only Mask, Paint and Project actions, a mesh ray and a circular hover tip.
+- **Verification.** Disposable Chromium WebGL and menu fixtures exercised Move,
+  native round-trip, Undo/Redo, tracking cancellation and menu presentation.
+  Quest controller ergonomics, Passthrough contrast and headset frame timing
+  remain physical acceptance gates. See the
+  [Phase 8.4 development handover](DEVELOPMENT_STATUS.md#phase-84--vr-sculpting-experience-polish--2026-11-12).
+
 ## Phase 8.3a — Dense vs sparse research (2026-11-11)
 
 Standalone 8³/16³ lossless read-only brick prototype and 78-case 64/128/192 matrix

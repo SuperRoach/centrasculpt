@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import type { MoveInteraction } from "./tool-preferences";
 import type { VolumeBounds } from "./volume-store";
 /** Shared field contract for preview and reconstruction evaluation.
  * Original-position CPU evaluation is shared with preview and persistent reconstruction. */
@@ -8,10 +9,10 @@ export interface DeformationField {
   affectedBounds(): VolumeBounds;
 }
 export const MOVE_DEFORMATION_MODES = Object.freeze([
-  { id: "preview", label: "Experimental · preview only", enabled: true },
   { id: "non-elastic", label: "Non-Elastic", enabled: true },
   { id: "elastic", label: "Elastic", enabled: true },
 ] as const);
+export const FREE_MOVE_CORE = 0.25;
 export class RadialMoveField implements DeformationField {
   readonly center = new Vector3();
   readonly delta = new Vector3();
@@ -49,7 +50,7 @@ export class RadialMoveField implements DeformationField {
       inv3 = inv * inv * inv,
       inv5 = inv3 * inv * inv,
       n = this.falloff + 1,
-      t = Math.pow(1 - q, n) / this.stiffness,
+      t = (1 - q) ** n / this.stiffness,
       A = e * (0.5 * inv + 0.5 * e * e * inv3),
       B = 0.5 * e * inv3,
       dot = r.dot(this.delta);
@@ -60,7 +61,7 @@ export class RadialMoveField implements DeformationField {
         .addScaledVector(r, B * dot * t);
     const rj = r.getComponent(column),
       dj = this.delta.getComponent(column),
-      dt = (((-2 * n * rj) / R2) * Math.pow(1 - q, n - 1)) / this.stiffness,
+      dt = (((-2 * n * rj) / R2) * (1 - q) ** (n - 1)) / this.stiffness,
       dA = e * (-0.5 * inv3 - 1.5 * e * e * inv5) * rj,
       dB = -1.5 * e * inv5 * rj;
     out
@@ -70,12 +71,14 @@ export class RadialMoveField implements DeformationField {
     out.setComponent(column, out.getComponent(column) + B * t * dot);
     return out;
   }
-  interaction: "translate" | "rotate" | "twist" = "translate";
+  interaction: MoveInteraction = "translate";
   readonly axis = new Vector3(0, 1, 0);
   angle = 0;
   setRotation(axis: Vector3, angle: number): void {
     if (
-      !axis.toArray().every(Number.isFinite) ||
+      !Number.isFinite(axis.x) ||
+      !Number.isFinite(axis.y) ||
+      !Number.isFinite(axis.z) ||
       axis.lengthSq() < 1e-12 ||
       !Number.isFinite(angle)
     )
@@ -85,14 +88,17 @@ export class RadialMoveField implements DeformationField {
   }
   private readonly rotated = new Vector3();
   private readonly angleGradient = new Vector3();
+  private readonly translationGradient = new Vector3();
   private rotation(point: Vector3, out: Vector3): Vector3 {
     const r = this.rotated.copy(point).sub(this.center),
       w = this.weight(point),
       profile = this.interaction === "twist" ? (1 + r.dot(this.axis) / this.radius) * 0.5 : 1;
-    return out
+    out
       .copy(r)
       .applyAxisAngle(this.axis, this.angle * w * profile)
       .add(this.center);
+    if (this.interaction === "free") out.addScaledVector(this.delta, w);
+    return out;
   }
   private readonly g = new Vector3();
   capture(center: Vector3, radius: number, falloff: number, strength: number): void {
@@ -128,18 +134,29 @@ export class RadialMoveField implements DeformationField {
     // Long pulls stretch existing triangles before the release-time SDF reconstruction.
   }
   weight(point: Vector3): number {
-    const q = point.distanceToSquared(this.center) / (this.radius * this.radius);
-    return q >= 1 ? 0 : Math.pow(1 - q, this.falloff + 1);
+    const distanceSquared = point.distanceToSquared(this.center) / (this.radius * this.radius),
+      q = this.interaction === "free" ? this.coreDistanceSquared(distanceSquared) : distanceSquared;
+    return q >= 1 ? 0 : (1 - q) ** (this.falloff + 1);
+  }
+  private coreDistanceSquared(distanceSquared: number): number {
+    const t = Math.max(0, (Math.sqrt(distanceSquared) - FREE_MOVE_CORE) / (1 - FREE_MOVE_CORE));
+    return t * t;
   }
   gradient(point: Vector3, out: Vector3): Vector3 {
-    const q = point.distanceToSquared(this.center) / (this.radius * this.radius);
-    return q >= 1
+    const distanceSquared = point.distanceToSquared(this.center) / (this.radius * this.radius),
+      free = this.interaction === "free",
+      q = free ? this.coreDistanceSquared(distanceSquared) : distanceSquared;
+    return q >= 1 || (free && q === 0)
       ? out.set(0, 0, 0)
       : out
           .copy(point)
           .sub(this.center)
           .multiplyScalar(
-            (-2 * (this.falloff + 1) * Math.pow(1 - q, this.falloff)) / (this.radius * this.radius),
+            (-2 *
+              (this.falloff + 1) *
+              (1 - q) ** this.falloff *
+              (free ? Math.sqrt(q / distanceSquared) / (1 - FREE_MOVE_CORE) : 1)) /
+              (this.radius * this.radius),
           );
   }
   position(point: Vector3, out: Vector3): Vector3 {
@@ -163,7 +180,8 @@ export class RadialMoveField implements DeformationField {
         w = this.weight(point),
         profile = this.interaction === "twist" ? (1 + r.dot(this.axis) / this.radius) * 0.5 : 1,
         theta = this.angle * w * profile;
-      this.gradient(point, this.angleGradient).multiplyScalar(this.angle * profile);
+      this.gradient(point, this.translationGradient);
+      this.angleGradient.copy(this.translationGradient).multiplyScalar(this.angle * profile);
       if (this.interaction === "twist")
         this.angleGradient.addScaledVector(this.axis, (this.angle * w) / (2 * this.radius));
       r.applyAxisAngle(this.axis, theta);
@@ -174,6 +192,9 @@ export class RadialMoveField implements DeformationField {
           .setComponent(j, 1)
           .applyAxisAngle(this.axis, theta)
           .addScaledVector(this.g, this.angleGradient.getComponent(j));
+      if (this.interaction === "free")
+        for (let j = 0; j < 3; j++)
+          this.columns[j].addScaledVector(this.delta, this.translationGradient.getComponent(j));
       const [a, b, c] = this.columns,
         nx = normal.x,
         ny = normal.y,
@@ -216,9 +237,9 @@ export class RadialMoveField implements DeformationField {
     const c = this.center,
       d = this.delta,
       r = this.radius;
-    if (this.interaction !== "translate")
+    if (this.interaction === "rotate" || this.interaction === "twist")
       return { min: [c.x - r, c.y - r, c.z - r], max: [c.x + r, c.y + r, c.z + r] };
-    if (this.mode === "elastic") {
+    if (this.interaction === "translate" && this.mode === "elastic") {
       const m = d.length() / this.stiffness;
       return {
         min: [c.x - r - m, c.y - r - m, c.z - r - m],

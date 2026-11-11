@@ -1,4 +1,5 @@
 export const MOVE_VARIANTS = [
+  "free",
   "non-elastic",
   "elastic",
   "rotate-twist",
@@ -7,6 +8,7 @@ export const MOVE_VARIANTS = [
   "scrape",
 ] as const;
 export type MoveVariant = (typeof MOVE_VARIANTS)[number];
+export type MoveInteraction = "free" | "translate" | "rotate" | "twist";
 export type ToolPreferences = {
   surfaceSnap?: {
     enabled: boolean;
@@ -31,7 +33,8 @@ export type ToolPreferences = {
   move: {
     precision: boolean;
     snap: 0 | 15 | 45 | 90;
-    interaction: "translate" | "rotate" | "twist";
+    interaction: MoveInteraction;
+    placement: "surface" | "free";
     axis: "free" | "x" | "y" | "z";
     angularStrength: number;
     angleClamp: number;
@@ -39,7 +42,7 @@ export type ToolPreferences = {
     falloff: number;
     strength: number;
     stiffness: number;
-    mode: "preview" | "non-elastic" | "elastic";
+    mode: "non-elastic" | "elastic";
   };
   alternateTool: "off" | "clay" | "smooth" | "opposite";
   stampAttachment?: {
@@ -68,7 +71,8 @@ export function defaultToolPreferences(): ToolPreferences {
     move: {
       precision: false,
       snap: 0,
-      interaction: "translate",
+      interaction: "free",
+      placement: "surface",
       axis: "free",
       angularStrength: 1,
       angleClamp: 120,
@@ -161,7 +165,8 @@ export function validateToolPreferences(value: unknown): ToolPreferences {
     move: {
       precision: bool(m.precision),
       snap: choice(m.snap, [0, 15, 45, 90]),
-      interaction: choice(m.interaction, ["translate", "rotate", "twist"]),
+      interaction: choice(m.interaction, ["free", "translate", "rotate", "twist"]),
+      placement: m.placement === undefined ? "surface" : choice(m.placement, ["surface", "free"]),
       axis: choice(m.axis, ["free", "x", "y", "z"]),
       angularStrength: num(m.angularStrength, 0.1, 2),
       angleClamp: num(m.angleClamp, 15, 180),
@@ -169,7 +174,7 @@ export function validateToolPreferences(value: unknown): ToolPreferences {
       falloff: num(m.falloff, 1, 4),
       strength: num(m.strength, 0.01, 1),
       stiffness: num(m.stiffness, 0.25, 4),
-      mode: choice(m.mode, ["preview", "non-elastic", "elastic"]),
+      mode: m.mode === "preview" ? "non-elastic" : choice(m.mode, ["non-elastic", "elastic"]),
     },
     alternateTool:
       d.alternateTool === "clay"

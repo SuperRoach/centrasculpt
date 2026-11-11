@@ -16,6 +16,7 @@ import { XRClayStroke } from "../work/test-build/xr-clay-stroke.mjs";
 import { XRControllerRoles } from "../work/test-build/xr-controller-roles.mjs";
 import { XRControllers } from "../work/test-build/xr-controllers.mjs";
 import { XRShortcutView } from "../work/test-build/xr-shortcut-view.mjs";
+import { XRSizeRuler } from "../work/test-build/xr-size-ruler.mjs";
 import { XRSupportShortcuts } from "../work/test-build/xr-support-shortcuts.mjs";
 
 const initial = {
@@ -736,3 +737,57 @@ for (const dominant of ["left", "right"])
       f.dispose();
     }
   });
+
+test("shared ruler reports size across supported tools, fades, follows either hand and disposes", () => {
+  const f = fixture(),
+    root = new Group(),
+    view = new XRSizeRuler(root),
+    grip = new Matrix4().makeTranslation(0.2, 1.2, -0.4),
+    eye = { x: 0, y: 1.6, z: 0 };
+  try {
+    let time = 32;
+    for (const tool of [
+      "clay",
+      "smooth",
+      "flatten",
+      "inflate",
+      "scrape",
+      "pinch",
+      "crease",
+      "paint",
+      "mask",
+      "tube",
+      "stamp",
+      "move",
+    ]) {
+      f.tools.select(tool);
+      f.s.stick.y = 0;
+      f.sizing.update(f.s, [f.s], time, true, false);
+      assert.equal(f.sizing.ruler(time), null);
+      f.s.stick.y = -1;
+      assert(f.sizing.update(f.s, [f.s], time + 40, true, false));
+      const size = f.sizing.ruler(time + 40);
+      assert(size.position > 0 && size.position < 1);
+      assert.equal(size.opacity, 1);
+      assert(f.sizing.ruler(time + 800).opacity < 1);
+      assert.equal(f.sizing.ruler(time + 940), null);
+      view.update(size, grip, eye, time + 40, false);
+      assert(view.group.visible && view.group.position.x > 0.2);
+      view.update(size, grip, eye, time + 50, true);
+      assert(view.group.position.x < 0.2);
+      f.sizing.update(f.s, [f.s], time + 60, false, false);
+      assert.equal(f.sizing.ruler(time + 60), null);
+      view.update(null, grip, eye, time + 60, true);
+      assert(!view.group.visible);
+      time += 1000;
+    }
+    let disposed = 0;
+    for (const part of view.group.children)
+      part.geometry.addEventListener("dispose", () => disposed++);
+    view.dispose();
+    assert.equal(disposed, 2);
+    assert.equal(root.children.length, 0);
+  } finally {
+    f.dispose();
+  }
+});

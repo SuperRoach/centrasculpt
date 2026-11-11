@@ -3342,9 +3342,11 @@ export class IndependentLayers {
     )
       throw new Error("Move needs a ready, visible, unlocked dense source in Separate Layers.");
     if (
-      input.interaction === "translate"
-        ? input.delta.length() < source.step * 1e-4
-        : Math.abs(input.angle) * input.radius < source.step * 1e-4
+      (input.interaction === "rotate" ||
+        input.interaction === "twist" ||
+        input.delta.length() < source.step * 1e-4) &&
+      (input.interaction === "translate" ||
+        Math.abs(input.angle) * input.radius < source.step * 1e-4)
     )
       return false;
     const field = new RadialMoveField();

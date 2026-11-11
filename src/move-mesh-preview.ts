@@ -1,8 +1,9 @@
 import type { BufferGeometry, Group, Material } from "three";
 import { BufferAttribute, Matrix4, Mesh, MeshStandardMaterial, Sphere, type Vector3 } from "three";
 import type { ChunkSpatialIndex } from "./chunk-spatial-index";
-import { RadialMoveField } from "./move-field";
+import { FREE_MOVE_CORE, RadialMoveField } from "./move-field";
 import { surfaceMask } from "./sculpt-mask";
+import type { MoveInteraction } from "./tool-preferences";
 export const MOVE_PREPARATION_BUDGET_MS = 12;
 const identity = new Matrix4();
 /** GLSL mirrors both modes of RadialMoveField. Source attributes are NEVER written or uploaded.
@@ -17,8 +18,21 @@ uniform float moveRadius;
 uniform float moveExponent;
 uniform float moveElastic;
 uniform float moveStiffness;
-float moveWeight(vec3 p) {float q=dot(p-moveCenter,p-moveCenter)/(moveRadius*moveRadius);return pow(max(0.0,1.0-q),moveExponent);}
-vec3 moveGradient(vec3 p) {float q=dot(p-moveCenter,p-moveCenter)/(moveRadius*moveRadius);return q>=1.0?vec3(0.0):-2.0*moveExponent*pow(max(0.0,1.0-q),moveExponent-1.0)*(p-moveCenter)/(moveRadius*moveRadius);}
+float moveDistanceSquared(float raw) {
+ if(moveInteraction<2.5)return raw;
+ float t=max(0.0,(sqrt(raw)-${FREE_MOVE_CORE})/(1.0-${FREE_MOVE_CORE}));
+ return t*t;
+}
+float moveWeight(vec3 p) {
+ float q=moveDistanceSquared(dot(p-moveCenter,p-moveCenter)/(moveRadius*moveRadius));
+ return pow(max(0.0,1.0-q),moveExponent);
+}
+vec3 moveGradient(vec3 p) {
+ float raw=dot(p-moveCenter,p-moveCenter)/(moveRadius*moveRadius),q=moveDistanceSquared(raw);
+ if(q>=1.0||(moveInteraction>2.5&&q==0.0))return vec3(0.0);
+ float slope=moveInteraction>2.5?sqrt(q/raw)/(1.0-${FREE_MOVE_CORE}):1.0;
+ return -2.0*moveExponent*pow(1.0-q,moveExponent-1.0)*slope*(p-moveCenter)/(moveRadius*moveRadius);
+}
 vec3 elasticMove(vec3 p, int column) {
  vec3 r=p-moveCenter;float q=dot(r,r)/(moveRadius*moveRadius);if(q>=1.0)return vec3(0.0);
  float e=moveRadius/3.0,iv=inversesqrt(dot(r,r)+e*e),iv3=iv*iv*iv,iv5=iv3*iv*iv;
@@ -29,11 +43,17 @@ vec3 elasticMove(vec3 p, int column) {
  vec3 v=(dA*t+A*dt)*moveDelta+((dB*t+B*dt)*h+B*t*dj)*r;v[column]+=B*t*h;return v;
 }
 vec3 rotateMove(vec3 r,float a){return r*cos(a)+cross(moveAxis,r)*sin(a)+moveAxis*dot(moveAxis,r)*(1.0-cos(a));}
-vec3 rotationalMove(vec3 p){vec3 r=p-moveCenter;float profile=moveInteraction>1.5?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0;return moveCenter+rotateMove(r,moveAngle*moveWeight(p)*profile);}
+bool moveTwists(){return moveInteraction>1.5&&moveInteraction<2.5;}
+vec3 rotationalMove(vec3 p){
+ vec3 r=p-moveCenter;
+ float w=moveWeight(p),profile=moveTwists()?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0;
+ return moveCenter+rotateMove(r,moveAngle*w*profile)+(moveInteraction>2.5?moveDelta*w:vec3(0.0));
+}
 vec3 moveNormal(vec3 p,vec3 n) {
- if(moveInteraction>0.5){vec3 r=p-moveCenter;float w=moveWeight(p),profile=moveInteraction>1.5?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0,theta=moveAngle*w*profile;
- vec3 g=moveGradient(p)*moveAngle*profile;if(moveInteraction>1.5)g+=moveAxis*moveAngle*w/(2.0*moveRadius);
+ if(moveInteraction>0.5){vec3 r=p-moveCenter;float w=moveWeight(p),profile=moveTwists()?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0,theta=moveAngle*w*profile;
+ vec3 gradient=moveGradient(p),g=gradient*moveAngle*profile;if(moveTwists())g+=moveAxis*moveAngle*w/(2.0*moveRadius);
  vec3 v=cross(moveAxis,rotateMove(r,theta)),a=rotateMove(vec3(1,0,0),theta)+v*g.x,b=rotateMove(vec3(0,1,0),theta)+v*g.y,c=rotateMove(vec3(0,0,1),theta)+v*g.z;
+ if(moveInteraction>2.5){a+=moveDelta*gradient.x;b+=moveDelta*gradient.y;c+=moveDelta*gradient.z;}
  return cross(b,c)*n.x+cross(c,a)*n.y+cross(a,b)*n.z;}
  if(moveElastic<0.5){vec3 g=moveGradient(p);return (1.0+dot(g,moveDelta))*n-g*dot(moveDelta,n);}
  vec3 a=vec3(1,0,0)+elasticMove(p,0),b=vec3(0,1,0)+elasticMove(p,1),c=vec3(0,0,1)+elasticMove(p,2);
@@ -54,6 +74,7 @@ export class MoveMeshPreview {
   candidateVertices = 0;
   affectedChunks = 0;
   preparationMs = 0;
+  private reservedRadius = 0;
   private bindings: Binding[] = [];
   private readonly materials = new Map<MeshStandardMaterial, MeshStandardMaterial>();
   private readonly influence = new Sphere();
@@ -85,8 +106,11 @@ export class MoveMeshPreview {
     index?: ChunkSpatialIndex,
     mode: "non-elastic" | "elastic" = "non-elastic",
     stiffness = 1,
+    reservedRadius = radius,
   ): void {
     this.restore();
+    if (!Number.isFinite(reservedRadius) || reservedRadius < radius)
+      throw new Error("Invalid Move radius reservation.");
     this.uniforms.moveInteraction.value = 0;
     this.field.capture(center, radius, falloff, strength);
     this.field.configure(mode, stiffness);
@@ -99,7 +123,15 @@ export class MoveMeshPreview {
     let candidates = 0,
       affected = 0;
     this.influence.center.copy(center);
-    this.influence.radius = radius;
+    this.influence.radius = reservedRadius;
+    const r2 = radius * radius,
+      reservedSquared = reservedRadius * reservedRadius;
+    const checkBudget = () => {
+      if (performance.now() - start > budgetMs)
+        throw new Error(
+          "Move preparation took too long · reduce radius or scene detail and retry.",
+        );
+    };
     try {
       if (index) index.sphere(this.influence, this.candidates);
       for (const object of index ? this.candidates : surface.children) {
@@ -116,48 +148,50 @@ export class MoveMeshPreview {
         candidates += p.count;
         if (!(mesh.material instanceof MeshStandardMaterial))
           throw new Error("Move preview requires the existing sculpt material.");
-        let count = 0;
-        const r2 = radius * radius;
+        let count = 0,
+          inReservation = false;
         for (let i = 0; i < p.count; i++) {
           const x = p.getX(i) - center.x,
             y = p.getY(i) - center.y,
             z = p.getZ(i) - center.z;
-          if (x * x + y * y + z * z < r2) count++;
+          const distanceSquared = x * x + y * y + z * z;
+          if (distanceSquared < r2) count++;
+          if (distanceSquared < reservedSquared) inReservation = true;
+          if ((i & 1023) === 1023) checkBudget();
         }
-        if (performance.now() - start > budgetMs)
-          throw new Error(
-            "Move preparation took too long · reduce radius or scene detail and retry.",
-          );
-        if (count) {
-          affected += count;
-          chosen.push({ mesh, material: mesh.material });
-        }
+        checkBudget();
+        affected += count;
+        if (inReservation) chosen.push({ mesh, material: mesh.material });
       }
       if (!affected) throw new Error("No vertices inside Move influence · increase radius.");
       const mask = surfaceMask(surface);
-      if (mask)
+      if (mask) {
+        let scratch = new Float32Array();
+        const point = { x: 0, y: 0, z: 0 };
         for (const { mesh } of chosen) {
           const p = mesh.geometry.getAttribute("position");
-          let weights = mesh.geometry.getAttribute("sculptMaskWeight") as
+          const weights = mesh.geometry.getAttribute("sculptMaskWeight") as
             | BufferAttribute
             | undefined;
           if (mask.empty && !weights) continue;
-          if (!weights) {
-            weights = new BufferAttribute(new Float32Array(p.count), 1);
-            mesh.geometry.setAttribute("sculptMaskWeight", weights);
-          }
-          const point = { x: 0, y: 0, z: 0 };
+          if (weights && scratch.length < p.count) scratch = new Float32Array(p.count);
+          const next = weights ? scratch : new Float32Array(p.count);
           for (let i = 0; i < p.count; i++) {
             point.x = p.getX(i);
             point.y = p.getY(i);
             point.z = p.getZ(i);
-            weights.setX(i, mask.sample(point));
+            next[i] = mask.sample(point);
+            if ((i & 1023) === 1023) checkBudget();
           }
-          weights.needsUpdate = true;
-          if (performance.now() - start > budgetMs)
-            throw new Error("Masked Move preparation took too long · reduce radius and retry.");
+          checkBudget();
+          if (weights) {
+            weights.array.set(next.subarray(0, p.count));
+            weights.needsUpdate = true;
+          } else mesh.geometry.setAttribute("sculptMaskWeight", new BufferAttribute(next, 1));
         }
+      }
       const staged = chosen.map(({ mesh, material }) => {
+        checkBudget();
         let preview = this.materials.get(material);
         if (!preview) {
           preview = material.clone();
@@ -182,7 +216,7 @@ export class MoveMeshPreview {
                 "#include <begin_vertex>\ntransformed += (1.0-sculptMaskWeight)*(moveInteraction>0.5?rotationalMove(position)-position:(moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position)));",
               );
           };
-          preview.customProgramCacheKey = () => "centra-move-preview-v4-rotation";
+          preview.customProgramCacheKey = () => "centra-move-preview-v5-free";
           this.materials.set(material, preview);
         }
         Object.assign(preview, {
@@ -207,7 +241,9 @@ export class MoveMeshPreview {
         };
       });
       // Publish only after all validation/scans/material allocation succeeded.
+      checkBudget();
       this.bindings = staged;
+      this.reservedRadius = reservedRadius;
       for (const b of staged) {
         b.mesh.material = b.preview;
         b.mesh.frustumCulled = false;
@@ -228,10 +264,28 @@ export class MoveMeshPreview {
       if (b.mesh.geometry !== b.geometry || b.mesh.material !== b.preview) return false;
     return true;
   }
-  setRotation(axis: Vector3, angle: number, interaction: "rotate" | "twist"): void {
+  setRadius(radius: number): boolean {
+    if (
+      !this.active ||
+      !Number.isFinite(radius) ||
+      radius <= 0 ||
+      radius > this.reservedRadius ||
+      radius === this.field.radius
+    )
+      return false;
+    this.field.radius = radius;
+    this.uniforms.moveRadius.value = radius;
+    return true;
+  }
+  setRotation(
+    axis: Vector3,
+    angle: number,
+    interaction: Exclude<MoveInteraction, "translate">,
+  ): void {
     this.field.interaction = interaction;
     this.field.setRotation(axis, angle);
-    this.uniforms.moveInteraction.value = interaction === "twist" ? 2 : 1;
+    this.uniforms.moveInteraction.value =
+      interaction === "free" ? 3 : interaction === "twist" ? 2 : 1;
     this.uniforms.moveAngle.value = angle;
   }
   update(displacement: Vector3): void {
@@ -245,6 +299,7 @@ export class MoveMeshPreview {
       b.mesh.frustumCulled = b.culled;
     }
     this.bindings = [];
+    this.reservedRadius = 0;
     this.field.delta.set(0, 0, 0);
   }
   cancel(): void {

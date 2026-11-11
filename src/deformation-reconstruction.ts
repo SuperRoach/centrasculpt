@@ -132,7 +132,8 @@ export async function reconstructMove(
     changed = new Uint8Array(vertices / 3),
     p = new Vector3(),
     q = new Vector3();
-  let at = 0;
+  let at = 0,
+    hasDeformation = false;
   for (const object of surface.children)
     if (object instanceof Mesh) {
       const source = object.geometry.getAttribute("position");
@@ -141,7 +142,10 @@ export async function reconstructMove(
         field.position(p, q);
         q.lerp(p, sculptMask(next).sample(p));
         q.toArray(positions, at * 3);
-        if (q.distanceToSquared(p) > 1e-24) changed[Math.floor(at / 3)] = 1;
+        if (q.distanceToSquared(p) > 1e-24) {
+          changed[Math.floor(at / 3)] = 1;
+          hasDeformation = true;
+        }
         at++;
         if (at % 2048 === 0) {
           progress({ stage: "indexing", completed: at, total: vertices });
@@ -149,6 +153,17 @@ export async function reconstructMove(
         }
       }
     }
+  if (!hasDeformation)
+    return {
+      patch: {
+        indices: new Uint32Array(),
+        before: new Float32Array(),
+        after: new Float32Array(),
+        bounds: null,
+      },
+      indexBytes: 0,
+      sampled: 0,
+    };
   const index = await TriangleDistanceIndex.build(positions, changed, () => work.pause());
   progress({ stage: "indexing", completed: vertices, total: vertices });
   const box = field.affectedBounds(),

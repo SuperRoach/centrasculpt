@@ -1,3 +1,9 @@
+### VR Sculpting Experience Polish — Phase 8.4 (2026-11-12)
+
+- Free Move combines pulling and wrist rotation in a single gesture with one Undo step. Precise Translate, Rotate and Twist remain available. Aim at the sculpt with Surface placement or position the influence at the controller tip with Free placement.
+- Move shows two translucent, depth-aware influence spheres. Free Move and the precise Non-Elastic gestures can resize during a pull within the range prepared at grab time. The green Tool-controller ruler shows brush radius or Stamp scale while sizing.
+- Layers, World, References and Personal Library use coloured navigation icons with hover labels. References opens immersive placement and Personal Library opens Personal Shapes in the browser. The Tool Wheel uses icons for Mask, Paint and Project, with a thicker menu ray and a larger circular hover tip.
+
 ### Personal Shape Stamps — Phase 8.0.1 / 8.0.2 (2026-11-11)
 
 - Personal Shapes → Use as Stamp selects a saved or restored SDF master with its calibrated size and saved Centre/Base centre pivot. Desktop placement and XR single/continuous stamping share Add/Subtract, transforms, symmetry, masks, previews and Undo/Redo.

@@ -701,7 +701,12 @@ test("XR palette hierarchy pages, expansion, actions, parent choices and rename 
         rects = content.buttons.filter((b) => b.rect);
       for (const b of rects) {
         const r = b.rect;
-        assert(r.x >= 0 && r.y >= 0 && r.x + r.width <= 1152 && r.y + r.height < 1040);
+        assert(
+          r.x >= 0 &&
+            r.y >= 0 &&
+            r.x + r.width <= 1152 &&
+            r.y + r.height <= (b.glyph ? 1152 : 1039),
+        );
         assert.equal(menu.hit(r.x + r.width / 2, r.y + r.height / 2), b.id);
         if (b.id.startsWith("hier:node:")) seen.add(b.id.slice(10));
       }

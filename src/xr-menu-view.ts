@@ -1,6 +1,7 @@
 import type { Matrix4 } from "three";
 import {
   CanvasTexture,
+  CircleGeometry,
   LinearFilter,
   LinearMipmapLinearFilter,
   Mesh,
@@ -9,7 +10,6 @@ import {
   Quaternion,
   Raycaster,
   RingGeometry,
-  SphereGeometry,
   SRGBColorSpace,
   Vector3,
 } from "three";
@@ -42,7 +42,7 @@ export interface XRMenuInteraction {
 }
 export class XRMenuView implements XRMenuInteraction {
   readonly cursor = new Mesh(
-    new SphereGeometry(0.004, 12, 8),
+    new CircleGeometry(0.006, 24),
     new MeshBasicMaterial({
       color: "#ffffff",
       transparent: true,
@@ -51,8 +51,19 @@ export class XRMenuView implements XRMenuInteraction {
       toneMapped: false,
     }),
   );
+  private readonly cursorGlow = new Mesh(
+    new CircleGeometry(0.009, 24),
+    new MeshBasicMaterial({
+      color: "#9df7da",
+      transparent: true,
+      opacity: 0.25,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    }),
+  );
   readonly dragRing = new Mesh(
-    new RingGeometry(0.005, 0.0065, 24),
+    new RingGeometry(0.007, 0.0085, 24),
     new MeshBasicMaterial({
       color: "#ffffff",
       depthTest: false,
@@ -122,6 +133,9 @@ export class XRMenuView implements XRMenuInteraction {
     this.cursor.visible = false;
     this.cursor.raycast = () => {};
     this.mesh.add(this.cursor);
+    this.cursorGlow.renderOrder = 1001.5;
+    this.cursorGlow.raycast = () => {};
+    this.cursor.add(this.cursorGlow);
     this.dragRing.position.z = 0.005;
     this.dragRing.renderOrder = 1003;
     this.dragRing.raycast = () => {};
@@ -186,6 +200,8 @@ export class XRMenuView implements XRMenuInteraction {
       ],
       scroll: { offset: this.scrollOffset, max },
       footer:
+        this.model.feedback ||
+        this.model.world.projectActionError ||
         palette.feedback ||
         (max
           ? "Tool stick ↑ / ↓ scrolls · hold trigger on a grip to drag"
@@ -333,6 +349,7 @@ export class XRMenuView implements XRMenuInteraction {
               ? VR_UI.text
               : VR_UI.accent,
         );
+        this.cursorGlow.material.color.copy(this.cursor.material.color);
         this.cursor.position.set((hit.uv.x - 0.5) * 0.72, (hit.uv.y - 0.5) * 0.72, 0.002);
       }
       if (!this.model.palette.dragged && this.model.hover === "hier:root") {
@@ -410,6 +427,7 @@ export class XRMenuView implements XRMenuInteraction {
       this.cursor.visible = true;
       this.cursor.scale.setScalar(1.7);
       this.cursor.material.color.set(drop.colour);
+      this.cursorGlow.material.color.copy(this.cursor.material.color);
       this.dragRing.material.color.set(drop.valid ? "#ffffff" : "#ef9c8c");
       this.dragRing.visible = true;
     }
@@ -433,10 +451,7 @@ export class XRMenuView implements XRMenuInteraction {
     else paintVRPanel(ctx, MENU_SIZE, MENU_SIZE);
     // Independent small title/footer plaques keep the floating wheel readable in AR.
     if (wheel) {
-      for (const r of [
-        { x: 24, y: 24, width: 798, height: 106 },
-        { x: 24, y: 1050, width: 1104, height: 64 },
-      ]) {
+      for (const r of [{ x: 24, y: 24, width: 798, height: 106 }]) {
         roundedVRRect(ctx, r.x, r.y, r.width, r.height);
         ctx.fillStyle = "rgba(16,26,32,0.88)";
         ctx.fill();
@@ -450,9 +465,12 @@ export class XRMenuView implements XRMenuInteraction {
       VR_UI.text,
       true,
     );
+    const hovered = content.buttons.find((b) => b.id === this.model.hover),
+      glyphHint = hovered?.glyph ? `${hovered.label} · ${hovered.detail}` : null;
+    this.canvas.setAttribute?.("aria-label", glyphHint ?? `${content.title} · ${content.subtitle}`);
     drawVRText(
       ctx,
-      content.subtitle,
+      (wheel && glyphHint) || content.subtitle,
       { x: 40, y: 92, width: 776, height: 38 },
       VR_UI.detail,
       VR_UI.muted,
@@ -475,9 +493,10 @@ export class XRMenuView implements XRMenuInteraction {
       ctx.lineWidth = 4;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(562, 918);
-      ctx.lineTo(576, 930);
-      ctx.lineTo(590, 918);
+      const x = this.model.page === "layers" ? 1090 : 576;
+      ctx.moveTo(x - 14, 918);
+      ctx.lineTo(x, 930);
+      ctx.lineTo(x + 14, 918);
       ctx.stroke();
       ctx.restore();
     }
@@ -532,21 +551,24 @@ export class XRMenuView implements XRMenuInteraction {
         label.small ? VR_UI.label : label.value ? VR_UI.value : VR_UI.label,
         label.small ? VR_UI.muted : VR_UI.text,
       );
-    const hovered = content.buttons.find((b) => b.id === this.model.hover),
-      info = hovered?.layerInfo;
+    const info = hovered?.layerInfo,
+      layerNav = content.buttons.some((b) => b.id === "nav:layers" && b.selected);
     const hint =
-      this.model.hover === "ui-scale"
+      glyphHint ??
+      (this.model.hover === "ui-scale"
         ? "Switch the size of VR menus"
         : this.model.hover?.startsWith("hier:drag:")
           ? "Hold Tool trigger, then drag onto a layer or empty space"
           : info
             ? `${info.resolution ? `${info.resolution}³ · ` : ""}${info.operation === "difference" ? "Subtracts from earlier layers" : info.operation === "intersect" ? "Keeps overlapping volume" : info.operation === "union" ? "Adds to the combined volume" : "Layer group"}${info.tube ? " · Procedural Tube" : info.primitive ? ` · Parametric ${info.primitive}` : ""}${info.children ? ` · ${info.children} nested items` : ""}`
-            : content.footer;
+            : content.footer);
     if (!wheel)
       drawVRText(
         ctx,
         this.model.palette.dragged ? content.footer : hint,
-        { x: wheel ? 744 : 40, y: 1048, width: wheel ? 368 : 1072, height: 72 },
+        layerNav
+          ? { x: 40, y: 899, width: 1010, height: 58 }
+          : { x: 40, y: 1048, width: 1072, height: 72 },
         VR_UI.footer,
         VR_UI.muted,
       );
@@ -628,6 +650,15 @@ export class XRMenuView implements XRMenuInteraction {
     ctx.strokeStyle = style.stroke;
     ctx.lineWidth = style.lineWidth;
     ctx.stroke();
+    if (b.glyph) {
+      this.icon(
+        b.glyph,
+        r.x + r.width / 2,
+        r.y + r.height / 2,
+        b.disabled ? VR_UI.disabled : (b.colour ?? style.text),
+      );
+      return;
+    }
     if (b.icon) {
       drawVRText(
         ctx,
@@ -978,6 +1009,60 @@ export class XRMenuView implements XRMenuInteraction {
       c.lineTo(7, -7);
       c.moveTo(-22, 7);
       c.lineTo(-7, 7);
+    } else if (id === "layers") {
+      c.moveTo(-27, -8);
+      c.lineTo(0, -23);
+      c.lineTo(27, -8);
+      c.lineTo(0, 7);
+      c.closePath();
+      for (const y of [3, 14]) {
+        c.moveTo(-27, y);
+        c.lineTo(0, y + 15);
+        c.lineTo(27, y);
+      }
+    } else if (id === "world") {
+      c.arc(0, 0, 25, 0, Math.PI * 2);
+      c.moveTo(0, -25);
+      c.bezierCurveTo(15, -15, 15, 15, 0, 25);
+      c.bezierCurveTo(-15, 15, -15, -15, 0, -25);
+      c.moveTo(-24, 0);
+      c.lineTo(24, 0);
+      for (const y of [-13, 13]) {
+        c.moveTo(-20, y);
+        c.lineTo(20, y);
+      }
+    } else if (id === "references") {
+      c.rect(-26, -20, 52, 40);
+      c.moveTo(-21, 13);
+      c.lineTo(-8, 0);
+      c.lineTo(0, 7);
+      c.lineTo(12, -6);
+      c.lineTo(22, 5);
+      c.moveTo(-7, -9);
+      c.arc(-12, -9, 5, 0, Math.PI * 2);
+    } else if (id === "personal-library") {
+      c.moveTo(-26, -10);
+      c.lineTo(0, -24);
+      c.lineTo(26, -10);
+      c.lineTo(0, 4);
+      c.closePath();
+      c.moveTo(-26, -10);
+      c.lineTo(-26, 15);
+      c.lineTo(0, 29);
+      c.lineTo(26, 15);
+      c.lineTo(26, -10);
+      c.moveTo(0, 4);
+      c.lineTo(0, 29);
+      c.moveTo(-13, -17);
+      c.lineTo(13, -3);
+    } else if (id === "project") {
+      c.moveTo(-28, 19);
+      c.lineTo(-28, -17);
+      c.lineTo(-8, -17);
+      c.lineTo(-2, -9);
+      c.lineTo(27, -9);
+      c.lineTo(27, 19);
+      c.closePath();
     } else if (id === "trash") {
       c.moveTo(-24, -15);
       c.lineTo(24, -15);
@@ -1129,6 +1214,8 @@ export class XRMenuView implements XRMenuInteraction {
     this.stop();
     this.cursor.geometry.dispose();
     this.cursor.material.dispose();
+    this.cursorGlow.geometry.dispose();
+    this.cursorGlow.material.dispose();
     this.dragRing.geometry.dispose();
     this.dragRing.material.dispose();
     this.texture.dispose();

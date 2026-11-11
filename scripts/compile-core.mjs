@@ -128,6 +128,7 @@ for (const name of [
   "xr-shape-stamp",
   "brush-settings",
   "xr-brush-sizing",
+  "xr-size-ruler",
   "xr-brush-preview",
   "clay-path",
   "clay-stroke-session",

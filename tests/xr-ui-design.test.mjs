@@ -208,7 +208,12 @@ test("every option row, slider, layer row, page navigation and scale control rem
       const rects = content.buttons.filter((b) => b.rect);
       for (const b of rects) {
         const r = b.rect;
-        assert(r.x >= 0 && r.y >= 0 && r.x + r.width <= MENU_SIZE && r.y + r.height < 1040);
+        assert(
+          r.x >= 0 &&
+            r.y >= 0 &&
+            r.x + r.width <= MENU_SIZE &&
+            r.y + r.height <= (b.glyph ? MENU_SIZE : 1039),
+        );
         assert.equal(f.model.hit(...center(b)), b.id);
         for (const other of rects) {
           if (b === other) continue;

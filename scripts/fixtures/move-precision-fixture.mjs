@@ -63,7 +63,6 @@ export function fixture(n = 33) {
       },
     };
   tools.select("move");
-  tools.move.mode = "preview";
   return {
     get l() {
       return l;

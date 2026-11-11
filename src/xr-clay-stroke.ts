@@ -11,7 +11,11 @@ import {
 } from "three";
 import { CLAY_TIP_REACH_METRES } from "./clay-path";
 import { CLAY_MESH_BUDGET_MS, CLAY_MESH_CHUNKS, ClayStrokeSession } from "./clay-stroke-session";
-import type { EditorToolState } from "./editor-tool-state";
+import {
+  type EditorTool,
+  type EditorToolState,
+  toolAllowsLiveBrushSizing,
+} from "./editor-tool-state";
 import type { IndependentLayers } from "./independent-layers";
 import { reflectPoint } from "./sdf";
 import { sdfSurfaceHit } from "./sdf-surface-hit";
@@ -29,7 +33,7 @@ import { XRSnapGuide } from "./xr-snap-guide";
 export interface XRStrokeInteraction {
   readonly active: boolean;
   readonly feedback?: string;
-  readonly liveSizing?: "clay-radius" | "tube-radius" | "move-falloff" | null;
+  readonly liveSizing?: import("./xr-brush-sizing").XRLiveSizing | null;
   update(
     tool: XRControllerState | undefined,
     pose: Matrix4 | undefined,
@@ -75,7 +79,7 @@ export class XRClayStroke implements XRStrokeInteraction {
   private readonly stableAnchor = new Matrix4();
   private processingMs = 0;
   private processingMeasured = false;
-  private capturedTool = "clay";
+  private capturedTool: EditorTool = "clay";
   private owner = 0;
   private armed = false;
   private lastFrame: number | null = null;
@@ -107,10 +111,7 @@ export class XRClayStroke implements XRStrokeInteraction {
     root.add(this.preview);
   }
   get liveSizing() {
-    return this.session.phase === "drawing" &&
-      (this.capturedTool === "clay" ||
-        this.capturedTool === "mask" ||
-        this.capturedTool === "paint")
+    return this.session.phase === "drawing" && toolAllowsLiveBrushSizing(this.capturedTool)
       ? ("clay-radius" as const)
       : null;
   }

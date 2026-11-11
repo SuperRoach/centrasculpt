@@ -264,7 +264,10 @@ test("controller bridge uses native ray/grip parents and cleans temporary visual
       assert.equal(bridge.slots[1].rayVisual.parent, rays[1]);
       assert.equal(bridge.slots[1].gripVisual.parent, grips[1]);
       assert.equal(rays[1].parent, root);
-      assert.equal(bridge.slots[1].line.geometry.getAttribute("position").getZ(1), -1.5);
+      const geometry = bridge.slots[1].line.geometry;
+      geometry.computeBoundingBox();
+      assert.equal(geometry.boundingBox.min.z, -1.5);
+      assert.equal(geometry.boundingBox.max.z, 0);
       session.dispatchEvent(new Event("end"));
       assert.equal(session.listenerCount, 0);
       assert.equal(bridge.slots[1].rayVisual.parent, null);

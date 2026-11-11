@@ -1,8 +1,17 @@
 import { BRUSH_RADIUS_LIMITS } from "./brush-settings";
 import type { EditorToolState } from "./editor-tool-state";
-import { toolSizingBinding } from "./editor-tool-state";
+import { toolAllowsLiveBrushSizing, toolSizingBinding } from "./editor-tool-state";
 import type { XRControllerState } from "./xr-input";
+import type { XRSizeRulerState } from "./xr-size-ruler";
+
+export type XRLiveSizing =
+  | "clay-radius"
+  | "tube-radius"
+  | "move-falloff"
+  | { setMoveRadius(radius: number): boolean };
+
 export interface XRAnalogToolControl {
+  ruler?(time: number): XRSizeRulerState | null;
   readonly feedback: string;
   update(
     tool: XRControllerState | undefined,
@@ -11,7 +20,7 @@ export interface XRAnalogToolControl {
     enabled: boolean,
     busy: boolean,
     alternateActive?: boolean,
-    liveSizing?: "clay-radius" | "tube-radius" | "move-falloff" | null,
+    liveSizing?: XRLiveSizing | null,
   ): boolean;
   reset(): void;
 }
@@ -26,6 +35,8 @@ export class XRBrushSizing implements XRAnalogToolControl {
   private lastTime: number | null = null;
   private armed = false;
   private shownRadius = "";
+  private rulerPosition = 0;
+  private rulerUntil = 0;
   readonly rate = 0.9;
   readonly axisDeadZone = 0.08;
   constructor(private readonly tools: EditorToolState) {}
@@ -38,6 +49,15 @@ export class XRBrushSizing implements XRAnalogToolControl {
     this.lastTime = null;
     this.armed = false;
     this.shownRadius = "";
+    this.rulerUntil = 0;
+  }
+  ruler(time: number): XRSizeRulerState | null {
+    if (time >= this.rulerUntil) return null;
+    return { position: this.rulerPosition, opacity: Math.min(1, (this.rulerUntil - time) / 250) };
+  }
+  private showRadius(value: number, min: number, max: number, time: number): void {
+    this.rulerPosition = Math.max(0, Math.min(1, Math.log(value / min) / Math.log(max / min)));
+    this.rulerUntil = time + 900;
   }
   update(
     tool: XRControllerState | undefined,
@@ -46,7 +66,7 @@ export class XRBrushSizing implements XRAnalogToolControl {
     enabled: boolean,
     busy: boolean,
     alternateActive = false,
-    liveSizing: "clay-radius" | "tube-radius" | "move-falloff" | null = null,
+    liveSizing: XRLiveSizing | null = null,
   ): boolean {
     this.changing = false;
     if (!Number.isFinite(time)) {
@@ -79,9 +99,12 @@ export class XRBrushSizing implements XRAnalogToolControl {
     this.lastTime = time;
     // Only the active alternate brush reserves Support trigger for its hold.
     // Tool trigger, every grip and all higher-priority owners still block sizing.
+    const moveRadius =
+      mode === "move" && liveSizing && typeof liveSizing === "object" ? liveSizing : null;
     const live =
+      !!moveRadius ||
       (liveSizing === "tube-radius" && mode === "tube") ||
-      (liveSizing === "clay-radius" && (mode === "clay" || mode === "mask" || mode === "paint")) ||
+      (liveSizing === "clay-radius" && toolAllowsLiveBrushSizing(mode)) ||
       (liveSizing === "move-falloff" && mode === "move");
     const blocked =
       !enabled ||
@@ -104,6 +127,7 @@ export class XRBrushSizing implements XRAnalogToolControl {
     if (blocked) {
       this.armed = false;
       this.feedback = "";
+      this.rulerUntil = 0;
       return false;
     }
     const x = Math.max(-1, Math.min(1, tool.stick.x)),
@@ -127,6 +151,7 @@ export class XRBrushSizing implements XRAnalogToolControl {
       const current = this.tools.port.shape.definition.transform.scale[0],
         scale = Math.max(0.02, Math.min(10, current * Math.exp(-axis * this.rate * dt)));
       if (!this.tools.setStampScale(scale)) return false;
+      this.showRadius(scale, 0.02, 10, time);
       this.feedback = `Stamp scale ${scale.toFixed(3)}×`;
       this.until = time + 900;
       return true;
@@ -141,21 +166,23 @@ export class XRBrushSizing implements XRAnalogToolControl {
       BRUSH_RADIUS_LIMITS.min,
       Math.min(BRUSH_RADIUS_LIMITS.max, current * Math.exp(-axis * this.rate * dt)),
     );
-    if (
-      !(liveSizing === "tube-radius"
+    const changed = moveRadius
+      ? moveRadius.setMoveRadius(radius)
+      : liveSizing === "tube-radius"
         ? this.tools.setLiveTubeRadius(radius)
         : liveSizing === "clay-radius"
           ? this.tools.setLiveClayRadius(radius)
-          : this.tools.setBrushRadius(radius, settings))
-    )
-      return false;
-    this.changing = true;
-    const shown = radius.toFixed(3);
+          : this.tools.setBrushRadius(radius, settings);
+    if (!changed && !moveRadius && radius !== current) return false;
+    this.changing = changed;
+    const effective = this.tools.brushRadius;
+    this.showRadius(effective, BRUSH_RADIUS_LIMITS.min, BRUSH_RADIUS_LIMITS.max, time);
+    const shown = effective.toFixed(3);
     if (shown !== this.shownRadius || !this.feedback) {
       this.feedback = `${mode === "move" ? "Move influence" : "Radius"} ${shown}`;
       this.shownRadius = shown;
     }
     this.until = time + 900;
-    return true;
+    return changed;
   }
 }

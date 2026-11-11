@@ -11,6 +11,7 @@ import type { ShapeKind } from "./shapes";
 import { SHAPE_KINDS, SHAPE_METADATA } from "./shapes";
 import {
   defaultToolPreferences,
+  type MoveInteraction,
   type MoveVariant,
   type ToolPreferences,
   validateToolPreferences,
@@ -153,6 +154,7 @@ export const VR_WHEEL_TOOLS = [
   { id: "cut", label: "Cut", detail: "Plane · separate pieces", enabled: true } as const,
 ];
 export const MOVE_VARIANT_LABELS: Record<MoveVariant, string> = {
+  free: "Free Move",
   "non-elastic": "Non-Elastic Move",
   elastic: "Elastic Move",
   "rotate-twist": "Rotate / Twist",
@@ -165,6 +167,9 @@ export function toolAllowsLayerGrab(tool: EditorTool): boolean {
 }
 export function toolSizingBinding(tool: EditorTool) {
   return EDITOR_TOOLS.find((t) => t.id === tool)?.sizing ?? null;
+}
+export function toolAllowsLiveBrushSizing(tool: EditorTool): boolean {
+  return tool === "clay" || tool === "inflate" || tool === "mask" || tool === "paint";
 }
 export type ToolOption = {
   id: string;
@@ -206,7 +211,7 @@ export type EditorToolPort = {
   changed: () => void;
 };
 export class EditorToolState {
-  private rememberedMoveVariant: MoveVariant = "non-elastic";
+  private rememberedMoveVariant: MoveVariant = "free";
   alternateTool: "off" | "clay" | "smooth" | "opposite" = "opposite";
   splinePointId: string | null = null;
   private selectedTubeLayer: string | null = null;
@@ -234,7 +239,8 @@ export class EditorToolState {
   readonly move = {
     snap: 0 as 0 | 15 | 45 | 90,
     precision: false,
-    interaction: "translate" as "translate" | "rotate" | "twist",
+    interaction: "free" as MoveInteraction,
+    placement: "surface" as "surface" | "free",
     axis: "free" as "free" | "x" | "y" | "z",
     angularStrength: 1,
     angleClamp: 120,
@@ -242,7 +248,7 @@ export class EditorToolState {
     falloff: 2,
     strength: 1,
     stiffness: 1,
-    mode: "non-elastic" as "preview" | "non-elastic" | "elastic",
+    mode: "non-elastic" as "non-elastic" | "elastic",
   };
   get brushRadius(): number {
     return this.active === "move" ? this.move.radius : this.port.settings().radius;
@@ -304,13 +310,7 @@ export class EditorToolState {
     const p = value === undefined ? defaultToolPreferences() : validateToolPreferences(value);
     Object.assign(this.path, p.path);
     Object.assign(this.move, p.move);
-    this.rememberedMoveVariant =
-      p.moveVariant ??
-      (p.move.interaction !== "translate"
-        ? "rotate-twist"
-        : p.move.mode === "elastic"
-          ? "elastic"
-          : "non-elastic");
+    this.rememberedMoveVariant = p.moveVariant ?? this.deformationVariant;
     Object.assign(this.port.layers().symmetry, p.symmetry);
     Object.assign(
       this.surfaceSnap,
@@ -401,7 +401,7 @@ export class EditorToolState {
   setLiveClayRadius(value: number): boolean {
     const l = this.port.layers();
     if (
-      !["clay", "mask", "paint"].includes(this.active) ||
+      !toolAllowsLiveBrushSizing(this.active) ||
       !l.drawing ||
       l.previewing ||
       l.deforming ||
@@ -490,19 +490,20 @@ export class EditorToolState {
     return this.active === "move" ||
       (!["pinch", "crease", "scrape"].includes(this.rememberedMoveVariant) &&
         !["pinch", "crease", "scrape"].includes(this.active))
-      ? this.move.interaction !== "translate"
-        ? "rotate-twist"
-        : this.move.mode === "elastic"
-          ? "elastic"
-          : "non-elastic"
+      ? this.deformationVariant
       : ["pinch", "crease", "scrape"].includes(this.active)
         ? (this.active as MoveVariant)
         : this.rememberedMoveVariant;
   }
+  private get deformationVariant(): MoveVariant {
+    if (this.move.interaction === "free") return "free";
+    if (this.move.interaction !== "translate") return "rotate-twist";
+    return this.move.mode;
+  }
   get contextLabel(): string {
     if (this.active === "transform" && this.port.layers().selectedGroupId) return "Transform Group";
     return this.moveFamily
-      ? `Move · ${this.active === "move" && this.move.interaction === "translate" && this.move.mode === "preview" ? "Preview only" : MOVE_VARIANT_LABELS[this.lastMoveVariant]}`
+      ? `Move · ${MOVE_VARIANT_LABELS[this.lastMoveVariant]}`
       : EDITOR_TOOLS.find((t) => t.id === this.active)!.label;
   }
   /** Compact menu status; derived from authoritative settings, never a second tool state. */
@@ -528,7 +529,7 @@ export class EditorToolState {
     const detail = names[operation];
     return `${this.contextLabel}${detail ? " · " + detail : ""}${this.busy ? " · Working…" : l.selectedGroupId && this.active !== "transform" ? " · Select a source layer" : !l.active.layer.editable ? " · Layer hidden or locked" : (l.active.layer.procedural || l.active.layer.primitive) && !["transform", "tube", "edit-spline"].includes(this.active) ? " · Bake source first" : ""}`;
   }
-  /** Wheel recall preserves the exact deformation settings, including legacy Preview only. */
+  /** Wheel recall preserves the exact deformation settings, when reselecting Move. */
   selectMoveGroup(): void {
     const variant = this.lastMoveVariant;
     this.select(["pinch", "crease", "scrape"].includes(variant) ? (variant as EditorTool) : "move");
@@ -539,7 +540,12 @@ export class EditorToolState {
     if (variant === "non-elastic" || variant === "elastic") {
       this.move.mode = variant;
       this.move.interaction = "translate";
-    } else if (variant === "rotate-twist" && this.move.interaction === "translate")
+    } else if (variant === "free") {
+      this.move.interaction = "free";
+    } else if (
+      variant === "rotate-twist" &&
+      (this.move.interaction === "translate" || this.move.interaction === "free")
+    )
       this.move.interaction = "rotate";
     this.rememberedMoveVariant = variant;
     this.port.changed();
@@ -973,8 +979,16 @@ export class EditorToolState {
         label: "Move gesture",
         read: () => this.move.interaction,
         write: (v) => (this.move.interaction = v as typeof this.move.interaction),
-        choices: ["translate", "rotate", "twist"],
-        names: ["Translate", "Rotate region", "Twist region"],
+        choices: ["free", "translate", "rotate", "twist"],
+        names: ["Free Move", "Translate", "Rotate region", "Twist region"],
+      });
+      options.push({
+        id: "move-placement",
+        label: "Move placement",
+        read: () => this.move.placement,
+        write: (v) => (this.move.placement = v as typeof this.move.placement),
+        choices: ["surface", "free"],
+        names: ["Surface · aim at clay", "Free · at controller tip"],
       });
       if (this.move.interaction === "translate")
         options.push({
@@ -997,11 +1011,19 @@ export class EditorToolState {
         options.push(
           {
             id: "move-axis",
-            label: "Rotation axis · layer local",
+            label:
+              this.move.interaction === "free"
+                ? "Move axis · layer local"
+                : "Rotation axis · layer local",
             read: () => this.move.axis,
             write: (v) => (this.move.axis = v as typeof this.move.axis),
             choices: ["free", "x", "y", "z"],
-            names: ["Wrist axis", "X", "Y", "Z"],
+            names: [
+              this.move.interaction === "free" ? "Unconstrained" : "Wrist axis",
+              "X",
+              "Y",
+              "Z",
+            ],
           },
           {
             id: "move-angular-strength",
@@ -1025,8 +1047,8 @@ export class EditorToolState {
             id: "move-compatibility",
             label: "Wrist behaviour",
             read: () =>
-              this.move.interaction === "translate"
-                ? "Selected mode below"
+              this.move.interaction === "free"
+                ? "Pull and turn together"
                 : "Fixed pivot · Non-Elastic; lock axis for twist",
             disabled: true,
           },
@@ -1044,16 +1066,12 @@ export class EditorToolState {
           id: "move-mode",
           label:
             this.move.interaction === "translate"
-              ? "Translation feel / preview"
+              ? "Translation feel"
               : "Saved translation setting",
           read: () => this.move.mode,
-          write: (v) => (this.move.mode = v as "preview" | "non-elastic" | "elastic"),
-          choices: ["non-elastic", "elastic", "preview"],
-          names: [
-            "Non-Elastic · direct pull",
-            "Elastic · soft pull",
-            "Preview only · release restores",
-          ],
+          write: (v) => (this.move.mode = v as "non-elastic" | "elastic"),
+          choices: ["non-elastic", "elastic"],
+          names: ["Non-Elastic · direct pull", "Elastic · soft pull"],
           disabled: this.move.interaction !== "translate",
         },
         {
@@ -1083,7 +1101,7 @@ export class EditorToolState {
           min: 0.01,
           max: 1,
           step: 0.05,
-          disabled: this.move.interaction !== "translate",
+          disabled: this.move.interaction === "rotate" || this.move.interaction === "twist",
         },
         {
           id: "move-stiffness",
@@ -1098,10 +1116,7 @@ export class EditorToolState {
         {
           id: "application",
           label: "Release / cancel",
-          read: () =>
-            this.move.interaction === "translate" && this.move.mode === "preview"
-              ? "Restores SDF surface · no undo action"
-              : "Commit one action · cancel restores",
+          read: () => "Commit one action · cancel restores",
           disabled: true,
         },
       );
@@ -1452,8 +1467,9 @@ export class EditorToolState {
       (o) =>
         !(
           active === "move" &&
-          ((this.move.interaction !== "translate" &&
-            ["move-mode", "move-strength"].includes(o.id)) ||
+          ((this.move.interaction !== "translate" && o.id === "move-mode") ||
+            ((this.move.interaction === "rotate" || this.move.interaction === "twist") &&
+              o.id === "move-strength") ||
             (o.id === "move-stiffness" &&
               (this.move.mode !== "elastic" || this.move.interaction !== "translate")))
         ),

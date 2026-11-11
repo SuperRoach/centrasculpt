@@ -58,10 +58,25 @@ export class XRWorldMenu {
   section: WorldSection = "home";
   private light: LightId = "key";
   private projectError = "";
+  private personalLibraryPending = false;
   constructor(
     private readonly tools: EditorToolState,
     private readonly port?: XRWorldMenuPort,
   ) {}
+  get referencesAvailable(): boolean {
+    return !!this.port?.references;
+  }
+  get personalLibraryAvailable(): boolean {
+    return (
+      !!this.port?.projectAction && !this.port.projectBrowser?.busy && !this.personalLibraryPending
+    );
+  }
+  get projectActionError(): string {
+    return this.projectError;
+  }
+  clearProjectActionError(): void {
+    this.projectError = "";
+  }
   stopPrecision(): void {
     this.port?.precision?.start(0);
   }
@@ -100,7 +115,7 @@ export class XRWorldMenu {
           this.section.startsWith("reference") && this.section !== "references"
             ? "‹ Reference images"
             : "‹ World Settings",
-        rect: { x: 300, y: 140, width: 440, height: 74 },
+        rect: { x: 300, y: 140, width: 222, height: 74 },
       });
     let subtitle = "Environment · background · guides · turntable · preferences";
     if (this.section === "project" && this.port?.projectBrowser) {
@@ -151,7 +166,11 @@ export class XRWorldMenu {
                   : action === "recover"
                     ? "Recovery…"
                     : "Personal Shapes…",
-            disabled: busy || browser.busy || !this.port.projectAction,
+            disabled:
+              busy ||
+              browser.busy ||
+              !this.port.projectAction ||
+              (action === "shapes" && this.personalLibraryPending),
             rect: { x: 40 + i * 274, y: 1008, width: 254, height: 78 },
           });
       }
@@ -201,7 +220,10 @@ export class XRWorldMenu {
           id: `project:${action}`,
           label: labels[action],
           detail: "Exit XR · continue in browser",
-          disabled: busy || !this.port?.projectAction,
+          disabled:
+            busy ||
+            !this.port?.projectAction ||
+            (action === "shapes" && this.personalLibraryPending),
           rect: { x: 40, y: 244 + i * 135, width: 1072, height: 120 },
         });
       }
@@ -209,7 +231,7 @@ export class XRWorldMenu {
       buttons.push({
         id: "world:project",
         label: "Project Library",
-        rect: { x: 300, y: 140, width: 440, height: 74 },
+        rect: { x: 300, y: 140, width: 222, height: 74 },
       });
       add("world:environment", "Environment", 244, "Studio or Passthrough");
       add("world:background", "Studio Background", 394, "Skybox · colour swatches · ground grid");
@@ -248,7 +270,7 @@ export class XRWorldMenu {
         id: "world:references",
         label: "References",
         detail: "Import on desktop · place and inspect in VR",
-        disabled: busy,
+        disabled: busy || !this.referencesAvailable,
         rect: { x: 588, y: 844, width: 524, height: 136 },
       });
       buttons.push({
@@ -457,6 +479,8 @@ export class XRWorldMenu {
         "Import images / STL…",
         244,
         "Exit XR to use the browser file picker",
+        false,
+        busy || !this.port?.importReferences,
       );
       layers.display.references.forEach((r, i) => {
         buttons.push({
@@ -903,10 +927,23 @@ export class XRWorldMenu {
     }
     if (id.startsWith("project:")) {
       this.projectError = "";
-      if (!this.tools.busy && this.port?.projectAction)
-        void this.port.projectAction(id.slice(8) as ProjectAction).catch((error) => {
-          this.projectError = error instanceof Error ? error.message : "Project action failed";
-        });
+      const action = id.slice(8) as ProjectAction;
+      if (
+        !this.tools.busy &&
+        !this.port?.projectBrowser?.busy &&
+        this.port?.projectAction &&
+        (action !== "shapes" || !this.personalLibraryPending)
+      ) {
+        if (action === "shapes") this.personalLibraryPending = true;
+        void this.port
+          .projectAction(action)
+          .catch((error) => {
+            this.projectError = error instanceof Error ? error.message : "Project action failed";
+          })
+          .finally(() => {
+            if (action === "shapes") this.personalLibraryPending = false;
+          });
+      }
       return true;
     }
 

@@ -80,7 +80,6 @@ for (const [target, resolution] of [
       changed() {},
     });
   tools.select("move");
-  tools.move.mode = "preview";
   const move = new XRMoveTool(() => l, tools, new Group()),
     tool = {
       role: "tool",
@@ -114,7 +113,7 @@ for (const [target, resolution] of [
     tools.move.radius = radius;
     const prepare = [],
       held = [],
-      release = [],
+      cancel = [],
       failures = [],
       legacyPrepare = [];
     let legacyError = "",
@@ -162,8 +161,8 @@ for (const [target, resolution] of [
       }
       tool.buttons.trigger = { pressed: false, rawValue: 0, justPressed: false };
       t = performance.now();
-      move.update(tool, pose, (time += 11), true, grip);
-      release.push(performance.now() - t);
+      move.cancel();
+      cancel.push(performance.now() - t);
       grip.copy(pose);
     }
     configs.push({
@@ -173,7 +172,7 @@ for (const [target, resolution] of [
       affectedChunks,
       grab: summary(prepare),
       heldCPU: held.length ? summary(held) : null,
-      release: release.length ? summary(release) : null,
+      cancel: cancel.length ? summary(cancel) : null,
       failures,
       legacy: {
         preparation: legacyPrepare.length ? summary(legacyPrepare) : null,

@@ -68,7 +68,6 @@ for (const resolution of [64, 128, 192]) {
         changed() {},
       });
       tools.select("move");
-      tools.move.mode = "preview";
       tools.move.radius = radius;
       const interaction = new XRMoveTool(() => l, tools, new Group()),
         tool = {
@@ -105,14 +104,14 @@ for (const resolution of [64, 128, 192]) {
         if (i >= 30) held.push(performance.now() - start);
       }
       tool.buttons.trigger = { pressed: false, rawValue: 0, justPressed: false };
-      const releaseStart = performance.now();
-      interaction.update(tool, pose, (time += 11.11), true, grip);
-      const releaseMs = performance.now() - releaseStart;
+      const cancelStart = performance.now();
+      interaction.cancel();
+      const cancelMs = performance.now() - cancelStart;
       interaction.dispose();
       rows.push({
         resolution,
         radius,
-        interaction: { hover: summary(hover), held: summary(held), grabMs, releaseMs },
+        interaction: { hover: summary(hover), held: summary(held), grabMs, cancelMs },
         preparation: preparations.length ? summary(preparations) : null,
         update: updates.length ? summary(updates) : null,
         affectedVertices: preview.affectedVertices,
