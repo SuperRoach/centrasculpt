@@ -504,9 +504,9 @@ test("triangle-budget failure and a full stack keep original project and histori
   assert.equal(c.project.layerStack.layers.length, 1);
   c.active.triangles = triangles;
   assert.deepEqual(new Uint8Array(saveSculptProject(c.project)), new Uint8Array(before));
-  for (let i = 0; i < 15; i++) c.create(64);
-  await assert.rejects(c.bake(options()), /16/);
-  assert.equal(c.project.layerStack.layers.length, 16);
+  for (let i = 0; i < 19; i++) c.create(64);
+  await assert.rejects(c.bake(options()), /20 independent layers/);
+  assert.equal(c.project.layerStack.layers.length, 20);
   c.dispose();
 });
 test("redo retains renamed hidden locked baked state and deletion cannot resurrect a deleted output", async () => {

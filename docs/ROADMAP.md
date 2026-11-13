@@ -155,7 +155,7 @@ It does not validate other dimensions, clearances, features, printers or materia
   scoped preview arguments, current build/session identity and restart guidance.
 - Run the automated holder challenge through the real browser editor and official
   MCP SDK; verify separate approval, unchanged pre-apply scene, exact Boolean graph,
-  evaluated bounds/captures and one Undo within the 16-layer limit.
+  evaluated bounds/captures and one Undo within the 20-layer limit.
 - Codex/Cursor cached tool exposure cannot be established from repository tests;
   confirm via each client's MCP panel after refresh/reconnect. Quest hardware remains
   a separate acceptance gate.

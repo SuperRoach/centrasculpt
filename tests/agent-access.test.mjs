@@ -21,11 +21,11 @@ const create = { type: "primitive.create", unit: "mm", source };
 const job = (name, args = {}) => ({ name, args, id: "test", deadline: Date.now() + 10000 });
 const signal = () => new AbortController().signal;
 
-test("16 layers round-trip natively and the seventeenth is refused without history changes", async () => {
+test("20 layers round-trip natively and the twenty-first is refused without history changes", async () => {
   const { layers, api } = createHeadlessEditor();
   try {
-    assert.equal(MAX_PROJECT_LAYERS, 16);
-    while (layers.project.layerStack.layers.length < 15) layers.create(64);
+    assert.equal(MAX_PROJECT_LAYERS, 20);
+    while (layers.project.layerStack.layers.length < 19) layers.create(64);
     assert((await api.execute(create, { expectedRevision: api.revision })).ok);
     const native = saveSculptProject(layers.project);
     const opened = openSculptProject(native);
@@ -34,12 +34,12 @@ test("16 layers round-trip natively and the seventeenth is refused without histo
       layers.project.layerStack.layers.map((l) => l.id),
     );
     const history = layers.undoCount;
-    assert.throws(() => layers.create(64), /16/);
+    assert.throws(() => layers.create(64), /20 independent layers/);
     assert.equal(layers.undoCount, history);
     layers.undo();
-    assert.equal(layers.project.layerStack.layers.length, 15);
+    assert.equal(layers.project.layerStack.layers.length, 19);
     layers.undo(true);
-    assert.equal(layers.project.layerStack.layers.length, 16);
+    assert.equal(layers.project.layerStack.layers.length, 20);
   } finally {
     layers.dispose();
   }

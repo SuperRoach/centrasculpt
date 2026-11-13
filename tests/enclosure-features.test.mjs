@@ -159,11 +159,11 @@ test("four explicit posts retain centres and through bores after floor resize; c
     }
     ok(await api.enclosure.setFeature(base, lid, cut(WALL_ANCHORS[0]), options(api)));
     ok(await api.enclosure.setFeature(base, lid, cut(WALL_ANCHORS[2]), options(api)));
+    while (l.project.layerStack.layers.length < 20) l.create(64);
     const full = bytes(l);
-    assert.equal(
-      (await api.enclosure.setFeature(base, lid, cut(WALL_ANCHORS[1]), options(api))).ok,
-      false,
-    );
+    const overflow = await api.enclosure.setFeature(base, lid, cut(WALL_ANCHORS[1]), options(api));
+    assert.equal(overflow.ok, false);
+    assert.match(overflow.error.message, /20 independent layers/);
     assert.deepEqual(bytes(l), full);
   } finally {
     l.dispose();

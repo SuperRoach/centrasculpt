@@ -37,7 +37,7 @@ const MAGIC = [70, 79, 82, 77, 83, 68, 70, 0]; // FORMSDF\0
 export const PROJECT_VERSION = 9;
 export const MAX_PROJECT_RESOLUTION = MAX_RESOLUTION;
 export const MAX_PROJECT_TRIANGLES = 1_000_000;
-export const MAX_PROJECT_LAYERS = 16;
+export const MAX_PROJECT_LAYERS = 20;
 export const MAX_PROJECT_VOXELS = 2 * MAX_PROJECT_RESOLUTION ** 3;
 export const MAX_PROJECT_BYTES = 16 + 65536 + MAX_PROJECT_VOXELS * 12 + REFERENCE_LIMITS.totalBytes;
 function object(value: unknown): Record<string, unknown> {
@@ -233,7 +233,7 @@ function openLegacyProject(buffer: ArrayBuffer): { volume: SDFVolume; settings: 
 }
 
 /** v3 legacy cubes / v4 rectangular lattice schema. Float32 LE; offsets are sample offsets.
- * Codec supports up to sixteen data-only layers within one aggregate voxel/triangle budget.
+ * Stored layers share one aggregate voxel/triangle budget.
  * Each layer stays independent in memory, in the file and in the application renderer.
  */
 export function saveSculptProject(
@@ -244,7 +244,7 @@ export function saveSculptProject(
   const settings = validateSettings(project.settings),
     layers = project.layerStack.layers;
   if (layers.length < 1 || layers.length > MAX_PROJECT_LAYERS)
-    throw new Error("Projects support 1–8 stored layer records.");
+    throw new Error(`Projects support 1–${MAX_PROJECT_LAYERS} stored layer records.`);
   let offset = 0,
     totalTriangles = 0;
   const maskPayloads = layers.map((l) => ({

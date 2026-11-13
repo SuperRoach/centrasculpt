@@ -324,7 +324,7 @@ export function agentExecutor(
             "No group duplication or implicit Bake.",
             "Dry-runs validate source caches only.",
             "STL topology requires a printable part and describes the sampled mesh; clearance is approximate, physical fit unknown.",
-            "Resource estimates exclude some JS/GPU/process peaks; 16 layers do not guarantee admission.",
+            "Resource estimates exclude some JS/GPU/process peaks. Resource budgets can limit the number of layers.",
             "Attachments are standalone recipe transactions; no remote access or project saves.",
           ],
         },

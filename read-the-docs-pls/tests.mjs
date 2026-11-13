@@ -141,7 +141,7 @@ test("documentation source facts still match app bindings and limits", async () 
   const shortcuts = await read("../src/xr-support-shortcuts.ts");
   for (const action of ['action: "undo"', 'action: "redo"', 'menu: "tool-wheel"', 'menu: "layers"'])
     assert.ok(shortcuts.includes(action));
-  assert.ok((await read("../src/project.ts")).includes("MAX_PROJECT_LAYERS = 16"));
+  assert.ok((await read("../src/project.ts")).includes("MAX_PROJECT_LAYERS = 20"));
   assert.ok((await read("../src/export-dialog.ts")).includes("Actual size (1:1)"));
 });
 

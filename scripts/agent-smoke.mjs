@@ -277,7 +277,7 @@ try {
   const caps = await call("get_capabilities");
   assert(caps.ok);
   assert(caps.value.tools.includes("boolean_create"));
-  assert.equal(caps.value.limits.layers, 16);
+  assert.equal(caps.value.limits.layers, 20);
   const steps = [
     {
       as: "body",
@@ -551,7 +551,7 @@ try {
     "proposal apply and Undo each append a committed activity; Undo does not erase session history",
   );
   assert.equal((await call("get_object", { id: holderIds.body })).error.code, "not_found");
-  assert.equal((await call("get_capabilities")).value.limits.layers, 16);
+  assert.equal((await call("get_capabilities")).value.limits.layers, 20);
   // Phase 7.2: actual staged desktop authoring, native API reflow, approved attachment edit.
   const enclosureParameters = {
     units: "mm",
