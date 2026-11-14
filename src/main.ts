@@ -1768,7 +1768,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             Number(printSize.value),
           );
           const qualityName = document.querySelector<HTMLSelectElement>("#export-quality")!.value;
-          exportSummary.textContent = `${scope === "composite" ? "Unified evaluated SDF" : prepared ? `${scope} · evaluated SDF` : scope} · ${printSizing.value === "actual" ? "Actual size (1:1)" : "Scale to target"} · Actual ${actualDimensions.map((n) => n.toFixed(3)).join(" × ")} mm → Export ${sizing.dimensionsMM.map((n) => n.toFixed(3)).join(" × ")} mm · ${sizing.scale.toFixed(6)}× · ${qualityName}${prepared ? ` · evaluated ${prepared.resolution}³ · max ${exportResolutionControl.value}³` : " · committed surface"}`;
+          exportSummary.textContent = `${scope === "composite" ? "Unified evaluated SDF" : prepared ? `${scope} · evaluated SDF` : scope} · ${printSizing.value === "actual" ? "Actual size (1:1)" : "Scale to target"} · Actual ${actualDimensions.map((n) => n.toFixed(3)).join(" × ")} mm → Export ${sizing.dimensionsMM.map((n) => n.toFixed(3)).join(" × ")} mm · ${sizing.scale.toFixed(6)}× · ${qualityName}${prepared ? ` · evaluated ${prepared.resolution}³ · max ${exportResolutionControl.value}³${prepared.profile.evaluation.capped ? " · Warning: sample target capped at selected maximum; inspect spacing in print report" : ""}` : " · committed surface"}`;
           await paint();
           if (stlMM !== undefined) stlMM = sizing.longestMM;
           else

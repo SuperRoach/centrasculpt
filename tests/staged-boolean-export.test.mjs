@@ -71,7 +71,7 @@ test("house unified STL preserves winding when admitted or refuses denser output
         exportMemoryBudget(512),
       );
     } catch (error) {
-      if (!/1,000,000 intermediate triangles/.test(error.message)) throw error;
+      if (!/intermediate triangles/.test(error.message)) throw error;
       assert.deepEqual(saveSculptProject(editor.project), before);
       assert.equal(editor.undoCount, history);
       return;

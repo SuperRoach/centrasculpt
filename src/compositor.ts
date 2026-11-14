@@ -19,6 +19,10 @@ import { SDFVolume } from "./sdf";
 import { buildExportMesh, ChunkSurface } from "./surface";
 import { transformMatrix, uniformScale } from "./transform";
 
+// The 512 MiB export budget remains the hard admission limit. Two million
+// intermediate triangles use about 144 MiB for positions and normals.
+const MAX_INTERMEDIATE_TRIANGLES = 2_000_000;
+
 export function combineSdf(a: number, b: number, operation: LayerOperation): number {
   if (operation === "union") return Math.min(a, b);
   if (operation === "difference") return Math.max(a, -b);
@@ -1029,10 +1033,10 @@ export class BooleanComposite {
       this.options.meshingProgress?.(chunks, totalChunks);
       if (this.trackedBytes > this.availableBytes())
         throw new Error("Boolean evaluation exceeds the available memory budget.");
-      if (triangles > 1_000_000) {
+      if (triangles > MAX_INTERMEDIATE_TRIANGLES) {
         this.group.visible = false;
         throw new Error(
-          "Boolean evaluation exceeds 1,000,000 intermediate triangles. Reduce source complexity or export fewer parts.",
+          `Boolean evaluation exceeds ${MAX_INTERMEDIATE_TRIANGLES.toLocaleString()} intermediate triangles (${triangles.toLocaleString()} reached). Reduce source complexity or export fewer parts.`,
         );
       }
       await yieldUI();
@@ -1067,12 +1071,16 @@ export class BooleanComposite {
   }
   exportSources(): ExportSource[] {
     this.syncMetadata();
+    // Staged exports may use the selected maximum resolution even when the
+    // requested feature sampling target exceeds it. The export report records
+    // the achieved spacing; preview exports remain strict.
     if (
       this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled) &&
-      this.stats?.capped
+      this.stats?.capped &&
+      !this.options.stagedEvaluation
     )
       throw new Error(
-        "Live Boolean export exceeds the quality cap; reduce bounds or increase feature size.",
+        `Live Boolean export exceeds the quality cap at ${this.stats.resolution}³ (${this.stats.triangles.toLocaleString()} intermediate triangles); reduce bounds or increase feature size.`,
       );
     if (this.interactive || this.pending || !this.mesher || !this.volume || this.running)
       throw new Error("Wait for the Boolean result to finish rebuilding.");
