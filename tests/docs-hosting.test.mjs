@@ -11,13 +11,15 @@ test("the app build includes the complete guide and generated search, without QA
   for (const route of routes) {
     const html = await readFile(`dist/read-the-docs/${route}`, "utf8");
     assert.match(html, /data-pagefind-body/);
-    assert.match(html, /href="pagefind\/pagefind-ui.css"/);
+    assert.match(html, /href="pagefind\/pagefind-component-ui\.css"/);
   }
   for (const asset of [
     "style.css",
     "app.js",
     "favicon.svg",
     "pagefind/pagefind.js",
+    "pagefind/pagefind-component-ui.css",
+    "pagefind/pagefind-component-ui.js",
     "screenshots/workspace.png",
   ]) {
     assert.ok((await readFile(`dist/read-the-docs/${asset}`)).length);
