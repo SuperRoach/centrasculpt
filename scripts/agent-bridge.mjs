@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageMetadata from "../package.json" with { type: "json" };
-import { isWrite, validateCall } from "./agent-schemas.mjs";
+import { hasImage, isWrite, validateCall } from "./agent-schemas.mjs";
 
 export async function startAgentBridge({
   origin = "http://127.0.0.1:5173",
@@ -69,7 +69,7 @@ export async function startAgentBridge({
           !approved ||
           owner !== query.get("client") ||
           !pending ||
-          pending.job.name !== "capture_scene_preview" ||
+          !hasImage(pending.job.name) ||
           pending.job.id !== query.get("id") ||
           pending.image ||
           pending.uploading ||
@@ -136,13 +136,13 @@ export async function startAgentBridge({
           return send(200, {});
         }
         if (req.url === "/poll") {
-          const job = pending && !pending.delivered ? pending.job : null;
-          if (pending) pending.delivered = true;
+          const job = pending && !pending.delivered && data.ready !== false ? pending.job : null;
+          if (pending && job) pending.delivered = true;
           return send(200, { approved, editing, job });
         }
         if (req.url === "/result" && pending && pending.job.id === data.id) {
           clearTimeout(pending.timer);
-          if (pending.job.name === "capture_scene_preview" && data.result?.ok) {
+          if (hasImage(pending.job.name) && data.result?.ok) {
             const image = pending.image;
             if (
               !image ||

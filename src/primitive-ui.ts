@@ -90,6 +90,7 @@ export function primitiveUI(
     cone: '<path d="M16 3 4 25q12 8 24 0Z"/>',
     capsule: '<rect x="8" y="2" width="16" height="28" rx="8"/>',
     torus: '<ellipse cx="16" cy="16" rx="14" ry="10"/><ellipse cx="16" cy="16" rx="6" ry="4"/>',
+    "tapered-box": '<path d="m16 3 8 4v2l6 15-14 6-14-6L8 9V7Zm-8 4 8 4 8-4M16 11v19"/>',
     pyramid: '<path d="m16 2-14 23 14 5 14-5ZM16 2v28M2 25l14-6 14 6"/>',
     box: '<path d="m16 3 12 7v13l-12 7-12-7V10Zm-12 7 12 7 12-7M16 17v13"/>',
     cylinder:
@@ -99,7 +100,11 @@ export function primitiveUI(
   };
   const shapeButtons = new Map<string, HTMLButtonElement>();
   for (const kind of PRIMITIVE_CHOICES) {
-    const b = button(shapes, kind[0].toUpperCase() + kind.slice(1), () => tools.select(kind));
+    const b = button(
+      shapes,
+      kind === "tapered-box" ? "Tapered box" : kind[0].toUpperCase() + kind.slice(1),
+      () => tools.select(kind),
+    );
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     icon.setAttribute("viewBox", "0 0 32 32");
     icon.setAttribute("aria-hidden", "true");
@@ -519,7 +524,7 @@ export function primitiveUI(
       ? `${primitiveWorldDimensions(source, tools.layers().active.layer.transform)
           .map((v) => toDisplay(v, tools.settings).toFixed(2))
           .join(" × ")} ${tools.settings.unit} · physical bounds`
-      : `${source.kind === "torus" ? "Ring centreline radius · tube diameter · XZ ring, Y axis" : source.kind === "capsule" ? "Overall Y height ≥ diameter · hemispherical ends" : source.kind === "pyramid" ? "X width · Z depth · base −Y, apex +Y" : source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
+      : `${source.kind === "torus" ? "Ring centreline radius · tube diameter · XZ ring, Y axis" : source.kind === "capsule" ? "Overall Y height ≥ diameter · hemispherical ends" : source.kind === "tapered-box" ? "Independent X widths and Z depths · bottom −Y, top +Y" : source.kind === "pyramid" ? "X width · Z depth · base −Y, apex +Y" : source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
     result.title = selected
       ? "Model-axis bounds include rotation, scale and parent transforms. Dimension fields edit local source parameters."
       : "Use Transform or Edit selected to position your new primitive.";

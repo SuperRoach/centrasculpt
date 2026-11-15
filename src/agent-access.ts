@@ -112,6 +112,11 @@ export function agentExecutor(
   proposals = new AgentProposals(),
   feedback?: (entry: AgentActivity, editor: IndependentLayers) => void,
 ) {
+  // Owned by the browser executor, so revoking or restarting the bridge cannot erase a commit.
+  const receipts = new WeakMap<
+    IndependentLayers,
+    Map<string, { request: string; result: unknown }>
+  >();
   const notifyChanged = () => {
     try {
       changed();
@@ -129,12 +134,36 @@ export function agentExecutor(
     });
     if (signal.aborted || Date.now() >= job.deadline)
       return error("cancelled", "Request expired or connection revoked.");
+    const a = job.args;
+    let ledger = receipts.get(layers);
+    if (!ledger) {
+      ledger = new Map();
+      receipts.set(layers, ledger);
+    }
+    const transactionId = a.transactionId as string | undefined;
+    if (job.name === "get_transaction") {
+      const receipt = transactionId === undefined ? undefined : ledger.get(transactionId);
+      return {
+        ok: true,
+        revision: api.revision,
+        value: receipt
+          ? { status: "committed", transactionId, result: receipt.result }
+          : { status: "unknown", transactionId },
+      };
+    }
+    const request = JSON.stringify(a);
+    if (job.name === "apply_changes" && transactionId !== undefined) {
+      const receipt = ledger.get(transactionId);
+      if (receipt)
+        return receipt.request === request
+          ? receipt.result
+          : error("invalid_input", "Transaction ID already belongs to a different request.");
+    }
     if (
       !["get_proposal", "cancel_proposal"].includes(job.name) &&
       (blocked() || layers.modellingBusy || !layers.recoveryReady)
     )
       return error("busy", "Finish the current editor operation first.");
-    const a = job.args;
     if (
       [
         "propose_changes",
@@ -285,11 +314,12 @@ export function agentExecutor(
         revision: api.revision,
         value: {
           primitives: {
-            kinds: ["box", "sphere", "cylinder", "capsule", "torus", "pyramid"],
+            kinds: ["box", "sphere", "cylinder", "capsule", "torus", "pyramid", "tapered-box"],
             cone: "cylinder with bottomDiameter > 0 and topDiameter 0; optional positive tip for blunt end",
             torus:
               "majorRadius is ring centreline radius; tubeDiameter is full tube diameter; tyre is dimensionless 0–100 (round to firm shoulders); Y axis",
             capsule: "overall Y height >= diameter",
+            taperedBox: "Independent X widths and Z depths at -Y and +Y; Y height",
             pyramid: "width X, depth Z, base at -height/2, apex at +height/2",
           },
           limits: {
@@ -430,12 +460,21 @@ export function agentExecutor(
       }
       case "dry_run_changes":
       case "preview_changes":
-      case "apply_changes":
-        result = await api.batch(a.steps as ModellingStep[], {
+      case "apply_changes": {
+        const batchResult = await api.batch(a.steps as ModellingStep[], {
           ...options,
           dryRun: job.name !== "apply_changes",
+          measureBounds: a.measureBounds as string | undefined,
         });
+        result = batchResult;
+        if (job.name === "apply_changes" && transactionId !== undefined && batchResult.ok) {
+          result = { ...batchResult, value: { ...batchResult.value, transactionId } };
+          ledger.set(transactionId, { request, result });
+          const oldest = ledger.keys().next().value;
+          if (ledger.size > 32 && oldest !== undefined) ledger.delete(oldest);
+        }
         break;
+      }
       case "set_enclosure_feature":
         result = await api.enclosure.setFeature(
           a.baseId as string,
@@ -499,6 +538,7 @@ export function agentExecutor(
           "object.duplicate",
           "object.delete",
           "object.rename",
+          "object.colour",
           "boolean.create",
           "boolean.update",
           "boolean.remove",

@@ -37,7 +37,7 @@ export function partSources(stack: LayerStack, id: string): SdfLayer[] {
 }
 /** Read-only object inspection also works before printable parts are defined. */
 export function layerSources(stack: LayerStack, id: string): SdfLayer[] {
-  stack.get(id);
+  stack.hierarchy.get(id);
   return sourcesForMembers(
     stack,
     [id, ...stack.hierarchy.descendants(id)].filter((id) => stack.layers.some((l) => l.id === id)),

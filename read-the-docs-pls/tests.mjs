@@ -46,7 +46,8 @@ test("each page has language, unique title, landmarks, skip link, current naviga
       'aria-label="Previous and next guides"',
       "data-pagefind-body",
       'aria-controls="sidebar"',
-      'aria-labelledby="search-title"',
+      '<pagefind-modal-trigger',
+      '<pagefind-modal',
     ])
       assert.ok(html.includes(marker), `${route}: ${marker}`);
     assert.equal((html.match(/<h1>/g) || []).length, 1);
@@ -55,7 +56,7 @@ test("each page has language, unique title, landmarks, skip link, current naviga
 });
 test("Pagefind builds real index fragments, metadata and browser assets", async () => {
   const files = await readdir(resolve(root, "dist/pagefind"));
-  for (const f of ["pagefind.js", "pagefind-ui.js", "pagefind-entry.json"])
+  for (const f of ["pagefind.js", "pagefind-component-ui.js", "pagefind-component-ui.css", "pagefind-entry.json"])
     assert.ok(files.includes(f));
   assert.ok((await readdir(resolve(root, "dist/pagefind/fragment"))).length >= pages.length);
   const entry = JSON.parse(await read("dist/pagefind/pagefind-entry.json"));

@@ -293,6 +293,7 @@ export class ClayStrokeSession {
       } else {
         const point = this.queue[this.cursor++],
           dt = point.t - this.replayTime;
+        if (point.breakBefore) this.layers().breakStrokePath();
         this.layers().applyStrokeLocal(
           point,
           point.radius ?? this.radius,

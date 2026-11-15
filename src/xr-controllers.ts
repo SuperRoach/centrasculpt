@@ -452,15 +452,24 @@ export class XRControllers {
       (hapticTool.buttons.trigger.justPressed || hapticTool.buttons.grip.justPressed)
     )
       this.haptics.beginGesture(hapticTool);
-    if (
+    const supportState = this.input.byHand(this.roles.support);
+    const mode = this.options.toolMode?.() ?? "clay";
+    const gripBlocksStroke = (toolMode: EditorTool) =>
       this.input.states.some(
         (s) =>
-          (s.role === "support" || this.options.toolMode?.() !== "stamp") &&
-          (s.buttons.grip.pressed || s.buttons.grip.rawValue >= 0.45),
-      )
-    )
-      this.options.stroke?.cancel();
-    const supportState = this.input.byHand(this.roles.support);
+          (s.buttons.grip.pressed || s.buttons.grip.rawValue >= 0.45) &&
+          (s.role === "support" ? toolMode !== "clay" || !this.grab : toolMode !== "stamp"),
+      );
+    if (gripBlocksStroke(mode)) this.options.stroke?.cancel();
+    if (
+      mode === "clay" &&
+      supportState &&
+      this.grab?.owns(supportState.connectionId) &&
+      (!supportState.tracked || !supportState.gripTracked)
+    ) {
+      this.suspend();
+      return;
+    }
     if (this.options.alternate?.active && (!supportState?.tracked || !supportState.gripTracked)) {
       this.options.stroke?.cancel();
       this.options.alternate.cancel();
@@ -476,8 +485,7 @@ export class XRControllers {
       VR_UI_SCALES[this.options.layers?.().display.vrUiScale ?? "normal"],
     );
     const selectedBefore = this.options.layers?.().project.activeLayerId;
-    const mode = this.options.toolMode?.() ?? "clay",
-      menuOwnsInput = !!this.shortcuts.menu || !!this.options.menus?.active;
+    const menuOwnsInput = !!this.shortcuts.menu || !!this.options.menus?.active;
     const anyGrip = this.input.states.some(
       (s) => s.buttons.grip.pressed || s.buttons.grip.rawValue >= 0.45,
     );
@@ -576,10 +584,15 @@ export class XRControllers {
       if (interrupted) {
         this.layerGrab?.cancel();
         this.grab.cancel();
+        this.options.stroke?.cancel();
         this.input.suspend();
         this.gesture = "idle";
       }
     }
+    const supportWorkspaceGrab =
+      this.grab?.state === "workspace-grab" &&
+      !!supportState &&
+      this.grab.owns(supportState.connectionId);
     const menuWasOpen = !!this.shortcuts.menu;
     this.shortcuts.step(
       this.input.byHand(this.roles.support),
@@ -677,7 +690,12 @@ export class XRControllers {
       slot.indicator.material.color.set(
         slot.feedback.halo ? "#9bc6ba" : state.buttons.grip.pressed ? "#c2d5c9" : "#ffffff",
       );
-      if (state.buttons.trigger.pressed && !this.grab?.active && !this.layerGrab?.active)
+      if (
+        state.buttons.trigger.pressed &&
+        (!this.grab?.active ||
+          (mode === "clay" && supportWorkspaceGrab && state.role === "tool")) &&
+        !this.layerGrab?.active
+      )
         slot.rayVisual.visible = !!tracked && state.tracked;
       const beamWidth = this.shortcuts.menu ? 1 : 0.3;
       slot.line.scale.set(beamWidth, beamWidth, 1);
@@ -698,7 +716,7 @@ export class XRControllers {
         !this.options.stroke?.active &&
         !menuWasOpen &&
         !this.shortcuts.menu &&
-        !this.grab?.active &&
+        (!this.grab?.active || (mode === "clay" && supportWorkspaceGrab)) &&
         !this.layerGrab?.active
       ) {
         slot.ray.updateWorldMatrix(true, false);
@@ -801,7 +819,11 @@ export class XRControllers {
         !menuWasOpen &&
         !this.shortcuts.menu &&
         !diagnosticOwned &&
-        !anyGrip &&
+        (!anyGrip ||
+          (priorMode === "clay" &&
+            this.options.alternate.active &&
+            supportWorkspaceGrab &&
+            !gripBlocksStroke(priorMode))) &&
         !this.menuGripBlocked,
       wasDrawing,
     );
@@ -852,15 +874,12 @@ export class XRControllers {
         !menuWasOpen &&
         !this.shortcuts.menu &&
         !diagnosticOwned &&
-        !this.grab?.active &&
+        (!this.grab?.active || (this.lastTool === "clay" && supportWorkspaceGrab)) &&
         !this.layerGrab?.active &&
         !this.menuGripBlocked &&
-        !this.input.states.some(
-          (s) =>
-            (s.role === "support" || this.options.toolMode?.() !== "stamp") &&
-            (s.buttons.grip.pressed || s.buttons.grip.rawValue >= 0.45),
-        ),
+        !gripBlocksStroke(this.lastTool),
       strokeTool ? this.slots[strokeTool.slot].grip.matrixWorld : undefined,
+      supportWorkspaceGrab,
     );
     const spinner = this.processingSpinner;
     const toolGrip = strokeTool ? this.slots[strokeTool.slot].grip : undefined;

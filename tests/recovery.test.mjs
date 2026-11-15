@@ -9,7 +9,12 @@ import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { createBaseProject } from "../work/test-build/layers.mjs";
 import { RadialMoveField } from "../work/test-build/move-field.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
-import { captureProject, checksum } from "../work/test-build/project-snapshot.mjs";
+import {
+  captureProject,
+  checksum,
+  encodeManualProject,
+  RecoveryMemoryError,
+} from "../work/test-build/project-snapshot.mjs";
 import { RecoveryController } from "../work/test-build/recovery.mjs";
 import { encodeRecovery } from "../work/test-build/recovery-client.mjs";
 import { IndexedRecoveryStore, RECOVERY_BYTES } from "../work/test-build/recovery-store.mjs";
@@ -449,9 +454,12 @@ test("snapshot admission rejects excessive temporary allocations before a dense 
   try {
     await assert.rejects(
       captureProject(c, settings, undefined, undefined, signal(), () => true, 1),
-      /memory safety/,
+      RecoveryMemoryError,
     );
     assert.equal(c.backgroundBytes, 0);
+    const manual = encodeManualProject(c, settings, undefined, undefined);
+    assert.deepEqual(manual, saveSculptProject(c.project));
+    assert.equal(openSculptProject(manual).id, c.project.id);
   } finally {
     c.dispose();
   }

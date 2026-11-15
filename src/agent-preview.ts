@@ -6,6 +6,8 @@ import {
   DirectionalLight,
   Float32BufferAttribute,
   Group,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshStandardMaterial,
   OrthographicCamera,
@@ -19,8 +21,10 @@ import {
 import type { AgentJob } from "./agent-access";
 import { layerSources, partSources } from "./assembly";
 import { prepareBooleanExport } from "./boolean-export";
+import { ExportWork } from "./export-mesh";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerStack, SculptProject } from "./layers";
+import { evaluateMeshScope, inspectMeshTriangles, type PrintInspection } from "./mesh-inspection";
 import { transformMatrix } from "./transform";
 
 export const PREVIEW_MAX_BYTES = 524288;
@@ -29,8 +33,11 @@ export const previewDirections = {
   back: [0, 0, -1],
   left: [-1, 0, 0],
   right: [1, 0, 0],
+  "left-side": [-1, 0, 0],
+  "right-side": [1, 0, 0],
   top: [0, 1, 0],
   isometric: [2, 1.5, 3],
+  underside: [2, -1.5, 3],
 } as const;
 export function previewCamera(
   bounds: Box3,
@@ -65,7 +72,7 @@ export function previewCamera(
   return camera;
 }
 
-/** No source evaluation, user camera changes, textures or presentation objects. */
+/** Capture in a disposable scene, without changing the user camera or display mode. */
 export async function captureScenePreview(
   renderer: WebGLRenderer,
   editor: () => IndependentLayers,
@@ -98,9 +105,22 @@ export async function captureScenePreview(
       throw new Error("context_lost: WebGL is unavailable");
   };
   let target: WebGLRenderTarget | undefined;
-  let prepared: Awaited<ReturnType<typeof prepareBooleanExport>> | undefined;
+  let prepared:
+    | { sources: Awaited<ReturnType<typeof prepareBooleanExport>>["sources"]; dispose: () => void }
+    | undefined;
+  let sampling: Awaited<ReturnType<typeof evaluateMeshScope>>["evaluation"] = null;
   const owned: BufferGeometry[] = [];
   let inspectedIds: string[] | undefined;
+  const print = job.name === "inspect_print_mesh";
+  const highlighted = new MeshStandardMaterial({ vertexColors: true, roughness: 0.72 });
+  const alertColour = new Color("#e13737"),
+    neutralColour = new Color("#aebcb3");
+  const sectionMaterial = new LineBasicMaterial({
+    color: "#003bc9",
+    depthTest: false,
+    transparent: true,
+  });
+  let inspection: Awaited<ReturnType<typeof inspectMeshTriangles>> | undefined;
   const material = new MeshStandardMaterial({ color: "#aebcb3", roughness: 0.72, metalness: 0 });
   const scene = new Scene(),
     model = new Group();
@@ -117,7 +137,11 @@ export async function captureScenePreview(
       !(typeof viewpoint === "string" && Object.hasOwn(previewDirections, viewpoint)) ||
       Object.keys(job.args).some(
         (k) =>
-          !["width", "height", "viewpoint", "expectedRevision", "objectId", "partId"].includes(k),
+          !["width", "height", "viewpoint", "expectedRevision", "objectId", "partId"].includes(k) &&
+          !(
+            print &&
+            ["direction", "sectionOffsetMM", "sectionNormal", "overhangAngleDegrees"].includes(k)
+          ),
       )
     )
       return fail(
@@ -142,15 +166,18 @@ export async function captureScenePreview(
     const isolated =
       scopeId === undefined
         ? undefined
-        : layers.project.layerStack.layers.find((l) => l.id === scopeId);
+        : [...layers.project.layerStack.layers, ...layers.project.layerStack.hierarchy.groups].find(
+            (l) => l.id === scopeId,
+          );
     if (scopeId !== undefined && (!isolated || !isolated.visible))
       return fail("invalid_input", "Object is missing or hidden.");
     const scoped = scopeId !== undefined;
-    const composite = !scoped && layers.viewMode === "boolean";
+    const evaluated = scoped || print;
+    const composite = !evaluated && layers.viewMode === "boolean";
     const hasOperations = layers.project.layerStack.layers.some(
       (l) => l.booleanModifiers?.length || l.array?.enabled || l.operation !== "union",
     );
-    if (!scoped && !composite && hasOperations)
+    if (!evaluated && !composite && hasOperations)
       return fail(
         "not_evaluated",
         "Switch the editor to Boolean preview and wait for evaluation. Separate source surfaces would misrepresent live operations.",
@@ -167,32 +194,65 @@ export async function captureScenePreview(
         "Evaluated display is pending, failed or unavailable; no stale image returned.",
       );
     const isolatedGroup = new Group();
-    if (scoped) {
+    if (evaluated) {
       const inputs =
         partId !== undefined
-          ? partSources(layers.project.layerStack, scopeId)
-          : layerSources(layers.project.layerStack, scopeId);
+          ? partSources(layers.project.layerStack, partId as string)
+          : scopeId !== undefined
+            ? layerSources(layers.project.layerStack, scopeId)
+            : [...layers.project.layerStack.compositionLayers];
       inspectedIds = inputs.filter((l) => l.visible).map((l) => l.id);
-      prepared = await prepareBooleanExport(
-        layers,
-        new SculptProject(new LayerStack(inputs), layers.project.settings),
-        signal,
-        false,
-      );
+      if (print) {
+        const mesh = await evaluateMeshScope(
+          layers,
+          { objectId: objectId as string | undefined, partId: partId as string | undefined },
+          signal,
+        );
+        prepared = mesh;
+        sampling = mesh.evaluation;
+      } else {
+        prepared = await prepareBooleanExport(
+          layers,
+          new SculptProject(new LayerStack(inputs), layers.project.settings),
+          signal,
+          false,
+        );
+      }
       guard();
+      if (print) {
+        inspection = await inspectMeshTriangles(
+          prepared.sources,
+          layers.display.precision.millimetresPerUnit,
+          job.args as PrintInspection,
+          new ExportWork(signal, () => {
+            guard();
+            return true;
+          }),
+        );
+        guard();
+      }
       for (const source of prepared.sources)
         for (const chunk of source.chunks) {
           const geometry = new BufferGeometry();
           owned.push(geometry);
           geometry.setAttribute("position", new Float32BufferAttribute(chunk.positions, 3));
           geometry.setAttribute("normal", new Float32BufferAttribute(chunk.normals, 3));
-          const mesh = new Mesh(geometry, material);
+          const mask = inspection?.flags.get(chunk.positions);
+          if (mask) {
+            const colours = new Float32Array(chunk.positions.length);
+            for (let i = 0; i < mask.length; i++) {
+              const colour = mask[i] ? alertColour : neutralColour;
+              for (let j = 0; j < 9; j += 3) colour.toArray(colours, i * 9 + j);
+            }
+            geometry.setAttribute("color", new Float32BufferAttribute(colours, 3));
+          }
+          const mesh = new Mesh(geometry, mask ? highlighted : material);
           mesh.matrixAutoUpdate = false;
           mesh.matrix.copy(transformMatrix(source.transform));
           isolatedGroup.add(mesh);
         }
     }
-    const sources = scoped
+    const sources = evaluated
       ? [isolatedGroup]
       : composite
         ? [layers.composite.group]
@@ -210,7 +270,7 @@ export async function captureScenePreview(
         triangles += (object.geometry.index?.count ?? count) / 3;
         if (++meshes > 4096 || triangles > 600000)
           throw new Error("resource_limit: display exceeds 4096 meshes or 600000 triangles");
-        const mesh = new Mesh(object.geometry, material);
+        const mesh = new Mesh(object.geometry, print ? object.material : material);
         mesh.matrixAutoUpdate = false;
         mesh.matrix.copy(object.matrixWorld);
         mesh.frustumCulled = false;
@@ -225,6 +285,14 @@ export async function captureScenePreview(
       h = height as number;
     const camera = previewCamera(bounds, w, h, viewpoint as keyof typeof previewDirections);
     scene.background = new Color("#dfe4e1");
+    if (inspection?.section.length) {
+      const geometry = new BufferGeometry();
+      owned.push(geometry);
+      geometry.setAttribute("position", new Float32BufferAttribute(inspection.section, 3));
+      const section = new LineSegments(geometry, sectionMaterial);
+      section.renderOrder = 1;
+      scene.add(section);
+    }
     scene.add(model, new AmbientLight(0xffffff, 1.5));
     const key = new DirectionalLight(0xffffff, 2.5);
     key.position.copy(camera.position);
@@ -300,11 +368,13 @@ export async function captureScenePreview(
           projectId: layers.project.id,
           revision,
           capturedAt: new Date().toISOString(),
-          geometry: scoped
-            ? "independently-evaluated-scope"
-            : composite
-              ? "evaluated-live-display"
-              : "committed-source-surfaces",
+          geometry: print
+            ? "evaluated-print-mesh"
+            : scoped
+              ? "independently-evaluated-scope"
+              : composite
+                ? "evaluated-live-display"
+                : "committed-source-surfaces",
           renderState: "current",
           scope:
             partId !== undefined
@@ -325,11 +395,26 @@ export async function captureScenePreview(
             up: camera.up.toArray(),
             target: bounds.getCenter(new Vector3()).toArray(),
           },
-          material: "neutral-untextured",
+          material: print ? "overhang-highlight" : "neutral-untextured",
           bounds: { min: bounds.min.toArray(), max: bounds.max.toArray(), units: "render-world" },
           triangles,
           meshes,
-          sampling: composite ? { ...layers.composite.stats } : null,
+          sampling: print
+            ? {
+                ...sampling,
+                effectiveStepMM:
+                  Math.max(0, ...(prepared?.sources ?? []).map((s) => s.step)) *
+                  layers.display.precision.millimetresPerUnit,
+              }
+            : composite
+              ? { ...layers.composite.stats }
+              : null,
+          ...(inspection
+            ? {
+                printInspection: inspection.report,
+                legend: { red: "overhang faces", blue: "cross-section" },
+              }
+            : {}),
           warnings: [
             "Display sampling can omit fine features. Screenshots cannot establish watertightness, exact dimensions or physical fit. Use get_geometry_diagnostics.",
             "References, textures, UI, guides and agent overlays excluded. Locked visible surfaces included. Isolated captures evaluate only the requested object hierarchy or printable part and its Boolean dependencies.",
@@ -341,12 +426,21 @@ export async function captureScenePreview(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return fail(message.split(":")[0], message);
+    return fail(
+      signal.aborted
+        ? "cancelled"
+        : /^[a-z_]+:/.test(message)
+          ? message.split(":")[0]
+          : "operation_failed",
+      message,
+    );
   } finally {
     prepared?.dispose();
     for (const geometry of owned) geometry.dispose();
     target?.dispose();
     material.dispose();
+    highlighted.dispose();
+    sectionMaterial.dispose();
     model.clear();
     scene.clear();
   }

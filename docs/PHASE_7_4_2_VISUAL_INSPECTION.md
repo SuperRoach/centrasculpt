@@ -21,7 +21,8 @@ no capture endpoint or agent module. No WebMCP, LAN, cloud or Quest synchronisat
 ```
 
 Call tool `capture_scene_preview`. `viewpoint` defaults to `isometric`; other choices
-are `front` (+Z), `back` (−Z), `left` (−X), `right` (+X), `top` (+Y). Top has −Z
+are `front` (+Z), `back` (−Z), `left`/`left-side` (−X),
+`right`/`right-side` (+X), and `top` (+Y). Top has −Z
 up; the other views have +Y up. These are render-world axes, not enclosure wall
 anchor axes. Width/height are integer **64–512**, default 384, independent of device
 pixel ratio: at most **262,144 pixels**, **512 KiB PNG**, **4,096 meshes** and

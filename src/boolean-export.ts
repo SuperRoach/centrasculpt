@@ -45,12 +45,13 @@ export async function prepareBooleanExport(
   resolution: ExportResolution = 192,
   // Pass false to retain the original chunk pipeline for diagnosis/rollback.
   optimisedChunks = true,
+  ready = () => layers.recoveryReady,
 ) {
   if (!Number.isFinite(memoryLimit) || memoryLimit <= 0 || memoryLimit > EXPORT_MEMORY_MAX)
     throw new Error("Invalid export memory budget; maximum is 512 MiB.");
   exportResolution(resolution);
   const revision = layers.sourceRevision,
-    current = () => layers.recoveryReady && layers.sourceRevision === revision,
+    current = () => ready() && layers.sourceRevision === revision,
     work = new ExportWork(signal, current, progress),
     material = new MeshBasicMaterial(),
     composite = new BooleanComposite(project, material, resolution, material, current, {

@@ -1,8 +1,8 @@
 import type { ProjectDisplayPreferences } from "./display-preferences";
 import type { IndependentLayers } from "./independent-layers";
 import type { HierarchyState } from "./layer-hierarchy";
-import type { LayerMetadata } from "./layers";
-import type { ProjectSettings } from "./project";
+import { type LayerMetadata, SculptProject } from "./layers";
+import { type ProjectSettings, saveSculptProject } from "./project";
 import { type MaskSnapshot, sculptMask } from "./sculpt-mask";
 import { type PaintSnapshot, sculptPaint } from "./sculpt-paint";
 import type { ToolPreferences } from "./tool-preferences";
@@ -33,6 +33,22 @@ export type EncodedSnapshot = {
   copyMs: number;
   temporaryBytes: number;
 };
+export class RecoveryMemoryError extends Error {}
+
+/** Encode a completed edit directly when the worker snapshot would exceed its budget. */
+export function encodeManualProject(
+  layers: IndependentLayers,
+  settings: ProjectSettings,
+  display: ProjectDisplayPreferences | undefined,
+  tools: ToolPreferences | undefined,
+): ArrayBuffer {
+  if (!layers.recoveryReady) throw new Error("Finish the current edit before saving.");
+  const { layerStack, name, id } = layers.project;
+  const project = new SculptProject(layerStack, settings, name, id);
+  project.toolPreferences = tools;
+  return saveSculptProject(project, display);
+}
+
 /** Native codec adapter with independent immutable values; no GPU/undo/preview state. */
 export async function captureProject(
   layers: IndependentLayers,
@@ -57,8 +73,8 @@ export async function captureProject(
       65536 +
       (display?.references?.reduce((n, r) => n + r.bytes.byteLength, 0) ?? 0) * 4;
   if (layers.trackedBytes + layers.composite.trackedBytes + temporaryBytes > maxBytes)
-    throw new Error(
-      "Recovery memory safety estimate reached. Save manually or reduce retained history; last checkpoint kept.",
+    throw new RecoveryMemoryError(
+      "Recovery memory safety estimate reached. Use Save in Browser or Download current. Last checkpoint kept.",
     );
   const start = performance.now(),
     check = () => {

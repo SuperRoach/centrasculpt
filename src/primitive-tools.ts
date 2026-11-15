@@ -36,10 +36,16 @@ export class PrimitiveTools {
   private lastTime = 0;
   placing = false;
   pending = false;
-  feedback = "Choose a type · Place preview · release menu · Tool trigger confirms";
+  feedback = "";
   readonly preview: Mesh<BufferGeometry, MeshBasicMaterial> = new Mesh(
     new BoxGeometry(1, 1, 1),
-    new MeshBasicMaterial({ color: "#70d5ba", wireframe: true, depthTest: false }),
+    new MeshBasicMaterial({
+      color: "#70d5ba",
+      wireframe: true,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    }),
   );
   readonly previewRoot = new Group();
   private position: Vec3 = [0, 0, 0];
@@ -68,6 +74,7 @@ export class PrimitiveTools {
     this.previewRoot.add(this.preview);
     this.preview.visible = false;
     this.preview.raycast = () => {};
+    this.preview.renderOrder = 20;
   }
   get source() {
     return this.editing && !this.layers().selectedGroupId
@@ -80,26 +87,41 @@ export class PrimitiveTools {
   select(kind: PrimitiveChoice): void {
     if (!PRIMITIVE_CHOICES.includes(kind)) throw new Error("Unknown primitive type.");
     this.editing = false;
+    this.feedback = "";
     const size = Math.max(...primitiveDimensions(this.draft));
     this.draft =
       kind === "box" || kind === "pyramid"
         ? { kind, width: size, height: size, depth: size }
-        : kind === "cone"
-          ? { kind: "cylinder", diameter: size, bottomDiameter: size, topDiameter: 0, height: size }
-          : kind === "capsule"
-            ? { kind, diameter: size / 2, height: size }
-            : kind === "torus"
-              ? { kind, majorRadius: size * 0.35, tubeDiameter: size * 0.3 }
-              : kind === "cylinder"
-                ? { kind, diameter: size, height: size }
-                : { kind, diameter: size };
+        : kind === "tapered-box"
+          ? {
+              kind,
+              bottomWidth: size,
+              bottomDepth: size,
+              topWidth: size * 0.6,
+              topDepth: size * 0.6,
+              height: size,
+            }
+          : kind === "cone"
+            ? {
+                kind: "cylinder",
+                diameter: size,
+                bottomDiameter: size,
+                topDiameter: 0,
+                height: size,
+              }
+            : kind === "capsule"
+              ? { kind, diameter: size / 2, height: size }
+              : kind === "torus"
+                ? { kind, majorRadius: size * 0.35, tubeDiameter: size * 0.3 }
+                : kind === "cylinder"
+                  ? { kind, diameter: size, height: size }
+                  : { kind, diameter: size };
     this.updatePreview();
   }
   begin(): void {
     if (!this.layers().recoveryReady || this.pending)
       throw new Error("Finish the current edit first.");
-    this.feedback =
-      "Tool hand positions preview · Tool stick sizes · release trigger, then tap to confirm · Support menu cancels";
+    this.feedback = "Aim with Tool hand · stick up/down resizes · trigger places";
     this.lastTime = performance.now();
     this.project = this.layers().project;
     this.placing = true;
@@ -248,7 +270,7 @@ export class PrimitiveTools {
     l.group.worldToLocal(p);
     this.position = p.toArray() as Vec3;
     const parent = l.group.parent ?? l.group;
-    parent.add(this.previewRoot);
+    if (this.previewRoot.parent !== parent) parent.add(this.previewRoot);
     if (parent === l.group) this.previewRoot.matrix.identity();
     else this.previewRoot.matrix.copy(l.group.matrix);
     this.previewRoot.matrixWorldNeedsUpdate = true;
@@ -294,10 +316,17 @@ export class PrimitiveTools {
         "0",
         ".",
         "back",
-      ].entries())
-        add(`key:${key}`, key, i);
-      add("apply", `Apply ${this.entry || "…"}`, 12);
-      add("cancel-field", "Cancel", 13);
+      ].entries()) {
+        add(`key:${key}`, key === "back" ? "⌫" : key, i);
+        buttons[buttons.length - 1].rect = {
+          x: 40 + (i % 3) * 365,
+          y: 244 + Math.floor(i / 3) * 125,
+          width: 342,
+          height: 112,
+        };
+      }
+      add("apply", `Apply ${this.entry || "…"}`, 8, !this.entry);
+      add("cancel-field", "Cancel", 9);
     } else if (this.typesMenu) {
       add("types-home", "‹ Primitives", 0);
       PRIMITIVE_CHOICES.forEach((kind, i) => {
@@ -356,13 +385,19 @@ export class PrimitiveTools {
         !active.editable,
       );
     } else {
-      add("types", "New primitive…", 0);
+      add("types", this.source ? "New primitive…" : "Choose shape…", 0);
+      if (this.placing || !this.source)
+        add(
+          this.placing ? "cancel" : "place",
+          this.placing ? "Cancel placement" : "Position with Tool hand",
+          1,
+        );
       add(
-        this.placing ? "cancel" : "place",
-        this.placing ? "Cancel placement" : "Place preview…",
-        3,
+        "edit",
+        "Edit selected primitive",
+        4,
+        !this.layers().active.layer.primitive || !!this.source,
       );
-      add("edit", "Edit selected primitive", 4, !this.layers().active.layer.primitive);
 
       add("unit", `Units · ${this.settings.unit}`, 5);
       const s = this.source ?? this.draft;
@@ -379,7 +414,7 @@ export class PrimitiveTools {
       add(
         "restore",
         "Restore initial dimensions",
-        1,
+        3,
         !this.source || !this.layers().active.layer.editable,
       );
       add("bake", "Bake to Sculpt Layer", 9, !this.source || !this.layers().active.layer.editable);
@@ -389,20 +424,32 @@ export class PrimitiveTools {
       add("array-open", "Array / Repeat…", 13, !this.layers().active.layer.editable);
     }
     return {
-      title: this.arrayMenu ? "ARRAY / REPEAT" : "PRIMITIVES",
+      title: this.arrayMenu
+        ? "ARRAY / REPEAT"
+        : this.field
+          ? "ENTER DIMENSION"
+          : this.typesMenu
+            ? "CHOOSE SHAPE"
+            : this.source
+              ? "EDIT PRIMITIVE"
+              : "CREATE PRIMITIVE",
       subtitle: this.arrayMenu
         ? "Editable evaluated instances · count · axis · spacing or arc · pivot · explicit Bake"
-        : this.source
-          ? `Physical bounds · ${primitiveWorldDimensions(
-              this.source,
-              this.layers().active.layer.transform,
-            )
-              .map((v) => toDisplay(v, this.settings).toFixed(3))
-              .join(" × ")} ${this.settings.unit} · fields are local`
-          : "Box · Cylinder · Sphere · Cone · Capsule · Torus · Pyramid",
+        : this.field
+          ? `${primitiveFieldLabel(this.field, this.source ?? this.draft)} · ${this.field === "tyre" ? "%" : this.settings.unit}`
+          : this.typesMenu
+            ? "Choose the shape to place"
+            : this.source
+              ? `Physical bounds · ${primitiveWorldDimensions(
+                  this.source,
+                  this.layers().active.layer.transform,
+                )
+                  .map((v) => toDisplay(v, this.settings).toFixed(3))
+                  .join(" × ")} ${this.settings.unit} · fields are local`
+              : `New ${this.draft.kind === "cylinder" && this.draft.topDiameter === 0 ? "cone" : this.draft.kind} · set dimensions or position with the Tool hand`,
       buttons,
       labels: [],
-      footer: this.feedback,
+      footer: this.feedback || "Tool trigger selects · release Support stick to close",
     };
   }
   private async applyArrayCommand(command: ModellingCommand): Promise<void> {
@@ -467,9 +514,10 @@ export class PrimitiveTools {
         this.typesMenu = false;
       } else if (a === "types") this.typesMenu = true;
       else if (a === "types-home") this.typesMenu = false;
-      else if (a === "edit") this.editing = true;
-      else if (a === "place") this.begin();
-      else if (a === "cancel") this.cancel();
+      else if (a === "edit") {
+        this.editing = true;
+        this.feedback = "";
+      } else if (a === "place") this.begin();
       else if (a.startsWith("field:")) {
         this.field = a.slice(6);
         this.entry = "";

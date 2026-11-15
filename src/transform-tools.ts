@@ -21,6 +21,15 @@ export function scaledPrimitive(
   if (!axes.length || ratios.length !== 3 || ratios.some((v) => !Number.isFinite(v) || v <= 0))
     throw new Error("Primitive size must be positive and finite.");
   const factor = (a: string) => ratios[["X", "Y", "Z"].indexOf(a)];
+  if (source.kind === "tapered-box")
+    return validatePrimitive({
+      ...source,
+      bottomWidth: source.bottomWidth * ratios[0],
+      topWidth: source.topWidth * ratios[0],
+      height: source.height * ratios[1],
+      bottomDepth: source.bottomDepth * ratios[2],
+      topDepth: source.topDepth * ratios[2],
+    });
   if (source.kind === "box" || source.kind === "pyramid")
     return validatePrimitive({
       ...source,

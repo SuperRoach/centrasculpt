@@ -3,10 +3,11 @@ import {
   BufferGeometry,
   Float32BufferAttribute,
   Group,
-  Line,
   LineBasicMaterial,
+  LineSegments,
   Matrix4,
   Raycaster,
+  Uint16BufferAttribute,
   Vector3,
 } from "three";
 import { CLAY_TIP_REACH_METRES } from "./clay-path";
@@ -42,6 +43,7 @@ export interface XRStrokeInteraction {
     time: number,
     enabled: boolean,
     gripPose?: Matrix4,
+    supportWorkspaceGrab?: boolean,
   ): void;
   cancel(): void;
 }
@@ -56,6 +58,7 @@ export class XRClayStroke implements XRStrokeInteraction {
   message = "";
   private readonly geometry = new BufferGeometry();
   private readonly positions = new Float32BufferAttribute(new Float32Array(16384 * 3), 3);
+  private readonly segments = new Uint16BufferAttribute(new Uint16Array(16384 * 2), 1);
   private readonly material = new LineBasicMaterial({
     color: "#9de6cf",
     depthTest: false,
@@ -64,19 +67,24 @@ export class XRClayStroke implements XRStrokeInteraction {
     toneMapped: false,
   });
   private readonly hits: Intersection<Object3D>[] = [];
-  private readonly line: Line;
-  private readonly mirrorLine: Line;
+  private readonly line: LineSegments;
+  private readonly mirrorLine: LineSegments;
   private readonly raycaster = new Raycaster();
   private readonly direction = new Vector3();
   private readonly local = new Vector3();
   private readonly inverse = new Matrix4();
   private readonly parentInverse = new Matrix4();
   private readonly anchor = new Matrix4();
+  private readonly workspaceAnchor = new Matrix4();
+  private readonly workspaceInverse = new Matrix4();
+  private readonly samplingMatrix = new Matrix4();
+  private readonly stableTarget = new Matrix4();
   private boundsVolume: VolumeStore | null = null;
   private bounds: VolumeBounds | null = null;
   private placementNote = "";
   private capturedPlacement: "free" | "surface" = "free";
   private rollingPath = false;
+  private pausedForNavigation = false;
   private readonly rotatingSampler = new RotatingStrokeSampler();
   private readonly stableAnchor = new Matrix4();
   private processingMs = 0;
@@ -94,14 +102,16 @@ export class XRClayStroke implements XRStrokeInteraction {
     changed: () => void = () => {},
     private readonly issue: (event: "cancel" | "error") => void = () => {},
     private readonly paintSizing: () => boolean = () => false,
+    private readonly workspace?: Object3D,
   ) {
     this.snapGuide = new XRSnapGuide(root);
     this.cursor = new XRBrushPreview(root);
     this.mirrorCursor = new XRBrushPreview(root);
     this.session = new ClayStrokeSession(layers, changed, true);
     this.geometry.setAttribute("position", this.positions);
-    this.line = new Line(this.geometry, this.material);
-    this.mirrorLine = new Line(this.geometry, this.material);
+    this.geometry.setIndex(this.segments);
+    this.line = new LineSegments(this.geometry, this.material);
+    this.mirrorLine = new LineSegments(this.geometry, this.material);
     this.mirrorLine.frustumCulled = false;
     this.preview.add(this.mirrorLine);
     this.line.frustumCulled = false;
@@ -128,6 +138,7 @@ export class XRClayStroke implements XRStrokeInteraction {
   }
   get feedback(): string {
     if (this.placementNote) return this.placementNote;
+    if (this.pausedForNavigation) return this.message;
     const label =
       this.tools.active === "smooth"
         ? "Smooth"
@@ -146,6 +157,7 @@ export class XRClayStroke implements XRStrokeInteraction {
     this.snapGuide.hide();
     if (this.active) this.issue("cancel");
     this.rotatingSampler.reset();
+    this.pausedForNavigation = false;
     this.message = "";
     this.placementNote = "";
     this.cursor.hide();
@@ -163,6 +175,7 @@ export class XRClayStroke implements XRStrokeInteraction {
     time: number,
     enabled: boolean,
     gripPose?: Matrix4,
+    supportWorkspaceGrab = false,
   ): void {
     const metrics = this.layers().metrics,
       wasActive = this.active,
@@ -173,7 +186,7 @@ export class XRClayStroke implements XRStrokeInteraction {
     }
     if (!metrics.enabled) this.processingMeasured = false;
     try {
-      this.step(tool, pose, time, enabled, gripPose);
+      this.step(tool, pose, time, enabled, gripPose, supportWorkspaceGrab);
     } finally {
       this.session.accountFrameCPU(performance.now() - start);
       if (metrics.enabled && this.processingMeasured && (wasActive || this.active)) {
@@ -187,7 +200,8 @@ export class XRClayStroke implements XRStrokeInteraction {
     pose: Matrix4 | undefined,
     time: number,
     enabled: boolean,
-    gripPose?: Matrix4,
+    gripPose: Matrix4 | undefined,
+    supportWorkspaceGrab: boolean,
   ): void {
     const dt =
       this.lastFrame !== null
@@ -232,16 +246,30 @@ export class XRClayStroke implements XRStrokeInteraction {
     }
     const runtime = layers.active;
     runtime.surface.group.updateWorldMatrix(true, true);
+    // Navigation moves the whole workspace. Compare the target and interpolate
+    // turntable samples in workspace coordinates so only relative motion counts.
+    const workspace = mode === "clay" ? this.workspace : undefined;
+    if (workspace) this.workspaceInverse.copy(workspace.matrixWorld).invert();
+    if (this.active || tool!.buttons.trigger.justPressed) {
+      stableSculptMatrix(runtime.surface.group, this.stableTarget);
+      if (workspace) this.stableTarget.premultiply(this.workspaceInverse);
+    }
     if (
       this.active &&
-      stableSculptMatrix(runtime.surface.group).elements.some(
+      (this.stableTarget.elements.some(
         (v, i) => Math.abs(v - this.stableAnchor.elements[i]) > 1e-9,
-      )
+      ) ||
+        (workspace &&
+          !supportWorkspaceGrab &&
+          workspace.matrixWorld.elements.some(
+            (v, i) => Math.abs(v - this.workspaceAnchor.elements[i]) > 1e-9,
+          )))
     ) {
       this.cancel();
       this.message = "Stroke cancelled: target/workspace moved";
       return;
     }
+    if (workspace) this.workspaceAnchor.copy(workspace.matrixWorld);
     this.anchor.copy(runtime.surface.group.matrixWorld);
     try {
       if (this.liveSizing) this.session.setRadius(this.tools.port.settings().radius);
@@ -270,6 +298,8 @@ export class XRClayStroke implements XRStrokeInteraction {
       this.raycaster.ray.direction.copy(this.direction);
       this.raycaster.far = 3;
       this.inverse.copy(runtime.surface.group.matrixWorld).invert();
+      const canPauseForNavigation =
+        mode === "clay" && this.active && (supportWorkspaceGrab || this.pausedForNavigation);
       let hasTarget = false;
       this.placementNote = "";
       if (placement === "free") {
@@ -292,10 +322,13 @@ export class XRClayStroke implements XRStrokeInteraction {
             this.local.z < b.min[2] ||
             this.local.z > b.max[2])
         ) {
-          this.cancel();
-          this.cursor.show(runtime.surface.group, this.local, radius, false, false);
+          if (!canPauseForNavigation) {
+            this.cancel();
+            this.cursor.show(runtime.surface.group, this.local, radius, false, false);
+          }
           this.placementNote = "Outside layer volume · move the brush inside";
-          return;
+          if (!canPauseForNavigation) return;
+          hasTarget = false;
         }
       } else {
         this.hits.length = 0;
@@ -374,21 +407,29 @@ export class XRClayStroke implements XRStrokeInteraction {
           this.session.sample(this.local, time);
         }
         this.session.end();
+        this.pausedForNavigation = false;
         this.armed = true;
         this.paint();
         return;
       }
-      if (!hasTarget && mode === "paint") {
+      if (!hasTarget && (mode === "paint" || canPauseForNavigation)) {
         if (this.active) {
           this.session.pauseSurface(time);
           this.rotatingSampler.reset();
-          this.preview.visible = false;
-          this.snapGuide.hide();
+          if (mode === "paint") {
+            this.preview.visible = false;
+            this.snapGuide.hide();
+          } else this.paint();
         }
-        this.message = "Move pointer onto the surface to paint";
+        this.pausedForNavigation = mode === "clay";
+        this.message =
+          mode === "paint"
+            ? "Move pointer onto the surface to paint"
+            : "Move pointer back onto the surface";
         return;
       }
-      if (mode === "paint") this.message = "";
+      if (mode === "paint" || this.pausedForNavigation) this.message = "";
+      this.pausedForNavigation = false;
       if (!hasTarget) {
         this.cancel();
         this.message = "Stroke cancelled: surface no longer under pointer";
@@ -399,7 +440,7 @@ export class XRClayStroke implements XRStrokeInteraction {
         this.capturedTool = mode;
         this.capturedPlacement = placement;
         this.anchor.copy(runtime.surface.group.matrixWorld);
-        this.stableAnchor.copy(stableSculptMatrix(runtime.surface.group));
+        this.stableAnchor.copy(this.stableTarget);
         this.rotatingSampler.reset();
         this.rollingPath = hasTurntable(runtime.surface.group);
         this.session.begin(
@@ -416,13 +457,20 @@ export class XRClayStroke implements XRStrokeInteraction {
       this.recordController(time);
       if (hasTurntable(runtime.surface.group)) {
         const working = this.local.clone().applyMatrix4(runtime.surface.group.matrixWorld);
+        const pivot = turntablePivotWorld(runtime.surface.group);
+        this.samplingMatrix.copy(runtime.surface.group.matrixWorld);
+        if (workspace) {
+          working.applyMatrix4(this.workspaceInverse);
+          pivot?.applyMatrix4(this.workspaceInverse);
+          this.samplingMatrix.premultiply(this.workspaceInverse);
+        }
         this.rotatingSampler.sample(
           working,
-          runtime.surface.group.matrixWorld,
+          this.samplingMatrix,
           time,
           this.session.localRadius,
           (p, t) => this.session.sample(p, t),
-          turntablePivotWorld(runtime.surface.group),
+          pivot,
         );
         this.anchor.copy(runtime.surface.group.matrixWorld);
       } else this.session.sample(this.local, time);
@@ -469,11 +517,17 @@ export class XRClayStroke implements XRStrokeInteraction {
     ) {
       this.lastPreview = this.session.preview;
       this.previewLength = this.session.preview.length;
+      let indexCount = 0;
       this.session.preview.forEach((p, i) => {
         this.positions.setXYZ(i, p.x, p.y, p.z);
+        if (i > 0 && !p.breakBefore) {
+          this.segments.setX(indexCount++, i - 1);
+          this.segments.setX(indexCount++, i);
+        }
       });
       this.positions.needsUpdate = true;
-      this.geometry.setDrawRange(0, this.session.preview.length);
+      this.segments.needsUpdate = true;
+      this.geometry.setDrawRange(0, indexCount);
     }
     const mirror = this.layers().symmetry;
     this.mirrorLine.visible = mirror.enabled;

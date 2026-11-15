@@ -50,12 +50,168 @@ by 57%. Synchronous CPU brush and remesh medians were 3.8–4.4× dense, with
 dirty remeshing dominant. Dense remains the everyday default.
 [Compact sculpt comparison](SPARSE_SDF_COMPACT_SCULPT_RESULTS.md)
 
+## Phase 8.3b.1 — Sparse CPU performance follow-up (2026-11-12)
+
+The local research harness gathers a dirty chunk and its two-sample halo into
+one reusable Float32 tile. On the compact bust, the direct-key 3-voxel path
+reduced median Smooth edit and remesh from 52.50 to 13.60 ms. Dense took
+11.46 ms. All seven exact field and mesh checkpoints matched across six
+trials per variant. The two-level directory provided limited savings, and
+the contiguous halo accounted for most of the measured latency improvement.
+At the metre checkpoint, the 1 mm branch reached 9.92/12.93 ms p50/p95
+with a modeled 48.84 MiB stroke high-water. The five islands stayed near
+3.5–3.6 MiB retained from 100 to 1,000 mm. These are offline CPU and working
+model results.
+
+**No-go for scoped production 8.3c.** The exact-master working-memory and
+transaction gates remain open. The next isolated test should measure a
+bounded lossless exact page store with hot and cold reads, brush and CSG
+transactions, and measured decode/cache and save peaks. Continue to use the
+halo replay as the dirty-mesh comparator.
+[Phase 8.3b.1 results and reproduction](SPARSE_SDF_83B_PERF_RESULTS.md)
+
+## Phase 8.3b.2 — Lossless exact-page feasibility (2026-11-12)
+
+A bounded LRU of byte-shuffled deflate blocks preserved exact Float32 data,
+the test patch, Undo/Redo and a streamed raw roundtrip across eleven 192³
+masters. The best transformed median was 47.44 ms for 640 queries, versus
+the 1.5× dense gate. **No-go for this interactive reader.** Prioritize a
+new-from-empty exact sparse edit and dirty-mesh transaction prototype
+under the same budgets.
+[Measured exact-page results](SPARSE_SDF_EXACT_PAGES_RESULTS.md)
+
+## Phase 8.3b.3 — Resident exact pages and dirty scheduling (2026-11-12)
+
+For new-from-empty sculpts, exact pages feed the halo directly. At 1 mm
+spacing the metre branch used 40.99 MiB modeled resident and took
+8.30/11.03 ms synchronous CPU p50/p95. Exact geometry and normals matched.
+Four compact pairs against dense also matched all seven checkpoints.
+The bounded FIFO reached 192 pending chunks and 47 ticks of p95 age.
+**Production 8.3c remains a no-go.** Narrow dirty invalidation and test
+brush-local priority with a starvation bound before repeating the
+same burst replay.
+[Results and reproduction](SPARSE_SDF_SCHEDULED_RESULTS.md)
+
+## Phase 8.3b.4 — Changed-sample invalidation and brush priority (2026-11-12)
+
+Narrow coverage reduced branch median dirty keys from 64 to 20 and
+extra admission slices from 1,878 to 37 by the metre checkpoint. Alternating
+brush priority reduced near-brush p95 age from 47 to 16 ticks versus narrow
+FIFO and raised all-key p95 age from 47 to 86. **Carry narrow FIFO forward
+for offline research. Production 8.3c stays gated.**
+[Results and reproduction](SPARSE_SDF_DIRTY_PRIORITY_RESULTS.md)
+
+## Phase 8.3b.5 — Paced dirty meshing (2026-11-12)
+
+At 45 modeled edits/s, narrow FIFO removed branch admission stalls but
+still needed 16 logical slots to drain at metre release. At 90 edits/s
+it filled the 192-key queue and drained in 45 slots. Occupancy screening
+and deadline priority left the metre drain essentially unchanged.
+**Keep narrow FIFO for research. Production 8.3c stays gated.**
+[Results and reproduction](SPARSE_SDF_PACED_RESULTS.md)
+
+## Phase 8.3b.6 — Service ceilings and coarse mesh preview (2026-11-12)
+
+At 90 modeled edits/s the metre branch drained in 10 logical slots
+with eight exact chunks per slice, down from 45 with four. The soft
+2 ms cutoff was exceeded more often. A 2 mm local preview took 0.58 ms
+p95 to extract, with roughly one quarter of exact triangles in the
+whole-branch audit. Thin-feature loss and mixed-resolution seams
+require a fallback and transition handling. **Production stays gated.**
+[Results and reproduction](SPARSE_SDF_PREVIEW_RESULTS.md)
+
+## Phase 8.3b.7 — Cost-aware exact mesh slices (2026-11-12)
+
+At 90 modeled edits/s, recent cost reduced metre-branch slices over
+2 ms from 81% to 17% and increased median release drain from 10 to
+14 slots. The tube drain rose from eight to 23 slots. Keep the
+eight-chunk throughput baseline and carry recent cost into a renderer
+comparison. **Production 8.3c stays gated.**
+[Results and reproduction](SPARSE_SDF_COST_CUTOFF_RESULTS.md)
+
+## Phase 8.3b.8 — Paced WebGL draw submission (2026-11-12)
+
+At 90 offered edits/s, desktop Chrome brush-local p95 was 53.57 ms
+with FIFO and 56.38 ms with recent cost. Exact catch-up p95 was
+78.47 and 83.89 ms. Recent cost cut exact slices over 2 ms from 19%
+to 5%. Final exact checksums matched in 12 replays. Test a seam-safe
+preview against FIFO next. Production remains gated.
+[Results and reproduction](SPARSE_SDF_RENDERER_RESULTS.md)
+
+## Phase 8.3b.9 — Guarded coarse preview (2026-11-12)
+
+The seam and fine-detail guard admitted no coarse candidates in the
+metre-branch Chrome fixture. Of 6,345 candidate visits, 6,333 hit a chunk
+boundary and 12 were empty. All 12 runs retained exact final parity.
+Independent coarse replacement stays out of the connected sculpt path.
+[Results and reproduction](SPARSE_SDF_GUARDED_PREVIEW_RESULTS.md)
+
+## Phase 8.3b.10 — Brush-local exact quota (2026-11-12)
+
+At 90 offered edits/s, a two-chunk local quota reduced typical
+brush-local draw from 22.71 to 9.12 ms in desktop WebGL. Exact
+catch-up p95 rose from 80.01 to 85.49 ms. All 12 final exact
+checksums matched. Compare on device before considering integration.
+[Results and reproduction](SPARSE_SDF_LOCAL_EXACT_RESULTS.md)
+
+## Phase 8.3b.11 — Resident-page lifecycle (2026-11-12)
+
+Eighteen metre-scale grow/erase cycles restored identical fields and
+meshes. Settled tracked buffers fell from 39.62 MiB grown to 0.25 MiB
+after eviction. Full-branch Undo took 556 ms median with synchronous
+CPU rebuilding. Test bounded bulk Undo and failure handling next.
+[Results and reproduction](SPARSE_SDF_LIFECYCLE_RESULTS.md)
+
+## Phase 8.3b.12 — Progressive bulk Undo (2026-11-12)
+
+A fully erased metre branch restored exact CPU geometry in 447 ms
+median with a first CPU mesh in 2.31 ms after retry. Interrupting erase
+and reusing unchanged buffers reduced full completion to 8.36 ms.
+All 36 restores passed the failure and exact-parity probes. Test
+paced renderer publication next. Production remains gated.
+[Results and reproduction](SPARSE_SDF_BULK_UNDO_RESULTS.md)
+
+## Phase 8.3b.13 — Bulk Undo draw submission (2026-11-12)
+
+Headless WebGL progressive Undo drew its first restored geometry in
+2.30 ms median and finished in 5.20 s at the observed callback cadence.
+Interrupted erase reuse finished in 99.20 ms. Exact checksums matched.
+A byte-capped mesh cache is the next full-restore comparison.
+[Results and reproduction](SPARSE_SDF_BULK_RENDERER_RESULTS.md)
+
+## Phase 8.3b.14 — Latest bulk Undo mesh cache (2026-11-12)
+
+The 40 MiB test cap retained 31.71 MiB of branch CPU buffers. Batched
+restore drew first at 1.2 ms and finished in 412 ms median, versus
+5.13 s for progressive extraction at the headless cadence. The 24 MiB
+cap retained zero bytes and fell back exactly. Production stays gated.
+[Results and reproduction](SPARSE_SDF_UNDO_CACHE_RESULTS.md)
+
 ## Phase 8.3c — Sparse performance for everyday sculpting (planned 2026-11-12)
 
-Evaluate whether exact sparse storage can become the default for new sculpts.
-Start with the compact Quest 3 replay, where Smooth remeshing alone took
-198.9 ms sparse versus 45.8 ms dense. Use that replay to isolate costs, then
-compare the backends under Centra's normal frame scheduling.
+The [bulk Undo cache](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-native-undo-parity-check)
+can advance to a scoped opt-in integration trial. Its compact native
+Undo parity test passes and the Quest panel comparison supports the
+trial. Default enablement still requires immersive timing, memory
+headroom, and cache lifecycle checks in the live app. The sparse
+storage gates below still apply.
+
+The [experimental Undo cache switch](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-default-off-editor-trial)
+is on by default in the editor and can be turned off in the Layers
+panel. It retains one eligible voxel-stroke snapshot up to 40 MiB.
+The tracked Quest replay verified exactness and faster submission on
+a compact sculpt. Peak memory on larger scenes remains unmeasured.
+
+The independent adaptive brush option completed its
+[tracked Quest comparison](SPARSE_SDF_BRUSH_ADAPTIVE_RESULTS.md#tracked-quest-results).
+It improved exact catch-up and increased callback intervals. Keep it
+in research until a candidate preserves frame pacing.
+
+The 8.3b.1 feasibility results gate this phase. Once the exact-storage and
+transaction gates pass in isolation, use the compact Quest 3 replay and the
+8.3b.1 halo prototype as starting points for tests under Centra's normal
+frame scheduling. The earlier device replay measured 198.9 ms sparse
+versus 45.8 ms dense for median synchronous Smooth remeshing.
 
 1. **Speed up dirty remeshing.** Profile brick lookup, sample gathering,
    gradient stencils and extraction separately. Prototype gathering a dirty

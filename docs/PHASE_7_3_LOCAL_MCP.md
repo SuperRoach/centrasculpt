@@ -218,7 +218,7 @@ Browser smoke uses a fresh browser profile and port 5197, creates/inspects/trans
 updates a real box through stdio MCP, checks editor rows, Undo and ordinary Redo after
 disconnect, then verifies normal startup and scans the production assets from `npm run
 build`. It never restores/discards existing browser recovery. Optional overrides:
-`AGENT_SMOKE_PORT`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE` (absolute Chromium executable).
+`AGENT_SMOKE_PORT`, `AGENT_SMOKE_HOST` (use `127.0.0.1` if local DNS is unavailable), `PLAYWRIGHT_CHROMIUM_EXECUTABLE` (absolute Chromium executable).
 Evidence/screenshots are written under ignored `work/phase-7-3/`.
 
 ## Disable or remove
@@ -415,8 +415,10 @@ Recipes stay outside mixed command batches. [Exact contracts](PHASE_7_2_FEATURES
 ## Phase 7.4.2 visual inspection — 2026-11-07
 
 Read-only `capture_scene_preview({expectedRevision?,viewpoint?,width?,height?})`
-returns a model-only PNG **MCP image block** and structured provenance. Six preset
-angles, default 384², 64–512 pixels per edge, 512 KiB PNG maximum. Whole visible
+returns a model-only PNG **MCP image block** and structured provenance. Nine preset
+angles: `front`, `back`, `left`/`left-side`, `right`/`right-side`, `top`,
+`isometric` and `underside`; the side-name forms are aliases. Default 384²,
+64–512 pixels per edge, 512 KiB PNG maximum. Whole visible
 model only; neutral untextured material, no references, guides or UI. Uses current
 browser geometry and a separate camera; Boolean/array captures require a ready
 Boolean display. Pending/stale/busy/XR/context loss refuse without stale imagery.
@@ -479,3 +481,68 @@ After an approved connection drops, the tab checks for a restarted server with
 exponential backoff (1, 2, 4, 8, then at most 15 seconds). On discovering a new session it opens the approval panel automatically
 and reports **Agent server is back · approve connection to reconnect**. Approve to
 resume access. Explicit revocation disables this discovery. No reload is needed.
+
+## Exact tier edits and print inspection
+
+Desktop numeric positions are absolute world millimetres. Press Enter or leave the
+field to commit. The field is refreshed from the editor pose when an edit is refused.
+MCP transform commands accept explicit `mm`, `cm` or `in`; XYZ rotations in a full
+transform are radians, and returned object poses include `positionMM` and
+`rotationRadians`.
+
+Use `apply_changes` for one Undo across creation, naming, positioning, viewport
+colour and Boolean union. For example, these steps build a transition that widens
+along X and narrows along Z as it rises:
+
+```json
+{
+  "expectedRevision": "LATEST_REVISION",
+  "transactionId": "holder-tiers-01",
+  "measureBounds": "$base",
+  "steps": [
+    {"as":"base","command":{"type":"primitive.create","unit":"mm","source":{"kind":"box","width":20,"depth":20,"height":10}}},
+    {"command":{"type":"object.rename","id":"$base","name":"Base"}},
+    {"command":{"type":"object.transform","id":"$base","unit":"mm","transform":{"position":[0,5,0],"rotation":[0,0,0],"scale":[1,1,1]}}},
+    {"as":"transition","command":{"type":"primitive.create","unit":"mm","source":{"kind":"tapered-box","bottomWidth":20,"bottomDepth":20,"topWidth":30,"topDepth":16,"height":10}}},
+    {"command":{"type":"object.transform","id":"$transition","unit":"mm","transform":{"position":[0,14,0],"rotation":[0,0,0],"scale":[1,1,1]}}},
+    {"command":{"type":"object.colour","id":"$transition","colour":"#c68d40"}},
+    {"command":{"type":"boolean.create","id":"$base","sourceId":"$transition","operation":"union"}}
+  ]
+}
+```
+
+The response includes committed object poses, colours and IDs. Optional
+`measureBounds` measures the specified object or alias after all edits using
+evaluated triangles. If the measurement cannot finish, the batch rolls back.
+An empty evaluated result has null min/max. Bounds describe the sampled mesh,
+and they do not certify topology. Layer colour is the viewport colour.
+
+After a lost response, reconnect to the same editor and call
+`get_transaction({transactionId})`. A committed receipt contains the original
+result and revision, even if the user has since edited or undone the batch.
+Repeating the identical request returns that result without applying a second
+edit. A different request with the same retained ID is refused. The last 32
+identified commits are kept in memory for that project instance across bridge
+restarts. If a receipt is unknown, inspect the current scene before retrying;
+the tab may have been reloaded, the project replaced, or the receipt evicted.
+
+Tapered box ends are centred on local X/Z, at −Y and +Y respectively. Both end
+widths and depths are editable and subject to the usual dimension, aspect and
+memory limits. Native projects containing one use `.form` version 22.
+
+For an upright print check through the sloped profile, use
+`inspect_print_mesh({expectedRevision,objectId,direction:[0,1,0],sectionNormal:[0,0,1],sectionOffsetMM:0,viewpoint:"front"})`.
+Choose `partId` for a printable part or omit both IDs for the visible composition.
+The tool evaluates geometry independently of the desktop preview. The cross-section
+plane is `dot(worldPositionMM, normalizedSectionNormal) = sectionOffsetMM`; the
+normal defaults to the build direction. The PNG shows overhang faces in red and
+the section trace in blue. Use the `underside` viewpoint to see downward faces. The report includes flagged face count and area,
+section segment count and up to 64 sample segments. A threshold of 45° from
+vertical is the default. Downward faces on the lowest plane are excluded, since
+they rest on the assumed build plate. Use a section offset inside the mesh to
+inspect a profile; coincident faces are counted separately. Checks describe the
+evaluated mesh at the reported sampling, without modelling bridging or supports.
+
+
+To run just this browser workflow in a disposable profile:
+`AGENT_SMOKE_HOST=127.0.0.1 npm run test:agent:browser -- --precision-print`.

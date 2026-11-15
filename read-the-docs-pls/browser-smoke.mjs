@@ -59,11 +59,11 @@ try {
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
   await page.screenshot({ path: new URL("desktop-dark.png", evidence).pathname, fullPage: true });
   await page.keyboard.press("Control+k");
-  await page.locator("#search-dialog input").waitFor();
-  await page.locator("#search-dialog input").fill("tyre");
-  await page.locator(".pagefind-ui__result-link").first().waitFor();
+  await page.locator("pagefind-modal dialog input").waitFor();
+  await page.locator("pagefind-modal dialog input").fill("tyre");
+  await page.locator(".pf-result-link").first().waitFor();
   assert.ok(
-    (await page.locator(".pagefind-ui__result-link").allTextContents()).some((t) =>
+    (await page.locator(".pf-result-link").allTextContents()).some((t) =>
       t.includes("primitives"),
     ),
   );
@@ -81,9 +81,9 @@ try {
   );
   await page.screenshot({ path: new URL("search.png", evidence).pathname });
   await page.keyboard.press("Escape");
-  assert.equal(await page.locator(":focus").getAttribute("id"), "search-open");
+  assert.equal(await page.locator(":focus").evaluate((el) => el.matches(".pf-trigger-btn")), true);
   await page.keyboard.press("Meta+k");
-  assert.equal(await page.locator("#search-dialog").evaluate((d) => d.open), true);
+  assert.equal(await page.locator("pagefind-modal dialog").evaluate((d) => d.open), true);
   await page.keyboard.press("Escape");
   // Exercise the real search API, all routes, and a nested deployment path.
   const search = await page.evaluate(async () => {

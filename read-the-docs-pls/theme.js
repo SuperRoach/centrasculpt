@@ -5,4 +5,6 @@ try {
 } catch {
   /* System colour scheme remains available without storage. */
 }
+document.documentElement.dataset.pfTheme =
+  document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 document.documentElement.classList.add("js");

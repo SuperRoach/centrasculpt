@@ -52,10 +52,10 @@ import { prepareLibrary } from "./library-worker-client";
 import { LightRig } from "./light-rig";
 import { lightingUI } from "./lighting-ui";
 import { ModellingAPI, type ModellingCommand } from "./modelling-api";
-import { MAX_PROJECT_BYTES } from "./project";
+import { MAX_PROJECT_BYTES, type ProjectSettings } from "./project";
 import { ProjectBrowser } from "./project-browser";
 import { ProjectLibrary } from "./project-library";
-import { checksum } from "./project-snapshot";
+import { checksum, encodeManualProject, RecoveryMemoryError } from "./project-snapshot";
 import { captureProjectThumbnail } from "./project-thumbnail";
 import { hydrateProject } from "./project-transfer";
 import { leaveForProject } from "./project-workflow";
@@ -387,7 +387,8 @@ function syncTransformUI() {
     layers.transformNode.editable,
     input.mode,
     input.space,
-    loadingProject || xrBlocked(),
+    loadingProject || xrBlocked() || layers.modellingBusy,
+    display.precision.millimetresPerUnit,
   );
   syncStats();
 }
@@ -1109,7 +1110,12 @@ async function heavy(text: string, work: () => void) {
   }
 }
 ui.onTransformAction((action) => {
-  if (loadingProject || ui.modalOpen || xrBlocked()) return;
+  if (loadingProject || ui.modalOpen || xrBlocked() || layers.modellingBusy) {
+    if (action.type === "field")
+      ui.projectMessage("Finish the current editor operation before changing the transform.", true);
+    syncTransformUI();
+    return;
+  }
   stop();
   try {
     if (action.type === "mode") {
@@ -1122,7 +1128,8 @@ ui.onTransformAction((action) => {
       const next = copyTransform(layers.transformNode.transform),
         axis = "xyz".indexOf(action.field[1]);
       if (action.field === "scale") next.scale = [action.value, action.value, action.value];
-      else if (action.field[0] === "p") next.position[axis] = action.value;
+      else if (action.field[0] === "p")
+        next.position[axis] = action.value / display.precision.millimetresPerUnit;
       else next.rotation[axis] = (action.value * Math.PI) / 180;
       layers.setActiveTransform(next);
     }
@@ -1202,6 +1209,11 @@ document.getElementById("composition-mode")!.addEventListener("click", (event) =
 document.getElementById("composite-quality")!.addEventListener("change", (event) => {
   if (xrBlocked()) return;
   layers.composite.setQuality(Number((event.target as HTMLSelectElement).value));
+});
+const undoMeshCache = document.querySelector<HTMLInputElement>("#undo-mesh-cache")!;
+layers.setUndoMeshCacheEnabled(undoMeshCache.checked);
+undoMeshCache.addEventListener("change", () => {
+  layers.setUndoMeshCacheEnabled(undoMeshCache.checked);
 });
 let bakeAbort: AbortController | null = null;
 let bakeBounds: THREE.Box3Helper | null = null;
@@ -1497,6 +1509,7 @@ async function openProjectFile(
     layers.dispose();
     layers = candidate;
     candidate = undefined;
+    layers.setUndoMeshCacheEnabled(undoMeshCache.checked);
     clearPreparedExport();
     display = layers.display;
     layers.interruptBackground = () => recovery?.cancelJob();
@@ -2760,25 +2773,34 @@ const projectBrowser = new ProjectBrowser(
       stop();
       try {
         await recovery?.settle();
-        const result = await encodeRecovery(
-          source,
-          {
-            ...ui.settings,
-            camera: {
-              position: xrBlocked()
-                ? source.project.settings.camera.position
-                : camera.position.toArray(),
-              target: xrBlocked()
-                ? source.project.settings.camera.target
-                : controls.target.toArray(),
-            },
+        const settings: ProjectSettings = {
+          ...ui.settings,
+          camera: {
+            position: xrBlocked()
+              ? source.project.settings.camera.position
+              : camera.position.toArray(),
+            target: xrBlocked() ? source.project.settings.camera.target : controls.target.toArray(),
           },
-          display.snapshot(source.project.id, source.project.layerStack.layers),
-          editorTools?.snapshotPreferences(),
-          libraryAbort.signal,
-          () => layers === source && recoveryKey() === key,
-        );
-        return result.data;
+        };
+        const presentation = display.snapshot(source.project.id, source.project.layerStack.layers),
+          tools = editorTools?.snapshotPreferences(),
+          current = () => layers === source && recoveryKey() === key;
+        try {
+          return (
+            await encodeRecovery(
+              source,
+              settings,
+              presentation,
+              tools,
+              libraryAbort.signal,
+              current,
+            )
+          ).data;
+        } catch (error) {
+          if (!(error instanceof RecoveryMemoryError) || libraryAbort.signal.aborted || !current())
+            throw error;
+          return encodeManualProject(source, settings, presentation, tools);
+        }
       } finally {
         loadingProject = false;
         manualSaving = false;
@@ -3094,19 +3116,20 @@ const starterLayers = layers,
 function updateSaveIndicator(): void {
   const button = document.querySelector<HTMLButtonElement>("#header-save")!;
   const key = recoveryKey(),
-    record = recovery?.records.find((r) => r.projectId === layers.project.id && r.revision === key);
+    record = recovery?.records.find((r) => r.projectId === layers.project.id && r.revision === key),
+    recoveryWarning = projectBrowser.savedKey !== key ? recovery?.warning : undefined;
   const state = saveState({
     key,
     manualKey: projectBrowser.savedKey,
     autosaveKey: record?.revision ?? restoredSaveKey,
     saving: manualSaving || !!recovery?.active,
     editing: !layers.recoveryReady,
-    error: projectBrowser.error || !!manualSaveError || !!recovery?.warning,
+    error: projectBrowser.error || !!manualSaveError || !!recoveryWarning,
     recoveryPending: !!recovery?.blocked,
   });
   button.disabled = loadingProject || xrBlocked() || ui.modalOpen || !layers.recoveryReady;
   const label = SAVE_LABELS[state],
-    title = `${label}${projectBrowser.error ? " · " + projectBrowser.status : manualSaveError ? " · " + manualSaveError : recovery?.warning ? " · " + recovery.warning : ""} · Click to save · Hold to download .form`;
+    title = `${label}${projectBrowser.error ? " · " + projectBrowser.status : manualSaveError ? " · " + manualSaveError : recoveryWarning ? " · " + recoveryWarning : ""} · Click to save · Hold to download .form`;
   if (button.dataset.state !== state) {
     button.dataset.state = state;
     document.getElementById("header-save-status")!.textContent = label;
@@ -3490,6 +3513,10 @@ function pollComposite(now: number): void {
         });
   }
 }
+const undoXRReplay =
+  import.meta.env.DEV && new URLSearchParams(location.search).get("undoXRReplay") === "1"
+    ? new (await import("./undo-xr-replay")).UndoXRReplay()
+    : undefined;
 let lastAssemblyUISync = 0;
 renderer.setAnimationLoop((now, frame) => {
   precision?.sync();
@@ -3508,6 +3535,15 @@ renderer.setAnimationLoop((now, frame) => {
   referenceEditor?.sync();
   referencesUI.sync();
   renderEmulatorFrame?.(now);
+  if (undoXRReplay && frame && renderer.xr.isPresenting) {
+    const space = renderer.xr.getReferenceSpace();
+    const pose = space ? (frame.getViewerPose(space) ?? null) : null;
+    if (undoXRReplay.frame(frame.session, pose, xrRig.trackingOrigin)) {
+      renderer.render(undoXRReplay.scene, camera);
+      if (pose && !pose.emulatedPosition) undoXRReplay.afterDraw();
+      return;
+    }
+  }
   if (xrBlocked()) {
     desktopTube.cancel();
     desktopMirrorPlane.group.visible = false;

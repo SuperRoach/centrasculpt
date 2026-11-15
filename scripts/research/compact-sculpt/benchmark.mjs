@@ -86,7 +86,7 @@ function denseBackend() {
   };
 }
 
-function sparseBackend() {
+function sparseBackend(prepareSparse) {
   const field = new AnalyticField();
   const cache = new BandCache(3, 1, (x, y, z) => field.read(x, y, z), true);
   const history = [];
@@ -101,16 +101,18 @@ function sparseBackend() {
     coordinate: (v) => v - extent,
     index,
     getDenseView: () => undefined,
-    readVoxel: (i) => cache.read(...coordinates(i), false),
+    readVoxel: (i) => activeCache.read(...coordinates(i), false),
     normalAt: BrickVolume.prototype.normalAt,
   };
+  const research = prepareSparse?.(field, cache, volume);
+  const activeCache = research?.cache ?? cache;
   function memory() {
-    const { payloadBytes, directoryAllowanceBytes } = cache.footprint();
+    const { payloadBytes, directoryAllowanceBytes } = activeCache.footprint();
     const exactPageBytes = field.edits.size * PAGE_BYTES;
     const editDirectoryBytes = field.edits.size * ENTRY_ALLOWANCE;
     const saved = new Set();
     let metadataBytes = 0;
-    const live = new Set([...field.edits.values(), ...cache.entries.values()]);
+    const live = new Set([...field.edits.values(), ...activeCache.entries.values()]);
     for (const patch of [...history, ...future]) {
       metadataBytes += patch.affected.length * ENTRY_ALLOWANCE;
       for (const table of [patch.before, patch.after, patch.cacheBefore, patch.cacheAfter]) {
@@ -120,21 +122,28 @@ function sparseBackend() {
       }
     }
     return {
-      storageBytes: payloadBytes + directoryAllowanceBytes + exactPageBytes + editDirectoryBytes,
+      storageBytes:
+        payloadBytes +
+        directoryAllowanceBytes +
+        exactPageBytes +
+        editDirectoryBytes +
+        (research?.scratchBytes ?? 0),
       historyBytes: saved.size * PAGE_BYTES + metadataBytes,
+      haloScratchBytes: research?.scratchBytes ?? 0,
       exactPages: field.edits.size,
       cachePages: payloadBytes / PAGE_BYTES,
     };
   }
   return {
     volume,
+    research,
     edit({ a, b, mode, radius }) {
       const before = memory();
-      const stage = measure(() => stageStroke(field, cache, a, b, mode, 96, radius));
+      const stage = measure(() => stageStroke(field, activeCache, a, b, mode, 96, radius));
       const patch = stage.value;
       const publish = measure(() => {
         if (!patch.changed) return;
-        publishStroke(field, cache, patch);
+        publishStroke(field, activeCache, patch);
         future.length = 0;
         history.push(patch);
         if (history.length > historyLimit) history.shift();
@@ -159,13 +168,13 @@ function sparseBackend() {
     undo() {
       const patch = history.pop();
       ensure(patch, "Missing sparse Undo patch");
-      publishStroke(field, cache, patch, true);
+      publishStroke(field, activeCache, patch, true);
       future.push(patch);
     },
     redo() {
       const patch = future.pop();
       ensure(patch, "Missing sparse Redo patch");
-      publishStroke(field, cache, patch);
+      publishStroke(field, activeCache, patch);
       history.push(patch);
     },
     exact: (i) => field.read(...coordinates(i)),
@@ -249,10 +258,11 @@ export async function runCompactSculpt(
     afterStroke = () => undefined,
     onChunks = () => {},
     snapshot = () => null,
+    prepareSparse,
   } = {},
 ) {
   ensure(kind === "dense" || kind === "sparse", "Choose dense or sparse");
-  const backend = kind === "dense" ? denseBackend() : sparseBackend();
+  const backend = kind === "dense" ? denseBackend() : sparseBackend(prepareSparse);
   const mesher = new IncrementalMesher(backend.volume);
   // Both paths start with an empty mesh. Clear the constructor's full-grid
   // initial extraction before timing any edits.
@@ -358,6 +368,7 @@ export async function runCompactSculpt(
       size,
       spacingMM: 1,
       historyLimit,
+      haloStats: backend.research?.stats,
       initializeMesherMs: initialization.ms,
       checkpoints,
       strokes,

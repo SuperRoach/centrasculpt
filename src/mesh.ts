@@ -414,6 +414,7 @@ export class IncrementalMesher {
   rebuildChunks(
     maxChunks = Infinity,
     maxMilliseconds = Infinity,
+    cached?: ReadonlyMap<number, BufferGeometry>,
   ): { updates: ChunkUpdate[]; stats: RebuildStats; triangles: number } | null {
     if (!(maxChunks > 0) || !(maxMilliseconds >= 0))
       throw new Error("Invalid meshing batch budget.");
@@ -429,7 +430,18 @@ export class IncrementalMesher {
       )
         break;
       const chunk = this.chunks[id],
-        geometry = geometryFromRegions([extractRegion(this.volume, chunk.bounds)]);
+        previous = cached?.get(id);
+      let geometry: BufferGeometry;
+      if (previous) {
+        geometry = new BufferGeometry();
+        // Reuse immutable CPU arrays with fresh attributes for independent GPU ownership.
+        for (const name of ["position", "normal"])
+          geometry.setAttribute(name, new BufferAttribute(previous.getAttribute(name).array, 3));
+        geometry.boundingSphere = previous.boundingSphere?.clone() ?? null;
+        geometry.boundingBox = previous.boundingBox?.clone() ?? null;
+      } else {
+        geometry = geometryFromRegions(cached ? [] : [extractRegion(this.volume, chunk.bounds)]);
+      }
       this.triangleCount +=
         (geometry.getAttribute("position").count -
           (chunk.geometry?.getAttribute("position").count ?? 0)) /

@@ -19,6 +19,14 @@ import { transformMatrix, type Vec3 } from "./transform";
 export type PrimitiveSource =
   | { kind: "capsule"; diameter: number; height: number }
   | { kind: "torus"; majorRadius: number; tubeDiameter: number; tyre?: number }
+  | {
+      kind: "tapered-box";
+      bottomWidth: number;
+      bottomDepth: number;
+      topWidth: number;
+      topDepth: number;
+      height: number;
+    }
   | { kind: "pyramid"; width: number; height: number; depth: number }
   | { kind: "box"; width: number; height: number; depth: number; cornerRadius?: number }
   | {
@@ -46,11 +54,13 @@ export const PRIMITIVE_KINDS = [
   "capsule",
   "torus",
   "pyramid",
+  "tapered-box",
 ] as const;
 /** Cone is a creation preset of the canonical capped frustum, never a second geometry kind. */
 export const PRIMITIVE_CHOICES = [...PRIMITIVE_KINDS, "cone"] as const;
 export type PrimitiveChoice = (typeof PRIMITIVE_CHOICES)[number];
 export function primitiveLabel(s: PrimitiveSource): string {
+  if (s.kind === "tapered-box") return "Tapered box";
   return s.kind === "cylinder" && s.topDiameter === 0
     ? "Cone"
     : s.kind[0].toUpperCase() + s.kind.slice(1);
@@ -66,6 +76,10 @@ export function primitiveFieldLabel(field: string, source?: PrimitiveSource): st
           source?.kind === "cylinder" && source.topDiameter === 0
             ? "Base diameter"
             : "Bottom diameter",
+        topWidth: "Top width",
+        topDepth: "Top depth",
+        bottomWidth: "Bottom width",
+        bottomDepth: "Bottom depth",
         majorRadius: "Ring radius",
         tubeDiameter: "Tube diameter",
         tyre: "Tyre shape",
@@ -92,19 +106,21 @@ export function validatePrimitive(value: unknown): PrimitiveSource {
   const keys =
     s.kind === "box" || s.kind === "pyramid"
       ? ["width", "height", "depth"]
-      : s.kind === "capsule"
-        ? ["diameter", "height"]
-        : s.kind === "torus"
-          ? ["majorRadius", "tubeDiameter"]
-          : s.kind === "cylinder"
-            ? [
-                "diameter",
-                "height",
-                ...["topDiameter", "bottomDiameter"].filter((k) => s[k] !== undefined),
-              ]
-            : s.kind === "sphere"
-              ? ["diameter", ...["width", "height", "depth"].filter((k) => s[k] !== undefined)]
-              : [];
+      : s.kind === "tapered-box"
+        ? ["bottomWidth", "bottomDepth", "topWidth", "topDepth", "height"]
+        : s.kind === "capsule"
+          ? ["diameter", "height"]
+          : s.kind === "torus"
+            ? ["majorRadius", "tubeDiameter"]
+            : s.kind === "cylinder"
+              ? [
+                  "diameter",
+                  "height",
+                  ...["topDiameter", "bottomDiameter"].filter((k) => s[k] !== undefined),
+                ]
+              : s.kind === "sphere"
+                ? ["diameter", ...["width", "height", "depth"].filter((k) => s[k] !== undefined)]
+                : [];
   if (
     !keys.length ||
     Object.keys(s).some(
@@ -180,6 +196,8 @@ export function validatePrimitive(value: unknown): PrimitiveSource {
 }
 export function primitiveDimensions(source: PrimitiveSource): Vec3 {
   const s = validatePrimitive(source);
+  if (s.kind === "tapered-box")
+    return [Math.max(s.bottomWidth, s.topWidth), s.height, Math.max(s.bottomDepth, s.topDepth)];
   return s.kind === "box" || s.kind === "pyramid"
     ? [s.width, s.height, s.depth]
     : s.kind === "capsule"
@@ -209,7 +227,8 @@ export function primitiveDistance(s: PrimitiveSource, x: number, y: number, z: n
       v = Math.abs(y) - a;
     return Math.hypot(Math.max(u, 0), Math.max(v, 0)) + Math.min(Math.max(u, v), 0) - r;
   }
-  if (s.kind === "pyramid") return pyramidDistance(s, x, y, z);
+  if (s.kind === "pyramid" || s.kind === "tapered-box")
+    return rectangularFrustumDistance(s, x, y, z);
   if (s.kind === "sphere") {
     const a = (s.width ?? s.diameter) / 2,
       b = (s.height ?? s.diameter) / 2,
@@ -458,6 +477,11 @@ export function primitiveSupport(s: PrimitiveSource, x: number, y: number, z: nu
         (s.depth ?? s.diameter) * z,
       ) / 2
     );
+  if (s.kind === "tapered-box")
+    return Math.max(
+      (s.bottomWidth * Math.abs(x) + s.bottomDepth * Math.abs(z) - s.height * y) / 2,
+      (s.topWidth * Math.abs(x) + s.topDepth * Math.abs(z) + s.height * y) / 2,
+    );
   if (s.kind === "pyramid")
     return Math.max(
       (s.width * Math.abs(x) + s.depth * Math.abs(z) - s.height * y) / 2,
@@ -469,6 +493,8 @@ export function primitiveSupport(s: PrimitiveSource, x: number, y: number, z: nu
  * cone/pyramid tip is zero width: sampling cannot preserve that tip exactly. */
 export function primitiveFeatureSize(s: PrimitiveSource): number {
   if (s.kind === "torus") return Math.min(s.tubeDiameter, 2 * s.majorRadius - s.tubeDiameter);
+  if (s.kind === "tapered-box")
+    return Math.min(s.topWidth, s.topDepth, s.bottomWidth, s.bottomDepth, s.height);
   return Math.min(...primitiveDimensions(s));
 }
 function pyramidVertices(s: Extract<PrimitiveSource, { kind: "pyramid" }>): Vector3[] {
@@ -491,21 +517,57 @@ const pyramidFaces = [
   [2, 4, 3],
   [3, 4, 0],
 ];
-const pyramidFacets = new WeakMap<PrimitiveSource, { key: string; triangles: Triangle[] }>();
+type RectangularFrustum = Extract<PrimitiveSource, { kind: "pyramid" | "tapered-box" }>;
+const taperedBoxFaces = [
+  [0, 1, 2],
+  [0, 2, 3],
+  [4, 6, 5],
+  [4, 7, 6],
+  [0, 4, 5],
+  [0, 5, 1],
+  [1, 5, 6],
+  [1, 6, 2],
+  [2, 6, 7],
+  [2, 7, 3],
+  [3, 7, 4],
+  [3, 4, 0],
+];
+function rectangularFrustumMesh(s: RectangularFrustum) {
+  if (s.kind === "pyramid") return { vertices: pyramidVertices(s), faces: pyramidFaces };
+  const ring = (width: number, y: number, depth: number) =>
+    [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ].map(([x, z]) => new Vector3((x * width) / 2, y, (z * depth) / 2));
+  return {
+    vertices: [
+      ...ring(s.bottomWidth, -s.height / 2, s.bottomDepth),
+      ...ring(s.topWidth, s.height / 2, s.topDepth),
+    ],
+    faces: taperedBoxFaces,
+  };
+}
+const frustumFacets = new WeakMap<PrimitiveSource, { key: string; triangles: Triangle[] }>();
 const queryPoint = new Vector3(),
   closestPoint = new Vector3();
-function pyramidDistance(
-  s: Extract<PrimitiveSource, { kind: "pyramid" }>,
+function rectangularFrustumDistance(
+  s: RectangularFrustum,
   x: number,
   y: number,
   z: number,
 ): number {
-  const key = `${s.width}:${s.height}:${s.depth}`;
-  let cache = pyramidFacets.get(s);
+  const bottomWidth = s.kind === "pyramid" ? s.width : s.bottomWidth,
+    bottomDepth = s.kind === "pyramid" ? s.depth : s.bottomDepth,
+    topWidth = s.kind === "pyramid" ? 0 : s.topWidth,
+    topDepth = s.kind === "pyramid" ? 0 : s.topDepth;
+  const key = `${bottomWidth}:${bottomDepth}:${topWidth}:${topDepth}:${s.height}`;
+  let cache = frustumFacets.get(s);
   if (cache?.key !== key) {
-    const v = pyramidVertices(s);
-    cache = { key, triangles: pyramidFaces.map(([a, b, c]) => new Triangle(v[a], v[b], v[c])) };
-    pyramidFacets.set(s, cache);
+    const { vertices: v, faces } = rectangularFrustumMesh(s);
+    cache = { key, triangles: faces.map(([a, b, c]) => new Triangle(v[a], v[b], v[c])) };
+    frustumFacets.set(s, cache);
   }
   queryPoint.set(x, y, z);
   let distance = Infinity;
@@ -517,8 +579,8 @@ function pyramidDistance(
   const inside =
     y >= -s.height / 2 &&
     y <= s.height / 2 &&
-    Math.abs(x) <= (s.width * t) / 2 &&
-    Math.abs(z) <= (s.depth * t) / 2;
+    Math.abs(x) <= (bottomWidth * t + topWidth * (1 - t)) / 2 &&
+    Math.abs(z) <= (bottomDepth * t + topDepth * (1 - t)) / 2;
   return Math.sqrt(distance) * (inside ? -1 : 1);
 }
 /** Shared source/preview/export tessellation. Pivot is local bounding-box centre;
@@ -595,8 +657,8 @@ function buildPrimitiveGeometry(s: PrimitiveSource, segments = 96): BufferGeomet
       segments < 48 ? 8 : 32,
       segments,
     ).rotateX(Math.PI / 2);
-  const v = pyramidVertices(s),
-    positions = pyramidFaces.flatMap((face) => face.flatMap((i) => v[i].toArray()));
+  const { vertices: v, faces } = rectangularFrustumMesh(s),
+    positions = faces.flatMap((face) => face.flatMap((i) => v[i].toArray()));
   const g = new BufferGeometry();
   g.setAttribute("position", new Float32BufferAttribute(positions, 3));
   g.computeVertexNormals();

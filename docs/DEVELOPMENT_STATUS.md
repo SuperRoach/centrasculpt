@@ -1,3 +1,675 @@
+# Phase 8.3b — Experimental Undo mesh cache in Centra — 2026-11-12
+
+## 1. Scope
+
+The live editor enables **Cache the latest sculpt Undo (up to
+40 MiB)** by default. Turn it off under **Layers → Experimental**. This trial
+covers the latest eligible voxel stroke. The setting applies to the
+current editor session and carries across project opens. Each project
+starts with an empty cache.
+
+## 2. Implementation
+
+The controller captures one pre-stroke mesh snapshot and associates
+it with the committed Undo entry, layer runtime, mesher, and volume.
+Normal Undo replays voxel history and reuses the cached CPU arrays
+for dirty chunks. The mesher publishes new attributes through the
+usual surface, spatial-index, and composite paths. Redo and cache
+refusal use ordinary remeshing. The editor counts retained payload
+against its existing transient memory budget. Disable, cancellation,
+growth, a new stroke or intervening commit, layer removal, and
+project disposal release the snapshot.
+
+- [Capture, budget, and lifecycle](../src/independent-layers.ts)
+- [Cached mesher publication](../src/mesh.ts)
+- [Editor switch binding](../src/main.ts)
+- [Controller parity tests](../tests/undo-cache-app-parity.test.mjs)
+
+## 3. Measurements
+
+The separate Quest 3 Browser-panel fixture measured 407 ms cached
+versus 16.44 s progressive for an exact metre-scale restore with
+two other layers resident. The separate compact Node integration
+trial measured 0.75 ms cached versus 8.75 ms ordinary. The user reported that Undo felt faster with the cache enabled in a
+manual Quest check. A subsequent tracked 90 Hz scripted run through
+the live editor measured median full render submission of 87.5 ms
+off and 28.4 ms on, with exact field and mesh parity. The cache
+retained 5.06 MiB. Peak Quest memory and headset presentation
+remain unmeasured.
+[Scripted Quest results](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-scripted-live-quest-comparison)
+[Quest results](SPARSE_SDF_QUEST_FIXTURE.md#2026-11-12-dedicated-renderers-per-cache-policy) ·
+[Node results](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-native-undo-integration-trial)
+
+## 4. Verification
+
+The controller tests verified default-off behavior, exact Undo and
+Redo, actual buffer reuse, refusal under the existing memory budget,
+and release on disable, cancellation, growth, and disposal.
+The built Chrome editor started with the checkbox off and toggled
+both ways. Its automated brush gesture hit Clay's sample timing
+limit under software rendering.
+
+`npm run check` passed format, lint, types, build, and 1,758 of 1,763
+tests. Five tests hit sandbox loopback restrictions. The rerun with
+localhost binding enabled passed all 30 tests across the affected files.
+
+## 5. Decision
+
+**Undo caching defaults to on at the project owner’s direction.** The adaptive
+brush scheduler is a separate experiment and still needs a tracked
+immersive comparison. The latest remote WebXR request remained pending.
+The wider sparse-storage and save compatibility gates remain open.
+[Tracked brush attempt](SPARSE_SDF_BRUSH_ADAPTIVE_RESULTS.md#tracked-quest-gate)
+
+## 6. Handoff
+
+1. Open a synthetic project in the local build. Run the same stroke,
+   Undo, and Redo with the checkbox off and on. Include an Undo that
+   changes several chunks, then a stroke that expands the lattice.
+2. On Quest, use the development URL with `?undoXRReplay=1` and enter
+   VR once for the four-trial comparison. Repeat across sessions and
+   capture peak renderer memory. Label Browser-panel and tracked
+   immersive results separately.
+3. Verify the option releases its snapshot when switched off or when
+   another project opens. Measure peak memory on larger scenes.
+
+Recheck locally with `npm test -- undo-cache-app-parity latest-undo-mesh dense-growth`.
+See the [editor trial notes](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-default-off-editor-trial)
+and [roadmap](ROADMAP.md#phase-83c--sparse-performance-for-everyday-sculpting-planned-2026-11-12).
+
+---
+
+# Phase 8.3b.14 — Latest bulk Undo mesh cache — 2026-11-12
+
+## 1. Scope
+
+Headless WebGL metre-branch bulk Undo research.
+
+## 2. Implementation
+
+Retain one revision-bound CPU mesh snapshot under a byte cap. Refusal
+falls back to exact progressive extraction.
+
+## 3. Measurements
+
+The branch retained 31.71 MiB with a 40 MiB cap. Immediate full draw took
+14.5 ms median in one callback. Batched publication drew first at 1.2 ms
+and finished in 412 ms median. Progressive extraction took 5.13 s.
+
+## 4. Verification
+
+All 12 restores matched exact field and mesh checksums. The 24 MiB cap
+retained no buffers and the fallback restored the exact branch.
+
+Focused tests passed 58/58 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,752/1,757 tests
+passed. Five loopback tests hit sandbox `listen EPERM`.
+
+## 5. Decision
+
+**Carry batched caching as a research candidate. Production 8.3c stays
+gated.** Device CPU/GPU memory and frame budgets remain open.
+
+## 6. Handoff
+
+The Quest memory fixture can compare cache off and 40 MiB at supported
+72/90 Hz targets. It logs page buffers, process PSS and GPU tool output.
+Immersive results remain open.
+[Quest memory profiling fixture](SPARSE_SDF_QUEST_FIXTURE.md#bulk-undo-memory-profile) ·
+[Full results and reproduction](SPARSE_SDF_UNDO_CACHE_RESULTS.md)
+
+---
+
+# Phase 8.3b.13 — Bulk Undo draw submission — 2026-11-12
+
+## 1. Scope
+
+Desktop WebGL fixture, run headless while the Mac desktop was locked.
+
+## 2. Implementation
+
+Compare synchronous full restore, one bounded slice per callback and
+interrupted erase reuse with synthetic paced camera requests.
+
+## 3. Measurements
+
+Progressive full Undo drew first in 2.30 ms and finished in 5.20 s median.
+Synchronous full Undo completed in 288 ms and blocked dispatch.
+Interrupted erase reuse finished in 99 ms median.
+
+## 4. Verification
+
+Nine runs matched exact field and ordered mesh checksums.
+
+Focused tests passed 56/56 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,750/1,755 tests
+passed. Five loopback tests hit sandbox `listen EPERM`.
+
+## 5. Decision
+
+**Production 8.3c stays gated.** The progressive path keeps callback
+CPU short and full completion depends on callback cadence.
+
+## 6. Handoff
+
+Compare a byte-capped latest-Undo mesh cache with progressive fallback.
+[Full results and reproduction](SPARSE_SDF_BULK_RENDERER_RESULTS.md)
+
+---
+
+# Phase 8.3b.12 — Progressive bulk Undo — 2026-11-12
+
+## 1. Scope
+
+Offline exact resident-page and CPU mesh research on the metre branch.
+
+## 2. Implementation
+
+Stage the replacement page directory, publish a new generation, and
+feed at most 192 active dirty keys into bounded rebuild slices.
+
+## 3. Measurements
+
+Thirty-six restores. Fully erased restore took 447 ms median on the
+Node event loop with 212 slices. First restored CPU geometry arrived
+in 2.31 ms after retry. Reusing still-valid meshes during interrupted
+erase reduced completion to 8.36 ms median.
+
+## 4. Verification
+
+Injected staging and extraction failures, stale-generation rejection,
+exact restoration and progressive Redo all passed.
+
+Focused tests passed 56/56 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,750/1,755 tests
+passed. Five loopback tests hit sandbox `listen EPERM`.
+
+## 5. Decision
+
+**Go for isolated renderer verification. Production 8.3c stays gated.**
+
+## 6. Handoff
+
+Measure first draw, full catch-up and input responsiveness during paced
+bulk Undo. Include an interrupted erase and a fully erased restore.
+[Full results and reproduction](SPARSE_SDF_BULK_UNDO_RESULTS.md)
+
+---
+
+# Phase 8.3b.11 — Resident-page lifecycle — 2026-11-12
+
+## 1. Scope
+
+Offline exact-page allocation and history lifetime on the metre branch.
+
+## 2. Implementation
+
+Replay six growth, regional removal, full reset and eviction cycles in
+each of three workers. Settle the event loop before memory sampling.
+
+## 3. Measurements
+
+Eighteen cycles and 4,860 brush edits. Modeled resident fell from
+40.86 MiB grown to 0.24 MiB after history eviction. Settled ArrayBuffers
+fell from 39.62 to 0.25 MiB. Full Undo with synchronous CPU rebuild
+took 556 ms median.
+
+## 4. Verification
+
+Regrowth and both regional and full-removal Undo/Redo matched exact
+hashes. Eighteen discarded stages and 36 budget refusals preserved
+field and mesh state.
+
+Focused tests passed 55/55 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,748/1,753 tests
+passed. Five loopback tests hit sandbox `listen EPERM`.
+
+## 5. Decision
+
+**Pass for this bounded offline lifecycle. Production 8.3c stays gated.**
+
+## 6. Handoff
+
+Test bounded bulk Undo publication, queue backpressure and failure
+recovery under pending mesh work.
+[Full results and reproduction](SPARSE_SDF_LIFECYCLE_RESULTS.md)
+
+---
+
+# Phase 8.3b.10 — Brush-local exact quota — 2026-11-12
+
+## 1. Scope
+
+Disposable desktop WebGL metre-branch replay at 45 and 90 offered edits/s.
+
+## 2. Implementation
+
+Reserve up to two exact services for nearby chunks, with oldest-first
+override at eight ticks and FIFO after release.
+
+## 3. Measurements
+
+At 90 edits/s, local p50/p95 changed from 22.71/53.70 to
+9.12/48.84 ms. Exact catch-up p95 increased from 80.01 to 85.49 ms.
+Release medians were 51.90 and 52.30 ms.
+
+## 4. Verification
+
+Twelve runs matched exact field and ordered mesh checksums. Every
+edit reached a local draw submission.
+
+Focused tests passed 13/13 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,748/1,753 tests
+passed. Five loopback tests failed on sandbox `listen EPERM`.
+
+## 5. Decision
+
+**Carry the quota into isolated device comparison. Production 8.3c
+remains gated.**
+
+## 6. Handoff
+
+Compare FIFO and quota at headset cadence with frame and mesh
+publication measurements. The USB-connected Quest woke into a
+room-tracking prompt, so no immersive replay was measured.
+[Quest fixture and resume instructions](SPARSE_SDF_QUEST_FIXTURE.md) ·
+[Desktop results and reproduction](SPARSE_SDF_LOCAL_EXACT_RESULTS.md)
+
+---
+
+# Phase 8.3b.9 — Guarded coarse preview — 2026-11-12
+
+## 1. Scope
+
+Desktop WebGL renderer research on the resident-page metre branch.
+
+## 2. Implementation
+
+Compare FIFO with a guarded 2 mm replacement. Require an exterior
+boundary, sampled sign agreement and a clear displayed neighbor seam.
+
+## 3. Measurements
+
+Twelve runs at 45 and 90 offered edits/s. The guard rejected 6,333
+boundary candidates and found 12 empty candidates. No coarse
+mesh reached a draw.
+
+## 4. Verification
+
+Final exact field and ordered mesh checksums matched across every run.
+A contained feature passes the guard and stays closed in the focused
+fixture. A fine-only feature triggers fallback.
+
+Focused tests passed 12/12 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,747/1,752 tests
+passed. Five loopback tests failed on sandbox `listen EPERM`.
+
+## 5. Decision
+
+**No-go for the guarded independent-chunk preview on the branch.
+Production 8.3c stays gated.**
+
+## 6. Handoff
+
+Compare a small brush-local exact service quota with FIFO in WebGL.
+Mixed-resolution preview remains a separate transition-meshing study.
+[Results and reproduction](SPARSE_SDF_GUARDED_PREVIEW_RESULTS.md)
+
+---
+
+# Phase 8.3b.8 — Paced renderer comparison — 2026-11-12
+
+## 1. Scope
+
+Disposable desktop Chrome WebGL replay of the metre branch.
+
+## 2. Implementation
+
+Offer edits at 45 and 90 Hz and use real animation callbacks for FIFO
+or recent-cost exact service. Track brush-local and complete revisions
+through draw submission.
+
+## 3. Measurements
+
+Twelve runs. At 90 edits/s FIFO and recent-cost brush-local p95 were
+53.57 and 56.38 ms, and exact catch-up p95 were 78.47 and 83.89 ms.
+Slices over 2 ms fell from 19% to 5% with recent cost.
+
+## 4. Verification
+
+All replays submitted a local update for each of 268 edits and ended
+with matching exact field and ordered mesh checksums.
+
+Focused tests passed 56/56 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,746/1,751 tests
+passed. Five loopback tests failed on sandbox `listen EPERM`.
+
+## 5. Decision
+
+**Keep FIFO as the exact latency baseline. Production 8.3c stays gated.**
+The draw proxy warrants an isolated preview comparison.
+
+## 6. Handoff
+
+Test a seam-safe 2 mm preview with a fine-detail fallback. Measure
+first draw and exact replacement against FIFO.
+[Full results and reproduction](SPARSE_SDF_RENDERER_RESULTS.md)
+
+---
+
+# Phase 8.3b.7 — Cost-aware exact mesh slices — 2026-11-12
+
+## 1. Scope
+
+Offline exact resident-page scheduling research.
+
+## 2. Implementation
+
+Compare eight-chunk FIFO with recent-cost and triangle-class estimates.
+Each predicts fit after the first chunk, which always runs.
+
+## 3. Measurements
+
+Eighteen growth trials at 45 and 90 modeled edits/s. At 90 edits/s,
+recent cost reduced branch exact slice p95 from 2.52 to 2.15 ms
+and overruns from 81% to 17%. Median release rose from 10 to 14
+slots for the branch and eight to 23 for the tube.
+
+## 4. Verification
+
+Exact mesh positions, normals, topology, Undo/Redo, cancellation
+and budget refusal passed.
+
+Focused tests passed 58/58 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build. The test suite passed
+1,746/1,751, with five sandboxed loopback failures on `listen EPERM`
+and zero skips.
+
+## 5. Decision
+
+**Keep eight-chunk FIFO as the throughput baseline. Production 8.3c
+stays gated.**
+
+## 6. Handoff
+
+Measure first visible update and exact replacement in a renderer fixture
+with paced input. Include the recent-cost policy as a comparison.
+[Full results and reproduction](SPARSE_SDF_COST_CUTOFF_RESULTS.md)
+
+---
+
+# Phase 8.3b.6 — Service ceilings and coarse mesh preview — 2026-11-12
+
+## 1. Scope
+
+Offline resident exact-page replay and a transient 2 mm preview.
+
+## 2. Implementation
+
+Sweep four, eight and sixteen exact chunks per slice under the soft
+2 ms cutoff. Compare the sixteen-chunk variant with local coarse meshes
+that retire when exact replacements arrive.
+
+## 3. Measurements
+
+At 90 modeled edits/s the metre branch drained in 45, 10 and nine
+slots respectively. Exact slice p95 rose from 1.93 to 2.49 ms with eight
+chunks. Local coarse extraction took 0.58 ms p95, with 115,060 versus
+461,818 triangles in the whole-branch audit.
+
+## 4. Verification
+
+Twenty-four growth workers matched final exact mesh, normals, topology
+and Undo/Redo. Focused fixtures reproduce coarse thin-feature loss and
+an open seam between coarse and exact chunks.
+
+Focused tests passed 57/57 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build. The test suite passed
+1,745/1,750, with five sandboxed loopback failures on `listen EPERM`
+and zero skips.
+
+## 5. Decision
+
+**Carry eight chunks forward in research. Production 8.3c stays gated.**
+
+## 6. Handoff
+
+Test a cost-aware cutoff. If brush-local lag persists, compare the
+fast exact path with a seam-safe preview in a renderer fixture.
+[Full results and reproduction](SPARSE_SDF_PREVIEW_RESULTS.md)
+
+---
+
+# Phase 8.3b.5 — Paced dirty meshing — 2026-11-12
+
+## 1. Scope
+
+Offline resident-page growth scheduling research at 100, 500 and 1,000 mm.
+
+## 2. Implementation
+
+Compare narrow FIFO, occupancy screening and a four-slot old-item threshold
+at 45 and 90 modeled edits/s. Measure release drain before Undo.
+
+## 3. Measurements
+
+Eighteen workers and 7,668 strokes. The metre branch narrow FIFO needed
+45 logical slots to drain at 90 edits/s and 16 at 45 edits/s. Occupancy
+and deadline priority did not reduce either result. At 45 edits/s the
+branch peak fell from 192 to 92 pending keys and admission stalls cleared.
+
+## 4. Verification
+
+Exact mesh positions, normals, welded topology, Undo, discarded staging,
+budget refusal and Redo checks passed.
+
+Focused tests passed 55/55 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build. The suite passed
+1,743/1,748, with five sandboxed loopback failures on `listen EPERM`
+and zero skips.
+
+## 5. Decision
+
+**Keep narrow FIFO for further research. Production 8.3c remains gated.**
+
+## 6. Handoff
+
+Sweep the four-key service cap under the same CPU cutoff and compare
+slice time, queue age and release drain at both cadences.
+[Results and reproduction](SPARSE_SDF_PACED_RESULTS.md)
+
+---
+
+# Phase 8.3b.4 — Changed-sample invalidation and brush priority — 2026-11-12
+
+## 1. Scope
+
+Offline resident-page growth and scheduling research.
+
+## 2. Implementation
+
+Derive dirty chunks from changed samples, the crossing sign and gradient
+support. A priority variant reserves alternate successful services for FIFO.
+
+## 3. Measurements
+
+Nine growth trials. Narrow FIFO reduced median branch dirty keys from
+64 to 20 and p95 CPU work in the stroke call from 10.88 to 3.49 ms.
+Alternating priority improved near-brush p95 age from 47 to 16 logical
+ticks versus narrow FIFO and increased overall p95 age from 47 to 86.
+
+## 4. Verification
+
+Exact-reference mesh bytes, normals, topology, Undo/Redo and staged
+cancellation passed. Four paired compact dense controls matched all
+seven field and mesh checkpoints.
+
+Focused tests passed 53/53 and quick tests passed 21/21. Full check
+passed format, lint, strict types and build, then 1,741/1,746 tests
+passed. Five sandboxed loopback tests failed with `listen EPERM`.
+No tests were skipped.
+
+## 5. Decision
+
+**Narrow FIFO is the next research baseline. Production 8.3c remains
+a no-go.** Sustained branch work can still saturate the queue.
+
+## 6. Handoff
+
+Test a cheap occupancy filter and deadline-aware scheduling at realistic
+input intervals. Measure release drain and brush-local service separately.
+[Full results and reproduction](SPARSE_SDF_DIRTY_PRIORITY_RESULTS.md)
+
+---
+
+# Phase 8.3b.3 — Resident exact pages and dirty scheduling — 2026-11-12
+
+## 1. Scope
+
+Offline new-from-empty sculpt research and disposable fixtures.
+
+## 2. Implementation
+
+Gather halos from resident exact 8³ pages. A bounded FIFO coalesces dirty
+keys, checks admission before field publication and slices extraction.
+
+## 3. Measurements
+
+Nine growth trials and four paired compact comparisons. The metre
+branch improved from 9.61/12.57 to 8.30/11.03 ms p50/p95 synchronously,
+and modeled resident memory fell from 48.00 to 40.99 MiB. Scheduled branch
+slice p95 was 1.34 ms, with 47 logical ticks of p95 pending age.
+
+## 4. Verification
+
+Growth checks exact mesh and normal bytes, welded topology, pending Undo,
+cancellation, budget refusal and Redo. The compact dense and sparse runs
+agree on all seven field and mesh checkpoints.
+
+Focused tests passed 51/51 and quick tests passed 21/21. Full
+`npm run check` passed format, lint, strict types and build, then
+1,739/1,744 tests passed. Five sandboxed loopback listeners failed
+with `listen EPERM`. No tests were skipped.
+
+## 5. Decision
+
+**No-go for production 8.3c.** The resident exact path is viable for
+continued offline research. Dirty queue saturation remains a blocker.
+
+## 6. Handoff
+
+Derive dirty coverage from actual changed samples and test brush-local
+priority with a starvation bound.
+[Full results and reproduction](SPARSE_SDF_SCHEDULED_RESULTS.md)
+
+---
+
+# Phase 8.3b.2 — Exact-page feasibility — 2026-11-12
+
+## 1. Scope
+
+Offline prototype and generated master fixtures in the active checkout.
+
+## 2. Implementation
+
+Lossless 16/64 KiB packed pages with 4/16 decoded LRU slots, bounded
+copy-on-write patches and a streaming raw exact-sample roundtrip.
+
+## 3. Measurements
+
+Twelve workers and 132 fixture trials. The 16 KiB / 16-slot reader took
+47.44/54.08 ms p50/p95 for 640 transformed queries, with 1,314 misses per
+warm pass. Its working projection including the band cache was 0.717×
+dense values at the median and 0.831× worst before the original dense
+master was charged.
+
+## 4. Verification
+
+All individual probes, timed Boolean checksums, edit, Undo/Redo and
+streamed exact sample hashes agreed with dense.
+
+Focused tests passed 23/23 and quick tests passed 21/21.
+Full `npm run check` passed format, lint, strict types and build.
+The full suite passed 1,738/1,743, with five sandboxed loopback listeners
+failing on `listen EPERM` and zero skips.
+
+## 5. Decision
+
+**No-go for interactive packed-master reads and production 8.3c.**
+The transformed trace thrashes the bounded cache.
+
+## 6. Handoff
+
+Focus the next isolated prototype on new sculpts grown from empty with
+resident exact pages, bounded transactions and scheduled dirty meshing.
+[Exact-page report and reproduction](SPARSE_SDF_EXACT_PAGES_RESULTS.md)
+
+---
+
+# Phase 8.3b.1 — Sparse SDF performance follow-up — 2026-11-12
+
+## 1. Scope and preservation
+
+Ran offline research in the active Centra Sculpt checkout at `e80b375`.
+The experiment is confined to research scripts, generated fixture evidence
+and documentation. The starting editor and VR changes were preserved.
+
+## 2. Isolated implementation
+
+The research bundle supplies the existing mesher with a reusable contiguous
+Float32 view of each dirty chunk and its two-sample halo. Row gathers look
+up one 8³ brick per run. The matrix compares the original numeric Map, a
+numeric directory grouped by 4³ bricks, and 2/3/4-voxel bands. Exact edit
+pages remain the source for brushes, history and Boolean operations.
+
+## 3. Measurements
+
+Six fresh trials per compact variant matched the dense exact field and
+ordered mesh at all seven checkpoints. Smooth edit plus dirty CPU
+rebuild improved from 52.50/56.41 to 13.60/14.71 ms p50/p95. Dense took
+11.46/12.75 ms. Compact 3-voxel halo retained/working model was
+10.46/15.19 MiB versus 24.07/28.13 MiB dense.
+
+Twenty-one corrected growth runs cover the curved tube, curved branch and
+five separated islands at nominal 100/500/1,000 mm and 1 mm spacing. At
+1,000 mm the 3-voxel branch changed from 26.96/34.73 to 9.92/12.93 ms p50/p95.
+Its modeled stroke high-water was 48.84 MiB including mesh and history.
+Dense tight-box SDF values plus scratch project to 3.93 GiB. The island
+retained model stays near 3.5–3.6 MiB over the three spans. Results measure
+synchronous host CPU and separate modeled bytes from whole-worker RSS.
+
+## 4. Verification
+
+The growth harness checks exact position/normal bytes, topology and
+Undo/cancel/refusal/Redo. The master probe verifies original file and
+Float32 hashes, transformed evaluation, Boolean far-field witnesses
+and byte-for-byte block codec roundtrips. Focused checks passed 290/290,
+quick passed 21/21 and Move worker tests passed 93/93. The local Chrome
+fixture matched all seven checkpoints. The headless launcher was blocked
+by a Mach port permission error. Full check passed format, lint, strict
+types and build, then 1,737/1,742 tests passed. Five local listener tests
+hit sandbox `listen EPERM`. No tests were skipped.
+
+## 5. Remaining gates and decision
+
+**No-go for scoped production Phase 8.3c.** Full exact masters plus
+cache still fail the working-memory gates, transformed sampling remains
+over 1.5× dense, and compact latency still exceeds dense. At 192³ the
+packed exact block probe plus one codec scratch allowance and the band
+cache projects to 0.674× dense values at the median and 0.797× worst
+before decoded residency, edit staging and Undo. Production
+transactions, normal scheduling, exact persistence with sparse storage
+and current device performance need their own acceptance.
+
+## 6. Handoff
+
+Build an isolated bounded lossless exact page reader and measure decode/cache
+residency and cold/warm lookup, CSG, edits, history and save peaks against
+the existing dense source. Retain the halo as the dirty-mesh comparison.
+[Full results and reproducible matrix](SPARSE_SDF_83B_PERF_RESULTS.md)
+
+---
+
 # Phase 8.4 — VR Sculpting Experience Polish — 2026-11-12
 
 ## 1. Scope and preservation

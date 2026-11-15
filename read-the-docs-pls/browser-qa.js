@@ -85,18 +85,18 @@ document.querySelector("#run").onclick = async () => {
           bubbles: true,
         }),
       );
-      assert(doc.querySelector("#search-dialog").open, `${modifier} + K opens search`);
-      doc.querySelector("#search-close").click();
-      await until(() => doc.activeElement.id === "search-open");
-      assert(doc.activeElement.id === "search-open", "search returns focus");
+      assert(doc.querySelector("pagefind-modal dialog").open, `${modifier} + K opens search`);
+      doc.querySelector("pagefind-modal .pf-modal-close").click();
+      await until(() => doc.activeElement.matches(".pf-trigger-btn"));
+      assert(doc.activeElement.matches(".pf-trigger-btn"), "search returns focus");
     }
-    doc.querySelector("#search-open").click();
-    const input = doc.querySelector("#search input");
+    doc.querySelector("pagefind-modal-trigger .pf-trigger-btn").click();
+    const input = doc.querySelector("pagefind-input input");
     input.value = "tyre";
     input.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
-    await until(() => doc.querySelector(".pagefind-ui__result-link"));
+    await until(() => doc.querySelector(".pf-result-link"));
     assert(
-      doc.querySelector(".pagefind-ui__result-link").textContent.includes("primitives"),
+      doc.querySelector(".pf-result-link").textContent.includes("primitives"),
       "real Pagefind search finds primitives for tyre",
     );
     const modalResult = await frame.contentWindow.axe.run(doc, {
@@ -107,13 +107,13 @@ document.querySelector("#run").onclick = async () => {
       `search accessibility ${JSON.stringify(modalResult.violations.map((v) => v.id))}`,
     );
     doc = await load("nested-guide/primitives.html", 390);
-    doc.querySelector("#search-open").click();
-    const nested = doc.querySelector("#search input");
+    doc.querySelector("pagefind-modal-trigger .pf-trigger-btn").click();
+    const nested = doc.querySelector("pagefind-input input");
     nested.value = "calibration";
     nested.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
-    await until(() => doc.querySelector(".pagefind-ui__result-link"));
+    await until(() => doc.querySelector(".pf-result-link"));
     assert(
-      doc.querySelector(".pagefind-ui__result-link").href.includes("/nested-guide/"),
+      doc.querySelector(".pf-result-link").href.includes("/nested-guide/"),
       "subdirectory deployment search links retain prefix",
     );
     report.textContent = `PASS — ${checks.length} assertions\n` + checks.join("\n");

@@ -135,7 +135,7 @@ export class PrimitiveDraftPreview {
     const geometryKey =
       draft.kind === "cylinder"
         ? `cylinder:${(draft.topDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}:${(draft.bottomDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}`
-        : ["capsule", "torus", "pyramid"].includes(draft.kind)
+        : ["capsule", "torus", "pyramid", "tapered-box"].includes(draft.kind)
           ? JSON.stringify(draft)
           : draft.kind;
     if (this.kind !== geometryKey) {

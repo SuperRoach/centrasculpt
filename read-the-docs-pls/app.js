@@ -15,42 +15,13 @@ const theme = document.querySelector("#theme");
 theme.addEventListener("click", () => {
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
+  document.documentElement.dataset.pfTheme = next;
   try {
     localStorage.setItem("centra-guide-theme", next);
   } catch {
     /* Theme still works for this page. */
   }
 });
-const dialog = document.querySelector("#search-dialog");
-const opener = document.querySelector("#search-open");
-let initialised = false;
-function openSearch() {
-  if (!dialog.open) dialog.showModal();
-  if (!initialised) {
-    if (typeof PagefindUI === "undefined") {
-      document.querySelector("#search-help").prepend("Search could not load. ");
-      return;
-    }
-    new PagefindUI({
-      element: "#search",
-      showSubResults: true,
-      baseUrl: new URL("./", location.href).pathname,
-      bundlePath: new URL("./pagefind/", location.href).pathname,
-    });
-    initialised = true;
-  }
-  requestAnimationFrame(() => dialog.querySelector("input")?.focus());
-}
-opener.addEventListener("click", openSearch);
-document.querySelector("#search-close").addEventListener("click", () => dialog.close());
-dialog.addEventListener("close", () => opener.focus());
-document.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-    e.preventDefault();
-    openSearch();
-  }
-});
-
 // Native buttons preserve mouse/touch/keyboard semantics; all content stays visible without JS.
 const wheelButtons = [...document.querySelectorAll('[data-wheel]')];
 function chooseWheel(button) {

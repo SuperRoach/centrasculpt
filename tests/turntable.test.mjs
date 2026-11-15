@@ -61,7 +61,15 @@ function fixture(resolution = 33, mode = "add") {
   workspace.add(table.group);
   table.group.add(layers.group);
   table.enabled = true;
-  const stroke = new XRClayStroke(() => layers, tools, root),
+  const stroke = new XRClayStroke(
+      () => layers,
+      tools,
+      root,
+      undefined,
+      undefined,
+      undefined,
+      workspace,
+    ),
     stamp = new XRShapeStamp(() => layers, tools, root),
     mirror = new XRMirrorPlane(tools, root);
   const tool = {
@@ -693,13 +701,22 @@ for (const dominant of ["left", "right"])
       press(support, 1, 1);
       update();
       assert(blocked);
-      assert(!f.stroke.active);
+      assert(f.stroke.active);
       const angle = f.table.angle;
       grips[1].position.x += 0.1;
+      grips[1].rotation.y += 0.2;
       update();
       near(f.table.angle, angle);
+      assert(f.stroke.active, f.stroke.feedback);
+      const movedPoint = f.stroke.session.raw.at(-1),
+        movedExpected = new Vector3(0.55, 0.2, 0).applyMatrix4(
+          f.layers.active.surface.group.matrixWorld.clone().invert(),
+        );
+      near(movedPoint.x, movedExpected.x);
+      near(movedPoint.z, movedExpected.z);
       press(tool, 1, 1);
       update();
+      assert(!f.stroke.active);
       grips[0].position.x += 0.2;
       update();
       near(f.table.angle, angle);

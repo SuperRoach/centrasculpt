@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { capabilityRegistry, commandTools, tools } from "./agent-schemas.mjs";
+import { capabilityRegistry, commandTools, hasImage, tools } from "./agent-schemas.mjs";
 import { readSession } from "./agent-session.mjs";
 
 const sessionPath = process.argv[2];
@@ -38,7 +38,7 @@ for (const [name, tool] of Object.entries(tools)) {
           { name, args },
           AbortSignal.any([extra.signal, AbortSignal.timeout(15000)]),
         );
-        if (name === "capture_scene_preview") {
+        if (hasImage(name)) {
           const reader = response.body.getReader();
           const chunks = [];
           let bytes = 0;
@@ -74,13 +74,13 @@ for (const [name, tool] of Object.entries(tools)) {
             },
           });
         }
-      } catch (error) {
+      } catch {
         result = {
           ok: false,
           error: {
             code: "disconnected",
             message:
-              "Local bridge unavailable or request interrupted. Start/restart dev:agent, refresh or reconnect this MCP server, then approve the current session in the active editor. Before retrying any write, call scene_summary and inspect the target: a response may have been lost after the editor committed the transaction.",
+              "Local bridge unavailable or request interrupted. Start/restart dev:agent, refresh or reconnect this MCP server, then approve the current session in the active editor. If apply_changes used a transactionId, call get_transaction with that ID. Otherwise inspect the scene before retrying: a response may have been lost after the editor committed the transaction.",
           },
         };
       }

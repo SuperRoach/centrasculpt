@@ -637,6 +637,7 @@ export class XRToolInteraction implements XRStrokeInteraction {
     time: number,
     enabled: boolean,
     gripPose?: Matrix4,
+    supportWorkspaceGrab = false,
   ): void {
     const current = this.current;
     if (this.tube && this.tube !== current) this.tube.cancel();
@@ -644,7 +645,7 @@ export class XRToolInteraction implements XRStrokeInteraction {
       this.mirror?.update(
         tool,
         pose,
-        enabled,
+        enabled && !supportWorkspaceGrab,
         !this.tube?.active && !this.clay.active && !this.stamp.active && !this.move?.active,
         gripPose,
       )
@@ -655,6 +656,6 @@ export class XRToolInteraction implements XRStrokeInteraction {
     if (this.clay !== current) this.clay.cancel();
     if (this.stamp !== current) this.stamp.cancel();
     if (this.move && this.move !== current) this.move.cancel();
-    current?.update(tool, pose, time, enabled, gripPose);
+    current?.update(tool, pose, time, enabled, gripPose, supportWorkspaceGrab);
   }
 }

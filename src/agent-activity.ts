@@ -38,6 +38,7 @@ const commandActions = new Set([
   "object_duplicate",
   "object_delete",
   "object_rename",
+  "object_colour",
   "boolean_create",
   "boolean_update",
   "boolean_remove",

@@ -3,8 +3,16 @@ import { z } from "zod";
 const number = z.number().finite();
 const positive = number.positive().max(10000);
 const id = z.string().min(1).max(128);
+const transactionId = z.string().regex(/^[A-Za-z0-9_-]{1,96}$/);
 const unit = z.enum(["mm", "cm", "in"]);
-const vector = z.tuple([number, number, number]);
+// Homogeneous fixed-length arrays publish items, which MCP clients can expose.
+// JSON Schema prefixItems from tuples caused these tools to be omitted by Codex.
+const vector = z.array(number).length(3);
+const positiveVector = z.array(positive).length(3);
+const direction = vector.refine(
+  (v) => Number.isFinite(Math.hypot(...v)) && Math.hypot(...v) > 0,
+  "Use a nonzero direction",
+);
 const source = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("capsule"), diameter: positive, height: positive })
@@ -24,6 +32,16 @@ const source = z.discriminatedUnion("kind", [
     ),
   z
     .object({ kind: z.literal("pyramid"), width: positive, height: positive, depth: positive })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("tapered-box"),
+      bottomWidth: positive,
+      bottomDepth: positive,
+      topWidth: positive,
+      topDepth: positive,
+      height: positive,
+    })
     .strict(),
   z.object({ kind: z.literal("box"), width: positive, height: positive, depth: positive }).strict(),
   z
@@ -142,7 +160,7 @@ const featureDefinition = z.discriminatedUnion("kind", [
       name: z.string().trim().min(1).max(90),
       anchor: z.literal("enclosure.base.floor"),
       centresMm: z
-        .array(z.tuple([number.min(-1000).max(1000), number.min(-1000).max(1000)]))
+        .array(z.array(number.min(-1000).max(1000)).length(2))
         .min(1)
         .max(4),
       outerDiameterMm: positive,
@@ -161,6 +179,7 @@ export const commandFields = {
   "object.flag": { id, flag: z.enum(["visible", "locked"]), value: z.boolean() },
   "object.duplicate": { id },
   "object.delete": { id },
+  "object.colour": { id, colour: z.string().regex(/^#[0-9a-fA-F]{6}$/) },
   "object.rename": { id, name },
   "boolean.create": { id, sourceId: id, operation },
   "boolean.update": { id, modifiers: z.array(modifier).max(64) },
@@ -229,14 +248,55 @@ export const tools = {
         objectId: id.optional(),
         partId: id.optional(),
         viewpoint: z
-          .enum(["front", "back", "left", "right", "top", "isometric"])
+          .enum([
+            "front",
+            "back",
+            "left",
+            "right",
+            "left-side",
+            "right-side",
+            "top",
+            "isometric",
+            "underside",
+          ])
           .default("isometric"),
         width: number.int().min(64).max(512).default(384),
         height: number.int().min(64).max(512).default(384),
       })
       .strict(),
     description:
-      "Read-only PNG at one revision. Omit scope IDs for the visible scene; set exactly one objectId or partId for an independently evaluated hierarchy/printable part, including Booleans and arrays. Choose front/isometric to inspect layout. Compare returned bounds/revision with get_bounds and get_geometry_diagnostics; images do not prove dimensions, topology or fit. Requires ready evaluated display for Boolean/array scenes.",
+      "Read-only PNG at one revision. Omit scope IDs for the visible scene; set exactly one objectId or partId for an independently evaluated hierarchy/printable part, including Booleans and arrays. Viewpoints: front, back, left/left-side, right/right-side, top, isometric or underside; left-side and right-side are aliases for left and right. Choose front/isometric to inspect layout. Compare returned bounds/revision with get_bounds and get_geometry_diagnostics; images do not prove dimensions, topology or fit. Requires ready evaluated display for Boolean/array scenes.",
+  },
+  inspect_print_mesh: {
+    schema: z
+      .object({
+        ...revision,
+        objectId: id.optional(),
+        partId: id.optional(),
+        direction,
+        sectionNormal: direction.optional(),
+        sectionOffsetMM: number,
+        overhangAngleDegrees: number.min(0).max(90).default(45),
+        viewpoint: z
+          .enum([
+            "front",
+            "back",
+            "left",
+            "right",
+            "left-side",
+            "right-side",
+            "top",
+            "isometric",
+            "underside",
+          ])
+          .default("isometric"),
+        width: number.int().min(64).max(512).default(384),
+        height: number.int().min(64).max(512).default(384),
+      })
+      .strict()
+      .refine((a) => !(a.objectId && a.partId), "Choose at most one scope ID"),
+    description:
+      "Evaluate the printable mesh independently of the viewport at an exact revision. Viewpoints: front, back, left/left-side, right/right-side, top, isometric or underside; left-side and right-side are aliases for left and right. Direction is up from the build plate (upright [0,1,0]); sectionNormal defaults to the build direction; sectionOffsetMM is the signed world distance along the normalized section normal. Returns counts, area, measured bounds, section data and a PNG with red overhangs and a blue section. The angle is measured from vertical; faces lying flat on the lowest plane are excluded.",
   },
   scene_summary: {
     schema: z.object({}).strict(),
@@ -256,7 +316,7 @@ export const tools = {
   create_primitive: {
     schema: z.object({ ...revision, unit, source }).strict(),
     description:
-      "Create one editable box, sphere/ellipsoid, cylinder/cone, capsule, torus or pyramid in mm/cm/in. For several related objects use apply_changes or stage them with propose_changes; aliases return stable output IDs. Requires browser editing permission; one call is one Undo.",
+      "Create one editable box, sphere/ellipsoid, cylinder/cone, capsule, torus, pyramid or tapered box in mm/cm/in. For several related objects use apply_changes or stage them with propose_changes; aliases return stable output IDs. Requires browser editing permission; one call is one Undo.",
   },
   update_primitive: {
     schema: z.object({ ...revision, id, unit, source }).strict(),
@@ -299,14 +359,12 @@ export const tools = {
       "Rotate about the object origin, preserving position/scale. XYZ Euler degrees; by composes a world-axis rotation, set sets world orientation. Requires editing permission.",
   },
   scale_object: {
-    schema: z.object({ ...revision, id, scale: z.tuple([positive, positive, positive]) }).strict(),
+    schema: z.object({ ...revision, id, scale: positiveVector }).strict(),
     description:
       "Set absolute uniform world scale (equal XYZ), preserving position/rotation. Unequal XYZ is unsupported; use scale_primitive for independent box/ellipsoid dimensions or cylinder height/radius.",
   },
   scale_primitive: {
-    schema: z
-      .object({ ...revision, id, factors: z.tuple([positive, positive, positive]) })
-      .strict(),
+    schema: z.object({ ...revision, id, factors: positiveVector }).strict(),
     description:
       "Multiply local source dimensions, preserving pose/ID. Box/pyramid XYZ independent; cylinder/capsule require equal X/Z factors; torus requires equal XYZ. Sphere/ellipsoid XYZ independent. One Undo; no arbitrary affine deformation.",
   },
@@ -315,10 +373,17 @@ export const tools = {
     description:
       "Dry-run 1–64 supported commands at an exact revision. Checks isolated source caches and returns provisional IDs; scene and Undo remain unchanged. Requires editing permission. For final evaluated bounds/geometry, apply then query; this is not a mesh certification.",
   },
-  apply_changes: {
-    schema: z.object(batch).strict(),
+  get_transaction: {
+    schema: z.object({ transactionId }).strict(),
     description:
-      "Apply 1–64 ordered commands atomically as one Undo transaction. Give creation steps `as` aliases and refer to earlier results as `$alias`; create/update primitives, set exact transforms, add Boolean modifiers and configure arrays in the same batch. Requires browser editing permission and current revision. For separate human review use propose_changes, then wait for browser approval and call apply_approved_proposal.",
+      "Look up an apply_changes receipt after reconnecting. The last 32 commits are retained in the same editor tab, including across bridge restarts. Unknown means no retained receipt; inspect the scene before retrying.",
+  },
+  apply_changes: {
+    schema: z
+      .object({ ...batch, transactionId: transactionId.optional(), measureBounds: id.optional() })
+      .strict(),
+    description:
+      "Apply 1–64 ordered commands atomically as one Undo transaction. Give creation steps `as` aliases and refer to earlier results as `$alias`; create/update primitives, set exact transforms, name and colour layers, add Boolean unions and configure arrays in the same batch. Supply a unique transactionId for retry recovery. Set measureBounds to an object ID or alias to return evaluated final mesh bounds in world mm; failure to measure rolls back the batch. Requires browser editing permission and current revision. For separate human review use propose_changes, then wait for browser approval and call apply_approved_proposal.",
   },
   undo: {
     schema: z.object(revision).strict(),
@@ -484,10 +549,26 @@ export const capabilityRegistry = {
     objectId:
       "Independently evaluates an object hierarchy and its required Boolean dependencies/arrays.",
     partId: "Independently evaluates printable-part membership, including Booleans/arrays.",
-    viewpoints: ["front", "back", "left", "right", "top", "isometric"],
+    viewpoints: [
+      "front",
+      "back",
+      "left",
+      "right",
+      "left-side",
+      "right-side",
+      "top",
+      "isometric",
+      "underside",
+    ],
     maxEdge: 512,
     maxPngBytes: 524288,
     requiresReadyDisplay: true,
+  },
+  printInspection: { tool: "inspect_print_mesh", evaluated: true, uprightDirection: [0, 1, 0] },
+  transactionReceipts: {
+    lookup: "get_transaction",
+    capacity: 32,
+    lifetime: "same editor tab and project instance",
   },
   exactPrimitiveTransforms: true,
   primitiveDimensionScaling: true,
@@ -509,14 +590,17 @@ export const requestSchema = z
     args: z.record(z.string(), z.unknown()),
   })
   .strict();
+export const hasImage = (name) => ["capture_scene_preview", "inspect_print_mesh"].includes(name);
 export const isWrite = (name) =>
   ![
     "get_proposal",
+    "get_transaction",
     "cancel_proposal",
     "enclosure_anchors",
     "list_enclosure_features",
     "get_enclosure_feature",
     "capture_scene_preview",
+    "inspect_print_mesh",
     "scene_summary",
     "list_objects",
     "get_object",

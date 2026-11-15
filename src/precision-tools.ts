@@ -301,15 +301,16 @@ export class PrecisionTools {
       if (!ctx) continue;
       ctx.fillStyle = "#18221f";
       ctx.fillRect(0, 0, 512, 96);
-      ctx.font = "bold 48px sans-serif";
+      ctx.font = "bold 64px sans-serif";
       ctx.fillStyle = "#fff3ca";
       ctx.textAlign = "center";
-      ctx.fillText(measurementValue(m.points, this.settings), 256, 66);
+      ctx.textBaseline = "middle";
+      ctx.fillText(measurementValue(m.points, this.settings), 256, 48, 480);
       const sprite = new Sprite(
-        new SpriteMaterial({ map: new CanvasTexture(canvas), depthTest: false }),
+        new SpriteMaterial({ map: new CanvasTexture(canvas), depthTest: false, depthWrite: false }),
       );
       sprite.position.copy(points[1]);
-      sprite.scale.set(0.8, 0.15, 1);
+      sprite.scale.set(1.12, 0.21, 1);
       sprite.renderOrder = 101;
       sprite.raycast = () => {};
       this.group.add(sprite);

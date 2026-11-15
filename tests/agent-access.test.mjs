@@ -394,6 +394,13 @@ test("official stdio MCP process drives the active authoritative editor and shut
     await client.connect(transport);
     const listed = (await client.listTools()).tools;
     assert.equal(listed.length, Object.keys(tools).length);
+    for (const tool of listed)
+      assert(!JSON.stringify(tool.inputSchema).includes('"prefixItems"'), tool.name);
+    const transform = listed.find((tool) => tool.name === "transform_object").inputSchema;
+    const position = transform.properties.transform.properties.position;
+    assert.deepEqual(position.items, { type: "number" });
+    assert.equal(position.minItems, 3);
+    assert.equal(position.maxItems, 3);
     assert.deepEqual(
       listed.map((tool) => tool.name).sort(),
       Object.keys(tools).sort(),

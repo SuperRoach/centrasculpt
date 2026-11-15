@@ -61,10 +61,11 @@ needs a web origin. Rebuild and reload after edits; preview does not hot-reload.
   static redirect pages when changing a route. Section IDs are positional; review
   fragment links when changing headings. `tests.mjs` checks every generated link.
 - `style.css`, `theme.js`, `app.js`: responsive styling, local theme preference,
-  native modal search and menu behaviour. System theme is the initial default.
-- Pagefind 1.6.0 runs after HTML generation, indexing only article content. Its
-  generated bundle must be deployed alongside the pages. The UI path is derived
-  from the current document directory so GitHub Pages project prefixes work.
+  Pagefind Component UI modal search and menu behaviour. System theme is the initial default.
+- Pagefind 1.6.0 runs after HTML generation, indexing only article content. The
+  Component UI modal and keyboard trigger load from its generated bundle. The
+  configured bundle and result paths are relative, so GitHub Pages project
+  prefixes work.
 - The existing app favicon supplies the brand mark; the welcome illustration is
   original CSS geometry, not an app screenshot. Accessible HTML flows explain
   source/evaluation and the holder operation order. No copyrighted stock assets.

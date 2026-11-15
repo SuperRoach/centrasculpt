@@ -130,10 +130,14 @@ export class LayerRuntime {
       throw error;
     }
   }
-  rebuild(maxChunks = Infinity, maxMilliseconds = Infinity): boolean {
+  rebuild(
+    maxChunks = Infinity,
+    maxMilliseconds = Infinity,
+    cached?: ReadonlyMap<number, BufferGeometry>,
+  ): boolean {
     const measured = !!this.metrics?.enabled,
       start = measured ? performance.now() : 0;
-    const update = this.mesher.rebuildChunks(maxChunks, maxMilliseconds);
+    const update = this.mesher.rebuildChunks(maxChunks, maxMilliseconds, cached);
     if (!update) return false;
     this.surface.update(update.updates);
     this.triangles = update.triangles;
@@ -272,6 +276,7 @@ type TimelineEntry =
       before: ArrayDefinition | undefined;
       after: ArrayDefinition | undefined;
     }
+  | { kind: "colour"; layerId: string; before: string; after: string }
   | { kind: "name"; layerId: string; before: string; after: string }
   | PaintEntry
   | HierarchyEntry
@@ -361,7 +366,49 @@ export class IndependentLayers {
   }
   lastMoveStats: MoveCommitStats | null = null;
   private disposed = false;
-  private committedRevision = 0;
+  private revision = 0;
+  private get committedRevision(): number {
+    return this.revision;
+  }
+  private set committedRevision(value: number) {
+    this.undoMesh = undefined;
+    this.revision = value;
+  }
+  private undoMeshEnabled = false;
+  private undoMesh?: {
+    runtime: LayerRuntime;
+    volume: LayerRuntime["volume"];
+    mesher: IncrementalMesher;
+    chunks: ReadonlyMap<number, BufferGeometry>;
+    bytes: number;
+    entry?: TimelineEntry;
+  };
+  get undoMeshCacheBytes(): number {
+    return this.undoMesh?.bytes ?? 0;
+  }
+  setUndoMeshCacheEnabled(enabled: boolean): void {
+    this.undoMeshEnabled = enabled;
+    if (!enabled) this.undoMesh = undefined;
+  }
+  private captureUndoMesh(runtime: LayerRuntime): void {
+    if (!this.undoMeshEnabled || runtime.mesher.pendingChunks || runtime.primitiveSource) return;
+    const limit = Math.min(
+      40 * 1024 ** 2,
+      (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes) -
+        this.trackedBytes,
+    );
+    const chunks = new Map<number, BufferGeometry>();
+    let bytes = 0;
+    for (const { id, geometry } of runtime.mesher.snapshotUpdates()) {
+      const position = geometry.getAttribute("position").array;
+      if (!position.length) continue;
+      bytes += position.byteLength + geometry.getAttribute("normal").array.byteLength;
+      if (bytes > limit) return;
+      chunks.set(id, geometry);
+    }
+    if (bytes)
+      this.undoMesh = { runtime, volume: runtime.volume, mesher: runtime.mesher, chunks, bytes };
+  }
   backgroundBytes = 0;
   interruptBackground: () => void = () => {};
   private past: TimelineEntry[] = [];
@@ -754,6 +801,9 @@ export class IndependentLayers {
       this.recoveryKey(),
       this.selectedGroupId,
       this.display.precision.millimetresPerUnit,
+      this.project.layerStack.layers.map((l) =>
+        this.display.colour(this.project.id, l.id, l.order),
+      ),
     ]);
     if (key !== this.commandKey) {
       this.commandKey = key;
@@ -908,7 +958,8 @@ export class IndependentLayers {
       (this.maskBefore ? maskSnapshotBytes(this.maskBefore) : 0) +
       this.tubeStagingBytes +
       this.moveStagingBytes +
-      this.backgroundBytes
+      this.backgroundBytes +
+      this.undoMeshCacheBytes
     );
   }
   get pendingChunks(): number {
@@ -1126,6 +1177,7 @@ export class IndependentLayers {
       options = { ...this.growthLimits },
       plan = planDenseGrowth(source, footprint, options);
     if (!plan) return false;
+    this.undoMesh = undefined;
     this.assertCapacity(plan.samples, runtime.layer.id);
     const otherTracked = this.trackedBytes + extraBytes - volumeSampleCount(source) * 8,
       remapEstimate = runtime.history.memoryBytes / 3 + runtime.history.pendingMemoryEstimate * 1.5;
@@ -1179,16 +1231,18 @@ export class IndependentLayers {
     const runtime = this.editableRuntime(this.project.activeLayerId);
     this.assertSculptable(runtime.layer);
     uniformScale(runtime.layer.transform);
-    runtime.history.pendingBudgetBytes = Math.max(
-      0,
-      (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes) -
-        this.trackedBytes,
-    );
     if (mask === "paint") {
       this.paintBefore = sculptPaint(runtime.volume).snapshot();
       sculptPaint(runtime.volume).colour = this.paintColour;
     } else if (mask) this.maskBefore = sculptMask(runtime.volume).snapshot();
     else runtime.history.begin();
+    this.undoMesh = undefined;
+    if (!mask) this.captureUndoMesh(runtime);
+    runtime.history.pendingBudgetBytes = Math.max(
+      0,
+      (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes) -
+        this.trackedBytes,
+    );
     this.strokeLayer = runtime.layer.id;
     this.strokeMirror = { ...this.symmetry };
     this.stroke.reset();
@@ -1414,13 +1468,27 @@ export class IndependentLayers {
     this.strokeLayer = null;
     this.stroke.reset();
     this.strokePoint = null;
+    const snapshot = this.undoMesh;
+    const priorEntry = this.past.at(-1);
+    this.undoMesh = undefined;
     if (committed) this.recordCommit(runtime.layer.id);
     const overhead = this.metrics.enabled ? performance.now() - started : 0;
     runtime.rebuild();
+    const entry = this.past.at(-1);
+    if (
+      committed &&
+      snapshot?.runtime === runtime &&
+      entry !== priorEntry &&
+      entry?.kind === "voxels"
+    ) {
+      snapshot.entry = entry;
+      this.undoMesh = snapshot;
+    }
     this.metrics.endStroke(overhead);
   }
   cancelStroke(): void {
     if (!this.strokeLayer) return;
+    this.undoMesh = undefined;
     const runtime = this.runtime(this.strokeLayer),
       started = this.metrics.enabled ? performance.now() : 0;
     this.strokeLayer = null;
@@ -1527,7 +1595,12 @@ export class IndependentLayers {
       this.past.filter((entry) => entry.kind === "transform" && entry.layerId === session.layerId)
         .length - 100;
     this.past = this.past.filter((entry) => {
-      if (entry.kind === "transform" && entry.layerId === session.layerId && excess > 0) {
+      if (
+        !this.assemblyTransaction &&
+        entry.kind === "transform" &&
+        entry.layerId === session.layerId &&
+        excess > 0
+      ) {
         excess--;
         return false;
       }
@@ -1674,6 +1747,8 @@ export class IndependentLayers {
       for (const e of this.historyEntries())
         if (e.kind === "bake" && e.layerId === layer.id) e.runtime = next;
       this.composite.invalidate();
+    } else if (entry.kind === "colour") {
+      this.display.setColour(this.project.id, layer.id, redo ? entry.after : entry.before);
     } else if (entry.kind === "order") this.restoreOrder(redo ? entry.after : entry.before);
     else if (entry.kind === "boolean") {
       layer.assertEditable();
@@ -1702,7 +1777,17 @@ export class IndependentLayers {
           runtime.mesher.invalidateSample(index, before < 0 !== after < 0);
         const dirty = redo ? runtime.history.redo(record) : runtime.history.undo(record);
         if (!dirty) throw new Error("History payload unavailable.");
-        runtime.rebuild();
+        const snapshot = this.undoMesh;
+        this.undoMesh = undefined;
+        const cached =
+          !redo &&
+          snapshot?.entry === entry &&
+          snapshot.runtime === runtime &&
+          snapshot.volume === runtime.volume &&
+          snapshot.mesher === runtime.mesher
+            ? snapshot.chunks
+            : undefined;
+        runtime.rebuild(Infinity, Infinity, cached);
         this.composite.invalidateLayer(layer, dirty);
       }
     }
@@ -2403,6 +2488,7 @@ export class IndependentLayers {
     this.project.layerStack.remove(id);
     this.group.remove(runtime.surface.group);
     this.retainedHierarchy.delete(runtime);
+    if (this.undoMesh?.runtime === runtime) this.undoMesh = undefined;
     runtime.dispose();
     this.runtimes.delete(id);
     this.invalidateCutHistory(id);
@@ -2595,6 +2681,19 @@ export class IndependentLayers {
       this.viewMode = before.view;
       this.syncPresentation();
     }
+  }
+  setLayerColour(id: string, colour: string): void {
+    this.assertAvailable();
+    const layer = this.project.layerStack.get(id);
+    layer.assertEditable();
+    const before = this.display.colour(this.project.id, id, layer.order);
+    this.display.setColour(this.project.id, id, colour);
+    const after = this.display.colour(this.project.id, id, layer.order);
+    if (before === after) return;
+    this.discardFuture();
+    this.past.push({ kind: "colour", layerId: id, before, after });
+    this.committedRevision++;
+    this.syncPresentation();
   }
   setAssemblyPart(id: string, value: unknown): void {
     this.assertAvailable();
@@ -3169,7 +3268,8 @@ export class IndependentLayers {
       before = this.bakeState();
     const n = old?.volume.resolution ?? this.active.volume.resolution,
       extent = old?.volume.extent ?? this.active.volume.extent,
-      baseTracked = this.trackedBytes;
+      baseTracked = this.trackedBytes,
+      sourceLabel = source.kind === "tube" ? "Tube" : "Primitive";
     this.tubePending = true;
     let candidate: LayerRuntime | undefined;
     const check = () => {
@@ -3179,7 +3279,7 @@ export class IndependentLayers {
         this.project.activeLayerId !== activeId ||
         (old && (!old.layer.editable || JSON.stringify(old.layer.metadata()) !== metadata))
       )
-        throw new Error("Tube regeneration cancelled; source kept.");
+        throw new Error(`${sourceLabel} regeneration cancelled. Source kept.`);
     };
     try {
       const otherSamples = this.project.layerStack.layers.reduce(
@@ -3205,7 +3305,12 @@ export class IndependentLayers {
               allocate,
               progress && ((fraction) => progress(fraction * 0.65)),
             )
-          : evaluatePrimitive(source, n, maxSamples, allocate);
+          : evaluatePrimitive(
+              source,
+              Math.min(n, Math.floor(Math.cbrt(Math.max(0, maxSamples)))),
+              maxSamples,
+              allocate,
+            );
       let result = work.next(),
         deadline = performance.now() + 3;
       while (!result.done) {
@@ -3220,7 +3325,7 @@ export class IndependentLayers {
       const volume = result.value;
       this.assertCapacity(volumeSampleCount(volume), id, old ? 0 : 1);
       if (this.trackedBytes > 256 * 1024 ** 2)
-        throw new Error("Tube exceeds the staging memory budget.");
+        throw new Error(`${sourceLabel} exceeds the staging memory budget. Source kept.`);
       const layer = new SdfLayer(
         volume,
         old
@@ -3264,9 +3369,9 @@ export class IndependentLayers {
           candidate.mesher.ownedGeometryBytes +
           candidate.sourceGeometryBytes;
         if (this.trackedBytes > 256 * 1024 ** 2)
-          throw new Error("Tube staged mesh exceeds the memory budget.");
+          throw new Error(`${sourceLabel} staged mesh exceeds the memory budget. Source kept.`);
         if (candidate.triangles > triangleBudget)
-          throw new Error("Tube exceeds the project triangle budget.");
+          throw new Error(`${sourceLabel} exceeds the project triangle budget. Source kept.`);
         await yieldBake();
       }
       check();
@@ -3694,6 +3799,7 @@ export class IndependentLayers {
     return group;
   }
   dispose(): void {
+    this.undoMesh = undefined;
     this.personalStamp = undefined;
     this.disposed = true;
     this.clearAssemblyPreview();

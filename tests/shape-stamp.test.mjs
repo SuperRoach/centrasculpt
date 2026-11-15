@@ -96,6 +96,21 @@ for (const kind of SHAPE_KINDS)
         c.dispose();
       }
     });
+test("stamp staging uses available capacity even when doubling would exceed the budget", () => {
+  const c = create();
+  try {
+    const d = definition(c, "box", "add", [0.8, 0, 0]),
+      expected = prepareStamp(c.active.layer, d),
+      budget = expected.indices.length * 24;
+    assert(expected.indices.length > 1024);
+    const patch = prepareStamp(c.active.layer, d, budget);
+    assert.deepEqual(patch.indices, expected.indices);
+    assert.deepEqual(patch.after, expected.after);
+    assert(patch.peakStagingBytes <= budget);
+  } finally {
+    c.dispose();
+  }
+});
 test("stamp planning is read-only and bounds include every changed sample, including outside the geometric AABB", () => {
   const c = create(),
     v = c.active.volume,

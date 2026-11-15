@@ -14,6 +14,7 @@ import { IndependentLayers } from "./independent-layers";
 import { LayerGroup } from "./layer-hierarchy";
 import { LayerStack, newId, SculptProject, SdfLayer, validateAssemblyPart } from "./layers";
 import { type BooleanModifier, validateModifiers } from "./live-boolean";
+import { evaluateMeshScope, measuredMeshBounds } from "./mesh-inspection";
 import { type ArrayDefinition, validateArrayDefinition } from "./object-array";
 import { objectDimensions } from "./object-dimensions";
 import {
@@ -62,6 +63,7 @@ export type ModellingCommand =
   | { type: "primitive.create"; unit: PhysicalUnit; source: PrimitiveInput }
   | { type: "primitive.update"; id: string; unit: PhysicalUnit; source: PrimitiveInput }
   | { type: "object.transform"; id: string; unit: PhysicalUnit; transform: VolumeTransform }
+  | { type: "object.colour"; id: string; colour: string }
   | { type: "object.rename"; id: string; name: string }
   | { type: "primitive.bake"; id: string }
   | { type: "object.delete"; id: string };
@@ -142,6 +144,7 @@ export type BatchOptions = {
   signal?: AbortSignal;
   dryRun?: boolean;
   preserveSelection?: boolean;
+  measureBounds?: string;
 };
 export type BatchReport = {
   dryRun: boolean;
@@ -150,6 +153,7 @@ export type BatchReport = {
   objects: ObjectMetadata[];
   changes: { created: string[]; modified: string[]; deleted: string[] };
   limits: { commands: number; layers: number; memoryBytes: number };
+  evaluatedBounds?: Awaited<ReturnType<typeof measuredMeshBounds>> & { id: string };
   geometryValidation: "source_caches_only";
   limitations: string[];
 };
@@ -205,6 +209,7 @@ export class ModellingAPI {
         .filter((l) => l.booleanModifiers?.some((m) => m.enabled && m.sourceId === id))
         .map((l) => l.id),
       name: n.name,
+      colour: layer ? this.layers.display.colour(this.layers.project.id, id, layer.order) : null,
       parentId: this.layers.project.layerStack.hierarchy.parent(id),
       children: this.layers.project.layerStack.hierarchy.children(id),
       type: group ? "group" : (layer?.primitive?.kind ?? (layer?.procedural ? "tube" : "sculpt")),
@@ -404,6 +409,7 @@ export class ModellingAPI {
             "primitive.update",
             "object.transform",
             "object.rename",
+            "object.colour",
             "primitive.bake",
             "object.delete",
           ].includes(step.command.type)
@@ -484,6 +490,21 @@ export class ModellingAPI {
         results.push({ id: result.value.id });
         if (step.as) aliases[step.as] = result.value.id;
       }
+      let evaluatedBounds: BatchReport["evaluatedBounds"];
+      if (options.measureBounds !== undefined && !options.dryRun) {
+        const id = resolve(options.measureBounds, "id") as string;
+        const lease = owner;
+        const ready = () => target.withModellingLease(lease, () => target.recoveryReady);
+        const prepared = await evaluateMeshScope(target, { objectId: id }, options.signal, ready);
+        try {
+          evaluatedBounds = {
+            id,
+            ...(await measuredMeshBounds(prepared.sources, calibration, options.signal, ready)),
+          };
+        } finally {
+          prepared.dispose();
+        }
+      }
       if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
       if (options.dryRun && this.revision !== options.expectedRevision)
         this.fail("revision_conflict", "Scene changed during dry-run.");
@@ -502,6 +523,8 @@ export class ModellingAPI {
           )
             target.selectGroup(groupBefore);
         }
+        if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
+        if (!this.canEdit()) this.fail("permission_denied", "Editing permission was revoked.");
         target.finishAssemblyTransaction(start);
       });
       checkpoint = undefined;
@@ -515,6 +538,7 @@ export class ModellingAPI {
           results,
           aliases,
           objects,
+          ...(evaluatedBounds ? { evaluatedBounds } : {}),
           changes: {
             created: objects.filter((o) => !beforeObjects.has(o.id)).map((o) => o.id),
             modified: objects
@@ -683,6 +707,7 @@ export class ModellingAPI {
           "primitive.update",
           "object.transform",
           "object.rename",
+          "object.colour",
           "primitive.bake",
           "object.delete",
           "array.create",
@@ -955,6 +980,9 @@ export class ModellingAPI {
           this.layers.setActiveTransform(
             transform ?? this.fail("invalid_input", "Transform required."),
           );
+          break;
+        case "object.colour":
+          this.layers.setLayerColour(id, command.colour);
           break;
         case "object.rename":
           this.layers.renameNode(id, command.name);

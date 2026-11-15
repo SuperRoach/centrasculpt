@@ -412,13 +412,13 @@ test("the visible VR slider supports Tool-trigger dragging and clears capture on
     globalThis.document = original;
   }
 });
-test("real controller routing suppresses Clay during menus, cancels before workspace grip, and rolls back on session end", () => {
+test("real controller routing keeps Clay and the Support grab independent and cancels on interruptions", () => {
   const a = create(),
     tools = toolsFor(a),
     root = new Group(),
     workspace = new Group();
   workspace.add(a.group);
-  const stroke = new XRClayStroke(() => a, tools, root),
+  const stroke = new XRClayStroke(() => a, tools, root, undefined, undefined, undefined, workspace),
     rays = [new Group(), new Group()],
     grips = [new Group(), new Group()],
     menus = {
@@ -488,12 +488,73 @@ test("real controller routing suppresses Clay during menus, cancels before works
     assert(stroke.active);
     assert.notDeepEqual(a.active.volume.getDenseView(), before);
     press(support, 1, true);
-    assert.equal(stroke.active, false);
+    assert(stroke.active);
     assert.equal(bridge.grab.state, "workspace-grab");
+    const localBefore = stroke.session.raw.at(-1);
+    grips[1].position.x += 0.16;
+    update();
+    assert(stroke.active, stroke.feedback);
+    near(workspace.position.x, 0.16, 1e-8);
+    near(stroke.session.raw.at(-1).x, localBefore.x - 0.16, 1e-8);
+    press(support, 1, false);
+    assert(stroke.active);
+    press(support, 1, true);
+    press(tool, 0, false);
+    for (let i = 0; stroke.active && i < 500; i++) update();
+    assert(!stroke.active);
+    assert.equal(bridge.grab.state, "workspace-grab");
+    assert.equal(a.undoCount, 1);
+    a.undo();
     assert.deepEqual(a.active.volume.getDenseView(), before);
+
+    tools.path.steady = 100;
+    press(tool, 0, true);
+    assert(stroke.active);
+    grips[1].position.x += 0.12;
+    update();
+    assert(stroke.active, stroke.feedback);
+    rays[1].visible = false;
+    update();
+    assert(!stroke.active);
+    assert(!bridge.grab.active);
+    rays[1].visible = true;
+    update();
+    assert(!stroke.active);
     press(support, 1, false);
     press(tool, 0, false);
-    tools.path.steady = 100;
+    tools.path.placement = "surface";
+    press(support, 1, true);
+    press(tool, 0, true);
+    assert(stroke.active);
+    const samplesBeforeMiss = stroke.session.raw.length;
+    grips[1].position.x += 2;
+    update();
+    assert(stroke.active, stroke.feedback);
+    assert.equal(stroke.session.raw.length, samplesBeforeMiss);
+    press(support, 1, false);
+    assert(stroke.active, stroke.feedback);
+    rays[0].position.x = workspace.position.x + 0.3;
+    update();
+    assert.equal(stroke.session.raw.length, samplesBeforeMiss + 1);
+    assert(stroke.session.raw.at(-1).breakBefore);
+    let pathBreaks = 0;
+    const breakStrokePath = a.breakStrokePath.bind(a);
+    a.breakStrokePath = () => {
+      pathBreaks++;
+      breakStrokePath();
+    };
+    press(tool, 0, false);
+    const preview = stroke.session.preview;
+    assert.equal(
+      stroke.preview.children[0].geometry.drawRange.count,
+      2 * (preview.length - 1 - preview.filter((p) => p.breakBefore).length),
+    );
+    for (let i = 0; stroke.active && i < 500; i++) update();
+    assert(!stroke.active);
+    assert.equal(pathBreaks, 1);
+    assert.equal(a.undoCount, 1);
+    a.undo();
+
     press(tool, 0, true);
     assert(stroke.active);
     session.dispatchEvent(new Event("end"));

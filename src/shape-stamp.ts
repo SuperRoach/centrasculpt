@@ -86,7 +86,8 @@ export function* prepareStampSteps(
     (!Number.isSafeInteger(maxStagingBytes) || maxStagingBytes < 0)
   )
     throw new Error("Invalid stamp staging budget.");
-  const initial = Math.min(n, 1024, Math.floor(maxStagingBytes / 24));
+  const maxCapacity = Math.floor(maxStagingBytes / 24),
+    initial = Math.min(n, 1024, maxCapacity);
   let indices = new Uint32Array(initial),
     before = new Float32Array(initial),
     after = new Float32Array(initial),
@@ -148,14 +149,9 @@ export function* prepareStampSteps(
             "Stamp exceeds the staging/history memory safety limit. Source voxels and redo were kept.",
           );
         if (count === indices.length) {
-          const capacity = Math.min(n, Math.max(1, count * 2));
-          if (
-            (indices.length + capacity) * 12 > maxStagingBytes ||
-            (capacity + count + 1) * 12 > maxStagingBytes
-          )
-            throw new Error(
-              "Stamp exceeds the staging/history memory safety limit. Source voxels and redo were kept.",
-            );
+          // Leave room for the retained history instead of rejecting a patch
+          // just because doubling the scratch capacity would overshoot the budget.
+          const capacity = Math.min(n, Math.max(1, count * 2), maxCapacity);
           allocatedStagingBytes += capacity * 12;
           peakStagingBytes = Math.max(peakStagingBytes, (indices.length + capacity) * 12);
           stagingAllocations += 3;

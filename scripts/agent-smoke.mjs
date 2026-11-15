@@ -13,7 +13,7 @@ const hostnameValue = hostname().toLowerCase();
 const machineLocalHostname = hostnameValue.endsWith(".local")
   ? hostnameValue
   : `${hostnameValue}.local`;
-const origin = `http://${machineLocalHostname}:${port}`;
+const origin = `http://${process.env.AGENT_SMOKE_HOST ?? machineLocalHostname}:${port}`;
 const output = "work/phase-7-3";
 await mkdir(output, { recursive: true });
 const waitUntil = async (check, message) => {
@@ -54,7 +54,7 @@ async function stop(server) {
 }
 let server = start(true);
 let browser, client, normal, smokePage;
-try {
+smoke: try {
   await waitUntil(
     () => /Agent session: (.+session.json)/.test(server.text()) && server.text().includes("Local:"),
     `Agent Vite failed: ${server.text()}`,
@@ -127,6 +127,105 @@ try {
   await page.getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true }).check();
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByText("Connected · editing allowed", { exact: true }).waitFor();
+  const nearMM = (actual, expected, tolerance = 1e-9) => {
+    assert.equal(actual.length, expected.length);
+    expected.forEach((value, axis) => {
+      assert(
+        Math.abs(actual[axis] - value) <= tolerance,
+        `${JSON.stringify(actual)} differs from ${JSON.stringify(expected)} mm`,
+      );
+    });
+  };
+  async function precisionPrint() {
+    await page.locator('#local-agent-panel[data-state="editing"]').waitFor({ state: "attached" });
+    const printRequest = {
+      expectedRevision: (await call("scene_summary")).revision,
+      transactionId: "smoke-print-taper",
+      measureBounds: "$tier",
+      steps: [
+        {
+          as: "tier",
+          command: {
+            type: "primitive.create",
+            unit: "mm",
+            source: {
+              kind: "tapered-box",
+              bottomWidth: 20,
+              bottomDepth: 20,
+              topWidth: 40,
+              topDepth: 25,
+              height: 8,
+            },
+          },
+        },
+        { command: { type: "object.colour", id: "$tier", colour: "#ee8800" } },
+      ],
+    };
+    const printBatch = await call("apply_changes", printRequest);
+    assert(printBatch.ok, JSON.stringify(printBatch));
+    const tier = printBatch.value.aliases.tier;
+    nearMM(printBatch.value.evaluatedBounds.max, [20, 4, 12.5], 0.5);
+    const position = page.getByRole("spinbutton", { name: "Position X (mm)", exact: true });
+    await position.fill("11.25");
+    await position.press("Enter");
+    const positioned = await call("get_object", { id: tier });
+    nearMM(positioned.value.worldTransform.positionMM, [11.25, 0, 0]);
+    const print = await client.callTool({
+      name: "inspect_print_mesh",
+      arguments: {
+        expectedRevision: positioned.revision,
+        objectId: tier,
+        direction: [0, 1, 0],
+        sectionNormal: [0, 0, 1],
+        sectionOffsetMM: 0,
+        viewpoint: "underside",
+      },
+    });
+    assert(print.structuredContent.ok, JSON.stringify(print.structuredContent));
+    assert(print.structuredContent.value.printInspection.overhang.faces > 0);
+    assert(print.structuredContent.value.printInspection.section.segments > 0);
+    const printPng = print.content.find((block) => block.type === "image");
+    assert.equal(printPng.mimeType, "image/png");
+    await writeFile(`${output}/print-inspection.png`, Buffer.from(printPng.data, "base64"));
+    const restartScene = await call("list_objects");
+    await stop(server);
+    await page.getByText(/Bridge disconnected|Agent disconnected/).waitFor({ state: "attached" });
+    await client.close();
+    server = start(true);
+    await waitUntil(
+      () =>
+        /Agent session: (.+session.json)/.test(server.text()) && server.text().includes("Local:"),
+      "Restarted agent Vite failed",
+    );
+    client = new Client({ name: "centra-precision-restart", version: "1" });
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [resolve("scripts/agent-mcp.mjs")],
+        env: { ...process.env, CENTRA_AGENT_DISCOVERY_FILE: resolve(output, "smoke-session.json") },
+        stderr: "pipe",
+      }),
+    );
+    await page
+      .getByText("Agent server is back · approve connection to reconnect", { exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Approve connection", exact: true }).click();
+    await page.locator('#local-agent-panel[data-state="editing"]').waitFor({ state: "attached" });
+    assert.deepEqual(await call("list_objects"), restartScene);
+    const receipt = await call("get_transaction", { transactionId: "smoke-print-taper" });
+    assert.equal(receipt.value.status, "committed");
+    assert.deepEqual(receipt.value.result, printBatch);
+    assert.deepEqual(await call("apply_changes", printRequest), printBatch);
+    assert.deepEqual(await call("list_objects"), restartScene);
+    assert.deepEqual(pageErrors, []);
+    console.log(
+      "PASS: one MCP batch, browser position in mm, evaluated print report/PNG, and receipt after bridge restart.",
+    );
+  }
+  if (process.argv.includes("--precision-print")) {
+    await precisionPrint();
+    break smoke;
+  }
   // Reload remembers only desired editing mode; connection still requires a fresh explicit click.
   await page.reload();
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
@@ -373,15 +472,6 @@ try {
   // Phase 7.5.1: actual holder challenge through published tools/list and browser consent.
   const holderRevision = (await call("scene_summary")).revision;
   const holderHistory = await page.locator('.agent-history li[data-outcome="committed"]').count();
-  const nearMM = (actual, expected, tolerance = 1e-9) => {
-    assert.equal(actual.length, expected.length);
-    expected.forEach((value, axis) => {
-      assert(
-        Math.abs(actual[axis] - value) <= tolerance,
-        `${JSON.stringify(actual)} differs from ${JSON.stringify(expected)} mm`,
-      );
-    });
-  };
   const holderSteps = [
     {
       as: "body",

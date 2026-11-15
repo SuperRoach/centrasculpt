@@ -477,7 +477,7 @@ export function mountAgentAccess(
     )
       proposals.invalidate();
     try {
-      const state = await post("/poll");
+      const state = await post("/poll", { ready: !running });
       if (!state.approved) {
         reset("Agent disconnected; approval required again.");
         return;
@@ -491,7 +491,8 @@ export function mountAgentAccess(
           Math.max(0, job.deadline - Date.now()),
         );
         const operation = async () => {
-          if (job.name !== "capture_scene_preview") return execute(job, controller.signal);
+          if (job.name !== "capture_scene_preview" && job.name !== "inspect_print_mesh")
+            return execute(job, controller.signal);
           if (!viewport)
             return { ok: false, error: { code: "unavailable", message: "No desktop renderer." } };
           const result = await captureScenePreview(
