@@ -1534,7 +1534,7 @@ for (const action of ["export", "export-all"]) {
       }
       assert(l.assemblyPreviewActive);
       assert.equal(l.sourceRevision, revision);
-      assert.match(controls.status, /STLs use project millimetres/);
+      assert.match(controls.status, action === "export" ? /^STL ready\./ : /^2 STLs ready\./);
     } finally {
       controls.dispose();
       l.dispose();

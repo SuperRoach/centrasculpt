@@ -675,9 +675,7 @@ export class AssemblyControls {
             previewWarning = message;
           },
         );
-        this.feedback =
-          "STLs use project millimetres. Review each print report and inspect in your slicer." +
-          (previewWarning ? ` ${previewWarning}` : "");
+        this.feedback = `${parts.length === 1 ? "STL ready." : `${parts.length} STLs ready.`}${previewWarning ? ` ${previewWarning}` : ""}`;
       } else if (action === "end-preview") {
         l.clearAssemblyPreview();
         l.syncPresentation();

@@ -11,7 +11,7 @@ export function mountExportDialog(refresh: () => void, busy: () => boolean): voi
   dialog.id = "export-dialog";
   dialog.setAttribute("aria-labelledby", "export-dialog-title");
   dialog.innerHTML =
-    '<header><h2 id="export-dialog-title">Export sculpture</h2><button type="button" id="close-export" aria-label="Close export">Close</button></header><p class="export-intro">Prepare a mesh, review its dimensions, then download.</p><div class="export-settings"></div>';
+    '<header><h2 id="export-dialog-title">Export sculpture</h2><button type="button" id="close-export" aria-label="Close export">Close</button></header><div class="export-settings"></div>';
   const settings = dialog.querySelector(".export-settings")!;
   let node: Element | null = first;
   while (node && node.id !== "reset") {
@@ -70,7 +70,11 @@ export function mountExportDialog(refresh: () => void, busy: () => boolean): voi
   curved.className = "export-curved";
   curved.innerHTML =
     '<label class="export-toggle"><input id="export-curved" type="checkbox" aria-describedby="export-curved-note"><span>Curved reduction <small>Experimental · STL</small></span></label><p id="export-curved-note">Sampled checks are not a fit guarantee. Original mesh kept if checks fail. Printable parts stay exact.</p><div id="export-curved-settings" hidden><div class="export-tolerance-heading"><label for="export-curved-tolerance">Surface tolerance</label><output id="export-curved-value"></output></div><input id="export-curved-tolerance" type="range" min="0" max="3" step="1" value="2" aria-describedby="export-curved-note"><div class="export-range-labels"><span>Finer surface</span><span>More reduction</span></div></div>';
-  advancedGrid.append(curved);
+  const experiments = document.createElement("details");
+  experiments.className = "export-experiments";
+  experiments.innerHTML = "<summary>Experiments</summary>";
+  experiments.append(curved);
+  advancedGrid.append(experiments);
   const enable = curved.querySelector<HTMLInputElement>("#export-curved")!;
   const tolerance = curved.querySelector<HTMLInputElement>("#export-curved-tolerance")!;
   const estimate = document.createElement("details");

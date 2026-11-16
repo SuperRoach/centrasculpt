@@ -1702,14 +1702,13 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     return;
   }
   clearPreparedExport();
-  const filename = exportFilename(
+  const name =
     scope === "selected"
       ? layers.active.layer.name
       : scope === "composite"
         ? `${layers.project.name}-boolean`
-        : layers.project.name,
-    format,
-  );
+        : layers.project.name;
+  const filename = exportFilename(name, format);
   if (layers.deforming || layers.previewing) {
     exportMessage("Finish or cancel Move before exporting.", true);
     return;
@@ -1873,7 +1872,7 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             ].join("\n");
             if (report.blocking.length)
               throw new Error("STL blocked: " + report.blocking.join(" "));
-            prepareExportDownload(result.data, filename, "model/stl", report.warnings.length > 0);
+            prepareExportDownload(result.data, name, filename, "stl", actualTriangles);
             printReportDownload.hidden = false;
             printReportDownload.onclick = () =>
               download(
@@ -1892,14 +1891,14 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
             if (report.curvedReduction)
               exportSummary.textContent += ` · ${curvedReductionSummary(report.curvedReduction)}`;
             if (report.warnings.length) {
-              exportMessage(`Review print warnings, then download ${filename}.`);
+              exportMessage("Print warnings in Extra info.");
             } else {
-              exportMessage(`Ready: ${filename}. Review the summary, then download.`);
+              exportMessage("");
             }
             return;
           }
-          prepareExportDownload(result.data, filename, "model/gltf-binary", false);
-          exportMessage(`Ready: ${filename}. Review the summary, then download.`);
+          prepareExportDownload(result.data, name, filename, "glb", actualTriangles);
+          exportMessage("");
         } finally {
           prepared?.dispose();
         }
@@ -2011,8 +2010,23 @@ printDownload.style.visibility = "hidden";
 exportResult.append(
   exportSummary,
   exportStatus,
-  printDownload,
+const exportDownloadIcon =
+  '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg>';
+const exportTriangleCount = (triangles: number) =>
+  `${new Intl.NumberFormat(undefined, { maximumFractionDigits: triangles < 100 ? 3 : 1 }).format(triangles / 1000)}k triangles`;
+const exportDownloadLabel = (name: string) => (name.length <= 24 ? `Download: ${name}` : name);
+const preparedExport = document.createElement("div");
+preparedExport.className = "export-part prepared-export";
+preparedExport.hidden = true;
+preparedExport.innerHTML =
+  '<div class="export-part-heading"><p></p></div><details><summary>Extra info</summary></details>';
+const preparedHeading = preparedExport.querySelector(".export-part-heading")!;
+const preparedExtra = preparedExport.querySelector("details")!;
+  preparedExport,
   cancelExport,
+printDownload.className = "export-part-download";
+printDownload.innerHTML = `${exportDownloadIcon}<span class="export-download-name"></span>`;
+preparedHeading.prepend(printDownload);
   printableDownloads,
   exportProfileDetails,
 );
@@ -2039,21 +2053,37 @@ function clearPreparedExport() {
   printDownload.style.visibility = "hidden";
   printReportDownload.hidden = true;
   printReportDownload.onclick = null;
+  preparedExport.hidden = true;
+  preparedExtra.open = false;
+  if (exportSummary.parentElement === preparedExtra) {
+    exportResult.prepend(exportSummary);
+    exportResult.append(exportProfileDetails);
+    exportResult.after(printPanel);
+    printReport.before(printReportDownload);
+  }
   printReport.textContent = "";
   exportProfile.textContent = "";
 }
 function prepareExportDownload(
   data: ArrayBuffer,
   filename: string,
-  mime: string,
-  warnings: boolean,
+  format: "stl" | "glb",
+  triangles: number,
 ) {
   const preparationStart = performance.now();
-  preparedExportURL = URL.createObjectURL(new Blob([data], { type: mime }));
+  preparedExportURL = URL.createObjectURL(
+    new Blob([data], { type: format === "stl" ? "model/stl" : "model/gltf-binary" }),
+  );
+  name: string,
   exportProfile.textContent += `\nBlob / download URL preparation: ${(performance.now() - preparationStart).toFixed(3)} ms. Browser disk-write timing unavailable.`;
   printDownload.href = preparedExportURL;
   printDownload.download = filename;
-  printDownload.textContent = `Download ${filename}${warnings ? " · accept report warnings" : ""}`;
+  const fileType = format.toUpperCase();
+  printDownload.setAttribute("aria-label", `Download ${filename}`);
+  printDownload.querySelector(".export-download-name")!.textContent = exportDownloadLabel(name);
+  preparedHeading.querySelector("p")!.textContent = exportTriangleCount(triangles);
+  preparedExtra.append(printReportDownload, exportSummary, printPanel, exportProfileDetails);
+  preparedExport.hidden = false;
   printDownload.style.visibility = "visible";
   const preparedRevision = layers.sourceRevision;
   printDownload.onclick = (event) => {
@@ -2063,9 +2093,7 @@ function prepareExportDownload(
       exportMessage("Source changed. Prepare this export again before downloading.", true);
       return;
     }
-    exportMessage(
-      `Download requested: ${filename}. If it did not appear, use the download link here.`,
-    );
+    exportMessage(`${fileType} download requested.`);
   };
 }
 window.addEventListener("pagehide", clearPreparedExport);
@@ -2076,6 +2104,7 @@ printPanel.append(printReportDownload);
 const printReport = document.createElement("pre");
 printReport.style.whiteSpace = "pre-wrap";
 printReport.setAttribute("role", "status");
+printReportDownload.id = "export-report-download";
 printPanel.append(printReport);
 document.getElementById("export-boolean")!.parentElement!.append(printPanel);
 mountWhatsNew(printPanel, whatsNew);
@@ -2107,9 +2136,7 @@ function syncExportFormat() {
 exportFormat.addEventListener("change", () => {
   syncExportFormat();
   exportEstimate();
-  exportMessage(
-    `${exportFormat.value.toUpperCase()} selected. Choose current layer, all layers, or unified boolean.`,
-  );
+  exportMessage("");
 });
 syncExportFormat();
 
@@ -2187,7 +2214,8 @@ precisionTitle.textContent = "PRECISION · SHARED TOOL SETTINGS";
 const precisionOptions = document.createElement("div");
 precisionOptions.className = "precision-options";
 precisionPanel.append(precisionTitle, precisionOptions);
-document.querySelector("#radius")!.closest("section")!.append(precisionPanel);
+document.querySelector("#sculpt-brush .sculpt-brush-body")!.append(precisionPanel);
+const sidebarTools = document.getElementById("sidebar-tools")!;
 let precisionKey = "";
 const tubeToolButtons = document.createElement("div");
 for (const [tool, label] of [["tube", "Tube · draw & edit"]] as const) {
@@ -2370,13 +2398,13 @@ const lighting = new LightRig(
 );
 const worldUI = worldSettingsUI(
   () => display,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
 );
 const lightUI = lightingUI(
   () => display,
   lighting,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
   () => {
     lighting.sync();
@@ -2542,7 +2570,7 @@ primitivePreview = new PrimitiveDraftPreview(
 let primitivePanelState = "";
 primitivesUI = primitiveUI(
   precision.primitives,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
   precision,
   async (command: ModellingCommand) => {
@@ -2587,28 +2615,50 @@ precision.primitives.assembly.onExport = (result) => {
       );
     const revision = layers.sourceRevision;
     const row = document.createElement("div");
-    row.textContent = `${name}: ${result.report.triangles.toLocaleString()} triangles · ${result.report.dimensions.map((n) => n.toFixed(3)).join(" × ")} mm · ${result.report.components} surfaces · open ${result.report.boundaryEdges}, non-manifold ${result.report.nonManifoldEdges}, winding ${result.report.inconsistentEdges}. ${result.report.warnings.join(" ")} `;
-    for (const [blob, filename] of [
-      [new Blob([result.data], { type: "model/stl" }), `${name}.stl`],
+    row.className = "export-part";
+    row.innerHTML = `<div class="export-part-heading">
+      <a class="export-part-download">
+        ${exportDownloadIcon}
+        <span class="export-download-name"></span>
+      </a>
+      <p></p>
+    </div>
+    <details><summary>Extra info</summary><p></p><ul></ul><a>Download print report (.json)</a></details>`;
+    row.querySelector(".export-download-name")!.textContent = exportDownloadLabel(result.name);
+    row.querySelector("p")!.textContent = exportTriangleCount(report.triangles);
+    const details = row.querySelector("details")!;
+    const dimensions = report.dimensions.map((n) => n.toFixed(3)).join(" × ");
+    details.querySelector("p")!.textContent =
+      `${dimensions} mm · ${report.components} ${report.components === 1 ? "surface" : "surfaces"} · ${report.boundaryEdges} open edges · ${report.nonManifoldEdges} non-manifold edges · ${report.inconsistentEdges} winding issues`;
+    const warnings = details.querySelector("ul")!;
+    warnings.hidden = !report.warnings.length;
+    for (const warning of report.warnings) {
+      const item = document.createElement("li");
+      item.textContent = warning;
+      warnings.append(item);
+    }
+    const stl = row.querySelector(".export-part-download")!;
+    stl.setAttribute("aria-label", `Download ${result.name} STL`);
+    for (const [link, blob, filename] of [
+      [stl, new Blob([result.data], { type: "model/stl" }), `${name}.stl`],
       [
-        new Blob([JSON.stringify(result.report, null, 2)], { type: "application/json" }),
+        details.querySelector("a")!,
+        new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
         `${name}-print-report.json`,
+    const { report } = result;
       ],
     ] as const) {
-      const link = document.createElement("a"),
-        url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
       partDownloadURLs.push(url);
-      link.href = url;
-      link.download = filename;
-      link.textContent = `Download ${filename} `;
-      link.onclick = (event) => {
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.addEventListener("click", (event) => {
         if (revision !== layers.sourceRevision) {
           event.preventDefault();
           clearPreparedExport();
           exportMessage("Source changed. Prepare printable parts again.", true);
         }
-      };
-      row.append(link);
+      });
     }
     partDownloadBytes += result.data.byteLength;
     printableDownloads.append(row);
@@ -2628,13 +2678,13 @@ precision.primitives.assembly.beforePick = () => {
 };
 assemblyControlsUI = assemblyUI(
   precision.primitives.assembly,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
   ui.viewport,
 );
 enclosureControlsUI = enclosureUI(
   precision.primitives.enclosure,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
 );
 if (__AGENT_ENABLED__) {
@@ -2680,7 +2730,7 @@ if (__AGENT_ENABLED__) {
 }
 measurementUI = precisionUI(
   precision,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
   () => {
     stop();
@@ -2718,7 +2768,7 @@ referenceEditor = new ReferenceTransformTool(
 const referencesUI = referenceUI(
   () => display,
   references,
-  precisionPanel.parentElement!,
+  sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
   referenceEditor,
 );
@@ -3067,13 +3117,7 @@ xrExperience = new XRExperience(
 void xrExperience.check();
 const recoveryPanel = document.getElementById("recovery-slot")!;
 recoveryPanel.innerHTML =
-  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><select id="recovery-selection" aria-label="Recovery checkpoint" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details><details id="session-resources"><summary>Session resource estimates</summary><output id="stability-status"></output></details></section>';
-document
-  .querySelector("main > aside")!
-  .append(
-    document.getElementById("session-resources")!,
-    document.getElementById("xr-diagnostics-slot")!,
-  );
+  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><select id="recovery-selection" aria-label="Recovery checkpoint" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details></section>';
 const recoveryStatus = document.getElementById("recovery-status")!,
   recoveryAvailable = document.getElementById("recovery-available")!,
   recoverySelect = document.querySelector<HTMLSelectElement>("#recovery-selection")!,

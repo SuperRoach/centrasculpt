@@ -51,9 +51,9 @@ async function openExport(p) {
   await p.locator("#open-export").click();
   await p.locator("#export-format").selectOption("stl");
   await p.locator("#export-quality").selectOption("high");
-  await p.locator("#export-advanced").evaluate((el) => {
-    el.open = true;
-  });
+  await p.locator("#export-advanced > summary").click();
+  assert.equal(await p.locator("#export-curved").isVisible(), false);
+  await p.locator(".export-experiments > summary").click();
 }
 async function prepare(p, button, name) {
   await p.locator(button).click();
@@ -109,6 +109,7 @@ try {
   assert.deepEqual(rejected, exact);
   assert.equal(await page.locator("#history-info").textContent(), history);
   await page.locator("#export-format").selectOption("glb");
+  assert.equal(await page.locator('#export-result [role="status"]').textContent(), "");
   assert.equal(await page.locator("#export-curved").isDisabled(), true);
   assert.equal(await page.locator("#export-curved").isChecked(), false);
   const glb = await prepare(page, "#export", "sized.glb");

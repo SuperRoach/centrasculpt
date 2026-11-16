@@ -213,9 +213,7 @@ try {
     assert(Math.abs(value - tilted[0].dimensions[axis]) < 0.001);
   });
   assert(tilted[1].count < tilted[0].count);
-  await page.locator("#print-panel").evaluate((el) => {
-    el.open = true;
-  });
+  await page.locator(".prepared-export").getByText("Extra info", { exact: true }).click();
   const reportDownload = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Download optional print report (.json)", exact: true })

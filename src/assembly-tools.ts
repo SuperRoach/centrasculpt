@@ -378,9 +378,6 @@ async function encodePartSTL(
         throw new Error(
           `Enclosure export requires one closed, consistently wound manifold shell. Sampled mesh: ${r.boundaryEdges} boundary, ${r.nonManifoldEdges} non-manifold, ${r.inconsistentEdges} winding, ${r.degenerateTriangles} degenerate; ${r.components} components. Adjust dimensions/resolution or export quality and retry.`,
         );
-      r.warnings.push(
-        "Enclosure fit and minimum wall thickness are not certified. Inspect in your slicer and print a clearance coupon.",
-      );
       if (intent.parameters.lid.clearanceMm < (r.effectiveResolutionMM ?? Infinity))
         r.warnings.push(
           "Lid clearance is below exported sampling spacing; mating-surface fit is approximate.",
