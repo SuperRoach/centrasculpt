@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Key shadow WebGL fixture</title>
+    <style>
+      body { margin: 0; background: #202522; color: #e7eee2; font: 15px system-ui; }
+      canvas { display: block; width: min(100vw, 900px); height: min(72vh, 600px); margin: 20px auto; }
+      pre { margin: 20px auto; max-width: 900px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <pre id="result">Ready</pre>
+    <script type="module">
+      import * as THREE from "three";
+      import { applyKeyShadowState, fitKeyShadowFrustum } from "/src/shadows.ts";
+
+      const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector("#view"), antialias: true });
+      renderer.setSize(900, 600, false);
+      renderer.shadowMap.enabled = false;
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color("#89938a");
+      const camera = new THREE.PerspectiveCamera(42, 1.5, 0.1, 30);
+      camera.position.set(3, 2.4, 3.4);
+      camera.lookAt(0, 0.3, 0);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x56604f, 1.7));
+      const key = new THREE.DirectionalLight(0xfff1d6, 3);
+      key.position.set(-2, 3.5, 2.5);
+      key.target.position.set(0, 0.2, 0);
+      scene.add(key, key.target);
+      const fill = new THREE.DirectionalLight(0xd6eaff, 0.8);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.7);
+      scene.add(fill, rim);
+      const sculpt = new THREE.Group();
+      scene.add(sculpt);
+      const material = new THREE.MeshStandardMaterial({ color: "#afbd94", roughness: 0.72 });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.72, 36, 24), material);
+      body.position.y = 0.72;
+      body.castShadow = true;
+      sculpt.add(body);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), material);
+      foot.position.set(0.65, 0.15, 0.1);
+      foot.castShadow = true;
+      sculpt.add(foot);
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshStandardMaterial({ color: "#677168", roughness: 1 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = true;
+      floor.castShadow = false;
+      scene.add(floor);
+
+      window.runShadowFixture = (enabled) => {
+        applyKeyShadowState(renderer, [key, fill, rim], [sculpt], enabled);
+        if (enabled) {
+          const bounds = new THREE.Box3().setFromObject(sculpt);
+          fitKeyShadowFrustum(key, bounds);
+        }
+        renderer.render(scene, camera);
+        const result = {
+          enabled: renderer.shadowMap.enabled,
+          map: key.shadow.map ? [key.shadow.map.width, key.shadow.map.height] : null,
+          keyCasts: key.castShadow,
+          fillCasts: fill.castShadow,
+          rimCasts: rim.castShadow,
+          bodyReceives: body.receiveShadow,
+          floorReceives: floor.receiveShadow,
+          calls: renderer.info.render.calls,
+          triangles: renderer.info.render.triangles,
+          frustum: [key.shadow.camera.left, key.shadow.camera.right, key.shadow.camera.near, key.shadow.camera.far],
+          glError: renderer.getContext().getError(),
+        };
+        document.querySelector("#result").textContent = JSON.stringify(result, null, 2);
+        return result;
+      };
+      window.runShadowFixture(false);
+    </script>
+  </body>
+</html>

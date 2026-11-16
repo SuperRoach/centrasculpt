@@ -35,7 +35,14 @@ export class LightRig {
   readonly root = new Group();
   readonly handles = new Group();
   readonly lights: DirectionalLight[];
-  readonly inspection = { enabled: false, paused: false, speed: 6, direction: 1, angle: 0 };
+  readonly inspection = {
+    enabled: false,
+    shadows: false,
+    paused: false,
+    speed: 6,
+    direction: 1,
+    angle: 0,
+  };
   editing = false;
   desktopVisible = false;
   hover: LightId | null = null;
@@ -89,6 +96,7 @@ export class LightRig {
     private readonly ambient: HemisphereLight,
     private readonly centre?: () => Vector3,
     private readonly renderStyle: () => RenderStyle = () => "normal",
+    private readonly layerTarget?: (id: string) => Vector3 | null,
   ) {
     this.original = [key, fill].map((l) => ({
       parent: l.parent,
@@ -214,6 +222,12 @@ export class LightRig {
   get config(): LightingSettings {
     return this.settings() ?? this.defaults;
   }
+  targetPosition(id: LightId): Vector3 {
+    const light = this.config.lights[id];
+    return light.targetLayerId
+      ? (this.layerTarget?.(light.targetLayerId) ?? new Vector3().fromArray(light.target))
+      : new Vector3().fromArray(light.target);
+  }
   preset(): LightingSettings {
     const s = defaultLighting(),
       c = this.centre?.();
@@ -288,7 +302,9 @@ export class LightRig {
         if (l.target === this.original[i]?.target) l.target = this.targets[i];
         if (l.target.parent !== this.root) this.root.add(l.target);
         l.position.fromArray(p.position);
-        l.target.position.fromArray(p.target);
+        const layerTarget = p.targetLayerId ? this.layerTarget?.(p.targetLayerId) : null;
+        if (layerTarget) l.target.position.copy(layerTarget);
+        else l.target.position.fromArray(p.target);
         l.color.set(p.colour);
         l.intensity = s.enabled && p.enabled ? p.intensity : 0;
         if (inspection.enabled) {
@@ -318,7 +334,7 @@ export class LightRig {
       if (reflective && !custom) l.intensity *= 0.6;
       const icon = this.icons[i];
       icon.group.position.fromArray(p.position);
-      this.target.fromArray(p.target);
+      this.target.copy(this.targetPosition(LIGHT_IDS[i]));
       this.basis.lookAt(icon.group.position, this.target, this.up);
       icon.group.quaternion.setFromRotationMatrix(this.basis);
       icon.group.rotateZ(p.roll ?? 0);
@@ -432,7 +448,7 @@ export class LightRig {
       this.armed = false;
       const p = this.config.lights[this.drag];
       this.local.fromArray(p.position);
-      this.target.fromArray(p.target);
+      this.target.copy(this.targetPosition(this.drag));
       this.targetDistance = this.local.distanceTo(this.target);
       this.basis.lookAt(this.local, this.target, this.up);
       this.rotation.setFromRotationMatrix(this.basis);
@@ -455,12 +471,13 @@ export class LightRig {
         this.local.distanceToSquared(this.target) >= 0.000001
       ) {
         const p = this.config.lights[this.drag];
-        this.basis.lookAt(this.local, this.target, this.up);
+        const effectiveTarget = p.targetLayerId ? this.targetPosition(this.drag) : this.target;
+        this.basis.lookAt(this.local, effectiveTarget, this.up);
         this.baseRotation.setFromRotationMatrix(this.basis).invert().multiply(this.rotation);
         const angle = 2 * Math.atan2(this.baseRotation.z, this.baseRotation.w),
           roll = Math.atan2(Math.sin(angle), Math.cos(angle));
         this.local.toArray(p.position);
-        this.target.toArray(p.target);
+        if (!p.targetLayerId) this.target.toArray(p.target);
         if (Math.abs(roll) > 1e-10) p.roll = roll;
         else delete p.roll;
       }

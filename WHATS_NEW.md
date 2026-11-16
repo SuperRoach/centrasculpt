@@ -1,3 +1,13 @@
+### Key light shadows — 2026-11-16
+
+- Enable Key Shadows in World Settings · Lighting on desktop or in the immersive
+  World Settings menu. Inspection Light has its own temporary shadow toggle.
+  Both use the fitted 1024 × 1024 map and affect visible sculpt surfaces only.
+  Fill and Rim do not cast shadows. The Key preference is saved with project
+  display preferences; older projects leave it off.
+- Shadow rendering adds another scene pass. Quest frame time has not been
+  measured; disable shadows if performance drops.
+
 ### Editable Text Primitives — Phase 8.5b (2026-11-16)
 
 - Create short single-line text sources from **Primitives**. Edit the string,

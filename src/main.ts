@@ -31,6 +31,7 @@ Object.assign(window, { centraPerformance: questCapture });
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { AppLifecycle } from "./app-lifecycle";
 import type { BakePlan } from "./bake";
@@ -70,6 +71,7 @@ import { RENDER_STYLES, type RenderStyle, validateRenderStyle } from "./render-s
 import { DEFAULT_RESOLUTION } from "./resolution";
 import { SAVE_LABELS, saveState } from "./save-status";
 import { reflectPoint, SDFVolume } from "./sdf";
+import { applyKeyShadowState, fitKeyShadowFrustum, shouldCastKeyShadow } from "./shadows";
 import { placeShapeOnSurface, StampClickGesture } from "./shape-placement";
 import { ShapeGhost } from "./shape-preview";
 import { ShapeRotationTool } from "./shape-rotation";
@@ -405,7 +407,9 @@ function syncTransformUI() {
   );
   syncStats();
 }
+let synchronizeShadows: (boundsChanged?: boolean) => void = () => {};
 function refresh() {
+  synchronizeShadows(true);
   layers.personalStamp = shapeGhost.model.definition.personal;
   exportEstimate();
   syncView();
@@ -470,6 +474,7 @@ renderer.domElement.addEventListener(
     )
       return;
     updatePointer(event);
+    if (lighting.selected && lightTransform.enabled && lightTransform.axis) return;
     raycaster.setFromCamera(pointer, camera);
     const id = lighting.pickHandle(raycaster.ray);
     if (!id) return;
@@ -531,6 +536,9 @@ transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () 
     loadingProject ||
     ui.modalOpen ||
     xrBlocked() ||
+    (lighting.desktopVisible &&
+      lighting.selected !== null &&
+      (input.mode === "translate" || input.mode === "rotate")) ||
     shapeGhost.model.enabled ||
     input.referenceEditing,
 });
@@ -2424,7 +2432,78 @@ const lighting = new LightRig(
       .applyMatrix4(xrRig.turntable.group.matrix);
   },
   () => display.renderStyle,
+  (id) => {
+    if (!layers.project.layerStack.layers.some((candidate) => candidate.id === id)) return null;
+    xrRig.workspaceRoot.updateWorldMatrix(true, false);
+    const bounds = new THREE.Box3().setFromObject(layers.runtime(id).surface.group);
+    if (bounds.isEmpty()) return null;
+    return xrRig.workspaceRoot.worldToLocal(bounds.getCenter(new THREE.Vector3()));
+  },
 );
+let shadowsActive = false,
+  shadowBoundsDirty = true,
+  shadowInspectionMode = false,
+  shadowLightPose = new Float64Array(6).fill(Number.NaN);
+synchronizeShadows = (boundsChanged = false) => {
+  if (boundsChanged) shadowBoundsDirty = true;
+  if (lighting.inspection.enabled !== shadowInspectionMode) {
+    shadowInspectionMode = lighting.inspection.enabled;
+    shadowBoundsDirty = true;
+    shadowLightPose.fill(Number.NaN);
+  }
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const enabled = shouldCastKeyShadow(
+    !!display.lighting?.enabled,
+    !!display.lighting?.shadows?.enabled,
+    lighting.inspection.enabled,
+    lighting.inspection.shadows,
+  );
+  const key = lighting.lights[0];
+  applyKeyShadowState(
+    renderer,
+    lighting.lights as [THREE.DirectionalLight, THREE.DirectionalLight, THREE.DirectionalLight],
+    [layers.group, layers.composite.group],
+    enabled,
+  );
+  if (enabled !== shadowsActive) {
+    shadowsActive = enabled;
+    shadowBoundsDirty = true;
+    shadowLightPose.fill(Number.NaN);
+  }
+  if (!enabled) return;
+  const position = key.position,
+    target = key.target.position,
+    poseChanged =
+      !lighting.inspection.enabled &&
+      (shadowLightPose[0] !== position.x ||
+        shadowLightPose[1] !== position.y ||
+        shadowLightPose[2] !== position.z ||
+        shadowLightPose[3] !== target.x ||
+        shadowLightPose[4] !== target.y ||
+        shadowLightPose[5] !== target.z);
+  if (!shadowBoundsDirty && !poseChanged) return;
+  shadowBoundsDirty = false;
+  shadowLightPose[0] = position.x;
+  shadowLightPose[1] = position.y;
+  shadowLightPose[2] = position.z;
+  shadowLightPose[3] = target.x;
+  shadowLightPose[4] = target.y;
+  shadowLightPose[5] = target.z;
+
+  // visibleBounds is in sculpture-root coordinates. Convert it once to the
+  // workspace coordinates shared by the Key and its target, then fit a
+  // conservative sphere so turntable rotation stays inside the orthographic map.
+  const bounds = xrRig.visibleBounds();
+  if (bounds.isEmpty()) return;
+  xrRig.workspaceRoot.updateWorldMatrix(true, false);
+  xrRig.sculptureRoot.updateWorldMatrix(true, false);
+  const toWorkspace = new THREE.Matrix4()
+    .copy(xrRig.workspaceRoot.matrixWorld)
+    .invert()
+    .multiply(xrRig.sculptureRoot.matrixWorld);
+  bounds.applyMatrix4(toWorkspace);
+  fitKeyShadowFrustum(key, bounds, lighting.inspection.enabled ? target : undefined);
+};
 const worldUI = worldSettingsUI(
   () => display,
   sidebarTools,
@@ -2441,7 +2520,77 @@ const lightUI = lightingUI(
     bounds.union(new THREE.Box3().setFromObject(layers.group));
     if (!bounds.isEmpty()) frameAgentBounds(camera, controls, bounds);
   },
+  () => layers.project.layerStack.layers,
 );
+const lightTransformObject = new THREE.Object3D();
+scene.add(lightTransformObject);
+const lightTransform = new TransformControls(camera, renderer.domElement);
+lightTransform.setSize(0.85);
+scene.add(lightTransform.getHelper());
+lightTransform.attach(lightTransformObject);
+let lightTransformDragging = false;
+lightTransform.addEventListener("mouseDown", () => {
+  lightTransformDragging = true;
+  controls.enabled = false;
+});
+lightTransform.addEventListener("objectChange", () => {
+  if (!lightTransformDragging || !lighting.selected) return;
+  const p = lighting.config.lights[lighting.selected];
+  const position = lightTransformObject.position.clone();
+  const target = lighting.targetPosition(lighting.selected);
+  if (lightTransform.mode === "translate") {
+    const delta = position.clone().sub(new THREE.Vector3().fromArray(p.position));
+    p.position = [position.x, position.y, position.z];
+    if (!p.targetLayerId) {
+      const movedTarget = new THREE.Vector3().fromArray(p.target).add(delta);
+      p.target = [movedTarget.x, movedTarget.y, movedTarget.z];
+    }
+  } else {
+    const direction = target.clone().sub(position);
+    const distance = Math.max(0.001, direction.length());
+    const base = new THREE.Matrix4().lookAt(position, target, new THREE.Vector3(0, 1, 0));
+    const baseRotation = new THREE.Quaternion()
+      .setFromRotationMatrix(base)
+      .invert()
+      .multiply(lightTransformObject.quaternion);
+    const angle = 2 * Math.atan2(baseRotation.z, baseRotation.w);
+    p.roll = Math.atan2(Math.sin(angle), Math.cos(angle));
+    if (!p.targetLayerId) {
+      direction.set(0, 0, -distance).applyQuaternion(lightTransformObject.quaternion).add(position);
+      p.target = [direction.x, direction.y, direction.z];
+    }
+  }
+  p.position = [position.x, position.y, position.z];
+  lighting.sync();
+});
+lightTransform.addEventListener("mouseUp", () => {
+  lightTransformDragging = false;
+  controls.enabled = input.cameraEnabled;
+});
+function syncLightTransform() {
+  const id = lighting.selected;
+  const visible = !!(
+    id &&
+    lighting.desktopVisible &&
+    (input.mode === "translate" || input.mode === "rotate") &&
+    !loadingProject &&
+    !ui.modalOpen &&
+    !xrBlocked()
+  );
+  lightTransform.enabled = visible;
+  lightTransform.getHelper().visible = visible;
+  if (!visible || !id || lightTransformDragging) return;
+  const settings = lighting.config.lights[id];
+  const position = new THREE.Vector3().fromArray(settings.position);
+  const target = lighting.targetPosition(id);
+  lightTransformObject.position.copy(position);
+  lightTransformObject.quaternion.setFromRotationMatrix(
+    new THREE.Matrix4().lookAt(position, target, new THREE.Vector3(0, 1, 0)),
+  );
+  lightTransformObject.rotateZ(settings.roll ?? 0);
+  lightTransform.mode = input.mode === "rotate" ? "rotate" : "translate";
+  lightTransformObject.updateMatrixWorld(true);
+}
 renderer.domElement.addEventListener("pointermove", (event) => {
   if (!lighting.desktopVisible || loadingProject || ui.modalOpen || xrBlocked()) return;
   updatePointer(event);
@@ -3532,9 +3681,17 @@ import.meta.hot?.dispose(() => {
   snapArrow.cone.geometry.dispose();
   for (const material of [snapArrow.line.material, snapArrow.cone.material])
     for (const value of Array.isArray(material) ? material : [material]) value.dispose();
+  lightTransform.dispose();
+  applyKeyShadowState(
+    renderer,
+    lighting.lights as [THREE.DirectionalLight, THREE.DirectionalLight, THREE.DirectionalLight],
+    [layers.group, layers.composite.group],
+    false,
+  );
   lighting.dispose();
   referenceEditor?.dispose();
   references.dispose();
+  renderer.dispose();
   lifecycle.dispose();
   recovery?.dispose();
   projectBrowser.store.close();
@@ -3583,6 +3740,7 @@ function pollComposite(now: number): void {
           if (changed) {
             syncView();
             syncStats();
+            synchronizeShadows(true);
           }
           if (changed && s)
             ui.compositeInfo(
@@ -3626,6 +3784,8 @@ renderer.setAnimationLoop((now, frame) => {
     ) ?? defaultDesktopGridY;
   lightUI.sync();
   lighting.sync(now, document.visibilityState !== "hidden");
+  synchronizeShadows();
+  syncLightTransform();
   scene.environmentIntensity = lighting.environmentIntensity;
   worldUI.sync();
   referenceEditor?.sync();

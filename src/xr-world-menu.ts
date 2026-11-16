@@ -288,7 +288,7 @@ export class XRWorldMenu {
       const rig = this.port?.lighting,
         s = layers.display.lighting ?? defaultLighting(),
         p = s.lights[this.light];
-      subtitle = "Lighting · workspace equipment · no shadows";
+      subtitle = "Lighting · workspace equipment · Key shadows use a balanced 1024² map";
       if (this.section === "lighting") {
         add(
           "lighting-enable",
@@ -297,19 +297,27 @@ export class XRWorldMenu {
           "Off restores studio lighting; ambient control still applies",
           s.enabled,
         );
+        add(
+          "lighting-shadows",
+          `Key Shadows · ${s.shadows?.enabled ? "On" : "Off"}`,
+          394,
+          "Self-shadowing for visible sculpt surfaces",
+          !!s.shadows?.enabled,
+          busy || !s.enabled,
+        );
         LIGHT_IDS.forEach((id, i) => {
           buttons.push({
             id: `lighting-select:${id}`,
             label: `${id[0].toUpperCase() + id.slice(1)} Light`,
             detail: `${s.lights[id].enabled ? "On" : "Off"} · ${s.lights[id].intensity.toFixed(1)}`,
             disabled: busy,
-            rect: { x: 40 + i * 364, y: 404, width: 344, height: 136 },
+            rect: { x: 40 + i * 364, y: 554, width: 344, height: 136 },
           });
         });
         add(
           "lighting-edit",
           `Edit Lights · ${rig?.editing ? "On" : "Off"}`,
-          564,
+          714,
           "Key 1 / Fill 2 / Rim 3 · Tool trigger · move hand + turn wrist",
           !!rig?.editing,
           busy || !rig || !s.enabled || !!rig?.inspection.enabled,
@@ -317,13 +325,13 @@ export class XRWorldMenu {
         add(
           "world:inspection",
           "Inspection Light",
-          724,
+          864,
           "Temporary rotating illumination · separate from Turntable",
         );
         add(
           "world:ambient",
           "Ambient / Environment",
-          884,
+          1014,
           `Global fill · ${Math.round(ambientIntensity(s) * 100)}%`,
         );
       } else if (this.section === "ambient") {
@@ -364,9 +372,17 @@ export class XRWorldMenu {
           busy || !rig,
         );
         add(
+          "inspection-shadows",
+          `Inspection Shadows · ${i?.shadows ? "On" : "Off"}`,
+          394,
+          "Self-shadowing while Inspection Light is active",
+          !!i?.shadows,
+          busy || !rig,
+        );
+        add(
           "inspection-pause",
           i?.paused ? "Resume" : "Pause",
-          394,
+          544,
           "Keeps current angle",
           !!i?.paused,
           busy || !rig,
@@ -374,7 +390,7 @@ export class XRWorldMenu {
         add(
           "inspection-reverse",
           "Reverse direction",
-          544,
+          694,
           `Speed · ${i?.speed ?? 6} degrees / second`,
           false,
           busy || !rig,
@@ -384,16 +400,16 @@ export class XRWorldMenu {
             id: "inspection-slower",
             label: "Slower",
             disabled: busy || !rig,
-            rect: { x: 40, y: 694, width: 524, height: 136 },
+            rect: { x: 40, y: 844, width: 524, height: 136 },
           },
           {
             id: "inspection-faster",
             label: "Faster",
             disabled: busy || !rig,
-            rect: { x: 588, y: 694, width: 524, height: 136 },
+            rect: { x: 588, y: 844, width: 524, height: 136 },
           },
         );
-        add("inspection-reset", "Reset angle", 844, undefined, false, busy || !rig);
+        add("inspection-reset", "Reset angle", 994, undefined, false, busy || !rig);
       } else if (this.section === "light-colour") {
         subtitle = `${this.light.toUpperCase()} · Colour`;
         LIGHT_COLOURS.forEach((c, i) => {
@@ -960,6 +976,8 @@ export class XRWorldMenu {
       } else if (id === "lighting-enable") {
         s.enabled = !s.enabled;
         if (!s.enabled && rig) rig.editing = false;
+      } else if (id === "lighting-shadows") {
+        s.shadows = { enabled: !s.shadows?.enabled };
       } else if (id === "lighting-ambient-auto") delete s.ambientIntensity;
       else if (id === "lighting-ambient-dimmer" || id === "lighting-ambient-brighter") {
         s.ambientIntensity = Math.max(
@@ -1006,7 +1024,8 @@ export class XRWorldMenu {
           rig.sync();
           i.enabled = !i.enabled;
           rig.editing = false;
-        } else if (id === "inspection-pause") i.paused = !i.paused;
+        } else if (id === "inspection-shadows") i.shadows = !i.shadows;
+        else if (id === "inspection-pause") i.paused = !i.paused;
         else if (id === "inspection-reverse") i.direction *= -1;
         else if (id === "inspection-reset") rig.resetInspection();
         else if (id === "inspection-slower" || id === "inspection-faster")

@@ -127,7 +127,7 @@ export class LayerRuntime {
   ) {
     this.material = neutral.clone();
     this.maskOverlay.bind(this.material);
-    this.surface = new ChunkSurface(this.material);
+    this.surface = new ChunkSurface(this.material, true);
     registerMaskSurface(this.surface.group, () => this.volume);
     this.surface.group.userData.layerId = layer.id;
     this.mesher = new IncrementalMesher(volume);
@@ -3996,7 +3996,7 @@ export class IndependentLayers {
         });
         await work.pause();
       }
-      stagedSurface = new ChunkSurface(runtime.material);
+      stagedSurface = new ChunkSurface(runtime.material, true);
       stagedSurface.group.name = sourceSurface.group.name;
       stagedSurface.group.userData = { ...sourceSurface.group.userData };
       stagedSurface.group.visible = sourceSurface.group.visible;

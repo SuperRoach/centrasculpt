@@ -928,7 +928,7 @@ export class BooleanComposite {
         !!this.options.analyticPrimitives && !!this.options.stagedEvaluation,
       );
       this.mesher = new IncrementalMesher(this.volume);
-      this.surface = new ChunkSurface(this.material);
+      this.surface = new ChunkSurface(this.material, true);
       if (!this.retained) this.group.add(this.surface.group);
       this.group.position.fromArray(layout.center);
       if (this.retained)

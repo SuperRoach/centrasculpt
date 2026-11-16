@@ -1,5 +1,15 @@
 # Centra Sculpt roadmap
 
+## Three-point lighting shadows (2026-11-16)
+
+- Delivered an optional Key-only shadow toggle in desktop and immersive World
+  Settings. Uses a bounded orthographic frustum and a fixed 1024 × 1024 PCF soft
+  map. Visible sculpt and Boolean result chunks cast and receive self-shadows;
+  Fill and Rim do not cast. Inspection Light has a separate transient shadow
+  toggle. Legacy Key shadow preference defaults off.
+- No quality selector pending physical Quest 3 performance measurement. Shadow
+  rendering adds a scene pass, so headset frame time remains an acceptance item.
+
 ## Phase 8.5b — Editable Text Primitives (2026-11-16)
 
 - Desktop creates and edits short single-line text sources using the bundled

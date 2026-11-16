@@ -94,6 +94,7 @@ for (const name of [
   "sculpt-mask",
   "mask-overlay",
   "lighting",
+  "shadows",
   "light-rig",
   "lighting-ui",
   "reference-transform",

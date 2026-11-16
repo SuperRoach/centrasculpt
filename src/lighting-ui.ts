@@ -14,11 +14,12 @@ export function lightingUI(
   parent: HTMLElement,
   busy: () => boolean,
   frameLights?: () => void,
+  layerChoices: () => readonly { id: string; name: string }[] = () => [],
 ) {
   const panel = document.createElement("details");
   panel.className = "lighting-panel";
   panel.innerHTML =
-    '<summary>World Settings · Lighting<svg class="world-settings-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></summary><p>Directional lights aim toward their targets. Distance does not change brightness.</p>';
+    '<summary>World Settings · Lighting<svg class="world-settings-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg></summary><p>Directional lights aim toward their targets. Distance does not change brightness. Choose a layer to keep a light aimed at its centre; select a light in the viewport, then use Move or Rotate.</p>';
   parent.append(panel);
   const groups = new Map<LightId, HTMLDetailsElement>();
   panel.addEventListener("toggle", () => {
@@ -27,7 +28,8 @@ export function lightingUI(
     if (panel.open && !busy()) frameLights?.();
   });
   const defaults = defaultLighting();
-  const inputs: { el: HTMLInputElement; read: () => string | boolean }[] = [];
+  const inputs: { el: HTMLInputElement | HTMLSelectElement; read: () => string | boolean }[] = [];
+  const layerOptionSignatures = new WeakMap<HTMLSelectElement, string>();
   const edit = (fn: () => void) => {
     if (busy()) return;
     fn();
@@ -89,6 +91,15 @@ export function lightingUI(
   );
   input(
     panel,
+    "Key light shadows",
+    "checkbox",
+    () => !!display().lighting?.shadows?.enabled,
+    (v) => {
+      config().shadows = { enabled: v === "true" };
+    },
+  );
+  input(
+    panel,
     "Ambient / Environment intensity",
     "number",
     () => String(ambientIntensity(display().lighting ?? defaults)),
@@ -113,6 +124,20 @@ export function lightingUI(
       fn(candidate.lights[id]);
       display().lighting = validateLighting(candidate);
     };
+    const targetLayer = document.createElement("label");
+    targetLayer.textContent = `${id} look at layer`;
+    const targetSelect = document.createElement("select");
+    targetSelect.setAttribute("aria-label", `${id} look at layer`);
+    targetSelect.onchange = () =>
+      edit(() =>
+        update((p) => {
+          if (targetSelect.value) p.targetLayerId = targetSelect.value;
+          else delete p.targetLayerId;
+        }),
+      );
+    targetLayer.append(targetSelect);
+    group.append(targetLayer);
+    inputs.push({ el: targetSelect, read: () => light().targetLayerId ?? "" });
     input(
       group,
       `${id} enabled`,
@@ -172,6 +197,15 @@ export function lightingUI(
   );
   input(
     inspection,
+    "Inspection light shadows",
+    "checkbox",
+    () => rig.inspection.shadows,
+    (v) => {
+      rig.inspection.shadows = v === "true";
+    },
+  );
+  input(
+    inspection,
     "Pause inspection",
     "checkbox",
     () => rig.inspection.paused,
@@ -203,10 +237,27 @@ export function lightingUI(
       el.disabled = busy();
       if (document.activeElement === el) continue;
       const value = read();
-      if (el.type === "checkbox") el.checked = !!value;
+      if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = !!value;
+      else if (el instanceof HTMLSelectElement) el.value = String(value);
       else if (el.value !== value) el.value = String(value);
     }
+    for (const [id, group] of groups) {
+      const select = group.querySelector("select");
+      if (!select) continue;
+      const choices = layerChoices();
+      const signature = JSON.stringify(choices.map(({ id, name }) => [id, name]));
+      if (layerOptionSignatures.get(select) !== signature) {
+        select.replaceChildren(new Option("None", ""));
+        for (const layer of choices) select.add(new Option(layer.name, layer.id));
+        layerOptionSignatures.set(select, signature);
+      }
+      const selected = lightFor(id).targetLayerId ?? "";
+      select.value = selected;
+    }
     for (const b of panel.querySelectorAll("button")) b.disabled = busy();
+  }
+  function lightFor(id: LightId) {
+    return (display().lighting ?? defaults).lights[id];
   }
   sync();
   return {

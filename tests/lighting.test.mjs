@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  Box3,
+  BoxGeometry,
   DirectionalLight,
   Group,
   HemisphereLight,
   Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  PCFSoftShadowMap,
   PerspectiveCamera,
   Ray,
   Scene,
@@ -27,7 +32,13 @@ import {
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { encodeRecovery } from "../work/test-build/recovery-client.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
+import {
+  applyKeyShadowState,
+  fitKeyShadowFrustum,
+  shouldCastKeyShadow,
+} from "../work/test-build/shadows.mjs";
 import { ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
+import { ChunkSurface } from "../work/test-build/surface.mjs";
 import { defaultTurntable } from "../work/test-build/turntable.mjs";
 import { XRControllerRoles } from "../work/test-build/xr-controller-roles.mjs";
 import { XRControllers } from "../work/test-build/xr-controllers.mjs";
@@ -167,6 +178,71 @@ test("validator rejects nonfinite, excessive, coincident, invalid type and malfo
   }
   for (const v of [null, [], {}, { ...defaultLighting(), version: 2 }])
     assert.throws(() => validateLighting(v));
+});
+test("Key shadows default off, toggle and restore receive state, and fit a bounded 1024 map", () => {
+  const lights = [new DirectionalLight(), new DirectionalLight(), new DirectionalLight()],
+    sculpt = new Group(),
+    helper = new Group(),
+    mesh = new Mesh(new BoxGeometry(), new MeshBasicMaterial()),
+    helperMesh = new Mesh(new BoxGeometry(), new MeshBasicMaterial()),
+    renderer = { shadowMap: { enabled: false, type: 0 } };
+  sculpt.add(mesh);
+  helper.add(helperMesh);
+  assert.equal(defaultLighting().shadows, undefined);
+  const legacy = validateLighting(defaultLighting());
+  assert.equal(legacy.shadows, undefined);
+  applyKeyShadowState(renderer, lights, [sculpt], true);
+  assert.equal(renderer.shadowMap.enabled, true);
+  assert.equal(renderer.shadowMap.type, PCFSoftShadowMap);
+  assert.equal(lights[0].castShadow, true);
+  assert.equal(lights[1].castShadow, false);
+  assert.equal(lights[2].castShadow, false);
+  assert.equal(mesh.receiveShadow, true);
+  assert.equal(helperMesh.receiveShadow, false);
+  const bounds = new Box3(new Vector3(-1, -0.5, -1), new Vector3(1, 0.5, 1));
+  const radius = fitKeyShadowFrustum(lights[0], bounds);
+  assert(radius > 1 && radius < 10);
+  assert.equal(lights[0].shadow.mapSize.x, 1024);
+  assert.equal(lights[0].shadow.mapSize.y, 1024);
+  assert.equal(lights[0].shadow.camera.left, -radius);
+  assert.equal(lights[0].shadow.camera.right, radius);
+  assert.equal(lights[0].shadow.camera.near, 0.01);
+  const inspectionRadius = fitKeyShadowFrustum(lights[0], bounds, new Vector3(0, 0, 0));
+  assert(inspectionRadius >= radius);
+  assert.equal(shouldCastKeyShadow(true, true, false, false), true);
+  assert.equal(shouldCastKeyShadow(true, false, true, true), true);
+  assert.equal(shouldCastKeyShadow(true, true, true, false), false);
+  assert.equal(shouldCastKeyShadow(false, true, false, true), false);
+  applyKeyShadowState(renderer, lights, [sculpt], false);
+  assert.equal(renderer.shadowMap.enabled, false);
+  assert.equal(lights[0].castShadow, false);
+  assert.equal(mesh.receiveShadow, false);
+  for (const light of lights) light.dispose?.();
+  mesh.geometry.dispose();
+  mesh.material.dispose();
+  helperMesh.geometry.dispose();
+  helperMesh.material.dispose();
+});
+test("only configured sculpt chunk surfaces cast and receive shadows", () => {
+  const material = new MeshBasicMaterial(),
+    source = new ChunkSurface(material, true),
+    preview = new ChunkSurface(material),
+    sourceGeometry = new BoxGeometry(),
+    previewGeometry = new BoxGeometry();
+  try {
+    source.update([{ id: 1, geometry: sourceGeometry }]);
+    preview.update([{ id: 2, geometry: previewGeometry }]);
+    const sourceMesh = source.group.children[0],
+      previewMesh = preview.group.children[0];
+    assert.equal(sourceMesh.castShadow, true);
+    assert.equal(sourceMesh.receiveShadow, true);
+    assert.equal(previewMesh.castShadow, false);
+    assert.equal(previewMesh.receiveShadow, false);
+  } finally {
+    sourceGeometry.dispose();
+    previewGeometry.dispose();
+    material.dispose();
+  }
 });
 test("rig toggles restore exact original positions, targets, colours and intensity repeatedly", () => {
   const f = fixture(),
@@ -327,6 +403,7 @@ test("workspace scaling/rotation maps grabs back to local coordinates while Turn
 test("inspection rotates only its light with bounded time, pause, reverse, reset and original restoration", () => {
   const f = fixture();
   try {
+    assert.equal(f.rig.inspection.shadows, false);
     f.enable();
     const source = f.xr.sculptureRoot.matrix.clone(),
       table = f.xr.turntable.group.matrix.clone();
@@ -384,6 +461,7 @@ test("native save/load and actual recovery worker preserve lighting without sour
     layers.display.lighting = defaultLighting();
     layers.display.lighting.enabled = true;
     layers.display.lighting.ambientIntensity = 0.4;
+    layers.display.lighting.shadows = { enabled: true };
     layers.display.lighting.lights.rim.colour = "#123456";
     layers.display.lighting.lights.fill.position = [3, 2, 1];
     f.display.lighting = layers.display.lighting;
@@ -394,6 +472,7 @@ test("native save/load and actual recovery worker preserve lighting without sour
       saved = saveSculptProject(layers.project, display),
       restored = openSculptProject(saved);
     assert.deepEqual(restored.displayPreferences.lighting, layers.display.lighting);
+    assert.equal(restored.displayPreferences.lighting.shadows.enabled, true);
     const recovery = await encodeRecovery(
       layers,
       settings,
@@ -411,6 +490,13 @@ test("native save/load and actual recovery worker preserve lighting without sour
     assert.equal(layers.redoCount, 0);
     assert(!("inspection" in display.lighting));
     assert(!("editing" in display.lighting));
+    const legacyDisplay = layers.display.snapshot(
+      layers.project.id,
+      layers.project.layerStack.layers,
+    );
+    delete legacyDisplay.lighting;
+    const legacyProject = openSculptProject(saveSculptProject(layers.project, legacyDisplay));
+    assert.equal(legacyProject.displayPreferences.lighting, undefined);
     f.display.restore(layers.project.id, layers.project.layerStack.layers);
     f.rig.sync();
     assert(!f.rig.config.enabled);
@@ -499,6 +585,16 @@ test("all lighting menu targets are disjoint and controls update rig settings an
     model.activate("world:lighting");
     model.activate("lighting-enable");
     assert(layers.display.lighting.enabled);
+    model.activate("lighting-shadows");
+    assert.equal(layers.display.lighting.shadows.enabled, true);
+    model.activate("lighting-shadows");
+    assert.equal(layers.display.lighting.shadows.enabled, false);
+    model.world.section = "inspection";
+    model.activate("inspection-shadows");
+    assert.equal(f.rig.inspection.shadows, true);
+    model.activate("inspection-shadows");
+    assert.equal(f.rig.inspection.shadows, false);
+    model.world.section = "lighting";
     model.activate("world:ambient");
     model.activate("lighting-ambient-brighter");
     assert.equal(layers.display.lighting.ambientIntensity, 0.2);

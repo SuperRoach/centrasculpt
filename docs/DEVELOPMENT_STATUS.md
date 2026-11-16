@@ -1,3 +1,73 @@
+# Three-point lighting shadow follow-up — 2026-11-16
+
+## 1. Scope
+
+Add an opt-in Key directional shadow for the existing three-point rig. Keep the
+setting display-only, optional in old `.form` metadata, and independent of SDF,
+history, undo, recovery payload source data, and STL/GLB output.
+
+## 2. Implementation
+
+Desktop and immersive World Settings expose **Key light shadows**. The optional
+`lighting.shadows.enabled` property is validated with the existing lighting
+settings and defaults off when absent. The custom Key casts in rig mode;
+Inspection Light has a separate transient toggle. Visible source sculpt and
+Boolean result chunks cast and receive self-shadows. Light handles, guides,
+previews, and references stay outside those shadow roots. Fill and Rim
+never cast. The renderer uses PCF soft shadows and a fixed 1024 × 1024 map. An
+orthographic camera is fitted to visible sculpt bounds with a conservative sphere
+that covers turntable rotation. Bias and normal bias are set for the clay scale.
+Mesh shadow flags change only when the toggle changes; the map is reused.
+
+## 3. Verification
+
+The lighting regression covers absent/legacy preference defaults, on/off
+restoration, Key/Inspection shadow selection (including Inspection while the rig
+is off), source-chunk versus preview participation, 1024-map dimensions,
+bounded static and Inspection-orbit frusta, XR menu routing, native save/open,
+actual recovery worker encoding, and unchanged source arrays/history/GLB bytes.
+`npm run check`
+passed formatting, lint, strict TypeScript, production build and **1,791/1,791
+tests**. The disposable Chromium WebGL fixture rendered a visible soft cast
+shadow, checked the 1024 × 1024 map, Key-only casting, toggle restoration, and
+zero WebGL errors. Screenshot: `work/shadows-browser/key-shadow-on.png`. It uses
+local SwiftShader and is not a headset performance measurement.
+
+## 4. Limits
+
+Shadows add a scene render pass and may switch receive-shadow shader variants the
+first time they are enabled. Three.js caches the variants for later toggles.
+Quality is fixed at 1024; lower/higher controls were deferred. Desktop browser
+verification does not establish Quest 3 GPU time, thermal behavior, or frame rate.
+Disable shadows if headset performance is affected. The shadow map follows the
+normal renderer lifecycle and is not part of project geometry or exports.
+
+## 5. Phase decision
+
+Delivered the safe first slice: one explicit toggle and a fixed balanced map.
+Physical Quest 3 measurement is required before offering resolution or softness
+controls. No SDF samples, geometry source, transforms, Undo, physics, Personal
+Shapes, recovery source data, STL, or GLB data were changed by this feature.
+
+## 6. Handoff
+
+1. Enable Three-Point Lighting, then Key light shadows; confirm self-shadowing
+   across a sculpt and the visible Boolean result.
+2. Enable Inspection Light shadows and confirm the rotating source stays within
+   the fitted map as it moves around the sculpture. The option is temporary.
+3. Verify Fill and Rim do not add shadows, and the lighting handles/guides and
+   reference images neither cast nor receive them.
+4. Toggle shadows off and check normal illumination is restored. Save/reopen and
+   recover a project with the preference on; open a legacy project and confirm it
+   starts off.
+5. Compare STL/GLB exports before and after toggling; shadow settings must not
+   change exported geometry or materials.
+6. On Quest 3, check frame timing, controller dragging, Turntable, passthrough
+   transparency, and thermal behavior before enabling shadows by default or
+   adding quality controls.
+
+---
+
 # Phase 8.5b — Editable Text Primitives — 2026-11-16
 
 ## 1. Scope

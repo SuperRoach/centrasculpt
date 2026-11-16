@@ -8,6 +8,8 @@ export type LightSettings = {
   intensity: number;
   position: [number, number, number];
   target: [number, number, number];
+  /** Optional layer whose current centre this light tracks. */
+  targetLayerId?: string;
   roll?: number;
 };
 export type LightingSettings = {
@@ -15,6 +17,8 @@ export type LightingSettings = {
   enabled: boolean;
   /** Global fill multiplier; omitted uses 10% with the rig on, 100% otherwise. */
   ambientIntensity?: number;
+  /** Optional viewport-only shadow preference. Older projects keep shadows off. */
+  shadows?: { enabled: boolean };
   lights: Record<LightId, LightSettings>;
 };
 export const LIGHT_COLOURS = ["#fff4df", "#d6eaff", "#ffffff", "#ff963d", "#38baff", "#b56bff"];
@@ -65,6 +69,11 @@ export function validateLighting(value: unknown): LightingSettings {
     return fail();
   const result = defaultLighting();
   result.enabled = s.enabled;
+  if (s.shadows !== undefined) {
+    if (!s.shadows || typeof s.shadows !== "object" || typeof s.shadows.enabled !== "boolean")
+      return fail();
+    result.shadows = { enabled: s.shadows.enabled };
+  }
   if (s.ambientIntensity !== undefined) {
     if (!Number.isFinite(s.ambientIntensity) || s.ambientIntensity < 0 || s.ambientIntensity > 2)
       return fail();
@@ -93,7 +102,15 @@ export function validateLighting(value: unknown): LightingSettings {
     if (Math.hypot(...l.position.map((n, i) => n - l.target[i])) < 0.001) return fail();
     if (l.roll !== undefined && (!Number.isFinite(l.roll) || Math.abs(l.roll) > Math.PI))
       return fail();
+    if (
+      l.targetLayerId !== undefined &&
+      (typeof l.targetLayerId !== "string" ||
+        !l.targetLayerId.length ||
+        l.targetLayerId.length > 160)
+    )
+      return fail();
     result.lights[id] = {
+      ...(l.targetLayerId ? { targetLayerId: l.targetLayerId } : {}),
       ...(l.roll === undefined ? {} : { roll: l.roll }),
       type: "directional",
       enabled: l.enabled,

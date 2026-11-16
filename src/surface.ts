@@ -9,7 +9,10 @@ export class ChunkSurface {
   revision = 0;
   readonly spatial = new ChunkSpatialIndex();
   private readonly meshes = new Map<number, Mesh>();
-  constructor(private readonly material: Material) {
+  constructor(
+    private readonly material: Material,
+    private readonly castReceiveShadows = false,
+  ) {
     this.group.name = "SDF Sculpture";
   }
   clear(): void {
@@ -32,6 +35,8 @@ export class ChunkSurface {
       if (mesh) mesh.geometry = geometry;
       else {
         mesh = new Mesh(geometry, this.material);
+        mesh.castShadow = this.castReceiveShadows;
+        mesh.receiveShadow = this.castReceiveShadows;
         mesh.name = `Chunk ${id}`;
         this.meshes.set(id, mesh);
         this.group.add(mesh);
