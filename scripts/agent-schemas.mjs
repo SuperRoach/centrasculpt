@@ -152,6 +152,8 @@ const featureDefinition = z.discriminatedUnion("kind", [
       widthMm: positive,
       heightMm: positive,
       insetMm: number.min(0).max(1000),
+      cornerRadiusMm: number.min(0).max(1000).optional(),
+      outsideFlareMm: number.min(0).max(1000).optional(),
     })
     .strict(),
   z
@@ -513,7 +515,11 @@ for (const name of ["enclosure_anchors", "list_enclosure_features", "get_enclosu
       .strict(),
     readOnly: true,
     description:
-      "Inspect named enclosure frames or associative attachments. Local mm intent; physical fit unknown.",
+      name === "get_enclosure_feature"
+        ? "Find an enclosure feature by any of its source layer IDs, including a mounting post or bore. The first returned source ID is the attachment ID for edits."
+        : name === "list_enclosure_features"
+          ? "List the enclosure's cutouts and mounting patterns with their source layer IDs and dimensions in mm."
+          : "Inspect named enclosure frames and their local and world coordinates in mm.",
   };
 tools.set_enclosure_feature = {
   schema: z
@@ -527,7 +533,7 @@ tools.set_enclosure_feature = {
     })
     .strict(),
   description:
-    "Create or update one associative wall cutout or explicit floor post pattern in one standalone atomic recipe. Omit attachmentId to create. Dry-run validates source caches only.",
+    "Create or update one associative wall cutout or floor post pattern. Cutouts allow cornerRadiusMm or outsideFlareMm per edge at the outside face. For updates use the first source ID as attachmentId. Omit attachmentId to create. Dry-run validates source caches only.",
 };
 tools.remove_enclosure_feature = {
   schema: z

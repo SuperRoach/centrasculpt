@@ -1,3 +1,117 @@
+# Enclosure feature selection and placement — 2026-11-16
+
+Selecting any feature source in Layers selects its enclosure feature while
+Cutouts & mounting is open. Selecting a second source of the same feature
+keeps the form draft. Desktop Move and the numeric position fields project
+placement onto the anchored wall or floor, with snap in local millimetres.
+A mounting post and bore preview together. Release records both source
+transforms and the recipe coordinates as one Undo action. Invalid placement
+and cancellation restore the original source positions. The feature form
+reloads the updated coordinates after commit or history replay.
+
+The read-only MCP feature lookup accepts any of the feature's source IDs.
+Edits and removal use the first ID in the returned list. Immersive grip
+transforms use the existing behavior.
+
+---
+
+# Enclosure feature guides — 2026-11-15
+
+The desktop Enclosure panel puts Cutouts & mounting below the enclosure mode and
+shows the target base name. With the feature panel open, selecting another
+enclosure switches the target and clears the form. A live wall diagram supports
+click placement and numeric entry. The floor diagram shows the numbered mounting
+centres and bore sizes. Add or Save commits through the existing atomic recipe
+transaction. Preview in 3D is optional and shows the proposed source outline.
+
+Straight openings preserve their previous recipe behavior. Rounded rectangular
+corners are perpendicular to the wall, and tapered rectangular or circular
+entrances widen linearly through the wall. The width/height or diameter specifies
+the opening at the inside face. The outside taper field adds millimetres per
+edge. Rounded corners and taper are separate profiles on rectangles. The
+existing source and Boolean IDs survive a profile edit and Undo. Openings that
+reach the floor, rim or corner are refused. Large openings also remain subject
+to the existing primitive size and aspect limits. Physical fit has not been
+checked.
+
+Full check passed all 1,782 tests. Chromium verified enclosure binding, wall
+click placement, the 3D taper outline, direct Add, changing to rounded corners
+with the same feature ID, and the floor mounting diagram.
+[Wall guide](../work/enclosure-guide-browser/wall-taper-guide.png) ·
+[Floor guide](../work/enclosure-guide-browser/floor-mounting-guide.png).
+
+---
+
+# Phase 8.5a — Desktop Box Face Resize — 2026-11-15
+
+## 1. Scope
+
+Select a rectangular box (including a Boolean cutter) from Layers, then choose
+Scale. Its source outline and face markers appear; hidden segments are dashed.
+Hover an edge or marker for a thicker gold outline and a matching double-headed
+arrow along the drag axis. Drag the highlighted face while the opposite face stays
+fixed. The centre gizmo scales symmetrically and gets smaller for a small box
+on screen. In Move and Rotate, pressing a handle on the selected object keeps
+that selection even when another layer is under the pointer. For recipe
+cutouts, select the cutter layer under the enclosure base to see the guide.
+
+## 2. Implementation
+
+The gesture freezes the chosen signed local axis and maps mouse motion onto its
+screen projection. Linear snap quantizes face displacement in model millimetres.
+Bounds enforce minimum size, maximum size and the existing primitive aspect
+limit. The centre moves by half the signed extent change, applying the box's
+rotation and uniform scale in its parent frame. The Boolean draft uses both the
+new analytic source and its temporary pose; committed operands, IDs and order
+are unchanged during the drag. Publication preserves the grid resolution and
+records the fitted source volume and local pose in one Undo entry. The fitted
+cache spacing follows the new source bounds; the rectangular surface is analytic.
+
+## 3. Verification
+
+The focused tests cover all six signed faces, transformed anchors, limits,
+screen hits, a grouped subtractive cutter, adaptive Boolean preview, staged
+cancellation, lock refusal and atomic Undo/Redo. The production Chromium fixture
+starts with a completely hidden cutter and verifies acquisition, Escape, a
+non-owner pointer, lost capture, the centre shift and one-step Undo/Redo.
+[Reproduction script](../scripts/face-resize-browser-smoke.mjs) ·
+[Hidden cutter highlight](../work/face-resize-browser/hidden-cutter-hover.png) ·
+[Drag preview](../work/face-resize-browser/hidden-cutter-preview.png).
+The fixture uses a disposable browser profile and a synthetic project.
+Its `--enclosure` variant verifies a generated 12 × 8 mm rectangular wall
+cutout at Fast Boolean preview quality and captures the screen-size arrow.
+[Enclosure cutout highlight](../work/face-resize-enclosure/hidden-cutter-hover.png).
+`npm run check` passed with localhost binding enabled: formatting, lint, strict
+TypeScript, production build and all 1,779 tests. The sandboxed run had five
+localhost refusals; the three affected files also passed a dedicated rerun
+(30/30).
+
+## 4. Limits
+
+This slice supports desktop pointers and rectangular boxes without child layers,
+including boxes inside transformed groups. Rounded boxes, other primitives,
+groups, legacy non-uniform transforms and boxes parenting other layers keep
+their existing gizmo behaviour. Orbit to separate overlapping handles or to
+edit a face aimed straight into the camera. Continuous motion can outpace the
+adaptive Boolean draft; release refines at the selected preview quality.
+Escape, pointer capture loss, suspension or loss of edit ownership cancel the
+gesture. Immersive controller routing and physical Quest acceptance are pending.
+
+## 5. Phase decision
+
+Outstanding sparse SDF work moves to
+[Phase 9](ROADMAP.md#phase-9--deferred-sparse-sdf-performance-and-integration).
+Completed Phase 8.3a/8.3b results and existing editor experiments remain in
+place. Face Resize does not switch or expand the production storage backend.
+
+## 6. Next work
+
+Define Tool-hand trigger ownership alongside VR selection and menu rays, then
+validate tracking loss and hand changes in an immersive fixture and on Quest.
+Define how child cutters should be held in place when their parent box resizes.
+
+---
+
 # Phase 8.3b — Experimental Undo mesh cache in Centra — 2026-11-12
 
 ## 1. Scope
@@ -75,7 +189,7 @@ The wider sparse-storage and save compatibility gates remain open.
 
 Recheck locally with `npm test -- undo-cache-app-parity latest-undo-mesh dense-growth`.
 See the [editor trial notes](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-default-off-editor-trial)
-and [roadmap](ROADMAP.md#phase-83c--sparse-performance-for-everyday-sculpting-planned-2026-11-12).
+and [roadmap](ROADMAP.md#phase-9--deferred-sparse-sdf-performance-and-integration).
 
 ---
 

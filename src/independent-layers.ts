@@ -25,7 +25,15 @@ import { copyMoveVolume, MoveWork } from "./deformation-reconstruction";
 import type { DenseGrowthLimits } from "./dense-growth";
 import { DENSE_GROWTH_LIMITS, planDenseGrowth, prepareDenseGrowth } from "./dense-growth";
 import { LayerDisplayPreferences } from "./display-preferences";
+import {
+  enclosureAnchors,
+  type FeatureDefinition,
+  featurePlan,
+  scaledEnclosureFeature,
+  validateFeatureLinks,
+} from "./enclosure-features";
 import type { ExportSource } from "./export-mesh";
+import { anchoredBoxPose, checkedRectangularBox, type Face, resizeFace } from "./face-resize";
 import { SculptHistory } from "./history";
 import { type HierarchyState, LayerGroup } from "./layer-hierarchy";
 import type { LayerOperation, SculptProject } from "./layers";
@@ -51,6 +59,7 @@ import {
   validatePrimitive,
 } from "./parametric-primitive";
 import { type PersonalStamp, personalStampSource } from "./personal-stamp";
+import { snapValue } from "./physical-units";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
 import { evaluateTube, type TubeSource, validateTube } from "./procedural-tube";
 import { MAX_PROJECT_LAYERS, MAX_PROJECT_TRIANGLES, MAX_PROJECT_VOXELS } from "./project";
@@ -83,7 +92,9 @@ import {
   copyTransform,
   sameTransform,
   toLocal,
+  transformMatrix,
   uniformScale,
+  type Vec3,
   validateTransformEdit,
 } from "./transform";
 import type { VolumeStore } from "./volume-store";
@@ -232,12 +243,13 @@ type CutEntry = {
   selectedAfter: string | null;
 };
 type CutBatchEntry = { kind: "cut-batch"; layerId: string; entries: CutEntry[] };
-type TubeEntry = {
-  kind: "tube";
-  layerId: string;
-  before: { source: TubeSource | PrimitiveSource; volume: VolumeStore };
-  after: { source: TubeSource | PrimitiveSource; volume: VolumeStore };
+type SourceState = {
+  source: TubeSource | PrimitiveSource;
+  volume: VolumeStore;
+  primitiveOriginal?: PrimitiveSource;
+  localPose?: VolumeTransform;
 };
+type TubeEntry = { kind: "tube"; layerId: string; before: SourceState; after: SourceState };
 type MaskEntry = { kind: "mask"; layerId: string; before: MaskSnapshot; after: MaskSnapshot };
 type HierarchyEntry = {
   kind: "hierarchy";
@@ -296,6 +308,16 @@ type TimelineEntry =
     }
   | { kind: "operation"; layerId: string; before: LayerOperation; after: LayerOperation }
   | { kind: "order"; layerId: string; before: string[]; after: string[] };
+
+type TransformOptions = { placeEnclosureFeature?: boolean };
+type EnclosureFeatureMove = {
+  base: SdfLayer;
+  part: AssemblyPart;
+  featureIndex: number;
+  postIndex: number;
+  sources: { layer: SdfLayer; planIndex: number; world: VolumeTransform; local: VolumeTransform }[];
+  definition?: FeatureDefinition;
+};
 
 /** Owns one independent rendering/editing runtime per layer. The derived compositor only reads these independent sources. */
 export class IndependentLayers {
@@ -418,6 +440,7 @@ export class IndependentLayers {
     before: VolumeTransform;
     localBefore: VolumeTransform;
     hierarchyBefore?: HierarchyState;
+    featureMove?: EnclosureFeatureMove;
   } | null = null;
   selectedGroupId: string | null = null;
   readonly collapsedGroups = new Set<string>();
@@ -1532,7 +1555,137 @@ export class IndependentLayers {
       return true;
     });
   }
-  beginTransform(): void {
+  private enclosureFeatureForSource(id: string) {
+    const stack = this.project.layerStack;
+    const parent = stack.hierarchy.parent(id);
+    if (!parent) return;
+    const base = stack.layers.find((layer) => layer.id === parent);
+    const part = base?.assemblyPart;
+    const intent = part?.enclosure;
+    const features = intent?.features;
+    const featureIndex = features?.findIndex(({ sourceIds }) => sourceIds.includes(id)) ?? -1;
+    if (!base || !part || !intent || !features || featureIndex < 0) return;
+    return { base, part, intent, features, feature: features[featureIndex], featureIndex };
+  }
+
+  private prepareEnclosureFeatureMove(id: string): EnclosureFeatureMove | undefined {
+    const owner = this.enclosureFeatureForSource(id);
+    if (!owner) return;
+    const { base, part, feature, featureIndex } = owner;
+    const stack = this.project.layerStack;
+    validateFeatureLinks(stack, base.id);
+    const postIndex = Math.floor(feature.sourceIds.indexOf(id) / 2);
+    base.assertEditable();
+    const sources = feature.sourceIds.flatMap((sourceId, planIndex) => {
+      if (Math.floor(planIndex / 2) !== postIndex) return [];
+      const layer = stack.get(sourceId);
+      layer.assertEditable();
+      return [
+        {
+          layer,
+          planIndex,
+          world: copyTransform(layer.transform),
+          local: copyTransform(layer.localTransform),
+        },
+      ];
+    });
+    return { base, part, featureIndex, postIndex, sources };
+  }
+
+  get movingEnclosureFeature(): boolean {
+    return !!this.transformSession?.featureMove;
+  }
+
+  private placeEnclosureFeature(move: EnclosureFeatureMove, position: Vec3) {
+    const intent = move.part.enclosure!;
+    const original = intent.features![move.featureIndex].definition;
+    const target = new Vector3(...position)
+      .applyMatrix4(transformMatrix(move.base.transform).invert())
+      .multiplyScalar(this.display.precision.millimetresPerUnit);
+    const snap = (value: number, previous: number) =>
+      Math.abs(value - previous) < 1e-8
+        ? previous
+        : Math.round(snapValue(value, this.display.precision.translationSnapMM) * 1e9) / 1e9;
+    const definition = structuredClone(original);
+    if (definition.kind === "cutout") {
+      const wall = enclosureAnchors(intent.parameters).find(({ id }) => id === definition.anchor)!;
+      target.sub(new Vector3(...wall.originMm));
+      definition.uMm = snap(target.dot(new Vector3(...wall.u)), definition.uMm);
+      definition.vMm = snap(target.dot(new Vector3(...wall.v)), definition.vMm);
+    } else {
+      const [x, z] = definition.centresMm[move.postIndex];
+      definition.centresMm[move.postIndex] = [snap(target.x, x), snap(target.z, z)];
+    }
+    const plan = featurePlan(intent.parameters, definition);
+    const mm = this.display.precision.millimetresPerUnit;
+    const poses = move.sources.map(({ layer, local, planIndex }) => {
+      layer.assertEditable();
+      const position = plan[planIndex].positionMm.map((coordinate) => coordinate / mm) as Vec3;
+      return validateTransformEdit({ ...local, position }, local);
+    });
+    move.sources.forEach(({ layer }, index) => {
+      layer.localTransform = poses[index];
+    });
+    move.definition = definition;
+    this.syncPresentation();
+  }
+
+  private finishEnclosureFeatureMove(move: EnclosureFeatureMove, activeId: string): boolean {
+    const intent = move.part.enclosure!;
+    const feature = intent.features![move.featureIndex];
+    if (!move.definition) return false;
+    const before = feature.definition;
+    const next = move.definition;
+    const unchanged =
+      before.kind === "mounting" && next.kind === "mounting"
+        ? before.centresMm.every(
+            ([x, z], i) =>
+              Math.abs(x - next.centresMm[i][0]) < 1e-8 &&
+              Math.abs(z - next.centresMm[i][1]) < 1e-8,
+          )
+        : before.kind === "cutout" &&
+          next.kind === "cutout" &&
+          Math.abs(before.uMm - next.uMm) < 1e-8 &&
+          Math.abs(before.vMm - next.vMm) < 1e-8;
+    if (unchanged) {
+      this.restoreEnclosureFeatureMove(move);
+      return false;
+    }
+    const features = intent.features!.map((f, index) =>
+      index === move.featureIndex ? { ...f, definition: next } : f,
+    );
+    const after = { ...move.part, enclosure: { ...intent, features } };
+    const entries: TimelineEntry[] = move.sources.map(({ layer, world, local }) => ({
+      kind: "transform",
+      layerId: layer.id,
+      before: world,
+      after: copyTransform(layer.transform),
+      localBefore: local,
+      localAfter: copyTransform(layer.localTransform),
+    }));
+    entries.push({ kind: "assembly", layerId: move.base.id, before: move.part, after });
+    move.base.assemblyPart = after;
+    this.discardFuture();
+    this.past.push({
+      kind: "assembly-batch",
+      layerId: activeId,
+      entries,
+      activeBefore: activeId,
+      activeAfter: activeId,
+      selectedBefore: null,
+      selectedAfter: null,
+    });
+    this.committedRevision++;
+    this.syncPresentation();
+    return true;
+  }
+
+  private restoreEnclosureFeatureMove(move: EnclosureFeatureMove) {
+    for (const { layer, local } of move.sources) layer.localTransform = copyTransform(local);
+    this.syncPresentation();
+  }
+
+  beginTransform(options: TransformOptions = {}): void {
     this.finishStroke();
     if (this.transformSession) throw new Error("A transform is already active.");
     this.assertAvailable();
@@ -1542,6 +1695,10 @@ export class IndependentLayers {
       layerId: node.id,
       before: copyTransform(node.transform),
       localBefore: copyTransform(node.localTransform),
+      featureMove:
+        options.placeEnclosureFeature && !this.selectedGroupId
+          ? this.prepareEnclosureFeatureMove(node.id)
+          : undefined,
       hierarchyBefore:
         this.selectedGroupId || this.project.layerStack.hierarchy.children(node.id).length
           ? this.project.layerStack.hierarchy.snapshot()
@@ -1554,7 +1711,12 @@ export class IndependentLayers {
       throw new Error("Transform selection changed.");
     const node = this.transformNode;
     node.assertEditable();
-    node.transform = validateTransformEdit(value, this.transformSession.before);
+    const next = validateTransformEdit(value, this.transformSession.before);
+    if (this.transformSession.featureMove) {
+      this.placeEnclosureFeature(this.transformSession.featureMove, next.position);
+      return;
+    }
+    node.transform = next;
     if (node instanceof LayerGroup || this.project.layerStack.hierarchy.children(node.id).length)
       this.syncPresentation();
     else this.syncLayerPose(node.id);
@@ -1563,6 +1725,8 @@ export class IndependentLayers {
     const session = this.transformSession;
     if (!session) return false;
     this.transformSession = null;
+    if (session.featureMove)
+      return this.finishEnclosureFeatureMove(session.featureMove, session.layerId);
     const after = copyTransform(this.project.layerStack.hierarchy.get(session.layerId).transform);
     if (sameTransform(session.before, after)) {
       this.project.layerStack.hierarchy.get(session.layerId).localTransform = copyTransform(
@@ -1612,14 +1776,18 @@ export class IndependentLayers {
     const session = this.transformSession;
     if (!session) return;
     this.transformSession = null;
+    if (session.featureMove) {
+      this.restoreEnclosureFeatureMove(session.featureMove);
+      return;
+    }
     this.project.layerStack.hierarchy.get(session.layerId).localTransform = copyTransform(
       session.localBefore,
     );
     if (session.hierarchyBefore) this.syncPresentation();
     else this.syncLayerPose(session.layerId);
   }
-  setActiveTransform(value: unknown): boolean {
-    this.beginTransform();
+  setActiveTransform(value: unknown, options?: TransformOptions): boolean {
+    this.beginTransform(options);
     try {
       this.updateTransform(value);
       return this.finishTransform();
@@ -1738,9 +1906,11 @@ export class IndependentLayers {
           false,
           state.source.kind === "tube" ? undefined : state.source,
         );
+      if (state.localPose) layer.localTransform = copyTransform(state.localPose);
       layer.volume = state.volume;
       layer.procedural = state.source.kind === "tube" ? validateTube(state.source) : undefined;
       layer.primitive = state.source.kind !== "tube" ? validatePrimitive(state.source) : undefined;
+      layer.primitiveOriginal = state.primitiveOriginal;
       this.group.remove(old.surface.group);
       old.dispose();
       this.install(next);
@@ -2228,6 +2398,97 @@ export class IndependentLayers {
     this.assertAvailable();
     this.finishStroke();
     this.finishTransform();
+    const owner = this.enclosureFeatureForSource(id);
+    if (!owner) return this.duplicateSingleLayer(id, signal, progress);
+
+    const { base, part, intent, features, feature } = owner;
+    const stack = this.project.layerStack;
+    base.assertEditable();
+    validateFeatureLinks(stack, base.id);
+    const sources = feature.sourceIds.map((sourceId) => stack.get(sourceId));
+    for (const source of sources) source.assertEditable();
+    this.assertCapacity(
+      sources.reduce((sum, source) => sum + volumeSampleCount(source.volume), 0),
+      undefined,
+      sources.length,
+    );
+    const lease = this.acquireModellingLease();
+    const view = this.viewMode;
+    let checkpoint: number | undefined;
+    try {
+      checkpoint = this.withModellingLease(lease, () => this.assemblyCheckpoint());
+      const copies = new Map<string, SdfLayer>();
+      for (const original of sources) {
+        const copy = await this.withModellingLease(lease, () =>
+          this.duplicateSingleLayer(original.id, signal, progress),
+        );
+        copies.set(original.id, copy);
+      }
+      return this.withModellingLease(lease, () => {
+        if (signal?.aborted || this.disposed)
+          throw new Error("Duplication cancelled; original and redo kept.");
+        // Mounting bores are operands of their posts. Give copied posts their own bores.
+        for (const copy of copies.values()) {
+          const modifiers = copy.booleanModifiers;
+          if (modifiers?.some(({ sourceId }) => copies.has(sourceId))) {
+            this.setBooleanModifiers(
+              copy.id,
+              modifiers.map((modifier) => ({
+                ...modifier,
+                sourceId: copies.get(modifier.sourceId)?.id ?? modifier.sourceId,
+              })),
+            );
+          }
+        }
+        // Keep each duplicate beside its original in the ordered Boolean stack.
+        const modifiers = (base.booleanModifiers ?? []).flatMap((modifier) => {
+          const copy = copies.get(modifier.sourceId);
+          return copy ? [modifier, { ...modifier, id: newId(), sourceId: copy.id }] : [modifier];
+        });
+        this.setBooleanModifiers(base.id, modifiers);
+        this.setAssemblyPart(base.id, {
+          ...part,
+          enclosure: {
+            ...intent,
+            features: [
+              ...features,
+              {
+                definition: {
+                  ...feature.definition,
+                  name: `${feature.definition.name.slice(0, 85)} copy`,
+                },
+                sourceIds: feature.sourceIds.map((sourceId) => copies.get(sourceId)!.id),
+              },
+            ],
+          },
+        });
+        validateFeatureLinks(stack, base.id);
+        const selected = copies.get(id)!;
+        this.select(selected.id);
+        this.viewMode = view;
+        this.syncPresentation();
+        this.finishAssemblyTransaction(checkpoint!);
+        return selected;
+      });
+    } catch (error) {
+      if (checkpoint !== undefined) {
+        const start = checkpoint;
+        this.withModellingLease(lease, () => this.rollbackAssemblyTransaction(start));
+      }
+      throw error;
+    } finally {
+      this.releaseModellingLease(lease);
+    }
+  }
+
+  private async duplicateSingleLayer(
+    id: string,
+    signal?: AbortSignal,
+    progress?: (text: string) => void,
+  ): Promise<SdfLayer> {
+    this.assertAvailable();
+    this.finishStroke();
+    this.finishTransform();
     const source = this.project.layerStack.get(id);
     source.assertEditable();
     if (source.assemblyPart?.enclosure)
@@ -2346,6 +2607,8 @@ export class IndependentLayers {
     const source = this.project.layerStack.get(id),
       n = source.volume.resolution;
     source.assertEditable();
+    if (this.enclosureFeatureForSource(id))
+      throw new Error("Use Layers → Duplicate to copy an enclosure feature and its Boolean links.");
     if (source.assemblyPart?.enclosure)
       throw new Error(
         "Duplicate the enclosure project in Project Library to preserve its independent parts and dependencies. Single-root layer duplication is unsupported.",
@@ -3246,12 +3509,153 @@ export class IndependentLayers {
   ): Promise<SdfLayer> {
     return this.regenerateSource(value, id, signal, placement);
   }
+  enclosureScaleRole(id: string): "cutout" | "post" | "bore" | undefined {
+    const owner = this.enclosureFeatureForSource(id);
+    if (!owner) return undefined;
+    if (owner.feature.definition.kind === "cutout") return "cutout";
+    return owner.feature.sourceIds.indexOf(id) % 2 ? "bore" : "post";
+  }
+
+  /** Commit gizmo dimensions and the owning recipe together. */
+  async resizePrimitiveFromGizmo(
+    id: string,
+    source: PrimitiveSource,
+    signal?: AbortSignal,
+    centre?: Vec3,
+  ): Promise<SdfLayer> {
+    const owner = this.enclosureFeatureForSource(id);
+    if (!owner) return this.regeneratePrimitive(source, id, signal);
+
+    const { base, part, intent, features, feature, featureIndex } = owner;
+    const stack = this.project.layerStack;
+    const selected = stack.get(id);
+    if (this.selectedGroupId || this.project.activeLayerId !== id || !selected.primitive)
+      throw new Error("Select the enclosure feature before scaling it.");
+    base.assertEditable();
+    validateFeatureLinks(stack, base.id);
+    const mm = this.display.precision.millimetresPerUnit;
+    const centreMm = centre
+      ? new Vector3(...centre)
+          .applyMatrix4(transformMatrix(base.transform).invert())
+          .multiplyScalar(mm)
+          .toArray()
+      : undefined;
+    const definition = scaledEnclosureFeature(
+      intent.parameters,
+      feature.definition,
+      feature.sourceIds.indexOf(id),
+      selected.primitive,
+      source,
+      mm,
+      centreMm,
+    );
+    if (JSON.stringify(definition) === JSON.stringify(feature.definition))
+      throw new Error(
+        "The enclosure controls cutter depth. Scale the opening across or up the wall.",
+      );
+    const plan = featurePlan(intent.parameters, definition);
+    const changes = plan.flatMap((entry, index) => {
+      const layer = stack.get(feature.sourceIds[index]);
+      const primitive = validatePrimitive(
+        Object.fromEntries(
+          Object.entries(entry.source).map(([key, value]) => [
+            key,
+            typeof value === "number" ? value / mm : value,
+          ]),
+        ),
+      );
+      const pose = copyTransform(layer.localTransform);
+      pose.position = entry.positionMm.map((value) => value / mm) as Vec3;
+      if (
+        sameTransform(pose, layer.localTransform) &&
+        JSON.stringify(primitive) === JSON.stringify(layer.primitive)
+      )
+        return [];
+      layer.assertEditable();
+      return [{ layer, primitive, pose }];
+    });
+    const lease = this.acquireModellingLease();
+    let checkpoint: number | undefined;
+    try {
+      checkpoint = this.withModellingLease(lease, () => this.assemblyCheckpoint());
+      for (const change of changes) {
+        await this.withModellingLease(lease, () =>
+          this.regenerateSource(
+            change.primitive,
+            change.layer.id,
+            signal,
+            undefined,
+            undefined,
+            change.pose,
+          ),
+        );
+      }
+      const start = checkpoint;
+      this.withModellingLease(lease, () => {
+        if (signal?.aborted || this.disposed) throw new Error("Enclosure resize cancelled.");
+        this.setAssemblyPart(base.id, {
+          ...part,
+          enclosure: {
+            ...intent,
+            features: features.map((entry, index) =>
+              index === featureIndex ? { ...entry, definition } : entry,
+            ),
+          },
+        });
+        this.finishAssemblyTransaction(start);
+      });
+      return selected;
+    } catch (error) {
+      if (checkpoint !== undefined) {
+        const start = checkpoint;
+        this.withModellingLease(lease, () => this.rollbackAssemblyTransaction(start));
+      }
+      throw error;
+    } finally {
+      this.releaseModellingLease(lease);
+    }
+  }
+
+  async resizeBoxFace(
+    id: string,
+    face: Face,
+    delta: number,
+    signal?: AbortSignal,
+  ): Promise<SdfLayer> {
+    if (this.selectedGroupId || this.project.activeLayerId !== id)
+      throw new Error("Select the box before resizing its face.");
+    const layer = this.runtime(id).layer;
+    if (this.project.layerStack.hierarchy.children(id).length)
+      throw new Error("Face Resize requires a box without child layers.");
+    layer.assertEditable();
+    uniformScale(layer.transform);
+    const next = resizeFace(checkedRectangularBox(layer.primitive), face, delta);
+    if (!next.delta) return layer;
+    if (this.enclosureScaleRole(id) === "cutout") {
+      if (face.axis === 2) throw new Error("The enclosure controls through-wall depth.");
+      return this.resizePrimitiveFromGizmo(
+        id,
+        next.source,
+        signal,
+        anchoredBoxPose(layer.transform, face, next.delta).position,
+      );
+    }
+    return this.regenerateSource(
+      next.source,
+      id,
+      signal,
+      undefined,
+      undefined,
+      anchoredBoxPose(layer.localTransform, face, next.delta),
+    );
+  }
   private async regenerateSource(
     value: TubeSource | PrimitiveSource,
     id?: string,
     signal?: AbortSignal,
     placement?: VolumeTransform,
     progress?: (fraction: number) => void,
+    localPose?: VolumeTransform,
   ): Promise<SdfLayer> {
     this.assertAvailable();
     if (this.selectedGroupId) throw new Error("Select a child layer for procedural editing.");
@@ -3307,7 +3711,7 @@ export class IndependentLayers {
             )
           : evaluatePrimitive(
               source,
-              Math.min(n, Math.floor(Math.cbrt(Math.max(0, maxSamples)))),
+              localPose ? n : Math.min(n, Math.floor(Math.cbrt(Math.max(0, maxSamples)))),
               maxSamples,
               allocate,
             );
@@ -3331,6 +3735,8 @@ export class IndependentLayers {
         old
           ? {
               ...old.layer.metadata(),
+              primitiveOriginal:
+                old.layer.primitive?.kind === source.kind ? old.layer.primitiveOriginal : undefined,
               procedural: source.kind === "tube" ? source : undefined,
               primitive: source.kind !== "tube" ? source : undefined,
             }
@@ -3382,13 +3788,17 @@ export class IndependentLayers {
             ? validatePrimitive(old.layer.primitive)
             : validateTube(old.layer.procedural),
           volume: old.volume,
+          primitiveOriginal: old.layer.primitiveOriginal,
+          ...(localPose ? { localPose: copyTransform(old.layer.localTransform) } : {}),
         };
         this.group.remove(old.surface.group);
         this.runtimes.delete(id!);
         // Retain stable layer identity used by selection and transform tools.
+        if (localPose) old.layer.localTransform = localPose;
         old.layer.volume = volume;
         old.layer.procedural = source.kind === "tube" ? source : undefined;
         old.layer.primitive = source.kind !== "tube" ? source : undefined;
+        old.layer.primitiveOriginal = layer.primitiveOriginal;
         this.install(candidate);
         old.dispose();
         for (const e of this.flattenEntries(this.past))
@@ -3397,11 +3807,17 @@ export class IndependentLayers {
           kind: "tube",
           layerId: old.layer.id,
           before: previous,
-          after: { source, volume },
+          after: {
+            source,
+            volume,
+            primitiveOriginal: layer.primitiveOriginal,
+            ...(localPose ? { localPose } : {}),
+          },
         });
         // Bound source-cache history to eight edits. Source coordinates never resample.
         let excess = this.past.filter((e) => e.kind === "tube").length - 8;
-        this.past = this.past.filter((e) => e.kind !== "tube" || excess-- <= 0);
+        if (!this.assemblyTransaction)
+          this.past = this.past.filter((e) => e.kind !== "tube" || excess-- <= 0);
       } else {
         this.project.layerStack.insert(layer);
         this.install(candidate);

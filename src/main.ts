@@ -7,6 +7,7 @@ import { frameAgentBounds } from "./desktop-navigation";
 import { DesktopPreviewPerformance } from "./desktop-preview-performance";
 import { bindDesktopSavePress } from "./desktop-save-press";
 import { enclosureUI } from "./enclosure-ui";
+import { EnclosureViewportGuide } from "./enclosure-viewport-guide";
 import type { CurvedReductionOptions } from "./export-decimation";
 import { CURVED_TOLERANCES, curvedReductionSummary } from "./export-decimation";
 import { mountExportDialog } from "./export-dialog";
@@ -137,7 +138,7 @@ let stabilityText = "";
 let precision: PrecisionTools | undefined;
 let primitivesUI: { sync: () => void } | undefined;
 let primitivePreview: PrimitiveDraftPreview | undefined;
-let enclosureControlsUI: { sync: () => void } | undefined;
+let enclosureControlsUI: ReturnType<typeof enclosureUI> | undefined;
 let assemblyControlsUI: { sync: () => void } | undefined;
 let measurementUI: { sync: () => void } | undefined;
 let xrExperience: XRExperience | undefined;
@@ -318,7 +319,8 @@ const fill = new THREE.DirectionalLight(0xd6eaff, 1.4);
 fill.position.set(4, 1, -2);
 scene.add(fill);
 const grid = new THREE.GridHelper(8, 40, 0xc9cdc2, 0xdaddd3);
-grid.position.y = -1.12;
+const defaultDesktopGridY = -1.12;
+grid.position.y = defaultDesktopGridY;
 scene.add(grid);
 const cursor = new THREE.Mesh(
   new THREE.RingGeometry(0.97, 1, 64),
@@ -389,6 +391,7 @@ function syncTransformUI() {
     input.space,
     loadingProject || xrBlocked() || layers.modellingBusy,
     display.precision.millimetresPerUnit,
+    transformTools?.faceResizeAvailable,
   );
   syncStats();
 }
@@ -512,6 +515,9 @@ transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () 
   },
   busy: () =>
     !!primitivePreview?.active ||
+    !!precision?.active ||
+    !!precision?.primitives.placing ||
+    !!precision?.primitives.assembly.ownsPointer ||
     loadingProject ||
     ui.modalOpen ||
     xrBlocked() ||
@@ -1131,7 +1137,7 @@ ui.onTransformAction((action) => {
       else if (action.field[0] === "p")
         next.position[axis] = action.value / display.precision.millimetresPerUnit;
       else next.rotation[axis] = (action.value * Math.PI) / 180;
-      layers.setActiveTransform(next);
+      layers.setActiveTransform(next, { placeEnclosureFeature: action.field[0] === "p" });
     }
     cursor.visible = false;
     if (action.type !== "mode")
@@ -2004,12 +2010,6 @@ let partDownloadURLs: string[] = [];
 let partDownloadBytes = 0;
 const exportStatus = document.createElement("p");
 exportStatus.setAttribute("role", "status");
-const printDownload = document.createElement("a");
-printDownload.id = "export-download";
-printDownload.style.visibility = "hidden";
-exportResult.append(
-  exportSummary,
-  exportStatus,
 const exportDownloadIcon =
   '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg>';
 const exportTriangleCount = (triangles: number) =>
@@ -2022,11 +2022,17 @@ preparedExport.innerHTML =
   '<div class="export-part-heading"><p></p></div><details><summary>Extra info</summary></details>';
 const preparedHeading = preparedExport.querySelector(".export-part-heading")!;
 const preparedExtra = preparedExport.querySelector("details")!;
-  preparedExport,
-  cancelExport,
+const printDownload = document.createElement("a");
+printDownload.id = "export-download";
 printDownload.className = "export-part-download";
 printDownload.innerHTML = `${exportDownloadIcon}<span class="export-download-name"></span>`;
 preparedHeading.prepend(printDownload);
+printDownload.style.visibility = "hidden";
+exportResult.append(
+  exportSummary,
+  exportStatus,
+  preparedExport,
+  cancelExport,
   printableDownloads,
   exportProfileDetails,
 );
@@ -2047,12 +2053,6 @@ function clearPreparedExport() {
   printableDownloads.replaceChildren();
   if (preparedExportURL) URL.revokeObjectURL(preparedExportURL);
   preparedExportURL = null;
-  printDownload.removeAttribute("href");
-  printDownload.removeAttribute("download");
-  printDownload.onclick = null;
-  printDownload.style.visibility = "hidden";
-  printReportDownload.hidden = true;
-  printReportDownload.onclick = null;
   preparedExport.hidden = true;
   preparedExtra.open = false;
   if (exportSummary.parentElement === preparedExtra) {
@@ -2061,11 +2061,18 @@ function clearPreparedExport() {
     exportResult.after(printPanel);
     printReport.before(printReportDownload);
   }
+  printDownload.removeAttribute("href");
+  printDownload.removeAttribute("download");
+  printDownload.onclick = null;
+  printDownload.style.visibility = "hidden";
+  printReportDownload.hidden = true;
+  printReportDownload.onclick = null;
   printReport.textContent = "";
   exportProfile.textContent = "";
 }
 function prepareExportDownload(
   data: ArrayBuffer,
+  name: string,
   filename: string,
   format: "stl" | "glb",
   triangles: number,
@@ -2074,7 +2081,6 @@ function prepareExportDownload(
   preparedExportURL = URL.createObjectURL(
     new Blob([data], { type: format === "stl" ? "model/stl" : "model/gltf-binary" }),
   );
-  name: string,
   exportProfile.textContent += `\nBlob / download URL preparation: ${(performance.now() - preparationStart).toFixed(3)} ms. Browser disk-write timing unavailable.`;
   printDownload.href = preparedExportURL;
   printDownload.download = filename;
@@ -2098,13 +2104,13 @@ function prepareExportDownload(
 }
 window.addEventListener("pagehide", clearPreparedExport);
 const printReportDownload = document.createElement("button");
+printReportDownload.id = "export-report-download";
 printReportDownload.textContent = "Download optional print report (.json)";
 printReportDownload.hidden = true;
 printPanel.append(printReportDownload);
 const printReport = document.createElement("pre");
 printReport.style.whiteSpace = "pre-wrap";
 printReport.setAttribute("role", "status");
-printReportDownload.id = "export-report-download";
 printPanel.append(printReport);
 document.getElementById("export-boolean")!.parentElement!.append(printPanel);
 mountWhatsNew(printPanel, whatsNew);
@@ -2191,6 +2197,7 @@ desktopLayers = new DesktopLayerPalette(
   (text) => ui.projectMessage(text, true),
   () => loadingProject || ui.modalOpen || xrBlocked(),
   () => stop(),
+  () => enclosureControlsUI?.followLayerSelection(),
 );
 document.querySelector(".layers-panel")!.addEventListener(
   "click",
@@ -2614,6 +2621,7 @@ precision.primitives.assembly.onExport = (result) => {
         "Prepared part downloads exceed their 32 MiB/available memory budget. Export one part at a time; source kept.",
       );
     const revision = layers.sourceRevision;
+    const { report } = result;
     const row = document.createElement("div");
     row.className = "export-part";
     row.innerHTML = `<div class="export-part-heading">
@@ -2645,7 +2653,6 @@ precision.primitives.assembly.onExport = (result) => {
         details.querySelector("a")!,
         new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
         `${name}-print-report.json`,
-    const { report } = result;
       ],
     ] as const) {
       const url = URL.createObjectURL(blob);
@@ -2687,6 +2694,8 @@ enclosureControlsUI = enclosureUI(
   sidebarTools,
   () => loadingProject || ui.modalOpen || xrBlocked(),
 );
+const enclosureViewportGuide = new EnclosureViewportGuide();
+xrRig.sculptureRoot.add(enclosureViewportGuide.group);
 if (__AGENT_ENABLED__) {
   void import("./agent-browser").then(({ mountAgentAccess, frameAgentBounds }) => {
     mountAgentAccess(
@@ -3481,6 +3490,7 @@ const recoveryTimer = setInterval(() => {
 import.meta.hot?.dispose(() => {
   disposeSavePress();
   primitivePreview?.dispose();
+  enclosureViewportGuide.dispose();
   clearInterval(recoveryTimer);
   snapArrow.removeFromParent();
   snapArrow.line.geometry.dispose();
@@ -3566,12 +3576,19 @@ renderer.setAnimationLoop((now, frame) => {
   precision?.sync();
   primitivePreview?.sync();
   if (primitivePreview?.active) transformTools?.sync();
+  transformTools?.updateFaceGuide();
   if (now - lastAssemblyUISync > 150) {
     assemblyControlsUI?.sync();
     enclosureControlsUI?.sync();
     lastAssemblyUISync = now;
   }
   const cpuStart = performance.now();
+  grid.position.y =
+    enclosureViewportGuide.sync(
+      enclosureControlsUI?.viewportTarget(),
+      camera,
+      ui.viewport.clientHeight,
+    ) ?? defaultDesktopGridY;
   lightUI.sync();
   lighting.sync(now, document.visibilityState !== "hidden");
   scene.environmentIntensity = lighting.environmentIntensity;

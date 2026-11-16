@@ -165,7 +165,14 @@ export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: (
   cancel.className = "enclosure-cancel";
   status.className = "enclosure-status";
   body.append(status);
-  const features = enclosureFeatureUI(tools, body, () => sync());
+  const features = enclosureFeatureUI(
+    tools,
+    body,
+    () => sync(),
+    busy,
+    () => panel.open,
+  );
+  modes.after(features.panel);
   function sync() {
     tools.sync();
     if (displayedProject !== tools.layers().project) {
@@ -210,5 +217,9 @@ export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: (
     sync();
   };
   sync();
-  return { sync };
+  return {
+    sync,
+    followLayerSelection: features.followLayerSelection,
+    viewportTarget: features.viewportTarget,
+  };
 }

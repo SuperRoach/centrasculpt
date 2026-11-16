@@ -1,11 +1,15 @@
-import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
+import { Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
 import { partOwner } from "./assembly";
 import { previewAssembly } from "./assembly-tools";
 import { type FeatureDefinition, featurePlan, featureWorldPose } from "./enclosure-features";
 import { DEFAULT_ENCLOSURE, type EnclosureParameters, enclosurePlan } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI } from "./modelling-api";
-import { roundedBoxGeometry } from "./parametric-primitive";
+import {
+  type PrimitiveSource,
+  primitiveGeometry,
+  roundedBoxGeometry,
+} from "./parametric-primitive";
 import { transformMatrix } from "./transform";
 import type { XRControllerState } from "./xr-input";
 import type { MenuContent } from "./xr-menu-model";
@@ -125,12 +129,17 @@ export class EnclosureControls {
     this.pair = undefined;
     this.parameters = structuredClone(DEFAULT_ENCLOSURE);
   }
-  openSelected() {
+  openSelected(followSelection = false) {
     this.sync();
-    if (this.pending || this.pair || this.staged) return;
+    if (this.pending || (!followSelection && this.pair) || this.staged || this.featureStage) return;
     const stack = this.layers().project.layerStack,
       root = partOwner(stack, stack.activeLayerId);
-    if (root && stack.get(root).assemblyPart?.enclosure) {
+    if (
+      root &&
+      root !== this.pair?.base &&
+      root !== this.pair?.lid &&
+      stack.get(root).assemblyPart?.enclosure
+    ) {
       try {
         this.editSelected();
       } catch (e) {
@@ -224,7 +233,7 @@ export class EnclosureControls {
       if (pair)
         for (const feature of result.value.features)
           this.featureOutlines(feature.definition, parameters, editor, pair.base);
-      editor.group.add(this.preview);
+      (editor.group.parent ?? editor.group).add(this.preview);
       this.feedback = `Preview: ${plan.outerDimensionsMm.join(" × ")} mm outside. Inside ${parameters.innerWidthMm} wide × ${parameters.innerDepthMm} deep × ${parameters.innerHeightMm} high. Lid gap ${parameters.lid.clearanceMm} mm per side. The coloured lines show the new size. Choose ${pair ? "Apply changes" : "Create enclosure"} to keep it.`;
     } catch (e) {
       if (this.layers() === editor) this.feedback = e instanceof Error ? e.message : String(e);
@@ -241,16 +250,14 @@ export class EnclosureControls {
   ) {
     const mm = editor.display.precision.millimetresPerUnit;
     for (const def of featurePlan(p, definition)) {
-      const s = def.source;
-      const geometry =
-        s.kind === "box"
-          ? roundedBoxGeometry(s)
-          : s.kind === "cylinder"
-            ? new CylinderGeometry(s.diameter / 2, s.diameter / 2, s.height, 32)
-            : undefined;
-      if (!geometry) continue;
+      const source = Object.fromEntries(
+        Object.entries(def.source).map(([key, value]) => [
+          key,
+          typeof value === "number" ? value / mm : value,
+        ]),
+      ) as PrimitiveSource;
       const mesh = new Mesh(
-        geometry,
+        primitiveGeometry(source, 32),
         new MeshBasicMaterial({
           color: def.operation === "difference" ? 0xffbd70 : 0x70d5ba,
           wireframe: true,
@@ -262,12 +269,17 @@ export class EnclosureControls {
       const pose = featureWorldPose(def, editor.project.layerStack.get(base).transform, mm);
       mesh.position.set(...(pose.position.map((v) => v / mm) as [number, number, number]));
       mesh.rotation.set(...pose.rotation, "XYZ");
-      mesh.scale.set(...(pose.scale.map((v) => v / mm) as [number, number, number]));
+      mesh.scale.fromArray(pose.scale);
       mesh.raycast = () => {};
       this.preview.add(mesh);
     }
   }
-  async stageFeature(definition?: FeatureDefinition, attachmentId?: string) {
+  async saveFeature(definition: FeatureDefinition, attachmentId?: string) {
+    if (this.pending) return;
+    // The recipe validates the geometry and publishes one atomic batch.
+    await this.stageFeature(definition, attachmentId, true);
+  }
+  async stageFeature(definition?: FeatureDefinition, attachmentId?: string, apply = false) {
     if (this.pending) return;
     this.sync();
     this.clearStage();
@@ -276,6 +288,17 @@ export class EnclosureControls {
       api = new ModellingAPI(editor),
       pair = { ...this.pair },
       revision = api.revision;
+    if (apply && definition) {
+      this.featureStage = {
+        revision,
+        editor,
+        pair,
+        definition: structuredClone(definition),
+        attachmentId,
+      };
+      await this.confirm();
+      return;
+    }
     this.pending = true;
     this.abort = new AbortController();
     this.feedback = "Preparing attachment preview…";
@@ -297,11 +320,11 @@ export class EnclosureControls {
       if (definition) {
         const p = api.enclosure.inspect(pair.base, pair.lid).parameters;
         this.featureOutlines(definition, p, editor, pair.base);
-        editor.group.add(this.preview);
+        (editor.group.parent ?? editor.group).add(this.preview);
       }
       this.feedback = definition
-        ? `Preview ${definition.name} · ${definition.anchor}. Source outlines only; physical fit unknown. Apply changes to keep it.`
-        : "Preview removal: attachment sources will be deleted. Apply changes to keep it.";
+        ? `Showing ${attachmentId ? editor.project.layerStack.get(attachmentId).name : definition.name} on the enclosure. Save the feature to keep it.`
+        : "Remove this feature and its generated sources?";
     } catch (e) {
       this.feedback = e instanceof Error ? e.message : String(e);
     } finally {

@@ -1,5 +1,58 @@
 # Centra Sculpt roadmap
 
+## Phase 8.5a — Box Face Resize (2026-11-15)
+
+- Desktop Scale exposes the original boundary and six face markers for a selected
+  rectangular box without child layers. Drag along a face normal to move just
+  that side. Boolean cutters are picked from their source guides, even through
+  the result. The centre gizmo retains symmetric scaling.
+- Dimension and pose publish in one Undo entry. The existing Boolean draft can
+  update during the drag, then refines at the chosen quality.
+- Next: immersive pointer ownership and physical Quest validation, plus resize
+  semantics for boxes parenting other sources and for shapes with curved faces.
+
+## Phase 9 — Deferred sparse SDF performance and integration
+
+Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
+and the implemented Undo cache stay in Phase 8. An adaptive brush candidate
+needs to preserve frame pacing before integration. Measure peak memory with
+the live Undo cache on larger scenes and repeat immersive measurements before
+expanding the current trial.
+
+The 8.3b.1 feasibility results gate any production trial. Once the exact-storage and
+transaction gates pass in isolation, use the compact Quest 3 replay and the
+8.3b.1 halo prototype as starting points for tests under Centra's normal
+frame scheduling. The earlier device replay measured 198.9 ms sparse
+versus 45.8 ms dense for median synchronous Smooth remeshing.
+
+1. **Speed up dirty remeshing.** Profile brick lookup, sample gathering,
+   gradient stencils and extraction separately. Prototype gathering a dirty
+   chunk and its halo into reusable contiguous Float32 scratch once per
+   rebuild. Reuse those reads for crossings and normals, skip chunks proven
+   to contain no crossings, and compare each change with the dense mesher
+   on identical fields and dirty regions.
+2. **Keep meshes current during continuous strokes.** Compare both backends
+   with the same in-app mesh budget. Coalesce repeated invalidations, prioritize
+   chunks under the brush, and bound queued work and scratch. Check Undo,
+   Redo and cancellation while rebuilds are pending. Measure stroke-to-visible
+   mesh latency and time to clear the queue after release.
+3. **Verify on Quest 3.** Alternate backend order in repeated compact-bust
+   runs with Clay, Smooth and Undo. Repeat at 1 mm spacing across
+   100/500/1,000 mm using a connected sculpt, a branch and separated pieces.
+   Record p50/p95/p99 stroke-to-visible latency, frame times, missed frames
+   and peak memory over sustained sculpting. At the same detail and refresh
+   rate, require sparse to match dense p95/p99 stroke-to-visible latency
+   and missed-frame rate on the compact workloads, with a bounded mesh queue.
+   At sizes beyond dense admission, verify sustained latency, quality and
+   safe budget refusal directly on sparse.
+4. **Gate a default switch.** Verify the Phase 8.3b savings thresholds with
+   measured retained and peak memory, including histories, masks, paint,
+   source snapshots, staging, CPU meshes and GPU allocations. Pass the
+   existing geometry, sampling, transaction, Boolean, Stamp and exact
+   save/recovery/backup gates. Trial sparse as an opt-in backend for new
+   sculpts before considering it as the default. Keep the dense open path
+   for existing projects until lossless compatibility is demonstrated.
+
 ## Phase 8.4 — VR Sculpting Experience Polish (2026-11-12)
 
 - **8.4a Move.** Default Free Move combines translation and wrist rotation in
@@ -187,59 +240,20 @@ restore drew first at 1.2 ms and finished in 412 ms median, versus
 cap retained zero bytes and fell back exactly. Production stays gated.
 [Results and reproduction](SPARSE_SDF_UNDO_CACHE_RESULTS.md)
 
-## Phase 8.3c — Sparse performance for everyday sculpting (planned 2026-11-12)
-
-The [bulk Undo cache](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-native-undo-parity-check)
-can advance to a scoped opt-in integration trial. Its compact native
-Undo parity test passes and the Quest panel comparison supports the
-trial. Default enablement still requires immersive timing, memory
-headroom, and cache lifecycle checks in the live app. The sparse
-storage gates below still apply.
+### Completed sparse research follow-through (formerly tracked under 8.3c)
 
 The [experimental Undo cache switch](SPARSE_SDF_UNDO_CACHE_RESULTS.md#2026-11-12-default-off-editor-trial)
 is on by default in the editor and can be turned off in the Layers
 panel. It retains one eligible voxel-stroke snapshot up to 40 MiB.
 The tracked Quest replay verified exactness and faster submission on
-a compact sculpt. Peak memory on larger scenes remains unmeasured.
+a compact sculpt.
 
 The independent adaptive brush option completed its
 [tracked Quest comparison](SPARSE_SDF_BRUSH_ADAPTIVE_RESULTS.md#tracked-quest-results).
 It improved exact catch-up and increased callback intervals. Keep it
 in research until a candidate preserves frame pacing.
 
-The 8.3b.1 feasibility results gate this phase. Once the exact-storage and
-transaction gates pass in isolation, use the compact Quest 3 replay and the
-8.3b.1 halo prototype as starting points for tests under Centra's normal
-frame scheduling. The earlier device replay measured 198.9 ms sparse
-versus 45.8 ms dense for median synchronous Smooth remeshing.
-
-1. **Speed up dirty remeshing.** Profile brick lookup, sample gathering,
-   gradient stencils and extraction separately. Prototype gathering a dirty
-   chunk and its halo into reusable contiguous Float32 scratch once per
-   rebuild. Reuse those reads for crossings and normals, skip chunks proven
-   to contain no crossings, and compare each change with the dense mesher
-   on identical fields and dirty regions.
-2. **Keep meshes current during continuous strokes.** Compare both backends
-   with the same in-app mesh budget. Coalesce repeated invalidations, prioritize
-   chunks under the brush, and bound queued work and scratch. Check Undo,
-   Redo and cancellation while rebuilds are pending. Measure stroke-to-visible
-   mesh latency and time to clear the queue after release.
-3. **Verify on Quest 3.** Alternate backend order in repeated compact-bust
-   runs with Clay, Smooth and Undo. Repeat at 1 mm spacing across
-   100/500/1,000 mm using a connected sculpt, a branch and separated pieces.
-   Record p50/p95/p99 stroke-to-visible latency, frame times, missed frames
-   and peak memory over sustained sculpting. At the same detail and refresh
-   rate, require sparse to match dense p95/p99 stroke-to-visible latency
-   and missed-frame rate on the compact workloads, with a bounded mesh queue.
-   At sizes beyond dense admission, verify sustained latency, quality and
-   safe budget refusal directly on sparse.
-4. **Gate a default switch.** Verify the Phase 8.3b savings thresholds with
-   measured retained and peak memory, including histories, masks, paint,
-   source snapshots, staging, CPU meshes and GPU allocations. Pass the
-   existing geometry, sampling, transaction, Boolean, Stamp and exact
-   save/recovery/backup gates. Trial sparse as an opt-in backend for new
-   sculpts before considering it as the default. Keep the dense open path
-   for existing projects until lossless compatibility is demonstrated.
+Remaining work moved to [Phase 9](#phase-9--deferred-sparse-sdf-performance-and-integration).
 
 ## Phase 8.3a — Dense vs sparse research (2026-11-11)
 

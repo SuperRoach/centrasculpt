@@ -1,5 +1,14 @@
-import type { Camera, Object3D, Scene } from "three";
+import { type Camera, type Object3D, type Scene, Vector2 } from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
+import {
+  anchoredBoxPose,
+  type Face,
+  FaceResizeGuide,
+  faceResizeGizmoSize,
+  isRectangularBox,
+  pickBoxFace,
+  resizeFace,
+} from "./face-resize";
 import type { IndependentLayers } from "./independent-layers";
 import type { EditorMode, InputOwnership, TransformSpace } from "./interaction";
 import {
@@ -9,7 +18,7 @@ import {
 } from "./parametric-primitive";
 import { snappedTransform, toDisplay } from "./physical-units";
 import type { VolumeTransform } from "./transform";
-import { uniformScale } from "./transform";
+import { hasUniformScale, transformMatrix, uniformScale } from "./transform";
 
 /** Source dimension handles are local; ordinary layers retain isotropic XYZ scaling. */
 export function scaledPrimitive(
@@ -162,7 +171,15 @@ export class LayerTransformTools {
     next: PrimitiveSource;
     pose: VolumeTransform;
     object: Object3D;
+    face?: Face;
+    delta?: number;
+    nextPose?: VolumeTransform;
   };
+  private readonly faceGuide = new FaceResizeGuide();
+  private hoveredFace?: Face;
+  private facePointer?: { id: number; start: Vector2; pixelsPerUnit: Vector2 };
+
+  private publishingFace?: NonNullable<LayerTransformTools["resize"]>;
   private resizeAbort?: AbortController;
   private resizeWork: Promise<void> = Promise.resolve();
   private disposed = false;
@@ -175,7 +192,33 @@ export class LayerTransformTools {
   get settled(): Promise<void> {
     return this.resizeWork;
   }
-  private readonly onPointerCancel = () => this.cancel();
+  private readonly onPointerCancel = (event: PointerEvent) => {
+    if (this.facePointer) {
+      event.stopImmediatePropagation();
+      if (this.facePointer.id === event.pointerId) this.cancel();
+    } else this.cancel();
+  };
+  private readonly onFaceLostCapture = (event: PointerEvent) => {
+    if (this.facePointer?.id === event.pointerId) this.cancel();
+  };
+  private readonly onFaceLeave = () => {
+    this.hoveredFace = undefined;
+  };
+  private readonly onFaceUp = (event: PointerEvent) => {
+    if (!this.facePointer) return;
+    event.stopImmediatePropagation();
+    if (this.facePointer.id !== event.pointerId || event.button !== 0) return;
+    if (!this.faceDragValid()) {
+      this.cancel();
+      return;
+    }
+    this.releaseFacePointer();
+    this.completeResize();
+    this.input.end("transform");
+    this.callbacks.camera(this.input.cameraEnabled);
+    this.sync();
+    this.callbacks.changed();
+  };
   private readonly heldRotateAxisKeys: string[] = [];
   private readonly heldTranslateAxisKeys: string[] = [];
   private baseRotateAxis: UniformTransformControls["axis"] = "XYZE";
@@ -184,10 +227,11 @@ export class LayerTransformTools {
   private surfaceBaseTranslateAxis: UniformTransformControls["axis"] = "XYZ";
   private startingSurfaceRotate = false;
   private startingSurfaceTranslate = false;
-  private readonly onCanvasPointerDown = (event: Event) =>
-    this.beginSurfaceTransform(event as PointerEvent);
+  private readonly onCanvasPointerDown = (event: PointerEvent) => {
+    if (!this.beginFaceResize(event)) this.beginSurfaceTransform(event);
+  };
   constructor(
-    camera: Camera,
+    private readonly camera: Camera,
     private readonly canvas: HTMLElement,
     scene: Scene,
     private readonly layers: () => IndependentLayers,
@@ -196,7 +240,7 @@ export class LayerTransformTools {
   ) {
     this.controls = new UniformTransformControls(camera, canvas);
     this.controls.setSize(0.85);
-    scene.add(this.controls.getHelper());
+    scene.add(this.controls.getHelper(), this.faceGuide.group);
     Object.assign(this.controls, {
       minX: -1000,
       minY: -1000,
@@ -207,6 +251,10 @@ export class LayerTransformTools {
     });
     canvas.addEventListener("pointerdown", this.onCanvasPointerDown, true);
     canvas.addEventListener("pointercancel", this.onPointerCancel, true);
+    canvas.addEventListener("pointermove", this.onFaceMove, true);
+    canvas.addEventListener("pointerup", this.onFaceUp, true);
+    canvas.addEventListener("pointerleave", this.onFaceLeave);
+    canvas.addEventListener("lostpointercapture", this.onFaceLostCapture);
     this.controls.addEventListener("mouseDown", () => {
       if (this.controls.mode === "rotate")
         this.baseRotateAxis = this.startingSurfaceRotate
@@ -220,7 +268,7 @@ export class LayerTransformTools {
       try {
         if (!input.beginTransform(this.layers().transformNode.editable, callbacks.busy()))
           throw new Error("This layer cannot be transformed now.");
-        this.layers().beginTransform();
+        this.layers().beginTransform({ placeEnclosureFeature: this.controls.mode === "translate" });
         const editor = this.layers(),
           layer = editor.active.layer;
         if (this.controls.mode === "scale" && !editor.selectedGroupId && layer.primitive) {
@@ -259,11 +307,52 @@ export class LayerTransformTools {
       try {
         if (this.resize) {
           const r = this.resize;
-          r.next = scaledPrimitive(
-            r.source,
-            next.scale.map((v, i) => v / r.pose.scale[i]),
-            this.controls.axis ?? "XYZ",
-          );
+          const recipeRole = r.editor.enclosureScaleRole(r.id);
+          const ratios = next.scale.map((v, i) => v / r.pose.scale[i]);
+          if (recipeRole === "cutout") ratios[isRectangularBox(r.source) ? 2 : 1] = 1;
+          r.next = scaledPrimitive(r.source, ratios, this.controls.axis ?? "XYZ");
+          if (
+            recipeRole === "cutout" &&
+            r.source.kind === "tapered-box" &&
+            r.next.kind === "tapered-box"
+          ) {
+            r.next = validatePrimitive({
+              ...r.next,
+              topWidth: r.source.topWidth + (r.next.bottomWidth - r.source.bottomWidth),
+              topDepth: r.source.topDepth + (r.next.bottomDepth - r.source.bottomDepth),
+            });
+          } else if (recipeRole === "cutout" && r.source.kind === "box" && r.next.kind === "box") {
+            r.next = validatePrimitive({
+              ...r.next,
+              ...(r.source.cornerRadius === undefined
+                ? {}
+                : { cornerRadius: r.source.cornerRadius }),
+            });
+          } else if (
+            recipeRole === "cutout" &&
+            r.source.kind === "cylinder" &&
+            r.next.kind === "cylinder" &&
+            r.source.topDiameter !== undefined &&
+            r.source.bottomDiameter !== undefined
+          ) {
+            const delta = r.next.diameter - r.source.diameter;
+            r.next = validatePrimitive({
+              ...r.next,
+              topDiameter: r.source.topDiameter + delta,
+              bottomDiameter: r.source.bottomDiameter + delta,
+            });
+          } else if (
+            recipeRole &&
+            recipeRole !== "cutout" &&
+            r.source.kind === "cylinder" &&
+            r.next.kind === "cylinder"
+          ) {
+            r.nextPose = anchoredBoxPose(
+              r.pose,
+              { axis: 1, sign: 1 },
+              r.next.height - r.source.height,
+            );
+          }
           this.applyResizePreview(r);
           const values = primitiveDimensions(r.next).map((v) =>
             toDisplay(v, r.editor.display.precision).toFixed(2),
@@ -276,11 +365,13 @@ export class LayerTransformTools {
         }
         // Quantize saved model coordinates, independent of the renderer parent's navigation pose.
         const settings = this.layers().display.precision;
-        if (this.controls.mode === "translate" && settings.translationSnapMM)
+        const placedOnEnclosure = this.layers().movingEnclosureFeature;
+        if (this.controls.mode === "translate" && settings.translationSnapMM && !placedOnEnclosure)
           next.position = snappedTransform(next, settings).position;
         if (this.controls.mode === "rotate" && settings.angleSnapDegrees)
           next.rotation = snappedTransform(next, settings).rotation;
-        if (this.callbacks.surfaceSnap) next = this.callbacks.surfaceSnap(next);
+        if (this.callbacks.surfaceSnap && !placedOnEnclosure)
+          next = this.callbacks.surfaceSnap(next);
         this.layers().updateTransform(next);
         callbacks.changed();
       } catch (error) {
@@ -300,14 +391,237 @@ export class LayerTransformTools {
     });
     this.sync();
   }
+  private faceBounds(id: string, source?: PrimitiveSource) {
+    if (source?.kind === "box" && !source.cornerRadius) return source;
+    const role = this.layers().enclosureScaleRole(id);
+    if (role === "cutout" && (source?.kind === "box" || source?.kind === "tapered-box")) {
+      const [width, height, depth] = primitiveDimensions(source);
+      return { kind: "box" as const, width, height, depth, cornerRadius: 0 };
+    }
+    if (role === "post" && source?.kind === "cylinder")
+      return {
+        kind: "box" as const,
+        width: source.diameter,
+        height: source.height,
+        depth: source.diameter,
+      };
+  }
+  get faceResizeAvailable(): boolean {
+    const editor = this.layers();
+    const layer = editor.active.layer;
+    return (
+      !editor.selectedGroupId &&
+      editor.sourceEditable &&
+      !!this.faceBounds(layer.id, layer.primitive) &&
+      !editor.project.layerStack.hierarchy.children(layer.id).length &&
+      hasUniformScale(layer.transform)
+    );
+  }
+  private faceTarget() {
+    const editor = this.layers();
+    if (
+      this.disposed ||
+      this.input.mode !== "scale" ||
+      this.input.suspended ||
+      this.callbacks.busy() ||
+      !this.faceResizeAvailable
+    )
+      return;
+    const { id, primitive: source } = editor.active.layer;
+    const bounds = this.faceBounds(id, source);
+    if (!source || !bounds) return;
+    return {
+      editor,
+      source,
+      bounds,
+      role: editor.enclosureScaleRole(id),
+      object: editor.transformObject,
+    };
+  }
+  private faceDragValid(): boolean {
+    const r = this.resize;
+    const target = this.faceTarget();
+    return !!(
+      r?.face &&
+      target &&
+      r.editor === target.editor &&
+      target.editor.transforming &&
+      target.editor.active.layer.id === r.id &&
+      r.object === target.object
+    );
+  }
+  updateFaceGuide(): void {
+    if (this.facePointer && !this.faceDragValid()) this.cancel();
+    const target = this.faceTarget();
+    if (!target || (this.resize && !this.resize.face)) {
+      this.hoveredFace = undefined;
+      this.faceGuide.group.visible = false;
+      if (!this.controls.dragging) this.controls.setSize(0.85);
+      return;
+    }
+    const { editor, bounds, object } = target;
+    const pending = this.publishingFace;
+    const r = this.resize ?? (pending?.object === object ? pending : undefined);
+    object.parent?.updateWorldMatrix(true, false);
+    const matrix = transformMatrix(r?.nextPose ?? editor.active.layer.transform);
+    if (object.parent) matrix.premultiply(object.parent.matrixWorld);
+    const next = r ? this.faceBounds(r.id, r.next) : bounds;
+    if (next) {
+      const height = this.canvas.clientHeight;
+      this.camera.updateWorldMatrix(true, false);
+      this.faceGuide.show(next, matrix, this.camera, height, r?.face ?? this.hoveredFace);
+      if (!this.resizing && !this.controls.dragging)
+        this.controls.setSize(faceResizeGizmoSize(next, matrix, this.camera, height));
+    }
+  }
+  private pickFace(event: PointerEvent) {
+    const target = this.faceTarget();
+    if (
+      !target ||
+      this.resizing ||
+      !this.controls.enabled ||
+      !target.editor.recoveryReady ||
+      !this.input.cameraEnabled ||
+      event.isPrimary === false
+    )
+      return;
+    const pointer = this.normalizedPointer(event);
+    this.camera.updateWorldMatrix(true, false);
+    const rect = this.canvas.getBoundingClientRect();
+    target.object.updateWorldMatrix(true, false);
+    this.controls.setSize(
+      faceResizeGizmoSize(target.bounds, target.object.matrixWorld, this.camera, rect.height),
+    );
+    this.controls.getHelper().updateMatrixWorld(true);
+    this.controls.pointerHover(pointer as unknown as PointerEvent);
+    if (this.controls.axis) return; // The existing symmetric gizmo owns overlaps.
+    return pickBoxFace(
+      target.bounds,
+      target.object.matrixWorld,
+      this.camera,
+      rect.width,
+      rect.height,
+      new Vector2(event.clientX - rect.left, event.clientY - rect.top),
+      (face) => {
+        if (target.role === "post") return face.axis === 1 && face.sign === 1;
+        if (target.role !== "cutout") return true;
+        return face.axis !== (isRectangularBox(target.source) ? 2 : 1);
+      },
+    );
+  }
+  private beginFaceResize(event: PointerEvent): boolean {
+    if (this.facePointer) {
+      event.stopImmediatePropagation();
+      return true;
+    }
+    if (
+      event.button !== 0 ||
+      this.controls.dragging ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    )
+      return false;
+    const hit = this.pickFace(event),
+      target = this.faceTarget();
+    if (!hit || !target) return false;
+    const { editor, source, object } = target;
+    this.callbacks.beforeDrag();
+    if (!this.input.beginTransform(editor.sourceEditable, this.callbacks.busy())) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    try {
+      editor.beginTransform();
+      this.resize = {
+        editor,
+        id: editor.active.layer.id,
+        source,
+        next: source,
+        pose: structuredClone(editor.active.layer.transform),
+        object,
+        face: hit.face,
+      };
+      this.facePointer = {
+        id: event.pointerId,
+        start: new Vector2(event.clientX, event.clientY),
+        pixelsPerUnit: hit.pixelsPerUnit,
+      };
+      this.canvas.setPointerCapture(event.pointerId);
+      this.callbacks.camera(false);
+      this.callbacks.status?.("Face Resize · drag along the highlighted side · Esc to cancel");
+    } catch (error) {
+      this.cancel();
+      this.callbacks.error(error instanceof Error ? error.message : "Unable to resize face.");
+    }
+    return true;
+  }
+  private readonly onFaceMove = (event: PointerEvent): void => {
+    const pointer = this.facePointer;
+    if (!pointer) {
+      this.hoveredFace = event.buttons ? undefined : this.pickFace(event)?.face;
+      return;
+    }
+    event.stopImmediatePropagation();
+    if (event.pointerId !== pointer.id) return;
+    if (!(event.buttons & 1) || !this.faceDragValid()) {
+      this.cancel();
+      return;
+    }
+    const r = this.resize;
+    if (!r?.face) return;
+    const box = this.faceBounds(r.id, r.source);
+    if (!box) return;
+    const motion = new Vector2(event.clientX, event.clientY).sub(pointer.start);
+    const delta = motion.dot(pointer.pixelsPerUnit) / pointer.pixelsPerUnit.lengthSq();
+    const precision = r.editor.display.precision;
+    const step = precision.translationSnapMM / precision.millimetresPerUnit / uniformScale(r.pose);
+    try {
+      const result = resizeFace(box, r.face, delta, step);
+      if (result.delta === (r.delta ?? 0)) return;
+      const nextPose = anchoredBoxPose(r.pose, r.face, result.delta);
+      const source = r.source;
+      if (source.kind === "box")
+        r.next = {
+          ...source,
+          width: result.source.width,
+          height: result.source.height,
+          depth: result.source.depth,
+        };
+      else if (source.kind === "cylinder") r.next = { ...source, height: result.source.height };
+      else if (source.kind === "tapered-box") {
+        const d = result.delta;
+        r.next =
+          r.face.axis === 0
+            ? { ...source, bottomWidth: source.bottomWidth + d, topWidth: source.topWidth + d }
+            : { ...source, bottomDepth: source.bottomDepth + d, topDepth: source.topDepth + d };
+      }
+      r.next = validatePrimitive(r.next);
+      r.delta = result.delta;
+      r.nextPose = nextPose;
+      this.applyResizePreview(r);
+      this.callbacks.changed();
+    } catch (error) {
+      this.cancel();
+      this.callbacks.error(error instanceof Error ? error.message : "Unable to resize face.");
+    }
+  };
+  private releaseFacePointer(): void {
+    const pointer = this.facePointer;
+    this.facePointer = undefined;
+    this.hoveredFace = undefined;
+    if (pointer && this.canvas.hasPointerCapture(pointer.id))
+      this.canvas.releasePointerCapture(pointer.id);
+  }
   private applyResizePreview(r: NonNullable<LayerTransformTools["resize"]>): void {
     const before = primitiveDimensions(r.source),
       after = primitiveDimensions(r.next);
     r.object.scale.set(
       ...(after.map((v, i) => (r.pose.scale[i] * v) / before[i]) as [number, number, number]),
     );
+    if (r.nextPose) r.object.position.fromArray(r.nextPose.position);
     r.object.updateWorldMatrix(true, true);
-    r.editor.composite.setPrimitivePreview(r.id, r.next);
+    r.editor.composite.setPrimitivePreview(r.id, r.next, r.nextPose);
   }
   private completeResize(): void {
     const r = this.resize;
@@ -322,8 +636,12 @@ export class LayerTransformTools {
     this.applyResizePreview(r);
     const abort = new AbortController();
     this.resizeAbort = abort;
-    this.resizeWork = r.editor
-      .regeneratePrimitive(r.next, r.id, abort.signal)
+    if (r.face) this.publishingFace = r;
+    this.resizeWork = (
+      r.face && isRectangularBox(r.source)
+        ? r.editor.resizeBoxFace(r.id, r.face, r.delta ?? 0, abort.signal)
+        : r.editor.resizePrimitiveFromGizmo(r.id, r.next, abort.signal, r.nextPose?.position)
+    )
       .then(() => {
         if (!this.disposed && r.editor === this.layers())
           this.callbacks.status?.("Primitive dimensions applied · Undo available");
@@ -337,9 +655,11 @@ export class LayerTransformTools {
       .finally(() => {
         // Restore only the borrowed preview object. Successful publication owns a new runtime.
         r.editor.composite.setPrimitivePreview(r.id, null);
+        r.object.position.fromArray(r.pose.position);
         r.object.scale.fromArray(r.pose.scale);
         r.object.updateWorldMatrix(true, true);
         if (this.resizeAbort === abort) this.resizeAbort = undefined;
+        if (this.publishingFace === r) this.publishingFace = undefined;
         if (!this.disposed && this.layers().recoveryReady) {
           this.sync();
           this.callbacks.changed();
@@ -348,14 +668,17 @@ export class LayerTransformTools {
       });
   }
   cancel(): void {
+    this.releaseFacePointer();
     this.callbacks.clearSurfaceSnap?.();
     const r = this.resize;
     this.resize = undefined;
     this.resizeAbort?.abort();
+    this.publishingFace = undefined;
     if (r) r.editor.finishTransform();
     else this.layers().cancelTransform();
     if (r) {
       r.editor.composite.setPrimitivePreview(r.id, null);
+      if (r.face) r.object.position.fromArray(r.pose.position);
       r.object.scale.fromArray(r.pose.scale);
       r.object.updateWorldMatrix(true, true);
     }
@@ -436,6 +759,15 @@ export class LayerTransformTools {
       !this.callbacks.hitLayer
     )
       return;
+    const point = this.normalizedPointer(event);
+    if (this.controls.enabled && this.controls.object) {
+      this.camera.updateWorldMatrix(true, false);
+      this.controls.getHelper().updateMatrixWorld(true);
+      this.controls.pointerHover(point as unknown as PointerEvent);
+      // TransformControls' normal pointer listener will capture and start this handle.
+      if (this.controls.axis) return;
+    }
+
     const targetLayerId = this.callbacks.hitLayer(event);
     if (!targetLayerId) return;
     const layers = this.layers();
@@ -448,7 +780,6 @@ export class LayerTransformTools {
     }
     if (!layers.transformNode.editable || this.callbacks.busy()) return;
 
-    const point = this.normalizedPointer(event);
     this.controls.getHelper().updateMatrixWorld(true);
     this.controls.pointerHover(point as unknown as PointerEvent);
     if (this.input.mode === "rotate") {
@@ -517,6 +848,10 @@ export class LayerTransformTools {
     if (this.controls.object !== object) this.controls.attach(object);
   }
   finish(): void {
+    if (this.facePointer) {
+      this.cancel();
+      return;
+    }
     this.callbacks.clearSurfaceSnap?.();
     if (this.controls.dragging) {
       this.controls.pointerUp(null);
@@ -533,6 +868,11 @@ export class LayerTransformTools {
     this.clearAxisConstraints();
     this.canvas.removeEventListener("pointerdown", this.onCanvasPointerDown, true);
     this.canvas.removeEventListener("pointercancel", this.onPointerCancel, true);
+    this.canvas.removeEventListener("pointermove", this.onFaceMove, true);
+    this.canvas.removeEventListener("pointerup", this.onFaceUp, true);
+    this.canvas.removeEventListener("pointerleave", this.onFaceLeave);
+    this.canvas.removeEventListener("lostpointercapture", this.onFaceLostCapture);
+    this.faceGuide.dispose();
     this.controls.dispose();
     this.controls.getHelper().removeFromParent();
   }

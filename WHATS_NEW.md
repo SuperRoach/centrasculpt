@@ -1,3 +1,24 @@
+### Scale enclosure features in the viewport (2026-11-16)
+
+- Drag a rectangular opening edge with Scale to keep the opposite edge fixed. The enclosure updates the opening size and position together. Through-wall depth follows the wall.
+- Drag a mounting post's top to change the pattern height while keeping its feet on the floor. Centre Scale updates the shared post or bore dimensions.
+
+### Move enclosure features in the viewport (2026-11-16)
+
+- Select a cutter, post, or bore in Layers to open its feature in Cutouts & mounting. Desktop Move updates the feature coordinates. Cutouts stay on their wall and a mounting post and its bore move together on the floor.
+- The enclosure checks the new placement and keeps it in one Undo step.
+
+### Enclosure cutout and mounting guides (2026-11-15)
+
+- Open Cutouts & mounting from the Enclosure panel. It names the base being edited and shows a live wall or floor diagram. Click the wall diagram to position a cutout, or use the millimetre fields. The floor diagram numbers the posts to match their coordinates. Selecting a post, bore, or cutter layer opens its feature in the panel.
+- Add or save features directly, with an optional 3D preview. Rectangular openings can have rounded corners. Rectangular and round openings can taper wider toward the outside while keeping their specified size at the inside face.
+
+### Box Face Resize — Phase 8.5a (2026-11-15)
+
+- On desktop, select a rectangular box in Layers and choose Scale. Hover an edge or face marker to see a thick gold outline and an arrow showing the drag direction. Drag to move one side while the opposite side stays fixed. Use the centre gizmo to scale symmetrically.
+- A selected Boolean cutter still shows its original outline, with dashed lines through solid geometry. Each resize takes one Undo step. Press Escape to cancel; orbit if two handles overlap.
+- Face Resize is available for rectangular boxes without child layers. Other shapes and immersive controls keep their existing Scale behaviour.
+
 ### VR Sculpting Experience Polish — Phase 8.4 (2026-11-12)
 
 - Free Move combines pulling and wrist rotation in a single gesture with one Undo step. Precise Translate, Rotate and Twist remain available. Aim at the sculpt with Surface placement or position the influence at the controller tip with Free placement.

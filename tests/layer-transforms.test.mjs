@@ -491,6 +491,70 @@ test("dragging a layer surface in Rotate mode starts a free metadata rotation wi
   if (previousDocument === undefined) delete globalThis.document;
   else globalThis.document = previousDocument;
 });
+test("an axis handle on the selected object takes priority over an underlying layer", (t) => {
+  const editor = create();
+  const selected = editor.active.layer;
+  const underneath = editor.create(64);
+  editor.select(selected.id);
+  const scene = new Scene();
+  scene.add(editor.group);
+  const canvas = new FakeCanvas();
+  canvas.ownerDocument = { pointerLockElement: null };
+  const previousDocument = globalThis.document;
+  globalThis.document = canvas.ownerDocument;
+  const camera = new PerspectiveCamera(38, 800 / 600, 0.01, 100);
+  camera.position.set(3, 2, 4);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  let surfacePicks = 0;
+  const tools = new LayerTransformTools(camera, canvas, scene, () => editor, new InputOwnership(), {
+    beforeDrag: () => {},
+    camera: () => {},
+    changed: () => {},
+    error: (text) => assert.fail(text),
+    busy: () => false,
+    hitLayer: () => {
+      surfacePicks++;
+      return underneath.id;
+    },
+  });
+  t.after(() => {
+    tools.dispose();
+    editor.dispose();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  });
+  tools.setMode("translate");
+  scene.updateMatrixWorld(true);
+
+  let handle;
+  for (let clientX = 415; clientX < 515 && !handle; clientX += 2) {
+    for (let clientY = 295; clientY < 345; clientY += 2) {
+      tools.controls.pointerHover({ x: clientX / 400 - 1, y: 1 - clientY / 300 });
+      if (tools.controls.axis === "X") {
+        handle = { clientX, clientY };
+        break;
+      }
+    }
+  }
+  assert(handle, "fixture must hit the actual X handle picker");
+  tools.controls.axis = null;
+  canvas.dispatchEvent(
+    Object.assign(new Event("pointerdown"), {
+      ...handle,
+      button: 0,
+      buttons: 1,
+      isPrimary: true,
+      pointerId: 1,
+      pointerType: "mouse",
+    }),
+  );
+  assert.equal(surfacePicks, 0);
+  assert.equal(editor.project.activeLayerId, selected.id);
+  assert.equal(tools.controls.axis, "X");
+  assert.equal(tools.controls.dragging, true);
+});
+
 test("gizmo event wiring commits one action, freezes camera input and never sculpts/remeshes", () => {
   const c = create(),
     scene = new Scene();

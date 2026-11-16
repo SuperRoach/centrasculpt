@@ -768,6 +768,7 @@ export class DesktopLayerPalette {
     private error: (text: string) => void,
     private busy: () => boolean = () => false,
     private beforeAction: () => void = () => {},
+    private layerSelected: () => void = () => {},
   ) {
     legacy.before(this.host);
     this.host.className = "hierarchy-palette";
@@ -884,7 +885,13 @@ export class DesktopLayerPalette {
         fold.className = "hierarchy-fold";
       }
       const title = button(header, n.name, () => {
-        row.group ? (l.selectGroup(n.id), this.transform()) : l.select(n.id);
+        if (row.group) {
+          l.selectGroup(n.id);
+          this.transform();
+        } else {
+          l.select(n.id);
+          this.layerSelected();
+        }
       });
       title.className = "hierarchy-name";
       const nameLabel = document.createElement("span");

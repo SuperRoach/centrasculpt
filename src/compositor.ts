@@ -17,7 +17,7 @@ import { sculptPaint } from "./sculpt-paint";
 import type { Bounds, Point3 } from "./sdf";
 import { SDFVolume } from "./sdf";
 import { buildExportMesh, ChunkSurface } from "./surface";
-import { transformMatrix, uniformScale } from "./transform";
+import { transformMatrix, uniformScale, type VolumeTransform } from "./transform";
 
 // The 512 MiB export budget remains the hard admission limit. Two million
 // intermediate triangles use about 144 MiB for positions and normals.
@@ -578,10 +578,11 @@ export class BooleanComposite {
     }
     return { colours, maxSliceMs: Math.max(maxSliceMs, performance.now() - batch) };
   }
-  private primitivePreview: { id: string; source: PrimitiveSource } | null = null;
-  setPrimitivePreview(id: string, source: PrimitiveSource | null): void {
+  private primitivePreview: { id: string; source: PrimitiveSource; pose?: VolumeTransform } | null =
+    null;
+  setPrimitivePreview(id: string, source: PrimitiveSource | null, pose?: VolumeTransform): void {
     if (source === null && this.primitivePreview?.id !== id) return;
-    this.primitivePreview = source ? { id, source: validatePrimitive(source) } : null;
+    this.primitivePreview = source ? { id, source: validatePrimitive(source), pose } : null;
     this.invalidate();
   }
   private get previewLayers(): readonly SdfLayer[] {
@@ -590,7 +591,10 @@ export class BooleanComposite {
     return preview
       ? layers.map((layer) =>
           layer.id === preview.id
-            ? (Object.assign(Object.create(layer), { primitive: preview.source }) as SdfLayer)
+            ? (Object.create(layer, {
+                primitive: { value: preview.source },
+                ...(preview.pose ? { transform: { value: preview.pose } } : {}),
+              }) as SdfLayer)
             : layer,
         )
       : layers;

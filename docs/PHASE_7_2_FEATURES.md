@@ -141,8 +141,12 @@ must be restored before reopening/reflow; no auto-association is inferred.
 The optional local development MCP adapter adds:
 
 - Read-only `enclosure_anchors`, `list_enclosure_features` with `{baseId,lidId}`;
-  `get_enclosure_feature` also takes `attachmentId`.
+  `get_enclosure_feature` also takes `attachmentId`, which may be any layer ID
+  in the feature's `sourceIds` list, including a mounting post or bore. Use
+  `sourceIds[0]` as the attachment ID for edits and removal.
 - `set_enclosure_feature`: `{expectedRevision,baseId,lidId,definition,attachmentId?,dryRun?}`.
+  Cutout definitions may include `cornerRadiusMm` for a rounded rectangle or
+  `outsideFlareMm` for extra clearance per edge at the outside wall face.
 - `remove_enclosure_feature`: `{expectedRevision,baseId,lidId,attachmentId,dryRun?}`.
 - `propose_enclosure` additionally accepts recipe `{type:"feature-set",baseId,lidId,
   definition,attachmentId?}` or `{type:"feature-remove",baseId,lidId,attachmentId}`.

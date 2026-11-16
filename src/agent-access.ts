@@ -368,7 +368,7 @@ export function agentExecutor(
           job.name === "enclosure_anchors"
             ? inspected.anchors
             : job.name === "get_enclosure_feature"
-              ? inspected.features.find((f) => f.sourceIds[0] === a.attachmentId)
+              ? inspected.features.find((f) => f.sourceIds.some((id) => id === a.attachmentId))
               : inspected.features;
         return value === undefined
           ? error("not_found", "Unknown attachment ID.")

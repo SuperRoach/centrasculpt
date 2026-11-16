@@ -1083,6 +1083,39 @@ test("associative attachment schemas, read grants and separately approved recipe
     assert((await call("get_enclosure_feature", { baseId: base, lidId: lid, attachmentId })).ok);
     layers.undo();
     assert.deepEqual(saveSculptProject(layers.project), before);
+    const mounting = await api.enclosure.setFeature(
+      base,
+      lid,
+      {
+        kind: "mounting",
+        name: "Board mount",
+        anchor: "enclosure.base.floor",
+        centresMm: [
+          [-4, 0],
+          [4, 0],
+        ],
+        outerDiameterMm: 3,
+        boreDiameterMm: 1.5,
+        heightMm: 4,
+        floorOffsetMm: 0,
+      },
+      { expectedRevision: api.revision },
+    );
+    assert(mounting.ok, JSON.stringify(mounting));
+    const [feature] = mounting.value.features;
+    editing = false;
+    const fromBore = await call("get_enclosure_feature", {
+      baseId: base,
+      lidId: lid,
+      attachmentId: feature.sourceIds[3],
+    });
+    assert(fromBore.ok, JSON.stringify(fromBore));
+    assert.deepEqual(fromBore.value, feature);
+    assert.equal(
+      (await call("get_enclosure_feature", { baseId: base, lidId: lid, attachmentId: base })).error
+        .code,
+      "not_found",
+    );
   } finally {
     layers.dispose();
   }

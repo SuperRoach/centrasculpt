@@ -20,6 +20,8 @@ export type CutoutDefinition = {
   widthMm: number;
   heightMm: number;
   insetMm: number;
+  cornerRadiusMm?: number;
+  outsideFlareMm?: number;
 };
 export type MountingDefinition = {
   kind: "mounting";
@@ -51,12 +53,30 @@ const num = (v: unknown, min: number, max = 1000) => {
 export function validateFeature(value: unknown): FeatureDefinition {
   const v = value as FeatureDefinition;
   if (v?.kind === "cutout") {
-    obj(v, ["kind", "name", "anchor", "shape", "uMm", "vMm", "widthMm", "heightMm", "insetMm"]);
+    obj(v, [
+      "kind",
+      "name",
+      "anchor",
+      "shape",
+      "uMm",
+      "vMm",
+      "widthMm",
+      "heightMm",
+      "insetMm",
+      "cornerRadiusMm",
+      "outsideFlareMm",
+    ]);
     if (!WALL_ANCHORS.includes(v.anchor) || !["rectangle", "round"].includes(v.shape))
       throw new Error("Choose a named base wall and rectangle or round opening.");
     for (const key of ["uMm", "vMm"] as const) num(v[key], -1000);
     for (const key of ["widthMm", "heightMm"] as const) num(v[key], 0.05);
     num(v.insetMm, 0);
+    const radius = v.cornerRadiusMm === undefined ? 0 : num(v.cornerRadiusMm, 0);
+    const flare = v.outsideFlareMm === undefined ? 0 : num(v.outsideFlareMm, 0);
+    if (radius > 0 && (v.shape !== "rectangle" || radius > Math.min(v.widthMm, v.heightMm) / 2))
+      throw new Error("Corner radius must fit inside the rectangular opening.");
+    if (radius > 0 && flare > 0)
+      throw new Error("Choose rounded corners or an outside taper for this rectangle.");
     if (v.shape === "round" && v.widthMm !== v.heightMm)
       throw new Error("Round openings require equal width and height.");
   } else if (v?.kind === "mounting") {
@@ -180,10 +200,12 @@ export function featurePlan(p: EnclosureParameters, raw: FeatureDefinition) {
   if (d.kind === "cutout") {
     // Only the straight interior wall span; all corner, floor and rim overlaps refuse.
     const straight = anchor.spanMm / 2 - Math.max(0, p.cornerRadiusMm - p.wallThicknessMm);
+    const flare = d.outsideFlareMm ?? 0;
+    const radius = d.cornerRadiusMm ?? 0;
     if (
-      Math.abs(d.uMm) + d.widthMm / 2 >= straight ||
-      d.vMm - d.heightMm / 2 <= 0 ||
-      d.vMm + d.heightMm / 2 >= p.innerHeightMm
+      Math.abs(d.uMm) + d.widthMm / 2 + flare >= straight ||
+      d.vMm - d.heightMm / 2 - flare <= 0 ||
+      d.vMm + d.heightMm / 2 + flare >= p.innerHeightMm
     )
       throw new Error("Opening overlaps a corner, floor or rim, or lies outside the wall.");
     const margin = Math.max(0.1, p.wallThicknessMm * 0.1),
@@ -197,18 +219,44 @@ export function featurePlan(p: EnclosureParameters, raw: FeatureDefinition) {
       new Vector3(...anchor.v),
       new Vector3(...anchor.normal),
     );
-    if (d.shape === "round")
+    if (d.shape === "round" || radius || flare)
       basis.makeBasis(
         new Vector3(...anchor.u),
         new Vector3(...anchor.normal),
         new Vector3(...anchor.v).negate(),
       );
     const rotation = new Euler().setFromRotationMatrix(basis, "XYZ").toArray().slice(0, 3) as Vec3;
+    const slope = (2 * flare) / p.wallThicknessMm;
+    // Extend the same taper through both clearance margins so the requested sizes
+    // land at the actual inside and outside wall faces.
+    const smaller = (dimension: number) => dimension - slope * (margin + 2 * d.insetMm);
+    const larger = (dimension: number) => dimension + slope * (p.wallThicknessMm + margin);
+    if (flare && smaller(Math.min(d.widthMm, d.heightMm)) < 0.05)
+      throw new Error("Reduce the outside taper or the extra inward reach.");
+    let source: PrimitiveSource;
+    if (d.shape === "round") {
+      source = {
+        kind: "cylinder",
+        diameter: d.widthMm,
+        height: depth,
+        ...(flare ? { topDiameter: larger(d.widthMm), bottomDiameter: smaller(d.widthMm) } : {}),
+      };
+    } else if (flare) {
+      source = {
+        kind: "tapered-box",
+        height: depth,
+        bottomWidth: smaller(d.widthMm),
+        bottomDepth: smaller(d.heightMm),
+        topWidth: larger(d.widthMm),
+        topDepth: larger(d.heightMm),
+      };
+    } else {
+      source = radius
+        ? { kind: "box", width: d.widthMm, height: depth, depth: d.heightMm, cornerRadius: radius }
+        : { kind: "box", width: d.widthMm, height: d.heightMm, depth, cornerRadius: 0 };
+    }
     output.push({
-      source:
-        d.shape === "rectangle"
-          ? { kind: "box", width: d.widthMm, height: d.heightMm, depth, cornerRadius: 0 }
-          : { kind: "cylinder", diameter: d.widthMm, height: depth },
+      source,
       positionMm: position.toArray() as Vec3,
       rotation,
       operation: "difference",
@@ -254,6 +302,65 @@ export function featurePlan(p: EnclosureParameters, raw: FeatureDefinition) {
   }
   return output;
 }
+/** Interpret a source resize in the recipe's millimetres. Wall depth and floor seating are derived. */
+export function scaledEnclosureFeature(
+  parameters: EnclosureParameters,
+  definition: FeatureDefinition,
+  sourceIndex: number,
+  before: PrimitiveSource,
+  after: PrimitiveSource,
+  mm: number,
+  centreMm?: Vec3,
+): FeatureDefinition {
+  const next = structuredClone(definition);
+  if (next.kind === "cutout") {
+    if (before.kind === "box" && after.kind === "box") {
+      if (before.width !== after.width) next.widthMm = after.width * mm;
+      // Rounded rectangles run through the wall along their local Y axis.
+      const oldHeight = next.cornerRadiusMm ? before.depth : before.height;
+      const height = next.cornerRadiusMm ? after.depth : after.height;
+      if (oldHeight !== height) next.heightMm = height * mm;
+    } else if (before.kind === "tapered-box" && after.kind === "tapered-box") {
+      next.widthMm += (after.bottomWidth - before.bottomWidth) * mm;
+      next.heightMm += (after.bottomDepth - before.bottomDepth) * mm;
+    } else if (before.kind === "cylinder" && after.kind === "cylinder") {
+      next.widthMm *= after.diameter / before.diameter;
+      next.heightMm = next.widthMm;
+    } else throw new Error("Restore the cutout source before scaling it.");
+    if (centreMm) {
+      const wall = enclosureAnchors(parameters).find(({ id }) => id === next.anchor)!;
+      const offset = new Vector3(...centreMm).sub(new Vector3(...wall.originMm));
+      next.uMm = offset.dot(new Vector3(...wall.u));
+      next.vMm = offset.dot(new Vector3(...wall.v));
+    }
+  } else {
+    if (before.kind !== "cylinder" || after.kind !== "cylinder")
+      throw new Error("Restore the mounting source before scaling it.");
+    const bore = sourceIndex % 2 === 1;
+    if (before.diameter !== after.diameter) {
+      if (bore) next.boreDiameterMm = after.diameter * mm;
+      else next.outerDiameterMm = after.diameter * mm;
+    }
+    if (before.height !== after.height) {
+      const overlap = Math.min(parameters.floorThicknessMm / 2, 0.5);
+      next.heightMm = after.height * mm - overlap - (bore ? 0.2 : 0);
+    }
+  }
+  // Store dimensions at sub-micron precision without floating-point noise in the form.
+  const clean = (value: number) => Math.round(value * 1e9) / 1e9;
+  if (next.kind === "cutout") {
+    next.widthMm = clean(next.widthMm);
+    next.heightMm = clean(next.heightMm);
+    next.uMm = clean(next.uMm);
+    next.vMm = clean(next.vMm);
+  } else {
+    next.outerDiameterMm = clean(next.outerDiameterMm);
+    next.boreDiameterMm = clean(next.boreDiameterMm);
+    next.heightMm = clean(next.heightMm);
+  }
+  return next;
+}
+
 export function featureWorldPose(
   def: ReturnType<typeof featurePlan>[number],
   root: VolumeTransform,

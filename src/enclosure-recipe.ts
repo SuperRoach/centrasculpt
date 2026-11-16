@@ -536,10 +536,7 @@ export class EnclosureRecipes {
         if (index >= 0) {
           if (
             features[index].sourceIds.length !== generated.length ||
-            features[index].definition.kind !== edit.definition.kind ||
-            (edit.definition.kind === "cutout" &&
-              features[index].definition.kind === "cutout" &&
-              edit.definition.shape !== features[index].definition.shape)
+            features[index].definition.kind !== edit.definition.kind
           )
             throw new Error("Changing feature type/count requires removing it first.");
           features[index].definition = structuredClone(edit.definition);
@@ -646,7 +643,10 @@ export class EnclosureRecipes {
       });
       if (old && p.name !== old.parameters.name)
         steps.push({ command: { type: "object.rename", id: refs.lid, name: `${p.name} Lid` } });
-      const result = await this.api.batch(steps, options);
+      // Only the recipe can replace its existing cutter type without changing its ID.
+      const cutoutId =
+        index >= 0 && edit?.definition?.kind === "cutout" ? edit.attachmentId : undefined;
+      const result = await this.api.batch(steps, options, cutoutId);
       return result.ok
         ? {
             ...result,

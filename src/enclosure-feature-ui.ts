@@ -1,5 +1,7 @@
 import type { EnclosureControls } from "./enclosure-controls";
-import { type FeatureDefinition, WALL_ANCHORS } from "./enclosure-features";
+import { enclosureFeatureGuide } from "./enclosure-feature-guide";
+import { type FeatureDefinition, featurePlan, WALL_ANCHORS } from "./enclosure-features";
+import type { EnclosureViewportTarget } from "./enclosure-viewport-guide";
 
 const WALL_NAMES = ["Front", "Right", "Back", "Left"];
 /** Compact authoring surface over the shared staged recipe workflow. */
@@ -7,6 +9,8 @@ export function enclosureFeatureUI(
   tools: EnclosureControls,
   host: HTMLElement,
   refresh: () => void,
+  busy: () => boolean,
+  enclosureOpen: () => boolean,
 ) {
   const panel = document.createElement("details"),
     title = document.createElement("summary");
@@ -59,20 +63,12 @@ export function enclosureFeatureUI(
     label(parent, text, el, key);
     return el;
   }
-  function field(
-    parent: HTMLElement,
-    key: string,
-    text: string,
-    aria: string,
-    value: string,
-    type = "number",
-  ) {
+  function field(parent: HTMLElement, key: string, text: string, aria: string, value: string) {
     const el = document.createElement("input");
-    el.type = type;
+    el.type = "number";
     el.value = value;
     el.setAttribute("aria-label", aria);
-    if (type === "number") el.step = "any";
-    else el.maxLength = 90;
+    el.step = "any";
     label(parent, text, el, key);
     return el;
   }
@@ -101,7 +97,6 @@ export function enclosureFeatureUI(
     ["cutout", "Wall cutout"],
     ["mounting", "Mounting posts"],
   ]);
-  const name = field(body, "name", "Name", "Feature name", "Port", "text");
   const placement = section("Placement", false);
   const face = selectField(
     placement.grid,
@@ -120,16 +115,36 @@ export function enclosureFeatureUI(
     ],
     "shape",
   );
+  const edge = selectField(placement.grid, "Edge", "Opening edge", [
+    ["straight", "Straight"],
+    ["rounded", "Rounded corners"],
+    ["tapered", "Tapered entrance"],
+  ]);
+  edge.parentElement?.classList.add("feature-wide-field");
+  const guide = enclosureFeatureGuide((u, v) => {
+    if (busy() || tools.pending) return;
+    inputs.uMm.value = String(Math.round(u * 10) / 10);
+    inputs.vMm.value = String(Math.round(v * 10) / 10);
+    invalidate();
+  });
+  body.append(guide.canvas);
+  const guideHint = document.createElement("p");
+  guideHint.className = "feature-hint";
+  body.append(guideHint);
   const position = section("Position");
   field(position.grid, "uMm", "Across wall", "U from wall centre (mm)", "0");
   field(position.grid, "vMm", "Above floor", "V above inside floor (mm)", "5");
-  const positionHint = document.createElement("p");
-  positionHint.className = "feature-hint";
-  positionHint.textContent = "Across is measured from the wall centre.";
-  position.group.append(positionHint);
   const opening = section("Opening");
   field(opening.grid, "widthMm", "Width", "Opening width / diameter (mm)", "4");
   field(opening.grid, "heightMm", "Height", "Opening height (mm)", "4");
+  field(opening.grid, "cornerRadiusMm", "Corner radius", "Opening corner radius (mm)", "0.5");
+  field(
+    opening.grid,
+    "outsideFlareMm",
+    "Extra per outside edge",
+    "Outside taper per edge (mm)",
+    "0.5",
+  );
   const posts = section("Post sizes");
   field(posts.grid, "outerDiameterMm", "Outside Ø", "Post outside diameter (mm)", "3");
   field(posts.grid, "boreDiameterMm", "Bore Ø", "Post bore diameter (mm)", "1.5");
@@ -165,10 +180,7 @@ export function enclosureFeatureUI(
     centreTable.append(row);
     centreRows.push(row);
   }
-  const centreHint = document.createElement("p");
-  centreHint.className = "feature-hint";
-  centreHint.textContent = "From the inside floor centre. Use your own measured board centres.";
-  centres.group.append(centreHint);
+
   const advanced = document.createElement("details"),
     advancedTitle = document.createElement("summary"),
     advancedGrid = document.createElement("div");
@@ -221,10 +233,13 @@ export function enclosureFeatureUI(
       if (!text(key).trim()) throw new Error("Enter all dimensions in mm.");
       return Number(text(key));
     };
+    const existing = cached.find(({ sourceIds }) => sourceIds[0] === selected.value);
+    const name =
+      existing?.definition.name ?? (kind.value === "mounting" ? "Mounting posts" : "Port");
     return kind.value === "cutout"
       ? {
           kind: "cutout",
-          name: name.value,
+          name,
           anchor: face.value as (typeof WALL_ANCHORS)[number],
           shape: shape.value as "rectangle" | "round",
           uMm: n("uMm"),
@@ -232,10 +247,12 @@ export function enclosureFeatureUI(
           widthMm: n("widthMm"),
           heightMm: shape.value === "round" ? n("widthMm") : n("heightMm"),
           insetMm: n("insetMm"),
+          ...(edge.value === "rounded" ? { cornerRadiusMm: n("cornerRadiusMm") } : {}),
+          ...(edge.value === "tapered" ? { outsideFlareMm: n("outsideFlareMm") } : {}),
         }
       : {
           kind: "mounting",
-          name: name.value,
+          name,
           anchor: "enclosure.base.floor",
           centresMm: Array.from(
             { length: Number(count.value) },
@@ -250,19 +267,27 @@ export function enclosureFeatureUI(
   const preview = action(actions, "Preview", "Preview attachment", () =>
     tools.stageFeature(definition(), selected.value || undefined),
   );
-  const apply = action(actions, "Apply feature", "Apply attachment", () => tools.confirm());
+  const apply = action(actions, "Add feature", "Apply attachment", () =>
+    tools.featureReady
+      ? tools.confirm()
+      : tools.saveFeature(definition(), selected.value || undefined),
+  );
   const cancel = action(secondary, "Cancel preview", "Cancel attachment preview", () =>
     tools.cancel(),
   );
-  const remove = action(secondary, "Remove feature…", "Preview removal", () =>
-    tools.stageFeature(undefined, selected.value),
-  );
+  let removing = false;
+  const remove = action(secondary, "Remove feature…", "Preview removal", async () => {
+    removing = true;
+    await tools.stageFeature(undefined, selected.value);
+  });
   remove.className = "feature-remove";
-  const association = document.createElement("p");
-  association.className = "feature-hint feature-association";
-  body.append(association);
+  const feedback = document.createElement("p");
+  feedback.className = "feature-hint feature-association";
+  feedback.setAttribute("role", "status");
+  body.append(feedback);
   const invalidate = () => {
-    tools.cancel();
+    removing = false;
+    if (tools.featureReady) tools.cancel();
     refresh();
     sync();
   };
@@ -277,17 +302,29 @@ export function enclosureFeatureUI(
     rows.widthMm.querySelector("span")!.textContent = round ? "Diameter" : "Width";
     for (const [i, row] of centreRows.entries()) row.hidden = i >= Number(count.value);
     kind.parentElement!.hidden = !!selected.value;
-    association.textContent = mounting
-      ? "Associated with the inside floor · follows enclosure edits."
-      : `Associated with the ${WALL_NAMES[WALL_ANCHORS.indexOf(face.value as (typeof WALL_ANCHORS)[number])].toLowerCase()} wall · follows enclosure edits.`;
+    const rounded = edge.querySelector<HTMLOptionElement>('[value="rounded"]');
+    if (rounded) rounded.disabled = round;
+    if (round && edge.value === "rounded") edge.value = "straight";
+    rows.cornerRadiusMm.hidden = edge.value !== "rounded";
+    rows.outsideFlareMm.hidden = edge.value !== "tapered";
+    guideHint.textContent = mounting
+      ? "Match the numbered posts to your board measurements. X and Z start at the floor centre."
+      : edge.value === "tapered"
+        ? "Click the wall to place the opening. Width and height are measured at the inside face."
+        : "Click the wall to place the opening, or enter its position below.";
   }
-  kind.onchange = () => {
-    if (!selected.value) name.value = kind.value === "mounting" ? "Mounting posts" : "Port";
-    invalidate();
+  const defaults = new Map(
+    controls.filter((control) => control !== selected).map((control) => [control, control.value]),
+  );
+  const reset = () => {
+    for (const [control, value] of defaults) control.value = value;
   };
-  selected.onchange = () => {
-    tools.cancel();
-    const feature = tools.attachments.find((f) => f.sourceIds[0] === selected.value);
+  let selectedDefinition: string | undefined;
+  function loadFeature(feature: EnclosureControls["attachments"][number] | undefined) {
+    removing = false;
+    selectedDefinition = feature && JSON.stringify(feature.definition);
+    if (tools.featureReady) tools.cancel();
+    reset();
     if (feature) {
       const d = feature.definition;
       kind.value = d.kind;
@@ -295,6 +332,8 @@ export function enclosureFeatureUI(
         const input = inputs[key === "heightMm" && d.kind === "mounting" ? "heightPost" : key];
         if (input) input.value = String(value);
       }
+      if (d.kind === "cutout")
+        edge.value = d.outsideFlareMm ? "tapered" : d.cornerRadiusMm ? "rounded" : "straight";
       if (d.kind === "mounting") {
         count.value = String(d.centresMm.length);
         for (const [i, c] of d.centresMm.entries()) {
@@ -303,49 +342,142 @@ export function enclosureFeatureUI(
         }
       }
     }
+  }
+  selected.onchange = () => {
+    loadFeature(cached.find((feature) => feature.sourceIds[0] === selected.value));
     refresh();
     sync();
   };
+  let previousSelection: string | undefined;
+  let previousBase: string | undefined;
+  let previousProject: object | undefined;
   let signature = "",
     cached: EnclosureControls["attachments"] = [];
   function sync() {
+    const editor = tools.layers();
+    const selection = editor.project.activeLayerId;
+    const followSelection =
+      enclosureOpen() &&
+      panel.open &&
+      !busy() &&
+      !tools.pending &&
+      !editor.selectedGroupId &&
+      (previousSelection !== selection || previousProject !== editor.project);
+    if (followSelection) tools.openSelected(true);
+    const pair = tools.selectedPair;
+    if (previousBase !== pair?.base || previousProject !== editor.project) {
+      previousBase = pair?.base;
+      previousProject = editor.project;
+      removing = false;
+      cached = [];
+      signature = "";
+      selected.value = "";
+      reset();
+    }
+    const base = pair && editor.project.layerStack.layers.find((layer) => layer.id === pair.base);
     let features = cached;
+    let attachmentsReady = false;
     try {
       features = tools.attachments;
       cached = features;
+      attachmentsReady = true;
     } catch {
       /* Retain the picker during preparation. */
     }
-    const next = JSON.stringify(features);
+    const options = features.map(({ sourceIds: [id], definition }) => ({
+      id,
+      name:
+        editor.project.layerStack.layers.find((layer) => layer.id === id)?.name ?? definition.name,
+    }));
+    const next = JSON.stringify([features, options]);
     if (next !== signature) {
       signature = next;
       const id = selected.value;
+      const previous = selectedDefinition;
+      const current = features.find((feature) => feature.sourceIds[0] === id);
+      if (current && previous !== JSON.stringify(current.definition)) loadFeature(current);
       selected.replaceChildren();
       const fresh = document.createElement("option");
       fresh.value = "";
       fresh.textContent = "＋ New feature";
       selected.append(fresh);
-      for (const feature of features) {
+      for (const { id, name } of options) {
         const option = document.createElement("option");
-        option.value = feature.sourceIds[0];
-        option.textContent = feature.definition.name;
+        option.value = id;
+        option.textContent = name;
         selected.append(option);
       }
       selected.value = features.some((f) => f.sourceIds[0] === id) ? id : "";
     }
-    const disabled = tools.pending || !tools.selectedPair;
-    intro.textContent = tools.selectedPair
-      ? "Add a wall opening or floor mounting posts. Sizes in mm."
-      : "Select an enclosure above to add cutouts or mounting posts.";
+    if (followSelection && attachmentsReady) {
+      previousSelection = selection;
+      const feature = features.find(({ sourceIds }) => sourceIds.includes(selection));
+      if (feature && feature.sourceIds[0] !== selected.value) {
+        selected.value = feature.sourceIds[0];
+        loadFeature(feature);
+      }
+    }
+    const disabled = busy() || tools.pending || !base;
+    body.dataset.bound = String(!!base);
+    intro.textContent = base
+      ? `Editing ${base.name}`
+      : "Select an enclosure base or lid in Layers, then open Cutouts & mounting.";
     for (const el of [...controls, ...buttons]) el.disabled = disabled;
     cancel.disabled = false;
-    cancel.hidden = !tools.featureReady && !tools.pending;
+    const ready = tools.featureReady;
+    cancel.hidden = !ready && !tools.pending;
     remove.hidden = !selected.value;
-    apply.disabled ||= !tools.featureReady;
-    preview.classList.toggle("enclosure-primary", !tools.featureReady);
-    apply.classList.toggle("enclosure-primary", tools.featureReady);
+    apply.textContent =
+      removing && ready ? "Remove feature" : selected.value ? "Save feature" : "Add feature";
+    apply.classList.add("enclosure-primary");
+    preview.textContent = "Preview in 3D";
     visibility();
+    if (base && panel.open) {
+      const parameters = base.assemblyPart?.enclosure?.parameters ?? tools.parameters;
+      let issue = "";
+      try {
+        const feature = definition();
+        try {
+          featurePlan(parameters, feature);
+        } catch (error) {
+          issue = error instanceof Error ? error.message : String(error);
+        }
+        guide.draw(parameters, feature, !issue, !disabled);
+        guide.canvas.hidden = false;
+      } catch (error) {
+        issue = error instanceof Error ? error.message : String(error);
+        guide.canvas.hidden = true;
+      }
+      feedback.textContent = tools.pending || ready ? tools.feedback : issue || tools.feedback;
+      apply.disabled ||= !!issue && !(removing && ready);
+      preview.disabled ||= !!issue;
+    }
   }
+  panel.ontoggle = () => {
+    previousSelection = undefined;
+    refresh();
+    sync();
+  };
   sync();
-  return { sync };
+  return {
+    sync,
+    viewportTarget(): EnclosureViewportTarget | undefined {
+      if (!panel.open || !enclosureOpen() || busy()) return;
+      const editor = tools.layers();
+      const base = editor.project.layerStack.layers.find((layer) => layer.id === previousBase);
+      if (!base?.visible || previousProject !== editor.project) return;
+      const feature = cached.find(({ sourceIds }) => sourceIds[0] === selected.value);
+      const active = editor.project.activeLayerId;
+      const sourceId = feature?.sourceIds.includes(active) ? active : feature?.sourceIds[0];
+      const source = editor.project.layerStack.layers.find((layer) => layer.id === sourceId);
+      return {
+        base,
+        selected: source,
+      };
+    },
+    panel,
+    followLayerSelection: () => {
+      previousSelection = undefined;
+    },
+  };
 }

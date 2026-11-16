@@ -356,6 +356,7 @@ export class ModellingAPI {
   async batch(
     steps: readonly ModellingStep[],
     options: BatchOptions,
+    replaceEnclosureCutoutId?: string,
   ): Promise<ModellingResult<BatchReport>> {
     let owner: symbol | undefined, checkpoint: number | undefined;
     let temporary: IndependentLayers | undefined;
@@ -482,7 +483,11 @@ export class ModellingAPI {
         if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
         const command = resolve(step.command) as ModellingCommand;
         const result = await target.withModellingLease(owner, () =>
-          api.executeCommand(command, { expectedRevision: api.revision, signal: options.signal }),
+          api.executeCommand(
+            command,
+            { expectedRevision: api.revision, signal: options.signal },
+            replaceEnclosureCutoutId,
+          ),
         );
         if (!result.ok) throw new CommandError(result.error.code, result.error.message);
         if (target.display.precision.millimetresPerUnit !== calibration)
@@ -673,6 +678,7 @@ export class ModellingAPI {
   private async executeCommand(
     command: ModellingCommand,
     options: { expectedRevision: string; signal?: AbortSignal },
+    replaceEnclosureCutoutId?: string,
   ): Promise<ModellingResult<{ id: string; fit?: FitReport }>> {
     let selected: string | undefined,
       group: string | null = null;
@@ -814,6 +820,7 @@ export class ModellingAPI {
       }
       if (
         command.type === "primitive.update" &&
+        command.id !== replaceEnclosureCutoutId &&
         source?.kind !== this.layers.runtime(command.id).layer.primitive?.kind
       )
         this.fail("unsupported", "Changing primitive type requires creating a new source.");
