@@ -143,6 +143,66 @@ main{min-height:0}@media(max-width:760px){#viewport{height:max(60dvh,400px)}body
 .lighting-panel label { font-size: 12px; letter-spacing: 0; font-weight: 500; }
 .lighting-panel input { margin: 0; padding: 6px; font-size: 12px; }
 .lighting-panel input[type=checkbox] { width: 20px; min-height: 20px; }
+
+/* Compact desktop recovery and shape controls. */
+@media (min-width: 761px) {
+  aside:not(.layers-panel), .layers-panel { position: relative; }
+  aside:not(.layers-panel).is-scrolled, .layers-panel.is-scrolled { box-shadow: inset 0 9px 10px -10px #26372b70; }
+  #sculpt-brush > .sculpt-brush-body { border-top: 0; }
+}
+.recovery-panel { margin: 0 0 5px; padding: 8px 0 4px; }
+.recovery-panel #recovery-available { margin-top: 4px; }
+.recovery-panel #recovery-selection { margin: 6px 0 4px; }
+.recovery-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.recovery-panel .recovery-actions button { display: grid; place-items: center; width: 34px; height: 34px; min-height: 34px; margin: 0; padding: 7px; border-radius: 8px; background: #f8faf4; }
+.recovery-actions svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#discard-recovery:hover:not(:disabled) { color: #a33427; background: #fff0ed; border-color: #d79a8d; }
+.shape-library-actions { display: flex; align-items: stretch; gap: 8px; margin: 0 0 12px; }
+.shape-library-actions .shape-open-button { display: grid; place-items: center; flex: 0 0 46px; width: 46px; height: 42px; margin: 0; padding: 8px; border-radius: 8px; background: #f4f6ef; }
+.shape-library-actions .shape-open-button[aria-expanded="true"] { background: #e4ecda; border-color: #80966d; }
+.shape-library-actions .shape-open-button svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.shape-library-actions .my-shapes-button { flex: 1; min-height: 42px; margin: 0; border-radius: 8px; background: #e6ecd9; border-color: #b9c8ab; color: #344b2b; font-size: 12px; font-weight: 600; }
+.shape-library-actions .my-shapes-button:hover { background: #dce7ce; }
+#sculpt-brush .sculpt-brush-body { padding-top: 12px; }
+#sculpt-brush { margin-bottom: 0 !important; }
+#sidebar-tools > .lighting-panel { margin: 12px 0 !important; }
+#sculpt-brush { border-top: 0; }
+#sculpt-brush .sculpt-brush-body, #sculpt-brush .precision-settings { border-top: 0; }
+#sculpt-brush .sculpt-brush-body > #shape-library { margin: 0 0 12px; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; }
+#app #sculpt-brush .sculpt-brush-body > #shape-library > summary { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+#app #sculpt-brush .sculpt-brush-body > #shape-library > summary::before { display: none; }
+#sculpt-brush .sculpt-brush-body > #shape-library .shape-library-body { max-height: min(42dvh, 320px); overflow: auto; padding: 12px; border: 1px solid #d2dbc8; border-radius: 8px; background: #f4f6ef; }
+@media (max-width: 760px) {
+  #sculpt-brush .sculpt-brush-body > #shape-library .shape-library-body { max-height: min(36dvh, 260px); }
+}
+
+/* Personal Shapes uses a compact card layout that stays consistent with the dark library. */
+.project-library-dialog:has(.personal-shape-list) { width: min(760px, 92vw); max-height: 86dvh; padding: 26px; border-radius: 20px; box-shadow: 0 24px 80px #06101466; }
+.personal-shape-heading { margin: 0; font-size: 25px; }
+.personal-shape-intro { max-width: 660px; margin: 7px 0 16px; color: #b3ccc5; font-size: 12px; line-height: 1.6; }
+.personal-shape-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; margin: 0 0 14px; border: 1px solid #31504d; border-radius: 12px; background: #102226; }
+.personal-shape-toolbar button { min-height: 38px; margin: 0; }
+.personal-shape-toolbar .personal-shape-primary { background: #b0f2d7; border-color: #b0f2d7; color: #14272b; font-weight: 700; }
+.personal-shape-toolbar .personal-shape-primary:hover { background: #d3ffe9; color: #14272b; }
+.personal-shape-status { min-height: 18px; margin: 8px 2px 12px; color: #b3ccc5; font-size: 12px; }
+.personal-shape-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.personal-shape-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; margin: 0; padding: 12px; border: 1px solid #45645f; border-radius: 12px; background: #192f33; }
+.personal-shape-card img { width: 100%; height: 150px; object-fit: contain; border-radius: 8px; background: #dfe4e1; }
+.personal-shape-card h3 { margin: 2px 0 0; font-size: 15px; overflow-wrap: anywhere; }
+.personal-shape-card p { margin: 0 0 4px; color: #b3ccc5; font-size: 11px; }
+.personal-shape-card button { min-height: 34px; padding: 7px 9px; }
+.personal-shape-card button:first-of-type { background: #365e50; border-color: #83b29d; }
+.lighting-panel > summary .world-settings-icon { width: 16px; height: 16px; margin-left: auto; flex: 0 0 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.studio-background-heading-swatch { display: inline-block; width: 16px; height: 16px; margin-left: auto; flex: 0 0 16px; border: 1px solid #59665e80; border-radius: 4px; box-shadow: inset 0 0 0 1px #ffffff30; }
+.lighting-panel label.studio-background-control { display: block; }
+.studio-background-label { display: block; }
+.studio-background-select { position: relative; display: block; margin-top: 5px; }
+.studio-background-swatch { position: absolute; z-index: 1; top: 50%; left: 10px; width: 15px; height: 15px; transform: translateY(-50%); border: 1px solid #59665e80; border-radius: 4px; box-shadow: inset 0 0 0 1px #ffffff30; pointer-events: none; }
+.lighting-panel .studio-background-control select { display: block; box-sizing: border-box; width: 100%; margin: 0; padding-left: 34px; }
+
+/* The brush controls begin flush below their heading without a section divider. */
+#sculpt-brush > .sculpt-brush-body { border: 0 !important; box-shadow: none; background-image: none; }
+@media (max-width: 520px) { .project-library-dialog:has(.personal-shape-list) { padding: 18px; } .personal-shape-toolbar { padding: 9px; } }
 .lighting-panel summary { font-size: 13px; font-weight: 600; cursor: pointer; }
 .lighting-panel p { font-size: 12px; line-height: 1.5; letter-spacing: 0; }
 
@@ -614,4 +674,45 @@ header .brand { border: 0; padding: 4px 0; border-radius: 5px; }
 @media (prefers-reduced-motion: reduce) { .library-details-enter { animation: none; } }
 
 .library-status[aria-busy="true"] { display: flex; align-items: center; gap: 10px; }
+
+/* Keep the tool panels aligned without drawing section dividers above them. */
+#sidebar-tools > .primitive-panel,
+#sidebar-tools > .assembly-panel,
+#sidebar-tools > #measurement-precision,
+#sidebar-tools > #reference-panel {
+  border-top: 0 !important;
+}
+#sidebar-tools > .primitive-panel,
+#sidebar-tools > .assembly-panel,
+#sidebar-tools > #measurement-precision {
+  margin: 12px 0 0 !important;
+  padding-top: 0 !important;
+}
 .library-status > span { display: flex; color: #b0f2d7; }
+
+.layers-panel #render-style-label,
+.layers-panel #viewport-mode-label { margin-top: 12px; }
+.render-style-options,
+.viewport-mode-toggle { display: grid; gap: 6px; margin-top: 8px; }
+.render-style-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.render-style-options button { display: grid; place-items: center; min-width: 0; min-height: 36px; padding: 7px; }
+.render-style-options svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.render-style-options button[aria-pressed="true"],
+.viewport-mode-toggle button[aria-pressed="true"] { background: #e6ecd9; border-color: #93a47b; color: #3c5629; }
+.viewport-mode-toggle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.viewport-mode-toggle button { min-width: 0; min-height: 36px; padding: 7px 5px; font-size: 10px; }
+.layers-panel .active-layer-tools { border-top: 0; padding-top: 0; }
+.transform-modes button { display: flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+.transform-modes .tool-icon { width: 13px; height: 13px; flex: 0 0 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.render-style-toggle { display: flex; align-items: center; justify-content: center; gap: 7px; }
+#cycle-render-style-icon { display: inline-flex; }
+#cycle-render-style-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.hierarchy-root-drop { color: #40594a; border-color: #8da386; background: #f0f5eb; opacity: 1; }
+.layers-panel #surface-view-label,
+.layers-panel #render-style-label,
+.layers-panel #viewport-mode-label { margin: 0; }
+.layers-panel #render-style-label,
+.layers-panel #viewport-mode-label { margin-top: 16px; }
+.layers-panel #composition-mode,
+.layers-panel #render-style,
+.layers-panel #viewport-mode { margin: 8px 0 0; }

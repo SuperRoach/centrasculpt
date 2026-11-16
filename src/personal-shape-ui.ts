@@ -52,13 +52,17 @@ export function installPersonalShapes(
     return b;
   };
   const status = document.createElement("p");
+  status.className = "personal-shape-status";
   status.setAttribute("role", "status");
   const heading = document.createElement("h2");
+  heading.className = "personal-shape-heading";
   heading.textContent = "Personal Shapes";
   const note = document.createElement("p");
+  note.className = "personal-shape-intro";
   note.textContent =
     "Reusable evaluated geometry, without the original procedural history. Stored in this browser independently of projects. Clearing site data removes the library; use Export Library Backup to keep a portable copy. Move, rotate, resize and sculpt inserted copies normally.";
   const content = document.createElement("div");
+  content.className = "personal-shape-list";
   const saveButton = button("Save selected as Shape", async () => {
     const layers = getLayers();
     if (!layers.recoveryReady) throw new Error("Finish the current edit before saving a shape.");
@@ -189,6 +193,7 @@ export function installPersonalShapes(
       const row = document.createElement("section"),
         title = document.createElement("h3"),
         detail = document.createElement("p");
+      row.className = "personal-shape-card";
       title.textContent = record.name;
       detail.textContent = `${record.dimensionsMM.map((v) => v.toFixed(2)).join(" × ")} mm · ${new Date(record.created).toLocaleDateString()}`;
       if (record.thumbnail) {
@@ -378,21 +383,24 @@ export function installPersonalShapes(
     status.textContent =
       "Choose a .cshapes backup to validate and preview. Nothing is imported until confirmation.";
   });
-  dialog.append(
-    heading,
-    note,
+  const toolbar = document.createElement("div");
+  toolbar.className = "personal-shape-toolbar";
+  saveButton.classList.add("personal-shape-primary");
+  toolbar.append(
     saveButton,
+    button("Browse", browse),
     backupExport,
     backupImport,
-    button("Browse", browse),
-    button("Close / Cancel", close),
-    status,
-    content,
+    button("Close", close),
   );
+  dialog.append(heading, note, toolbar, status, content);
   const open = button("Personal Shapes…", async () => {
     if (!dialog.open) dialog.showModal();
     await browse();
   });
   open.id = "personal-shapes";
-  document.querySelector(".project-buttons")?.after(open);
+  open.textContent = "My Shapes";
+  open.title = "Open your personal shapes";
+  open.className = "my-shapes-button";
+  document.querySelector(".shape-library-actions")?.append(open);
 }

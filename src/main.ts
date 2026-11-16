@@ -116,6 +116,15 @@ if (
 }
 let editorTools: EditorToolState | undefined;
 const ui = createUI();
+for (const panel of document.querySelectorAll<HTMLElement>("main > aside")) {
+  panel.addEventListener(
+    "scroll",
+    () => panel.classList.toggle("is-scrolled", panel.scrollTop > 2),
+    {
+      passive: true,
+    },
+  );
+}
 let display = new LayerDisplayPreferences();
 let layers = new IndependentLayers(
   createBaseProject(new SDFVolume(DEFAULT_RESOLUTION), {
@@ -1078,11 +1087,10 @@ function setRenderStyle(style: RenderStyle): void {
     `${style === "normal" ? "Normal clay" : style === "matte" ? "Matte soft reflections" : "Glossy surface inspection"} · viewport only`,
   );
 }
-document
-  .getElementById("render-style")!
-  .addEventListener("change", (event) =>
-    setRenderStyle(validateRenderStyle((event.target as HTMLSelectElement).value)),
-  );
+document.getElementById("render-style")!.addEventListener("click", (event) => {
+  const button = (event.target as Element).closest<HTMLButtonElement>("[data-render-style]");
+  if (button) setRenderStyle(validateRenderStyle(button.dataset.renderStyle));
+});
 function cycleRenderStyle(): void {
   setRenderStyle(
     RENDER_STYLES[(RENDER_STYLES.indexOf(display.renderStyle) + 1) % RENDER_STYLES.length],
@@ -3126,7 +3134,7 @@ xrExperience = new XRExperience(
 void xrExperience.check();
 const recoveryPanel = document.getElementById("recovery-slot")!;
 recoveryPanel.innerHTML =
-  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><select id="recovery-selection" aria-label="Recovery checkpoint" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><button id="restore-recovery">Restore recovery…</button><button id="discard-recovery">Discard all recovery…</button><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details></section>';
+  '<section class="recovery-panel"><label><input id="autosave-enabled" type="checkbox" checked> LOCAL AUTOSAVE</label><p id="recovery-status" role="status">Checking local recovery…</p><details id="recovery-available" hidden><summary>RECOVERY CHECKPOINTS <span id="recovery-info" tabindex="0" role="img" aria-label="Recovery status">ⓘ</span></summary><select id="recovery-selection" aria-label="Recovery checkpoint" title="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh." aria-description="Restore replaces the current open project. Save current work first. Manual files are never overwritten. Undo history starts fresh."></select><div class="recovery-actions"><button id="discard-recovery" type="button" aria-label="Discard all recovery checkpoints" title="Discard all recovery checkpoints"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 3v6m4-6v6"/></svg></button><button id="restore-recovery" type="button" aria-label="Restore selected checkpoint" title="Restore selected checkpoint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 2 7M4 4v6h6m2-2v5l3 2"/></svg></button></div><div id="recovery-confirm" hidden><p id="recovery-confirm-text"></p><div class="recovery-confirm-actions"><button id="confirm-recovery">Confirm</button><button id="cancel-recovery-action">Cancel</button></div></div></details></section>';
 const recoveryStatus = document.getElementById("recovery-status")!,
   recoveryAvailable = document.getElementById("recovery-available")!,
   recoverySelect = document.querySelector<HTMLSelectElement>("#recovery-selection")!,
@@ -3220,7 +3228,7 @@ function updateRecoveryUI(): void {
       ...recovery.records.map(
         (r) =>
           new Option(
-            `${r.projectName} · ${new Date(r.createdAt).toLocaleString()} · ${(r.bytes / 1048576).toFixed(1)} MiB`,
+            `${r.projectName} · ${recoveryDateLabel(r.createdAt)} · ${(r.bytes / 1048576).toFixed(1)}mb`,
             r.id,
           ),
       ),
@@ -3235,6 +3243,19 @@ function updateRecoveryUI(): void {
   for (const id of ["restore-recovery", "discard-recovery", "confirm-recovery"])
     document.querySelector<HTMLButtonElement>(`#${id}`)!.disabled =
       loadingProject || xrBlocked() || !layers.recoveryReady;
+}
+function recoveryDateLabel(timestamp: number): string {
+  const date = new Date(timestamp),
+    now = new Date(),
+    today = new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    checkpointDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+    daysAgo = Math.round((today.getTime() - checkpointDay.getTime()) / 86400000),
+    time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (daysAgo === 0) return `Today · ${time}`;
+  if (daysAgo === 1) return `Yesterday · ${time}`;
+  if (daysAgo > 1 && daysAgo < 7)
+    return `${date.toLocaleDateString(undefined, { weekday: "long" })} · ${time}`;
+  return `${date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} · ${time}`;
 }
 recovery = new RecoveryController(
   new IndexedRecoveryStore(
@@ -3368,7 +3389,7 @@ function showEntryRecovery(): void {
   const select = entryRecoveryDialog.querySelector<HTMLSelectElement>("select")!;
   select.replaceChildren(
     ...recovery.records.map(
-      (r) => new Option(`${r.projectName} · ${new Date(r.createdAt).toLocaleString()}`, r.id),
+      (r) => new Option(`${r.projectName} · ${recoveryDateLabel(r.createdAt)}`, r.id),
     ),
   );
   select.value = recoverySelect.value;

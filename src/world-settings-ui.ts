@@ -10,12 +10,12 @@ export function worldSettingsUI(
   const panel = document.createElement("details");
   panel.className = "lighting-panel";
   const summary = document.createElement("summary");
-  summary.textContent = "World Settings · Studio Background";
+  summary.textContent = "Studio Background";
+  const headingSwatch = document.createElement("span");
+  headingSwatch.className = "studio-background-heading-swatch";
+  headingSwatch.setAttribute("aria-hidden", "true");
+  summary.append(headingSwatch);
   panel.append(summary);
-  const hint = document.createElement("p");
-  hint.textContent =
-    "Skybox adds a level horizon in Studio only. The background colour fills the view with Skybox off, or tints the lower half with it on. The ground grid stays independent. Passthrough always shows your room.";
-  panel.append(hint);
   const label = document.createElement("label"),
     skybox = document.createElement("input");
   label.textContent = "Skybox";
@@ -28,9 +28,21 @@ export function worldSettingsUI(
   label.append(skybox);
   panel.append(label);
   const presetLabel = document.createElement("label"),
+    presetName = document.createElement("span"),
+    presetControl = document.createElement("span"),
+    swatch = document.createElement("span"),
     preset = document.createElement("select");
-  presetLabel.textContent = "Studio background";
+  presetLabel.className = "studio-background-control";
+  presetName.className = "studio-background-label";
+  presetName.textContent = "Studio background";
+  presetControl.className = "studio-background-select";
+  swatch.className = "studio-background-swatch";
+  swatch.setAttribute("aria-hidden", "true");
+  presetControl.append(swatch, preset);
+  presetLabel.append(presetName, presetControl);
   preset.setAttribute("aria-label", "Studio background");
+  preset.title =
+    "Affects the Studio view only. Passthrough always shows your room and is not changed by this setting.";
   for (const p of STUDIO_BACKGROUNDS) {
     const option = document.createElement("option");
     option.value = p.id;
@@ -42,12 +54,14 @@ export function worldSettingsUI(
     if (!busy() && selected) display().world.studioBackground = selected.id;
     sync();
   };
-  presetLabel.append(preset);
   panel.append(presetLabel);
   parent.append(panel);
   function sync() {
     skybox.checked = display().world.skybox ?? true;
     preset.value = display().world.studioBackground;
+    swatch.style.backgroundColor =
+      STUDIO_BACKGROUNDS.find((p) => p.id === preset.value)?.colour ?? "#808080";
+    headingSwatch.style.backgroundColor = swatch.style.backgroundColor;
     skybox.disabled = preset.disabled = busy();
   }
   sync();

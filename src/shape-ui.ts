@@ -27,7 +27,7 @@ export function createShapeLibraryUI(
 ) {
   const field = (name: string, label: string, value: string, step: string, min = "") =>
     `<label>${label}<input data-shape-field="${name}" type="number" aria-label="${value}" step="${step}" ${min ? `min="${min}"` : ""}/></label>`;
-  host.innerHTML = `<details id="shape-library"><summary><svg class="shape-library-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect x="9" y="12" width="30" height="26"/><path d="M2 45h44M24 12V2"/></svg> SHAPE LIBRARY</summary><div class="shape-library-body"><div class="shape-grid">${Object.values(
+  host.innerHTML = `<div class="shape-library-actions"><details id="shape-library"><summary class="sr-only">Boolean shapes</summary><div class="shape-library-body"><div class="shape-grid">${Object.values(
     SHAPE_METADATA,
   )
     .map(
@@ -36,7 +36,7 @@ export function createShapeLibraryUI(
     )
     .join(
       "",
-    )}</div><p id="shape-description"></p><label class="shape-enable"><input id="shape-follow" type="checkbox" checked/> Follow pointer on visible surfaces</label><div class="shape-pose-actions"><button type="button" id="move-shape" aria-pressed="false" title="Move stamp · G toggles handles">✥ Move (G)</button><button type="button" id="rotate-shape" aria-pressed="false" title="Rotate stamp · T toggles rings">↻ Rotate (T)</button></div><div class="shape-operations"><button type="button" data-shape-op="add" aria-label="Shape Add" aria-pressed="true">＋ Add</button><button type="button" data-shape-op="subtract" aria-label="Shape Subtract" aria-pressed="false">− Subtract</button></div><fieldset class="numeric-transform"><legend>Dimensions · shape-local units</legend>${field("dx", "X / Diameter", "Shape width or diameter", ".05", ".001")}${field("dy", "Height Y", "Shape height", ".05", ".001")}${field("dz", "Depth Z", "Shape depth", ".05", ".001")}</fieldset><label for="shape-space">GHOST POSE SPACE</label><select id="shape-space"><option value="local">Layer local</option><option value="world">World</option></select><fieldset class="numeric-transform"><legend>Ghost position XYZ</legend>${field("px", "X", "Shape position X", ".1")}${field("py", "Y", "Shape position Y", ".1")}${field("pz", "Z", "Shape position Z", ".1")}</fieldset><fieldset class="numeric-transform"><legend>Ghost rotation · XYZ degrees</legend>${field("rx", "X", "Shape rotation X degrees", "1")}${field("ry", "Y", "Shape rotation Y degrees", "1")}${field("rz", "Z", "Shape rotation Z degrees", "1")}</fieldset><label for="shape-scale">GHOST UNIFORM SCALE</label><input id="shape-scale" data-shape-field="scale" type="number" min=".001" max="1000" step=".05" aria-label="Shape uniform scale"/><button type="button" id="reset-shape-pose">Reset ghost pose</button><p id="shape-target"></p><p id="shape-bounds"></p><p id="shape-feedback" role="status"></p><p id="shape-error" role="alert"></p><output id="shape-performance"></output><p class="shape-note" title="Teal adds clay; rust subtracts it. Click a visible surface to stamp. Use G to move or T to rotate; Apply stamp is available in the canvas controls. Escape returns to sculpting.">Click to stamp · G move · T rotate</p></div></details>`;
+    )}</div><p id="shape-description"></p><label class="shape-enable"><input id="shape-follow" type="checkbox" checked/> Follow pointer on visible surfaces</label><div class="shape-pose-actions"><button type="button" id="move-shape" aria-pressed="false" title="Move stamp · G toggles handles">✥ Move (G)</button><button type="button" id="rotate-shape" aria-pressed="false" title="Rotate stamp · T toggles rings">↻ Rotate (T)</button></div><div class="shape-operations"><button type="button" data-shape-op="add" aria-label="Shape Add" aria-pressed="true">＋ Add</button><button type="button" data-shape-op="subtract" aria-label="Shape Subtract" aria-pressed="false">− Subtract</button></div><fieldset class="numeric-transform"><legend>Dimensions · shape-local units</legend>${field("dx", "X / Diameter", "Shape width or diameter", ".05", ".001")}${field("dy", "Height Y", "Shape height", ".05", ".001")}${field("dz", "Depth Z", "Shape depth", ".05", ".001")}</fieldset><label for="shape-space">GHOST POSE SPACE</label><select id="shape-space"><option value="local">Layer local</option><option value="world">World</option></select><fieldset class="numeric-transform"><legend>Ghost position XYZ</legend>${field("px", "X", "Shape position X", ".1")}${field("py", "Y", "Shape position Y", ".1")}${field("pz", "Z", "Shape position Z", ".1")}</fieldset><fieldset class="numeric-transform"><legend>Ghost rotation · XYZ degrees</legend>${field("rx", "X", "Shape rotation X degrees", "1")}${field("ry", "Y", "Shape rotation Y degrees", "1")}${field("rz", "Z", "Shape rotation Z degrees", "1")}</fieldset><label for="shape-scale">GHOST UNIFORM SCALE</label><input id="shape-scale" data-shape-field="scale" type="number" min=".001" max="1000" step=".05" aria-label="Shape uniform scale"/><button type="button" id="reset-shape-pose">Reset ghost pose</button><p id="shape-target"></p><p id="shape-bounds"></p><p id="shape-feedback" role="status"></p><p id="shape-error" role="alert"></p><output id="shape-performance"></output><p class="shape-note" title="Teal adds clay; rust subtracts it. Click a visible surface to stamp. Use G to move or T to rotate; Apply stamp is available in the canvas controls. Escape returns to sculpting.">Click to stamp · G move · T rotate</p></div></details></div>`;
   const quick = document.createElement("div");
   quick.className = "shape-quick-tools";
   quick.hidden = true;
@@ -64,6 +64,22 @@ export function createShapeLibraryUI(
     quick.addEventListener(event, (e) => e.stopPropagation());
   const details = host.querySelector<HTMLDetailsElement>("details")!,
     space = host.querySelector<HTMLSelectElement>("#shape-space")!;
+  const actions = host.querySelector<HTMLElement>(".shape-library-actions")!;
+  document.querySelector("#sculpt-brush .sculpt-brush-body")?.prepend(details);
+  const shapeButton = document.createElement("button");
+  shapeButton.type = "button";
+  shapeButton.className = "shape-open-button";
+  shapeButton.title = "Shape";
+  shapeButton.setAttribute("aria-label", "Shape");
+  shapeButton.setAttribute("aria-expanded", String(details.open));
+  shapeButton.setAttribute("aria-controls", "shape-library");
+  shapeButton.innerHTML =
+    '<svg class="shape-library-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><rect x="9" y="12" width="30" height="26"/><path d="M2 45h44M24 12V2"/></svg>';
+  actions.prepend(shapeButton);
+  shapeButton.addEventListener("click", () => {
+    details.open = !details.open;
+  });
+  host = details;
   let error = "",
     key = "";
   function apply(action: () => void, allowXR = false) {
@@ -82,6 +98,7 @@ export function createShapeLibraryUI(
     afterChange();
   }
   details.addEventListener("toggle", () => {
+    shapeButton.setAttribute("aria-expanded", String(details.open));
     apply(() => {
       ghost.model.setEnabled(details.open, stack());
     });
