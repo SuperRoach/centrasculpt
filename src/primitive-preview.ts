@@ -7,13 +7,14 @@ import {
   MeshBasicMaterial,
   type Scene,
 } from "three";
-import type { InputOwnership } from "./interaction";
+import type { EditorMode, InputOwnership } from "./interaction";
 import {
   type PrimitiveSource,
   primitiveDimensions,
   primitivePreviewGeometry,
 } from "./parametric-primitive";
 import type { PrimitiveTools } from "./primitive-tools";
+import { identityTransform } from "./transform";
 import { scaledPrimitive, UniformTransformControls } from "./transform-tools";
 
 /** Desktop draft sizing reuses the source-editing gizmo; nothing enters the layer stack. */
@@ -36,6 +37,7 @@ export class PrimitiveDraftPreview {
   private kind = "box";
   private project?: object;
   private drag?: PrimitiveSource;
+  private dragPose?: import("./transform").VolumeTransform;
   private disposed = false;
   private readonly cancelPointer = () => this.cancel();
   constructor(
@@ -66,19 +68,31 @@ export class PrimitiveDraftPreview {
         return;
       }
       this.drag = structuredClone(this.tools.draft);
+      this.dragPose = structuredClone(this.tools.draftPose);
       this.cameraEnabled(false);
     });
     this.controls.addEventListener("objectChange", () => {
       if (!this.drag) return;
       try {
-        this.tools.draft = scaledPrimitive(
-          this.drag,
-          this.target.scale.toArray(),
-          this.controls.axis ?? "XYZ",
-        );
-        // Keep circular shapes circular while the pointer continues to use its original scale.
-        const dimensions = primitiveDimensions(this.tools.draft);
-        this.mesh.scale.fromArray(dimensions.map((v, i) => v / this.target.scale.getComponent(i)));
+        if (this.controls.mode === "scale") {
+          this.tools.draft = scaledPrimitive(
+            this.drag,
+            this.target.scale.toArray(),
+            this.controls.axis ?? "XYZ",
+          );
+          // Keep circular shapes circular while the pointer continues to use its original scale.
+          const dimensions = primitiveDimensions(this.tools.draft);
+          this.mesh.scale.fromArray(
+            dimensions.map((v, i) => v / this.target.scale.getComponent(i)),
+          );
+        } else {
+          const rotation = this.target.rotation;
+          this.tools.draftPose = {
+            position: this.target.position.toArray() as [number, number, number],
+            rotation: [rotation.x, rotation.y, rotation.z],
+            scale: [1, 1, 1],
+          };
+        }
         this.changed();
       } catch {
         const previous = primitiveDimensions(this.tools.draft),
@@ -93,6 +107,16 @@ export class PrimitiveDraftPreview {
   get dragging(): boolean {
     return !!this.drag;
   }
+  get mode(): "translate" | "rotate" | "scale" {
+    return this.controls.mode as "translate" | "rotate" | "scale";
+  }
+  setMode(mode: EditorMode): void {
+    if (mode !== "translate" && mode !== "rotate" && mode !== "scale") return;
+    if (this.drag) this.cancel();
+    this.controls.setMode(mode);
+    this.controls.setSpace(mode === "scale" ? "local" : "world");
+    this.changed();
+  }
   setOpen(open: boolean): void {
     if (!open) this.cancel();
     this.open = open;
@@ -104,6 +128,7 @@ export class PrimitiveDraftPreview {
     if (this.project && this.project !== layers.project) {
       this.cancel();
       this.open = false;
+      this.tools.draftPose = identityTransform();
     }
     this.project = layers.project;
     const enabled =
@@ -133,11 +158,13 @@ export class PrimitiveDraftPreview {
     }
     const draft = this.tools.draft;
     const geometryKey =
-      draft.kind === "cylinder"
-        ? `cylinder:${(draft.topDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}:${(draft.bottomDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}`
-        : ["capsule", "torus", "pyramid", "tapered-box"].includes(draft.kind)
-          ? JSON.stringify(draft)
-          : draft.kind;
+      draft.kind === "text"
+        ? JSON.stringify(draft)
+        : draft.kind === "cylinder"
+          ? `cylinder:${(draft.topDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}:${(draft.bottomDiameter ?? draft.diameter) / primitiveDimensions(draft)[0]}`
+          : ["capsule", "torus", "pyramid", "tapered-box"].includes(draft.kind)
+            ? JSON.stringify(draft)
+            : draft.kind;
     if (this.kind !== geometryKey) {
       this.kind = geometryKey;
       this.mesh.geometry.dispose();
@@ -145,6 +172,8 @@ export class PrimitiveDraftPreview {
     }
     if (!this.drag) {
       this.target.scale.setScalar(1);
+      this.target.position.fromArray(this.tools.draftPose.position);
+      this.target.rotation.set(...this.tools.draftPose.rotation, "XYZ");
       this.mesh.scale.set(...primitiveDimensions(this.tools.draft));
     }
     if (this.controls.object !== this.target) this.controls.attach(this.target);
@@ -152,6 +181,7 @@ export class PrimitiveDraftPreview {
   private finish(): void {
     if (!this.drag) return;
     this.drag = undefined;
+    this.dragPose = undefined;
     this.target.scale.setScalar(1);
     this.mesh.scale.set(...primitiveDimensions(this.tools.draft));
     this.input.end("preview");
@@ -161,6 +191,7 @@ export class PrimitiveDraftPreview {
   cancel(): void {
     if (!this.drag) return;
     this.tools.draft = this.drag;
+    if (this.dragPose) this.tools.draftPose = this.dragPose;
     this.controls.pointerUp(null);
     this.finish();
   }

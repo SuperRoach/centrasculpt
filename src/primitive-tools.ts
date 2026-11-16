@@ -13,6 +13,7 @@ import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI, type ModellingCommand } from "./modelling-api";
 import type { ArrayDefinition } from "./object-array";
 import {
+  createTextSource,
   PRIMITIVE_CHOICES,
   type PrimitiveChoice,
   type PrimitiveSource,
@@ -24,7 +25,7 @@ import {
   validatePrimitive,
 } from "./parametric-primitive";
 import { fromDisplay, toDisplay } from "./physical-units";
-import { identityTransform, type Vec3 } from "./transform";
+import { identityTransform, type Vec3, type VolumeTransform } from "./transform";
 import type { XRControllerState } from "./xr-input";
 import type { MenuContent } from "./xr-menu-model";
 /** Source editing and temporary placement. Preview is never an export/compositor source. */
@@ -32,6 +33,7 @@ export class PrimitiveTools {
   readonly assembly: AssemblyControls;
   readonly enclosure: EnclosureControls;
   draft: PrimitiveSource = { kind: "box", width: 0.5, height: 0.5, depth: 0.5 };
+  draftPose: VolumeTransform = identityTransform();
   editing = true;
   private lastTime = 0;
   placing = false;
@@ -89,6 +91,15 @@ export class PrimitiveTools {
     this.editing = false;
     this.feedback = "";
     const size = Math.max(...primitiveDimensions(this.draft));
+    if (kind === "text") {
+      this.draft = createTextSource({
+        text: "TEXT",
+        letterHeight: Math.min(size, 0.6),
+        depth: Math.min(size, 0.12),
+      });
+      this.updatePreview();
+      return;
+    }
     this.draft =
       kind === "box" || kind === "pyramid"
         ? { kind, width: size, height: size, depth: size }
@@ -118,6 +129,32 @@ export class PrimitiveTools {
                   : { kind, diameter: size };
     this.updatePreview();
   }
+  async editText(
+    next: {
+      text?: string;
+      letterHeight?: number;
+      depth?: number;
+      letterSpacing?: number;
+      alignment?: "left" | "center" | "right";
+    },
+    edit = true,
+  ): Promise<void> {
+    const base = edit ? this.source : this.draft;
+    if (base?.kind !== "text") throw new Error("Select an editable text source first.");
+    const source = createTextSource({ ...base, ...next });
+    if (edit)
+      await this.run(async () => {
+        await this.layers().regeneratePrimitive(
+          source,
+          this.layers().active.layer.id,
+          this.abort?.signal,
+        );
+      });
+    else {
+      this.draft = source;
+      this.updatePreview();
+    }
+  }
   begin(): void {
     if (!this.layers().recoveryReady || this.pending)
       throw new Error("Finish the current edit first.");
@@ -142,9 +179,9 @@ export class PrimitiveTools {
     this.preview.geometry = primitivePreviewGeometry(this.draft);
     this.preview.scale.set(...primitiveDimensions(this.draft));
   }
-  async create(position: Vec3 = [0, 0, 0]): Promise<void> {
-    const pose = identityTransform();
-    pose.position = [...position];
+  async create(position?: Vec3): Promise<void> {
+    const pose = structuredClone(this.draftPose);
+    if (position) pose.position = [...position];
     await this.run(async () => {
       await this.layers().regeneratePrimitive(this.draft, undefined, this.abort?.signal, pose);
       this.cancel();

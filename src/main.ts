@@ -392,11 +392,12 @@ function syncStats() {
   ui.history(layers.undoCount, layers.redoCount, loadingProject || xrBlocked());
 }
 function syncTransformUI() {
+  const mode = primitivePreview?.active ? primitivePreview.mode : input.mode;
   syncViewportTools();
   ui.transformState(
     layers.transformNode.transform,
     layers.transformNode.editable,
-    input.mode,
+    mode,
     input.space,
     loadingProject || xrBlocked() || layers.modellingBusy,
     display.precision.millimetresPerUnit,
@@ -652,7 +653,7 @@ function syncViewportTools(): void {
           : ui.mode === "paint" || ui.mode === "paint-erase"
             ? "paint"
             : "brush",
-    input.mode,
+    primitivePreview?.active ? primitivePreview.mode : input.mode,
     layers.active.layer.editable,
     loadingProject || ui.modalOpen || xrBlocked(),
     { colour: layers.paintColour, radius: ui.radius, strength: ui.strength },
@@ -686,6 +687,20 @@ function chooseLayerMode(mode: EditorMode, fromXR = false): void {
   editorTools?.clearMoveSelection();
   stop();
   shapeLibraryUI.setOpen(false, fromXR);
+  if (primitivePreview?.active && !fromXR) {
+    primitivePreview.setMode(mode);
+    transformTools!.setMode("sculpt");
+    syncTransformUI();
+    cursor.visible = false;
+    ui.status(
+      mode === "translate"
+        ? `Move · New ${precision!.primitives.draft.kind} · move the draft, then Create`
+        : mode === "rotate"
+          ? `Rotate · New ${precision!.primitives.draft.kind} · rotate the draft, then Create`
+          : `Scale · New ${precision!.primitives.draft.kind} · size the draft, then Create`,
+    );
+    return;
+  }
   transformTools!.setMode(mode);
   syncTransformUI();
   cursor.visible = false;
@@ -1030,22 +1045,21 @@ window.addEventListener("keydown", (event) => {
     }
     if (mode) {
       event.preventDefault();
-      stop();
-      transformTools!.setMode(mode);
-      syncTransformUI();
-      ui.status(
-        mode === "rotate"
-          ? `Rotate · ${layers.transformNode.name} · drag the surface; hold R/F/V for X/Y/Z`
-          : mode === "translate"
-            ? `Move · ${layers.transformNode.name} · drag the surface; hold E/D/C for X/Y/Z`
-            : mode === "scale" && !layers.selectedGroupId && layers.active.layer.primitive
-              ? layers.active.layer.primitive.kind === "box"
-                ? "Size Box · local X width · Y height · Z depth · centre scales all"
-                : layers.active.layer.primitive.kind === "cylinder"
-                  ? "Size Cylinder · local Y height · X/Z diameter · centre scales all"
-                  : "Size primitive · local dimension handles · centre scales all"
-              : `${mode} · ${layers.transformNode.name}`,
-      );
+      chooseLayerMode(mode);
+      if (!primitivePreview?.active)
+        ui.status(
+          mode === "rotate"
+            ? `Rotate · ${layers.transformNode.name} · drag the surface; hold R/F/V for X/Y/Z`
+            : mode === "translate"
+              ? `Move · ${layers.transformNode.name} · drag the surface; hold E/D/C for X/Y/Z`
+              : mode === "scale" && !layers.selectedGroupId && layers.active.layer.primitive
+                ? layers.active.layer.primitive.kind === "box"
+                  ? "Size Box · local X width · Y height · Z depth · centre scales all"
+                  : layers.active.layer.primitive.kind === "cylinder"
+                    ? "Size Cylinder · local Y height · X/Z diameter · centre scales all"
+                    : "Size primitive · local dimension handles · centre scales all"
+                : `${mode} · ${layers.transformNode.name}`,
+        );
       return;
     }
   }

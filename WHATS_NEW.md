@@ -1,3 +1,16 @@
+### Editable Text Primitives — Phase 8.5b (2026-11-16)
+
+- Create short single-line text sources from **Primitives**. Edit the string,
+  letter height, extrusion depth, letter spacing and alignment; use ordinary
+  transform controls to place the source.
+- The bundled Helvetiker Regular font keeps cached vector outlines, including
+  the counters in A, B, O, P and R. Text can be a raised Boolean source or a
+  separate subtractive engraving source.
+- Text definitions remain editable through `.form` save/reload, history,
+  recovery and Project Library copies, and use the existing STL/GLB export
+  safeguards. VR can place default `TEXT`; detailed text editing, Quest and
+  physical print acceptance remain open.
+
 ### Scale enclosure features in the viewport (2026-11-16)
 
 - Drag a rectangular opening edge with Scale to keep the opposite edge fixed. The enclosure updates the opening size and position together. Through-wall depth follows the wall.

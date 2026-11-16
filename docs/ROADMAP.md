@@ -1,5 +1,19 @@
 # Centra Sculpt roadmap
 
+## Phase 8.5b — Editable Text Primitives (2026-11-16)
+
+- Desktop creates and edits short single-line text sources using the bundled
+  Helvetiker Regular font. Cached vector contours preserve counters and feed the
+  existing analytic source, Boolean, history, native `.form` v23, recovery,
+  Project Library, STL and GLB paths.
+- VR can place default text through the existing controller workflow. Detailed
+  source editing in VR, path/conforming text, uploaded fonts and complex shaping
+  are deferred. Quest, print and slicer acceptance remain open.
+- Phase 9 sparse-SDF production integration and separate save/load/export
+  optimisation work remain deferred.
+
+## Phase 8.5a — Box Face Resize (2026-11-15)
+
 ## Phase 8.5a — Box Face Resize (2026-11-15)
 
 - Desktop Scale exposes the original boundary and six face markers for a selected

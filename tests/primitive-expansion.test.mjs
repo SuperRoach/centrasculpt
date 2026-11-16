@@ -5,9 +5,15 @@ import { validateCall } from "../scripts/agent-schemas.mjs";
 import { installFileReader } from "../scripts/fixtures/export-node.mjs";
 import { createHeadlessEditor } from "../scripts/headless-enclosure.mjs";
 import { AgentProposals, agentExecutor } from "../work/test-build/agent-access.mjs";
-import { compositeLayout, prepareLayerSampler } from "../work/test-build/compositor.mjs";
+import {
+  compositeLayout,
+  evaluateComposite,
+  prepareComposite,
+  prepareLayerSampler,
+} from "../work/test-build/compositor.mjs";
 import { encodeExport } from "../work/test-build/glb-export.mjs";
 import {
+  createTextSource,
   evaluatePrimitive,
   primitiveDimensions,
   primitiveDistance,
@@ -183,6 +189,121 @@ for (const s of shapes) {
   });
 }
 
+test("editable LUCAS text keeps font contours, counters, one-step edits, native round trip and printable exports", async () => {
+  const { layers, api } = createHeadlessEditor();
+  try {
+    await layers.regeneratePrimitive({
+      kind: "box",
+      width: 2,
+      height: 1,
+      depth: 0.4,
+    });
+    const source = createTextSource({
+      text: "LUCAS",
+      letterHeight: 0.42,
+      depth: 0.12,
+      letterSpacing: 0.02,
+    });
+    assert.equal(source.fontId, "helvetiker-regular-magenta-2004-v1");
+    for (const letter of ["A", "B", "O", "P", "R"]) {
+      const glyph = createTextSource({ text: letter, letterHeight: 0.5, depth: 0.1 });
+      assert(
+        glyph.contours.some((c) => c.holes.length > 0),
+        `${letter} must preserve its counter`,
+      );
+      const hole = glyph.contours.find((c) => c.holes.length)?.holes[0];
+      const x = hole.reduce((sum, p) => sum + p[0], 0) / hole.length;
+      const y = hole.reduce((sum, p) => sum + p[1], 0) / hole.length;
+      assert(primitiveDistance(glyph, x, y, 0) > 0, `${letter} counter should remain empty`);
+    }
+    const layer = await layers.regeneratePrimitive(source);
+    const id = layer.id;
+    const modelQuery = api.query({ type: "object.get", id });
+    assert(modelQuery.ok);
+    assert.equal(modelQuery.value.primitive.letterHeight, 42);
+    assert.equal(
+      modelQuery.value.primitive.contours[0].outer[0][0],
+      source.contours[0].outer[0][0] * 100,
+    );
+    const changed = createTextSource({ ...source, text: "LUCAS!", depth: 0.16 });
+    const undoBefore = layers.undoCount;
+    await layers.regeneratePrimitive(changed, id);
+    assert.equal(layers.undoCount, undoBefore + 1);
+    layers.undo();
+    assert.deepEqual(layers.active.layer.primitive, source);
+    layers.undo(true);
+    assert.deepEqual(layers.active.layer.primitive, changed);
+
+    const native = saveSculptProject(layers.project);
+    assert.equal(new DataView(native).getUint32(8, true), 23);
+    assert.deepEqual(openSculptProject(native).layerStack.active.primitive, changed);
+    const { renameNative } = await import("../work/test-build/library-codec.mjs");
+    assert.deepEqual(
+      openSculptProject(renameNative(native, "Text copy", true)).layerStack.active.primitive,
+      changed,
+    );
+    const { RecoveryBrowserWorker } = await import("../scripts/fixtures/node-recovery-worker.mjs");
+    const { encodeRecovery } = await import("../work/test-build/recovery-client.mjs");
+    const previousWorker = globalThis.Worker;
+    globalThis.Worker = RecoveryBrowserWorker;
+    try {
+      const recovered = await encodeRecovery(
+        layers,
+        layers.project.settings,
+        undefined,
+        undefined,
+        new AbortController().signal,
+        () => true,
+      );
+      assert.deepEqual(openSculptProject(recovered.data).layerStack.active.primitive, changed);
+    } finally {
+      globalThis.Worker = previousWorker;
+    }
+    const sources = layers.exportSources("selected");
+    const stl = await encodeSTL(
+      sources,
+      "fast",
+      256 * 1024 ** 2,
+      Math.max(...primitiveDimensions(changed)) * 100,
+    );
+    const exportedTriangles = new DataView(stl.data).getUint32(80, true);
+    assert(exportedTriangles > 0);
+    const glb = await encodeExport(physicalGLBSources(sources, 100), "fast", 256 * 1024 ** 2);
+    assert.equal(new TextDecoder().decode(new Uint8Array(glb.data, 0, 4)), "glTF");
+
+    const raised = layers.project.layerStack.active;
+    assert.equal(raised.operation, "union");
+    raised.visible = false;
+    const engravedSource = createTextSource({ text: "O", letterHeight: 0.55, depth: 0.18 });
+    const engraved = await layers.regeneratePrimitive(engravedSource);
+    engraved.operation = "difference";
+    const hole = engravedSource.contours.find((c) => c.holes.length)?.holes[0];
+    assert(hole);
+    const holePoint = [
+      hole.reduce((a, p) => a + p[0], 0) / hole.length,
+      hole.reduce((a, p) => a + p[1], 0) / hole.length,
+      0,
+    ];
+    let solidPoint;
+    for (let y = -0.2; y <= 0.2 && !solidPoint; y += 0.02)
+      for (let x = -0.3; x <= 0.3; x += 0.02)
+        if (primitiveDistance(engravedSource, x, y, 0) < -0.02) {
+          solidPoint = [x, y, 0];
+          break;
+        }
+    assert(solidPoint, "O must have a printable stroke region");
+    const booleanLayers = layers.project.layerStack.layers.filter((l) => l.visible);
+    const engravedField = prepareComposite(booleanLayers);
+    assert(engravedField(...holePoint) < 0, "O counter stays as nameplate material");
+    assert(engravedField(...solidPoint) > 0, "text cutter subtracts its raised contour");
+    assert(
+      evaluateComposite(booleanLayers, { x: holePoint[0], y: holePoint[1], z: holePoint[2] }) < 0,
+    );
+  } finally {
+    layers.dispose();
+  }
+});
+
 test("torus thin tube/hole asks for finer CSG grid and existing caps refuse, high aspect capsule stays bounded", async () => {
   const { layers } = createHeadlessEditor();
   try {
@@ -222,7 +343,7 @@ test("torus thin tube/hole asks for finer CSG grid and existing caps refuse, hig
   }
 });
 
-test("Quest creation subpage has all seven choices, disjoint targets, exact fields/units, Cone stays editable cylinder", async () => {
+test("Quest creation subpage includes text and expanded choices, disjoint targets, exact fields/units, Cone stays editable cylinder", async () => {
   const { layers } = createHeadlessEditor();
   const tools = new PrimitiveTools(() => layers);
   try {
@@ -230,6 +351,7 @@ test("Quest creation subpage has all seven choices, disjoint targets, exact fiel
     const picker = tools.content();
     for (const name of ["Cone", "Capsule", "Torus", "Pyramid"])
       assert(picker.buttons.some((b) => b.label === `New ${name}`));
+    assert(picker.buttons.some((b) => b.label === "New Text"));
     for (const kind of ["cone", "capsule", "torus", "pyramid"]) {
       tools.activate(`primitive:type:${kind}`);
       const menu = tools.content();
@@ -257,6 +379,14 @@ test("Quest creation subpage has all seven choices, disjoint targets, exact fiel
         assert.equal(tools.source.topDiameter, 0);
       }
     }
+    tools.activate("primitive:type:text");
+    assert.equal(tools.draft.kind, "text");
+    assert.equal(tools.draft.text, "TEXT");
+    tools.draftPose.position = [0.25, 0.1, -0.2];
+    tools.draftPose.rotation = [0.1, 0.2, 0.3];
+    await tools.create();
+    assert.deepEqual(layers.active.layer.transform.position, [0.25, 0.1, -0.2]);
+    assert.deepEqual(layers.active.layer.transform.rotation, [0.1, 0.2, 0.3]);
   } finally {
     tools.dispose();
     layers.dispose();

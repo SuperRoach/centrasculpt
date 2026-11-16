@@ -1,3 +1,73 @@
+# Phase 8.5b — Editable Text Primitives — 2026-11-16
+
+## 1. Scope
+
+Create short, single-line text as its own editable parametric source. Desktop
+controls edit the string, bundled font identity, letter height, extrusion depth,
+letter spacing, alignment and ordinary layer pose. VR can create and place the
+default `TEXT` source with the existing controller workflow; detailed text edits
+remain in the desktop panel.
+
+## 2. Implementation
+
+Text stores cached vector contours from the bundled Helvetiker Regular font
+(stable ID `helvetiker-regular-magenta-2004-v1`). Each contour keeps its holes.
+The SDF query uses the exact signed distance to those 2D polygon contours and
+combines it with the extrusion distance. The same source feeds existing Boolean,
+layer, recovery, history, library, STL and GLB paths. No per-glyph SDF is stored.
+Native `.form` version 23 carries the full editable definition; versions 1–22
+remain readable. The redistributable font and license are in `src/assets/`.
+
+## 3. Verification
+
+The focused primitive suite covers editable `LUCAS`, text and depth edits,
+single-step Undo/Redo, A/B/O/P/R counters, an engraved O alternative, native
+save/reload, a Project Library copy, recovery-worker round trip, and STL/GLB
+encoding. `npm run check` passed formatting, lint, strict TypeScript, production
+build and **1,789/1,789 tests** (zero failures, skips or cancellations). The
+disposable Chromium check edited the text and depth, verified the wider Text +
+Align row and Letter height + Letter spacing row, then switched a new text draft
+to Move and captured its translation gizmo. Draft movement is handled by the
+draft's own transform mode, so the normal selected-layer scale handle does not
+intercept it. The check verified Move mode and creation from the stored draft
+pose; interactive headset dragging remains a Quest acceptance item. Screenshots
+are under `work/text-primitives-browser/` in the disposable browser output.
+
+## 4. Limits
+
+Text is one line, up to 20 characters, using the bundled font and cached
+polygonal contours. Curved conforming, path text, uploaded fonts, complex
+shaping, and VR parameter editing are deferred. Small counters and thin strokes
+still pass through the existing sampled Boolean quality and resource guards;
+the analytic source contours do not make the sampled composite exact CAD.
+Quest interaction, headset frame timing, physical print fit and slicer
+acceptance have not been established by desktop checks.
+
+## 5. Phase decision
+
+Phase 8.5b is a source-level primitive extension over the current dense-cache
+path. Phase 9 sparse-SDF production integration remains deferred. Save/load/export
+performance optimisation remains a separate planned task; this change does not
+change the storage backend or resource limits.
+
+## 6. Handoff
+
+1. On desktop, create a text primitive, edit `LUCAS` to another supported
+   string, adjust depth and spacing, and use Undo/Redo. Test left, centre and
+   right alignment with each string.
+2. Save, reopen, duplicate through Project Library and trigger recovery. Confirm
+   the font ID, contours, text fields, placement, visibility and Boolean role.
+3. Use the text source as a raised union and as an engraved difference. Inspect
+   counters at the selected Boolean quality and export both STL and GLB.
+4. On Quest, create/place default text, then validate tracking loss, cancellation,
+   input ownership, and frame timing. Detailed text editing remains desktop-only.
+5. In a slicer and on physical prints, check minimum counters/strokes, adhesion,
+   mesh orientation and actual scale before expanding accepted use.
+
+Font attribution and redistribution terms: `src/assets/FONT_LICENSE.txt`.
+
+---
+
 # Enclosure feature selection and placement — 2026-11-16
 
 Selecting any feature source in Layers selects its enclosure feature while

@@ -6,6 +6,7 @@ import {
   ExtrudeGeometry,
   Float32BufferAttribute,
   LatheGeometry,
+  Path,
   Shape,
   SphereGeometry,
   TorusGeometry,
@@ -13,10 +14,13 @@ import {
   Vector2,
   Vector3,
 } from "three";
+import { FontLoader } from "three/addons/loaders/FontLoader.js";
+import helvetikerFont from "./assets/helvetiker_regular.typeface.json" with { type: "json" };
 import { SDFVolume } from "./sdf";
 import { transformMatrix, type Vec3 } from "./transform";
 /** Dimensions are layer-local model units, never tracking/workspace metres. */
 export type PrimitiveSource =
+  | TextSource
   | { kind: "capsule"; diameter: number; height: number }
   | { kind: "torus"; majorRadius: number; tubeDiameter: number; tyre?: number }
   | {
@@ -37,6 +41,16 @@ export type PrimitiveSource =
       bottomDiameter?: number;
     }
   | { kind: "sphere"; diameter: number; width?: number; height?: number; depth?: number };
+export type TextSource = {
+  kind: "text";
+  text: string;
+  fontId: "helvetiker-regular-magenta-2004-v1";
+  letterHeight: number;
+  depth: number;
+  letterSpacing: number;
+  alignment: "left" | "center" | "right";
+  contours: { outer: [number, number][]; holes: [number, number][][] }[];
+};
 /** Input may omit the legacy diameter when both end diameters are explicit. */
 export type PrimitiveInput =
   | { kind: "sphere"; width: number; height: number; depth: number }
@@ -55,11 +69,13 @@ export const PRIMITIVE_KINDS = [
   "torus",
   "pyramid",
   "tapered-box",
+  "text",
 ] as const;
 /** Cone is a creation preset of the canonical capped frustum, never a second geometry kind. */
 export const PRIMITIVE_CHOICES = [...PRIMITIVE_KINDS, "cone"] as const;
 export type PrimitiveChoice = (typeof PRIMITIVE_CHOICES)[number];
 export function primitiveLabel(s: PrimitiveSource): string {
+  if (s.kind === "text") return `Text · ${s.text}`;
   if (s.kind === "tapered-box") return "Tapered box";
   return s.kind === "cylinder" && s.topDiameter === 0
     ? "Cone"
@@ -83,6 +99,8 @@ export function primitiveFieldLabel(field: string, source?: PrimitiveSource): st
         majorRadius: "Ring radius",
         tubeDiameter: "Tube diameter",
         tyre: "Tyre shape",
+        letterHeight: "Letter height",
+        letterSpacing: "Letter spacing",
       } as Record<string, string>
     )[field] ?? field[0].toUpperCase() + field.slice(1)
   );
@@ -90,6 +108,7 @@ export function primitiveFieldLabel(field: string, source?: PrimitiveSource): st
 export function validatePrimitive(value: unknown): PrimitiveSource {
   if (!value || typeof value !== "object") throw new Error("Invalid primitive definition.");
   const s = { ...(value as Record<string, unknown>) };
+  if (s.kind === "text") return validateTextSource(s);
   if (
     s.kind === "cylinder" &&
     s.diameter === undefined &&
@@ -187,15 +206,175 @@ export function validatePrimitive(value: unknown): PrimitiveSource {
     throw new Error("Corner radius must be finite and within half the box width/depth.");
   if (
     Math.min(...sizes) / Math.max(...sizes) <
-    1 / (s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined) ? 128 : 8)
+    1 /
+      (s.kind === "text" || s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined)
+        ? 128
+        : 8)
   )
     throw new Error(
-      `Primitive aspect ratio exceeds ${s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined) ? 128 : 8}:1; use separate parts.`,
+      `Primitive aspect ratio exceeds ${s.kind === "text" || s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined) ? 128 : 8}:1; use separate parts.`,
     );
   return { ...s } as PrimitiveSource;
 }
+const TEXT_FONT_ID = "helvetiker-regular-magenta-2004-v1" as const;
+const textFont = new FontLoader().parse(helvetikerFont);
+/** Build and cache the bundled font's vector contours in the editable source. */
+export function createTextSource(input: {
+  text: string;
+  letterHeight: number;
+  depth: number;
+  letterSpacing?: number;
+  alignment?: "left" | "center" | "right";
+}): TextSource {
+  const text = input.text.trim();
+  if (!text || [...text].length > 20 || /[\r\n\t]/.test(text))
+    throw new Error("Text must be a single line of 1–20 characters.");
+  const letterHeight = input.letterHeight,
+    depth = input.depth,
+    letterSpacing = input.letterSpacing ?? 0,
+    alignment = input.alignment ?? "center";
+  if (
+    ![letterHeight, depth, letterSpacing].every(Number.isFinite) ||
+    letterHeight < 0.01 ||
+    letterHeight > 16 ||
+    depth < 0.001 ||
+    depth > 16 ||
+    letterSpacing < -letterHeight * 0.5 ||
+    letterSpacing > letterHeight * 2
+  )
+    throw new Error("Text height, depth or spacing is outside supported limits.");
+  const glyphData = (
+    textFont as unknown as { data: { resolution: number; glyphs: Record<string, { ha: number }> } }
+  ).data;
+  const contours: { outer: [number, number][]; holes: [number, number][][] }[] = [];
+  let cursor = 0;
+  for (const char of text) {
+    const glyph = glyphData.glyphs[char];
+    if (!glyph) throw new Error(`The bundled font does not support “${char}”.`);
+    for (const shape of textFont.generateShapes(char, letterHeight))
+      contours.push({
+        outer: shape.getPoints(4).map((p) => [p.x + cursor, p.y] as [number, number]),
+        holes: shape.holes.map((hole) =>
+          hole.getPoints(4).map((p) => [p.x + cursor, p.y] as [number, number]),
+        ),
+      });
+    cursor += (glyph.ha * letterHeight) / glyphData.resolution + letterSpacing;
+  }
+  if (!contours.length) throw new Error("The bundled font has no outlines for this text.");
+  if (contours.some((c) => c.outer.length < 3 || c.holes.some((h) => h.length < 3)))
+    throw new Error("The bundled font produced an invalid glyph contour.");
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity;
+  for (const contour of contours)
+    for (const ring of [contour.outer, ...contour.holes])
+      for (const [x, y] of ring) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+  const shiftX = alignment === "left" ? -minX : alignment === "right" ? -maxX : -(minX + maxX) / 2,
+    shiftY = -(minY + maxY) / 2;
+  const shifted = contours.map((c) => ({
+    outer: c.outer.map(([x, y]) => [x + shiftX, y + shiftY] as [number, number]),
+    holes: c.holes.map((ring) =>
+      ring.map(([x, y]) => [x + shiftX, y + shiftY] as [number, number]),
+    ),
+  }));
+  return validateTextSource({
+    kind: "text",
+    text,
+    fontId: TEXT_FONT_ID,
+    letterHeight,
+    depth,
+    letterSpacing,
+    alignment,
+    contours: shifted,
+  });
+}
+function validateTextSource(s: Record<string, unknown>): TextSource {
+  if (
+    Object.keys(s).some(
+      (key) =>
+        ![
+          "kind",
+          "text",
+          "fontId",
+          "letterHeight",
+          "depth",
+          "letterSpacing",
+          "alignment",
+          "contours",
+        ].includes(key),
+    ) ||
+    s.fontId !== TEXT_FONT_ID ||
+    typeof s.text !== "string" ||
+    !s.text.trim() ||
+    [...s.text].length > 20 ||
+    /[\r\n\t]/.test(s.text) ||
+    !["left", "center", "right"].includes(String(s.alignment)) ||
+    ![s.letterHeight, s.depth, s.letterSpacing].every(
+      (n) => typeof n === "number" && Number.isFinite(n),
+    ) ||
+    (s.letterHeight as number) < 0.01 ||
+    (s.letterHeight as number) > 16 ||
+    (s.depth as number) < 0.001 ||
+    (s.depth as number) > 16 ||
+    (s.letterSpacing as number) < -(s.letterHeight as number) * 0.5 ||
+    (s.letterSpacing as number) > (s.letterHeight as number) * 2 ||
+    !Array.isArray(s.contours) ||
+    !s.contours.length ||
+    s.contours.length > 128
+  )
+    throw new Error("Invalid editable text source.");
+  let pointCount = 0;
+  const contours = s.contours.map((entry) => {
+    if (!entry || typeof entry !== "object") throw new Error("Invalid text contour.");
+    const item = entry as Record<string, unknown>;
+    const ring = (v: unknown): [number, number][] => {
+      if (!Array.isArray(v) || v.length < 3 || v.length > 2048)
+        throw new Error("Invalid text contour ring.");
+      pointCount += v.length;
+      return v.map((p) => {
+        if (
+          !Array.isArray(p) ||
+          p.length !== 2 ||
+          !p.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 32)
+        )
+          throw new Error("Invalid text contour point.");
+        return [p[0], p[1]] as [number, number];
+      });
+    };
+    if (!Array.isArray(item.holes)) throw new Error("Invalid text contour holes.");
+    return { outer: ring(item.outer), holes: item.holes.map(ring) };
+  });
+  if (pointCount > 1200) throw new Error("Text outline exceeds the contour budget.");
+  const allPoints = contours.flatMap((c) => [c.outer, ...c.holes]).flat();
+  const width = Math.max(...allPoints.map((p) => p[0])) - Math.min(...allPoints.map((p) => p[0]));
+  const height = Math.max(...allPoints.map((p) => p[1])) - Math.min(...allPoints.map((p) => p[1]));
+  if (width < 0.001 || width > 16 || height < 0.001 || height > 16)
+    throw new Error("Text outline bounds must be between 0.001 and 16 model units.");
+  return {
+    kind: "text",
+    text: s.text,
+    fontId: TEXT_FONT_ID,
+    letterHeight: s.letterHeight as number,
+    depth: s.depth as number,
+    letterSpacing: s.letterSpacing as number,
+    alignment: s.alignment as TextSource["alignment"],
+    contours,
+  };
+}
 export function primitiveDimensions(source: PrimitiveSource): Vec3 {
   const s = validatePrimitive(source);
+  if (s.kind === "text") {
+    const points = s.contours.flatMap((c) => [c.outer, ...c.holes]).flat();
+    const xs = points.map((p) => p[0]),
+      ys = points.map((p) => p[1]);
+    return [Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), s.depth];
+  }
   if (s.kind === "tapered-box")
     return [Math.max(s.bottomWidth, s.topWidth), s.height, Math.max(s.bottomDepth, s.topDepth)];
   return s.kind === "box" || s.kind === "pyramid"
@@ -215,6 +394,7 @@ export function primitiveDimensions(source: PrimitiveSource): Vec3 {
 /** Exact Euclidean signed distance; negative inside. */
 export function primitiveDistance(s: PrimitiveSource, x: number, y: number, z: number): number {
   if (![x, y, z].every(Number.isFinite)) throw new Error("Primitive query must be finite.");
+  if (s.kind === "text") return textDistance(s, x, y, z);
   if (s.kind === "capsule")
     return (
       Math.hypot(x, Math.max(0, Math.abs(y) - (s.height - s.diameter) / 2), z) - s.diameter / 2
@@ -272,6 +452,42 @@ export function primitiveDistance(s: PrimitiveSource, x: number, y: number, z: n
     c = Math.abs(z) - s.depth / 2 + radius;
   const radial = Math.hypot(Math.max(a, 0), Math.max(c, 0)) + Math.min(Math.max(a, c), 0) - radius;
   return Math.hypot(Math.max(radial, 0), Math.max(b, 0)) + Math.min(Math.max(radial, b), 0);
+}
+function textDistance(s: TextSource, x: number, y: number, z: number): number {
+  let edge = Infinity,
+    inside = false;
+  const ringDistance = (ring: [number, number][]) => {
+    let d = Infinity,
+      hit = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [ax, ay] = ring[j],
+        [bx, by] = ring[i],
+        dx = bx - ax,
+        dy = by - ay;
+      const lengthSquared = dx * dx + dy * dy;
+      const t =
+        lengthSquared === 0
+          ? 0
+          : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSquared));
+      d = Math.min(d, Math.hypot(x - ax - t * dx, y - ay - t * dy));
+      if (ay > y !== by > y && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) hit = !hit;
+    }
+    return { d, hit };
+  };
+  for (const c of s.contours) {
+    const outer = ringDistance(c.outer);
+    edge = Math.min(edge, outer.d);
+    let fill = outer.hit;
+    for (const hole of c.holes) {
+      const h = ringDistance(hole);
+      edge = Math.min(edge, h.d);
+      if (h.hit) fill = false;
+    }
+    inside ||= fill;
+  }
+  const d2 = edge * (inside ? -1 : 1),
+    d3 = Math.abs(z) - s.depth / 2;
+  return Math.hypot(Math.max(d2, 0), Math.max(d3, 0)) + Math.min(Math.max(d2, d3), 0);
 }
 /** Euclidean ellipsoid distance via a bounded closest-point multiplier solve.
  * The interior singular branch includes medial-axis points with zero coordinates.
@@ -335,12 +551,15 @@ export function* evaluatePrimitive(
     longest = Math.max(...dimensions);
   if (
     Math.min(...dimensions) / longest <
-    1 / (s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined) ? 128 : 8)
+    1 /
+      (s.kind === "text" || s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined)
+        ? 128
+        : 8)
   )
     throw new Error(
-      `Primitive aspect ratio exceeds ${s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined) ? 128 : 8}:1; use separate parts.`,
+      `Primitive aspect ratio exceeds ${s.kind === "text" || s.kind === "torus" || (s.kind === "box" && s.cornerRadius !== undefined) ? 128 : 8}:1; use separate parts.`,
     );
-  const extent = longest * 0.6;
+  const extent = s.kind === "text" && s.alignment !== "center" ? longest * 1.05 : longest * 0.6;
   resolution = Math.max(33, Math.min(resolution % 2 ? resolution : resolution - 1, 63));
   if (resolution ** 3 > maxSamples) throw new Error("Primitive exceeds the staging memory budget.");
   onAllocate?.(resolution ** 3);
@@ -365,7 +584,9 @@ export function validatePrimitiveCache(
   volume: import("./volume-store").VolumeStore,
 ): void {
   const s = validatePrimitive(source),
-    expectedExtent = Math.max(...primitiveDimensions(s)) * 0.6;
+    expectedExtent =
+      Math.max(...primitiveDimensions(s)) *
+      (s.kind === "text" && s.alignment !== "center" ? 1.05 : 0.6);
   if (
     Math.abs(volume.extent - expectedExtent) > 1e-10 ||
     volume.resolution < 33 ||
@@ -415,6 +636,13 @@ export function cylinderSupport(
 }
 /** Editable fields also expose the two ends of legacy straight cylinders. */
 export function primitiveFields(s: PrimitiveSource): Record<string, string | number> {
+  if (s.kind === "text")
+    return {
+      kind: s.kind,
+      letterHeight: s.letterHeight,
+      depth: s.depth,
+      letterSpacing: s.letterSpacing,
+    };
   if (s.kind === "sphere")
     return {
       kind: s.kind,
@@ -460,6 +688,10 @@ export function roundedBoxGeometry(s: Extract<PrimitiveSource, { kind: "box" }>)
 
 /** Exact directional support, including off-centre apex/base and curved solids. */
 export function primitiveSupport(s: PrimitiveSource, x: number, y: number, z: number): number {
+  if (s.kind === "text") {
+    const pts = s.contours.flatMap((c) => [c.outer, ...c.holes]).flat();
+    return Math.max(...pts.map(([px, py]) => px * x + py * y)) + (s.depth / 2) * Math.abs(z);
+  }
   if (s.kind === "cylinder") return cylinderSupport(s, x, y, z);
   if (s.kind === "capsule")
     return (s.diameter * Math.hypot(x, y, z) + (s.height - s.diameter) * Math.abs(y)) / 2;
@@ -492,6 +724,22 @@ export function primitiveSupport(s: PrimitiveSource, x: number, y: number, z: nu
 /** Smallest solid or hole feature used by bounded sampled CSG admission. A mathematical
  * cone/pyramid tip is zero width: sampling cannot preserve that tip exactly. */
 export function primitiveFeatureSize(s: PrimitiveSource): number {
+  if (s.kind === "text") {
+    const counter = s.contours
+      .flatMap((c) => c.holes)
+      .reduce((smallest, ring) => {
+        const xs = ring.map((p) => p[0]),
+          ys = ring.map((p) => p[1]);
+        return Math.min(
+          smallest,
+          Math.max(
+            0.001,
+            Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)),
+          ),
+        );
+      }, Infinity);
+    return Math.min(s.depth, s.letterHeight / 6, counter);
+  }
   if (s.kind === "torus") return Math.min(s.tubeDiameter, 2 * s.majorRadius - s.tubeDiameter);
   if (s.kind === "tapered-box")
     return Math.min(s.topWidth, s.topDepth, s.bottomWidth, s.bottomDepth, s.height);
@@ -586,6 +834,29 @@ function rectangularFrustumDistance(
 /** Shared source/preview/export tessellation. Pivot is local bounding-box centre;
  * Y is the vertical axis; pyramid apex is +Y and torus ring lies in XZ. */
 function buildPrimitiveGeometry(s: PrimitiveSource, segments = 96): BufferGeometry {
+  if (s.kind === "text") {
+    const shapes = s.contours.map((c) => {
+      const shape = new Shape();
+      shape.moveTo(c.outer[0][0], c.outer[0][1]);
+      for (const [x, y] of c.outer.slice(1)) shape.lineTo(x, y);
+      shape.closePath();
+      for (const ring of c.holes) {
+        const hole = new Path();
+        hole.moveTo(ring[0][0], ring[0][1]);
+        for (const [x, y] of ring.slice(1)) hole.lineTo(x, y);
+        hole.closePath();
+        shape.holes.push(hole);
+      }
+      return shape;
+    });
+    const geometry = new ExtrudeGeometry(shapes, {
+      depth: s.depth,
+      bevelEnabled: false,
+      curveSegments: segments < 48 ? 4 : 8,
+    });
+    geometry.translate(0, 0, -s.depth / 2);
+    return geometry;
+  }
   if (s.kind === "box")
     return s.cornerRadius === undefined
       ? new BoxGeometry(s.width, s.height, s.depth)

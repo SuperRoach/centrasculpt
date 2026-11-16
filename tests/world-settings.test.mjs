@@ -632,6 +632,7 @@ test("desktop Skybox defaults On with grey preset, persists Off and syncs extern
       const element = {
         tag,
         children: [],
+        style: {},
         append(...children) {
           this.children.push(...children);
         },

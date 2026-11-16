@@ -241,12 +241,16 @@ export class ModellingAPI {
     };
   }
   private convertSource(source: PrimitiveInput, factor: number): PrimitiveSource {
-    return Object.fromEntries(
-      Object.entries(source).map(([k, v]) => [
-        k,
-        k === "kind" || k === "tyre" ? v : typeof v === "number" ? v * factor : NaN,
-      ]),
-    ) as PrimitiveSource;
+    const convert = (value: unknown, key = ""): unknown => {
+      if (typeof value === "number") return key === "tyre" ? value : value * factor;
+      if (Array.isArray(value)) return value.map((item) => convert(item));
+      if (value && typeof value === "object")
+        return Object.fromEntries(
+          Object.entries(value).map(([childKey, child]) => [childKey, convert(child, childKey)]),
+        );
+      return value;
+    };
+    return convert(source) as PrimitiveSource;
   }
   private factor(unit: PhysicalUnit): number {
     if (!Object.hasOwn(unitMM, unit))

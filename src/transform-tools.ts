@@ -84,6 +84,18 @@ export function scaledPrimitive(
       tubeDiameter: source.tubeDiameter * (axes.includes("Y") ? ratios[1] : r),
     });
   }
+  if (source.kind === "text") {
+    return validatePrimitive({
+      ...source,
+      letterHeight: source.letterHeight * ratios[1],
+      depth: source.depth * ratios[2],
+      letterSpacing: source.letterSpacing * ratios[0],
+      contours: source.contours.map((c) => ({
+        outer: c.outer.map(([x, y]) => [x * ratios[0], y * ratios[1]]),
+        holes: c.holes.map((r) => r.map(([x, y]) => [x * ratios[0], y * ratios[1]])),
+      })),
+    });
+  }
   const radial = axes.filter((a) => a !== "Y");
   return validatePrimitive({
     kind: "cylinder",

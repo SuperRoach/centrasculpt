@@ -1,10 +1,22 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import ts from "typescript";
 
 const digest = (s) => createHash("sha256").update(s).digest("hex");
 const cacheFile = "work/test-build/.compile-cache.json";
 mkdirSync("work/test-build", { recursive: true });
+mkdirSync("work/test-build/assets", { recursive: true });
+copyFileSync(
+  "src/assets/helvetiker_regular.typeface.json",
+  "work/test-build/assets/helvetiker_regular.typeface.json",
+);
 let cache = {};
 try {
   cache = JSON.parse(readFileSync(cacheFile, "utf8"));
@@ -188,11 +200,13 @@ for (const name of [
   const source = readFileSync(`src/${name}.ts`, "utf8")
     .replace(
       /from (["'])(\.\/[^"']+)\1/g,
-      (_match, quote, specifier) => `from ${quote}${specifier}.mjs${quote}`,
+      (_match, quote, specifier) =>
+        `from ${quote}${specifier.endsWith(".json") ? specifier : `${specifier}.mjs`}${quote}`,
     )
     .replace(
       /import\((["'])(\.\/[^"']+)\1\)/g,
-      (_match, quote, specifier) => `import(${quote}${specifier}.mjs${quote})`,
+      (_match, quote, specifier) =>
+        `import(${quote}${specifier.endsWith(".json") ? specifier : `${specifier}.mjs`}${quote})`,
     );
   const output = `work/test-build/${name}.mjs`,
     key = digest(JSON.stringify([ts.version, options, source]));

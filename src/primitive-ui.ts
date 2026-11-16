@@ -9,7 +9,7 @@ import {
   primitiveLabel,
   primitiveWorldDimensions,
 } from "./parametric-primitive";
-import { toDisplay } from "./physical-units";
+import { fromDisplay, toDisplay } from "./physical-units";
 import type { PrecisionField, PrecisionTools } from "./precision-tools";
 import type { PrimitiveTools } from "./primitive-tools";
 import { uniformScale } from "./transform";
@@ -97,6 +97,7 @@ export function primitiveUI(
       '<ellipse cx="16" cy="7" rx="11" ry="4"/><path d="M5 7v18c0 5 22 5 22 0V7M5 25c0-5 22-5 22 0"/>',
     sphere:
       '<circle cx="16" cy="16" r="13"/><ellipse cx="16" cy="16" rx="6" ry="13"/><path d="M3 16c5 5 21 5 26 0"/>',
+    text: '<path d="M3 7V3h26v4M16 3v26M9 29h14M7 12h18"/>',
   };
   const shapeButtons = new Map<string, HTMLButtonElement>();
   for (const kind of PRIMITIVE_CHOICES) {
@@ -133,7 +134,7 @@ export function primitiveUI(
   result.className = "primitive-bounds";
   body.append(result);
   const create = button(body, "Create Box", () => tools.create(), "primitive-primary");
-  create.title = "Create at model origin, then position with Transform or exact coordinates";
+  create.title = "Move or rotate the draft, size it with Scale, then create the editable source";
   const empty = document.createElement("p");
   empty.className = "primitive-note";
   empty.textContent = "Select a primitive in Layers to edit its dimensions.";
@@ -524,10 +525,10 @@ export function primitiveUI(
       ? `${primitiveWorldDimensions(source, tools.layers().active.layer.transform)
           .map((v) => toDisplay(v, tools.settings).toFixed(2))
           .join(" × ")} ${tools.settings.unit} · physical bounds`
-      : `${source.kind === "torus" ? "Ring centreline radius · tube diameter · XZ ring, Y axis" : source.kind === "capsule" ? "Overall Y height ≥ diameter · hemispherical ends" : source.kind === "tapered-box" ? "Independent X widths and Z depths · bottom −Y, top +Y" : source.kind === "pyramid" ? "X width · Z depth · base −Y, apex +Y" : source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
+      : `${source.kind === "text" ? "Bundled Helvetiker outlines · XY face · Z extrusion" : source.kind === "torus" ? "Ring centreline radius · tube diameter · XZ ring, Y axis" : source.kind === "capsule" ? "Overall Y height ≥ diameter · hemispherical ends" : source.kind === "tapered-box" ? "Independent X widths and Z depths · bottom −Y, top +Y" : source.kind === "pyramid" ? "X width · Z depth · base −Y, apex +Y" : source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
     result.title = selected
       ? "Model-axis bounds include rotation, scale and parent transforms. Dimension fields edit local source parameters."
-      : "Use Transform or Edit selected to position your new primitive.";
+      : "Use Move or Rotate to position the draft, Scale to size it, then Create.";
     const editable = !!selected && tools.layers().active.layer.editable;
     bake.disabled = restore.disabled = blocked || !editable;
     for (const [field, input] of transformInputs) {
@@ -558,11 +559,60 @@ export function primitiveUI(
     const legend = document.createElement("legend");
     legend.textContent = "Dimensions";
     dimensions.append(legend);
+    if (source.kind === "text") {
+      const textRow = document.createElement("div"),
+        textLabel = document.createElement("label"),
+        textInput = document.createElement("input");
+      textRow.className = "primitive-text-row";
+      textLabel.textContent = "Text";
+      textInput.type = "text";
+      textInput.maxLength = 20;
+      textInput.setAttribute("aria-label", "Text");
+      textInput.value = source.text;
+      textInput.disabled = blocked || (!!selected && !editable);
+      textInput.onchange = () => {
+        const work = tools.editText({ text: textInput.value }, !!selected);
+        sync();
+        void work.then(sync).catch((e) => {
+          status.hidden = false;
+          status.textContent = String(e);
+        });
+      };
+      const alignRow = document.createElement("label"),
+        align = document.createElement("select");
+      textLabel.append(textInput);
+      alignRow.textContent = "Align";
+      for (const value of ["left", "center", "right"] as const) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value[0].toUpperCase() + value.slice(1);
+        align.append(option);
+      }
+      align.value = source.alignment;
+      align.disabled = blocked || (!!selected && !editable);
+      align.onchange = () => {
+        const work = tools.editText(
+          { alignment: align.value as "left" | "center" | "right" },
+          !!selected,
+        );
+        sync();
+        void work.then(sync).catch((e) => {
+          status.hidden = false;
+          status.textContent = String(e);
+        });
+      };
+      align.setAttribute("aria-label", "Align");
+      alignRow.append(align);
+      textRow.append(textLabel, alignRow);
+      dimensions.append(textRow);
+    }
+    let textMetrics: HTMLDivElement | undefined;
     for (const [field, value] of Object.entries(primitiveFields(source))) {
       if (field === "kind") continue;
       const row = document.createElement("label"),
         input = document.createElement("input");
       row.textContent = primitiveFieldLabel(field, source);
+      if (source.kind === "text" && field === "depth") row.className = "primitive-text-depth";
       if (field === "majorRadius")
         row.title = "Radius from the torus centre to the tube centreline";
       input.type = field === "tyre" ? "range" : "number";
@@ -592,7 +642,13 @@ export function primitiveUI(
           return;
         }
         if (field === "topDiameter" && Number(input.value) < 0) input.value = "0";
-        const work = tools.dimension(field, Number(input.value), !!selected);
+        const work =
+          source.kind === "text"
+            ? tools.editText(
+                { [field]: fromDisplay(Number(input.value), tools.settings) },
+                !!selected,
+              )
+            : tools.dimension(field, Number(input.value), !!selected);
         sync();
         void work.then(sync).catch((e) => {
           status.hidden = false;
@@ -603,8 +659,11 @@ export function primitiveUI(
         input.oninput = () => {
           const dimension = Number(input.value);
           if (!input.value.trim() || !Number.isFinite(dimension) || dimension <= 0) return;
-          void tools
-            .dimension(field, dimension, false)
+          void (
+            source.kind === "text"
+              ? tools.editText({ [field]: fromDisplay(dimension, tools.settings) }, false)
+              : tools.dimension(field, dimension, false)
+          )
             .then(sync)
             .catch(() => {});
         };
@@ -634,7 +693,12 @@ export function primitiveUI(
         endpoints.append(start, end);
         row.append(endpoints);
       }
-      dimensions.append(row);
+      if (source.kind === "text" && (field === "letterHeight" || field === "letterSpacing")) {
+        textMetrics ??= document.createElement("div");
+        textMetrics.className = "primitive-text-metrics";
+        textMetrics.append(row);
+        if (field === "letterSpacing") dimensions.append(textMetrics);
+      } else dimensions.append(row);
     }
   };
   sync();
