@@ -37,7 +37,6 @@ export class LightRig {
   readonly lights: DirectionalLight[];
   readonly inspection = {
     enabled: false,
-    shadows: false,
     paused: false,
     speed: 6,
     direction: 1,

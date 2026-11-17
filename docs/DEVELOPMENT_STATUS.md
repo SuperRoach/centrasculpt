@@ -8,10 +8,10 @@ history, undo, recovery payload source data, and STL/GLB output.
 
 ## 2. Implementation
 
-Desktop and immersive World Settings expose **Key light shadows**. The optional
+Desktop and immersive Key Light settings expose **Cast shadows**. The optional
 `lighting.shadows.enabled` property is validated with the existing lighting
 settings and defaults off when absent. The custom Key casts in rig mode;
-Inspection Light has a separate transient toggle. Visible source sculpt and
+Inspection Light always casts while active. Visible source sculpt and
 Boolean result chunks cast and receive self-shadows. Light handles, guides,
 previews, and references stay outside those shadow roots. Fill and Rim
 never cast. The renderer uses PCF soft shadows and a fixed 1024 × 1024 map. An
@@ -22,8 +22,8 @@ Mesh shadow flags change only when the toggle changes; the map is reused.
 ## 3. Verification
 
 The lighting regression covers absent/legacy preference defaults, on/off
-restoration, Key/Inspection shadow selection (including Inspection while the rig
-is off), source-chunk versus preview participation, 1024-map dimensions,
+restoration, always-on Inspection shadows even while the rig is off,
+source-chunk versus preview participation, 1024-map dimensions,
 bounded static and Inspection-orbit frusta, XR menu routing, native save/open,
 actual recovery worker encoding, and unchanged source arrays/history/GLB bytes.
 `npm run check`
@@ -53,8 +53,8 @@ Shapes, recovery source data, STL, or GLB data were changed by this feature.
 
 1. Enable Three-Point Lighting, then Key light shadows; confirm self-shadowing
    across a sculpt and the visible Boolean result.
-2. Enable Inspection Light shadows and confirm the rotating source stays within
-   the fitted map as it moves around the sculpture. The option is temporary.
+2. Enable Inspection Light and confirm its shadows stay within the fitted map
+   as it rotates around the sculpture.
 3. Verify Fill and Rim do not add shadows, and the lighting handles/guides and
    reference images neither cast nor receive them.
 4. Toggle shadows off and check normal illumination is restored. Save/reopen and

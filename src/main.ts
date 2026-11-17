@@ -2456,7 +2456,6 @@ synchronizeShadows = (boundsChanged = false) => {
     !!display.lighting?.enabled,
     !!display.lighting?.shadows?.enabled,
     lighting.inspection.enabled,
-    lighting.inspection.shadows,
   );
   const key = lighting.lights[0];
   applyKeyShadowState(

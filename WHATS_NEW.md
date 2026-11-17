@@ -1,7 +1,7 @@
 ### Key light shadows — 2026-11-16
 
-- Enable Key Shadows in World Settings · Lighting on desktop or in the immersive
-  World Settings menu. Inspection Light has its own temporary shadow toggle.
+- Enable Cast Shadows inside Key Light in desktop World Settings · Lighting or
+  the immersive Key Light menu. Inspection Light casts shadows whenever active.
   Both use the fitted 1024 × 1024 map and affect visible sculpt surfaces only.
   Fill and Rim do not cast shadows. The Key preference is saved with project
   display preferences; older projects leave it off.

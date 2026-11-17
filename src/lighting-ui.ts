@@ -91,15 +91,6 @@ export function lightingUI(
   );
   input(
     panel,
-    "Key light shadows",
-    "checkbox",
-    () => !!display().lighting?.shadows?.enabled,
-    (v) => {
-      config().shadows = { enabled: v === "true" };
-    },
-  );
-  input(
-    panel,
     "Ambient / Environment intensity",
     "number",
     () => String(ambientIntensity(display().lighting ?? defaults)),
@@ -124,6 +115,18 @@ export function lightingUI(
       fn(candidate.lights[id]);
       display().lighting = validateLighting(candidate);
     };
+    if (id === "key")
+      input(
+        group,
+        "Cast shadows",
+        "checkbox",
+        () => !!display().lighting?.shadows?.enabled,
+        (v) => {
+          const candidate = structuredClone(config());
+          candidate.shadows = { enabled: v === "true" };
+          display().lighting = validateLighting(candidate);
+        },
+      );
     const targetLayer = document.createElement("label");
     targetLayer.textContent = `${id} look at layer`;
     const targetSelect = document.createElement("select");
@@ -193,15 +196,6 @@ export function lightingUI(
       config();
       rig.sync();
       rig.inspection.enabled = v === "true";
-    },
-  );
-  input(
-    inspection,
-    "Inspection light shadows",
-    "checkbox",
-    () => rig.inspection.shadows,
-    (v) => {
-      rig.inspection.shadows = v === "true";
     },
   );
   input(

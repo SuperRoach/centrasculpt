@@ -9,14 +9,13 @@ import {
   type WebGLRenderer,
 } from "three";
 
-/** Inspection has its own transient shadow choice while it overrides the rig. */
+/** Inspection always casts while active; otherwise the saved rig preference applies. */
 export function shouldCastKeyShadow(
   rigEnabled: boolean,
   keyShadowsEnabled: boolean,
   inspectionEnabled: boolean,
-  inspectionShadowsEnabled: boolean,
 ): boolean {
-  return inspectionEnabled ? inspectionShadowsEnabled : rigEnabled && keyShadowsEnabled;
+  return inspectionEnabled || (rigEnabled && keyShadowsEnabled);
 }
 
 /** Display-only Key shadow setup. It never touches source geometry or export data. */

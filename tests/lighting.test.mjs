@@ -209,10 +209,10 @@ test("Key shadows default off, toggle and restore receive state, and fit a bound
   assert.equal(lights[0].shadow.camera.near, 0.01);
   const inspectionRadius = fitKeyShadowFrustum(lights[0], bounds, new Vector3(0, 0, 0));
   assert(inspectionRadius >= radius);
-  assert.equal(shouldCastKeyShadow(true, true, false, false), true);
-  assert.equal(shouldCastKeyShadow(true, false, true, true), true);
-  assert.equal(shouldCastKeyShadow(true, true, true, false), false);
-  assert.equal(shouldCastKeyShadow(false, true, false, true), false);
+  assert.equal(shouldCastKeyShadow(true, true, false), true);
+  assert.equal(shouldCastKeyShadow(true, false, true), true);
+  assert.equal(shouldCastKeyShadow(true, true, true), true);
+  assert.equal(shouldCastKeyShadow(false, true, false), false);
   applyKeyShadowState(renderer, lights, [sculpt], false);
   assert.equal(renderer.shadowMap.enabled, false);
   assert.equal(lights[0].castShadow, false);
@@ -403,7 +403,6 @@ test("workspace scaling/rotation maps grabs back to local coordinates while Turn
 test("inspection rotates only its light with bounded time, pause, reverse, reset and original restoration", () => {
   const f = fixture();
   try {
-    assert.equal(f.rig.inspection.shadows, false);
     f.enable();
     const source = f.xr.sculptureRoot.matrix.clone(),
       table = f.xr.turntable.group.matrix.clone();
@@ -585,15 +584,15 @@ test("all lighting menu targets are disjoint and controls update rig settings an
     model.activate("world:lighting");
     model.activate("lighting-enable");
     assert(layers.display.lighting.enabled);
+    assert(!model.content().buttons.some((b) => b.id === "lighting-shadows"));
+    model.activate("lighting-select:key");
+    assert(model.content().buttons.some((b) => b.id === "lighting-shadows"));
     model.activate("lighting-shadows");
     assert.equal(layers.display.lighting.shadows.enabled, true);
     model.activate("lighting-shadows");
     assert.equal(layers.display.lighting.shadows.enabled, false);
     model.world.section = "inspection";
-    model.activate("inspection-shadows");
-    assert.equal(f.rig.inspection.shadows, true);
-    model.activate("inspection-shadows");
-    assert.equal(f.rig.inspection.shadows, false);
+    assert(!model.content().buttons.some((b) => b.id === "inspection-shadows"));
     model.world.section = "lighting";
     model.activate("world:ambient");
     model.activate("lighting-ambient-brighter");
@@ -610,6 +609,10 @@ test("all lighting menu targets are disjoint and controls update rig settings an
     for (const id of LIGHT_IDS) {
       model.world.section = "lighting";
       model.activate("lighting-select:" + id);
+      assert.equal(
+        model.content().buttons.some((b) => b.id === "lighting-shadows"),
+        id === "key",
+      );
       model.activate("world:light-colour");
       model.activate("lighting-colour:" + LIGHT_COLOURS[5]);
       assert.equal(layers.display.lighting.lights[id].colour, LIGHT_COLOURS[5]);
