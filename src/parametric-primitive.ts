@@ -545,7 +545,10 @@ export function* evaluatePrimitive(
   resolution: number,
   maxSamples: number,
   onAllocate?: (samples: number) => void,
+  yieldSamples = 128,
 ): Generator<void, SDFVolume> {
+  if (!Number.isSafeInteger(yieldSamples) || yieldSamples < 128 || yieldSamples > 4096)
+    throw new Error("Primitive evaluation yield interval must be 128–4096 samples.");
   const s = validatePrimitive(source),
     dimensions = primitiveDimensions(s),
     longest = Math.max(...dimensions);
@@ -574,7 +577,7 @@ export function* evaluatePrimitive(
           volume.coordinate(y),
           volume.coordinate(z),
         );
-        if (i % 128 === 0) yield;
+        if (i % yieldSamples === 0) yield;
       }
   return volume;
 }

@@ -1,3 +1,4 @@
+import { recordAgentPerformance } from "./agent-performance";
 import { type FitReport, partMembers, partOwner } from "./assembly";
 import {
   type ConnectorOptions,
@@ -362,6 +363,7 @@ export class ModellingAPI {
     options: BatchOptions,
     replaceEnclosureCutoutId?: string,
   ): Promise<ModellingResult<BatchReport>> {
+    const profileStarted = performance.now();
     let owner: symbol | undefined, checkpoint: number | undefined;
     let temporary: IndependentLayers | undefined;
     let admitted = false;
@@ -427,6 +429,7 @@ export class ModellingAPI {
       if (options.dryRun) {
         if (this.layers.trackedBytes > 128 * 1024 ** 2)
           this.fail("operation_failed", "Dry-run staging exceeds its 128 MiB source budget.");
+        const stagingStarted = performance.now();
         const original = this.layers.project,
           stack = new LayerStack(
             original.layerStack.layers.map((l) => new SdfLayer(l.volume, l.metadata())),
@@ -445,6 +448,10 @@ export class ModellingAPI {
         temporary = new IndependentLayers(project);
         temporary.selectedGroupId = this.layers.selectedGroupId;
         target = temporary;
+        recordAgentPerformance("batch.dry-run-clone", performance.now() - stagingStarted, {
+          trackedBytes: this.layers.trackedBytes,
+          layers: this.layers.project.layerStack.layers.length,
+        });
       }
       const api = new ModellingAPI(target, this.canEdit);
       const selectedBefore = target.project.activeLayerId;
@@ -486,13 +493,16 @@ export class ModellingAPI {
       for (const step of input) {
         if (options.signal?.aborted) this.fail("cancelled", "Operation cancelled.");
         const command = resolve(step.command) as ModellingCommand;
+        const commandStarted = performance.now();
         const result = await target.withModellingLease(owner, () =>
           api.executeCommand(
             command,
             { expectedRevision: api.revision, signal: options.signal },
             replaceEnclosureCutoutId,
+            options.dryRun === true,
           ),
         );
+        recordAgentPerformance(`batch.command.${command.type}`, performance.now() - commandStarted);
         if (!result.ok) throw new CommandError(result.error.code, result.error.message);
         if (target.display.precision.millimetresPerUnit !== calibration)
           this.fail("revision_conflict", "Physical calibration changed during the batch.");
@@ -578,6 +588,11 @@ export class ModellingAPI {
           : error,
       );
     } finally {
+      recordAgentPerformance("batch.total", performance.now() - profileStarted, {
+        dryRun: !!options.dryRun,
+        commandCount: Array.isArray(steps) ? steps.length : 0,
+        trackedBytes: this.layers.trackedBytes,
+      });
       if (owner) (temporary ?? this.layers).releaseModellingLease(owner);
       temporary?.dispose();
       if (admitted) this.pending = false;
@@ -683,6 +698,7 @@ export class ModellingAPI {
     command: ModellingCommand,
     options: { expectedRevision: string; signal?: AbortSignal },
     replaceEnclosureCutoutId?: string,
+    skipSourceMeshing = false,
   ): Promise<ModellingResult<{ id: string; fit?: FitReport }>> {
     let selected: string | undefined,
       group: string | null = null;
@@ -690,7 +706,7 @@ export class ModellingAPI {
       if (!command || typeof command !== "object" || typeof command.type !== "string")
         this.fail("invalid_input", "Command type is required.");
       if (!this.canEdit()) this.fail("permission_denied", "Editing is not permitted.");
-      if (this.pending || !this.layers.recoveryReady)
+      if (this.pending || (!skipSourceMeshing && !this.layers.recoveryReady))
         this.fail("busy", "Editor has an active operation.");
       if (options.expectedRevision !== this.revision)
         this.fail("revision_conflict", "Scene changed; query again before editing.");
@@ -977,6 +993,8 @@ export class ModellingAPI {
               source ?? this.fail("invalid_input", "Primitive source required."),
               undefined,
               options.signal,
+              undefined,
+              skipSourceMeshing,
             )
           ).id;
           break;
@@ -985,6 +1003,8 @@ export class ModellingAPI {
             source ?? this.fail("invalid_input", "Primitive source required."),
             id,
             options.signal,
+            undefined,
+            skipSourceMeshing,
           );
           break;
         case "object.transform":

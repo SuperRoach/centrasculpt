@@ -38,6 +38,7 @@ for (const name of [
   "connector-placement",
   "modelling-api",
   "agent-access",
+  "agent-performance",
   "agent-preview",
   "mesh-inspection",
   "agent-activity",

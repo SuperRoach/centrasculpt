@@ -1,5 +1,22 @@
 # Centra Sculpt roadmap
 
+## Phase 8.6a/8.6b — Enclosure MCP performance and common flows (2026-11-18)
+
+- Delivered actual local stdio MCP profiling and an atomic enclosure + cutout +
+  mounting-post proposal, plus async preview/apply status and compact polling.
+- The complete three-trial comparison measured 38.23 s / 77 tool calls for the
+  sequential flow versus 24.48 s / 50 calls for the combined flow (36% shorter,
+  35% fewer calls), with approvals and Undo entries each reduced from five to
+  one. A later compact-polling rerun completed all three combined trials, but
+  its sequential refresh stopped on an editor heartbeat failure; see the
+  [Phase 8.6 handover](PHASE_8_6_ENCLOSURE_MCP.md) and raw benchmark artifact.
+- Preview source-cache validation skips display-mesh preparation on its isolated
+  dry-run clone. Apply still builds the full mesh and uses the normal consent,
+  revision, lock, cancellation, rollback and resource guards. Save/load/export
+  optimisation and Phase 9 sparse SDF remain deferred.
+- Discoverability improvements are recorded for later documentation capture;
+  authentic cropped desktop and Quest screenshots remain deferred until PC use.
+
 ## Three-point lighting shadows (2026-11-16)
 
 - Delivered an optional shadow toggle inside Key Light settings on desktop and

@@ -1121,6 +1121,173 @@ test("associative attachment schemas, read grants and separately approved recipe
   }
 });
 
+test("one approved enclosure create can atomically include a cutout and mounting posts", async () => {
+  const { DEFAULT_ENCLOSURE } = await import("../work/test-build/enclosure-recipe.mjs");
+  const { layers, api } = createHeadlessEditor();
+  const proposals = new AgentProposals();
+  const run = agentExecutor(
+    layers,
+    () => true,
+    () => false,
+    () => {},
+    proposals,
+  );
+  const call = (name, args = {}) => run(job(name, args), signal());
+  const features = [
+    {
+      kind: "cutout",
+      name: "Front port",
+      anchor: "enclosure.base.wall.front",
+      shape: "round",
+      uMm: 0,
+      vMm: 5,
+      widthMm: 4,
+      heightMm: 4,
+      insetMm: 0,
+    },
+    {
+      kind: "mounting",
+      name: "Board mounts",
+      anchor: "enclosure.base.floor",
+      centresMm: [
+        [-4, -4],
+        [4, -4],
+      ],
+      outerDiameterMm: 3,
+      boreDiameterMm: 1.5,
+      heightMm: 4,
+      floorOffsetMm: 0,
+    },
+  ];
+  try {
+    const before = saveSculptProject(layers.project);
+    const beforeUndo = layers.undoCount;
+    const staged = await call("propose_enclosure", {
+      expectedRevision: api.revision,
+      title: "Create enclosure with features",
+      description: "One enclosure with a front port and two board mounts.",
+      waitForPreview: false,
+      recipe: { type: "create", parameters: DEFAULT_ENCLOSURE, features },
+    });
+    assert(staged.ok, JSON.stringify(staged));
+    assert.deepEqual(saveSculptProject(layers.project), before);
+    assert.equal(layers.undoCount, beforeUndo);
+    let ready = staged.value;
+    while (ready.state === "preview computing") {
+      ready = (await call("get_proposal", { proposalId: staged.value.id, summaryOnly: true }))
+        .value;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(ready.state, "awaiting approval");
+    assert.equal(
+      (await call("get_proposal", { proposalId: staged.value.id })).value.preview.value.results
+        .length,
+      51,
+    );
+    assert.throws(() =>
+      validateCall({
+        name: "propose_enclosure",
+        args: {
+          expectedRevision: api.revision,
+          title: "Bad feature",
+          description: "Unknown fields still fail schema validation.",
+          recipe: {
+            type: "create",
+            parameters: DEFAULT_ENCLOSURE,
+            features: [{ ...features[0], unexpected: true }],
+          },
+        },
+      }),
+    );
+    assert.equal(
+      (await call("apply_approved_proposal", { proposalId: staged.value.id })).error.code,
+      "permission_denied",
+    );
+    assert(proposals.approve(layers, api.revision));
+    const applying = await call("apply_approved_proposal", {
+      proposalId: staged.value.id,
+      waitForApply: false,
+    });
+    assert(applying.ok, JSON.stringify(applying));
+    assert.equal(applying.value.state, "applying");
+    let completed = applying.value;
+    while (completed.state === "applying") {
+      completed = (await call("get_proposal", { proposalId: staged.value.id, summaryOnly: true }))
+        .value;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(completed.state, "applied");
+    const applied = completed.result;
+    assert.equal(layers.undoCount, beforeUndo + 1);
+    const { base, lid } = applied.value.partIds;
+    const inspected = await call("inspect_enclosure", { baseId: base, lidId: lid });
+    assert.equal(inspected.value.features.length, 2);
+    assert.deepEqual(
+      inspected.value.features.map((feature) => feature.sourceIds.length),
+      [1, 4],
+    );
+    assert.equal(new Set(inspected.value.features.flatMap((feature) => feature.sourceIds)).size, 5);
+    assert(
+      inspected.value.features.every((feature) =>
+        feature.sourceIds.every((id) => !id.startsWith("$")),
+      ),
+    );
+    assert(layers.trackedBytes > 0);
+    assert(layers.undo());
+    assert.deepEqual(saveSculptProject(layers.project), before);
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("cancelling an async enclosure apply rolls back its source caches and history", async () => {
+  const { DEFAULT_ENCLOSURE } = await import("../work/test-build/enclosure-recipe.mjs");
+  const { layers, api } = createHeadlessEditor();
+  const proposals = new AgentProposals();
+  const run = agentExecutor(
+    layers,
+    () => true,
+    () => false,
+    () => {},
+    proposals,
+  );
+  const call = (name, args = {}) => run(job(name, args), signal());
+  try {
+    const before = saveSculptProject(layers.project);
+    const undoBefore = layers.undoCount;
+    const staged = await call("propose_enclosure", {
+      expectedRevision: api.revision,
+      title: "Cancel enclosure",
+      description: "Cancel during source preparation.",
+      waitForPreview: false,
+      recipe: { type: "create", parameters: DEFAULT_ENCLOSURE },
+    });
+    assert(staged.ok, JSON.stringify(staged));
+    let status = staged.value;
+    while (status.state === "preview computing") {
+      status = (await call("get_proposal", { proposalId: status.id, summaryOnly: true })).value;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(status.state, "awaiting approval");
+    assert(proposals.approve(layers, api.revision));
+    const applying = await call("apply_approved_proposal", {
+      proposalId: staged.value.id,
+      waitForApply: false,
+    });
+    assert.equal(applying.value.state, "applying");
+    assert((await call("cancel_proposal", { proposalId: staged.value.id })).ok);
+    const deadline = Date.now() + 10000;
+    while (layers.modellingBusy && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(layers.modellingBusy, false);
+    assert.equal(api.revision, staged.revision);
+    assert.equal(layers.undoCount, undoBefore);
+    assert.deepEqual(saveSculptProject(layers.project), before);
+  } finally {
+    layers.dispose();
+  }
+});
+
 test("HTTP LAN origins without randomUUID retain cryptographic proposal and activity IDs", async () => {
   const previous = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
   Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });

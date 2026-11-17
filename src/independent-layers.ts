@@ -9,6 +9,7 @@ import {
   Quaternion,
   Vector3,
 } from "three";
+import { recordAgentPerformance } from "./agent-performance";
 import { validateAssembly } from "./assembly";
 import type { BakeOptions, BakeProgress, BakeStats, SurfaceView } from "./bake";
 import {
@@ -3506,8 +3507,9 @@ export class IndependentLayers {
     id?: string,
     signal?: AbortSignal,
     placement?: VolumeTransform,
+    skipMeshing = false,
   ): Promise<SdfLayer> {
-    return this.regenerateSource(value, id, signal, placement);
+    return this.regenerateSource(value, id, signal, placement, undefined, undefined, skipMeshing);
   }
   enclosureScaleRole(id: string): "cutout" | "post" | "bore" | undefined {
     const owner = this.enclosureFeatureForSource(id);
@@ -3656,6 +3658,7 @@ export class IndependentLayers {
     placement?: VolumeTransform,
     progress?: (fraction: number) => void,
     localPose?: VolumeTransform,
+    skipMeshing = false,
   ): Promise<SdfLayer> {
     this.assertAvailable();
     if (this.selectedGroupId) throw new Error("Select a child layer for procedural editing.");
@@ -3699,6 +3702,7 @@ export class IndependentLayers {
       const allocate = (samples: number) => {
         this.tubeStagingBytes = samples * 8;
       };
+      const cacheStarted = performance.now();
       const work =
         source.kind === "tube"
           ? evaluateTube(
@@ -3714,17 +3718,38 @@ export class IndependentLayers {
               localPose ? n : Math.min(n, Math.floor(Math.cbrt(Math.max(0, maxSamples)))),
               maxSamples,
               allocate,
+              512,
             );
       let result = work.next(),
-        deadline = performance.now() + 3;
+        deadline = performance.now() + 3,
+        sliceStarted = performance.now(),
+        yieldCount = 0,
+        yieldedMs = 0,
+        maxSliceMs = 0;
       while (!result.done) {
         check();
         if (performance.now() >= deadline) {
+          const sliceMs = performance.now() - sliceStarted;
+          maxSliceMs = Math.max(maxSliceMs, sliceMs);
+          yieldCount++;
+          const yieldStarted = performance.now();
           await yieldBake();
+          yieldedMs += performance.now() - yieldStarted;
+          sliceStarted = performance.now();
           deadline = performance.now() + 3;
         }
         result = work.next();
       }
+      recordAgentPerformance(
+        "source.primitive-cache-evaluation",
+        performance.now() - cacheStarted,
+        {
+          yieldCount,
+          yieldedMs,
+          maxSliceMs,
+          resolution: result.value.resolution,
+        },
+      );
       check();
       const volume = result.value;
       this.assertCapacity(volumeSampleCount(volume), id, old ? 0 : 1);
@@ -3764,22 +3789,29 @@ export class IndependentLayers {
       const triangleBudget =
         MAX_PROJECT_TRIANGLES -
         [...this.runtimes.values()].reduce((n, r) => n + (r === old ? 0 : r.triangles), 0);
+      const meshStarted = performance.now();
       const meshChunks = candidate.mesher.pendingChunks;
-      progress?.(0.65);
-      while (candidate.mesher.pendingChunks) {
-        check();
-        candidate.rebuild(2, 3);
-        progress?.(0.65 + 0.31 * (1 - candidate.mesher.pendingChunks / meshChunks));
-        this.tubeStagingBytes =
-          volumeSampleCount(volume) * 8 +
-          candidate.mesher.ownedGeometryBytes +
-          candidate.sourceGeometryBytes;
-        if (this.trackedBytes > 256 * 1024 ** 2)
-          throw new Error(`${sourceLabel} staged mesh exceeds the memory budget. Source kept.`);
-        if (candidate.triangles > triangleBudget)
-          throw new Error(`${sourceLabel} exceeds the project triangle budget. Source kept.`);
-        await yieldBake();
+      if (!skipMeshing) {
+        progress?.(0.65);
+        while (candidate.mesher.pendingChunks) {
+          check();
+          candidate.rebuild(2, 3);
+          progress?.(0.65 + 0.31 * (1 - candidate.mesher.pendingChunks / meshChunks));
+          this.tubeStagingBytes =
+            volumeSampleCount(volume) * 8 +
+            candidate.mesher.ownedGeometryBytes +
+            candidate.sourceGeometryBytes;
+          if (this.trackedBytes > 256 * 1024 ** 2)
+            throw new Error(`${sourceLabel} staged mesh exceeds the memory budget. Source kept.`);
+          if (candidate.triangles > triangleBudget)
+            throw new Error(`${sourceLabel} exceeds the project triangle budget. Source kept.`);
+          await yieldBake();
+        }
       }
+      recordAgentPerformance("source.primitive-mesh-preparation", performance.now() - meshStarted, {
+        skipMeshing,
+        meshChunks,
+      });
       check();
       this.discardFuture();
       if (old) {

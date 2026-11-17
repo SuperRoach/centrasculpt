@@ -1,0 +1,233 @@
+{
+  "date": "2026-11-17T17:13:28.790Z",
+  "transport": "actual local MCP stdio client -> temporary HTTP bridge -> disposable Chromium editor",
+  "fixture": {
+    "parameters": {
+      "units": "mm",
+      "name": "MCP enclosure fixture",
+      "innerWidthMm": 24,
+      "innerDepthMm": 24,
+      "innerHeightMm": 14,
+      "wallThicknessMm": 3,
+      "floorThicknessMm": 3,
+      "cornerRadiusMm": 4,
+      "lid": {
+        "type": "friction-fit",
+        "clearanceMm": 0.3,
+        "lipDepthMm": 4,
+        "thicknessMm": 3
+      }
+    },
+    "features": [
+      {
+        "kind": "cutout",
+        "name": "Front port",
+        "anchor": "enclosure.base.wall.front",
+        "shape": "round",
+        "uMm": 2,
+        "vMm": 5,
+        "widthMm": 4,
+        "heightMm": 4,
+        "insetMm": 0
+      },
+      {
+        "kind": "mounting",
+        "name": "Board mounts",
+        "anchor": "enclosure.base.floor",
+        "centresMm": [
+          [
+            -4,
+            -4
+          ],
+          [
+            4,
+            -4
+          ]
+        ],
+        "outerDiameterMm": 3,
+        "boreDiameterMm": 1.5,
+        "heightMm": 4,
+        "floorOffsetMm": 0
+      }
+    ],
+    "trials": 3
+  },
+  "sequentialApprovedRecipes": {
+    "flowMs": null,
+    "mcpToolCallsPerFlow": null,
+    "approvalCountPerFlow": 5,
+    "undoEntriesPerFlow": 5,
+    "proposalPreviewMs": {
+      "p50Ms": 569.86,
+      "p95Ms": 836.94,
+      "samples": 4
+    },
+    "applyMs": {
+      "p50Ms": 149.45,
+      "p95Ms": 209.14,
+      "samples": 4
+    },
+    "inspectionMs": {
+      "p50Ms": 264.38,
+      "p95Ms": 264.38,
+      "samples": 1
+    }
+  },
+  "combinedCreateProposal": {
+    "flowMs": {
+      "p50Ms": 25501.95,
+      "p95Ms": 25532.85,
+      "samples": 3
+    },
+    "mcpToolCallsPerFlow": {
+      "p50Ms": 36,
+      "p95Ms": 36,
+      "samples": 3
+    },
+    "approvalCountPerFlow": 1,
+    "undoEntriesPerFlow": 1,
+    "proposalPreviewMs": {
+      "p50Ms": 318,
+      "p95Ms": 330.23,
+      "samples": 3
+    },
+    "applyMs": {
+      "p50Ms": 233.88,
+      "p95Ms": 240.22,
+      "samples": 3
+    },
+    "inspectionMs": {
+      "p50Ms": 238.32,
+      "p95Ms": 287.95,
+      "samples": 3
+    }
+  },
+  "perToolWallMs": {
+    "scene_summary": {
+      "p50Ms": 198.78,
+      "p95Ms": 226.87,
+      "samples": 5
+    },
+    "propose_enclosure": {
+      "p50Ms": 330.23,
+      "p95Ms": 836.94,
+      "samples": 7
+    },
+    "get_proposal": {
+      "p50Ms": 246.6,
+      "p95Ms": 280,
+      "samples": 139
+    },
+    "apply_approved_proposal": {
+      "p50Ms": 164.62,
+      "p95Ms": 240.22,
+      "samples": 7
+    },
+    "inspect_enclosure": {
+      "p50Ms": 238.32,
+      "p95Ms": 287.95,
+      "samples": 4
+    },
+    "undo": {
+      "p50Ms": 234.61,
+      "p95Ms": 242.3,
+      "samples": 3
+    }
+  },
+  "agentInternalsMs": {
+    "enclosure.recipe-plan": {
+      "p50Ms": 0.2,
+      "p95Ms": 1.2,
+      "samples": 14
+    },
+    "batch.dry-run-clone": {
+      "p50Ms": 48.7,
+      "p95Ms": 584,
+      "samples": 7
+    },
+    "source.primitive-cache-evaluation": {
+      "p50Ms": 178.5,
+      "p95Ms": 248.3,
+      "samples": 100
+    },
+    "source.primitive-mesh-preparation": {
+      "p50Ms": 0.1,
+      "p95Ms": 2070,
+      "samples": 100
+    },
+    "batch.command.primitive.create": {
+      "p50Ms": 292.3,
+      "p95Ms": 2326.1,
+      "samples": 80
+    },
+    "batch.command.object.transform": {
+      "p50Ms": 0.3,
+      "p95Ms": 0.4,
+      "samples": 100
+    },
+    "batch.command.object.rename": {
+      "p50Ms": 0.2,
+      "p95Ms": 0.4,
+      "samples": 94
+    },
+    "batch.command.boolean.create": {
+      "p50Ms": 0.3,
+      "p95Ms": 0.5,
+      "samples": 64
+    },
+    "batch.command.part.define": {
+      "p50Ms": 0.3,
+      "p95Ms": 0.6,
+      "samples": 40
+    },
+    "batch.command.part.assign": {
+      "p50Ms": 0.4,
+      "p95Ms": 0.6,
+      "samples": 64
+    },
+    "batch.total": {
+      "p50Ms": 1961.1,
+      "p95Ms": 21664.3,
+      "samples": 14
+    },
+    "agent.proposal-preview": {
+      "p50Ms": 1777.7,
+      "p95Ms": 2141.3,
+      "samples": 7
+    },
+    "agent.proposal-apply": {
+      "p50Ms": 10274.6,
+      "p95Ms": 21664.7,
+      "samples": 7
+    },
+    "agent.ui-refresh": {
+      "p50Ms": 3.9,
+      "p95Ms": 6.2,
+      "samples": 10
+    },
+    "batch.command.primitive.update": {
+      "p50Ms": 179.7,
+      "p95Ms": 1295.2,
+      "samples": 20
+    }
+  },
+  "errors": {
+    "beforeConsentRefusals": 1,
+    "duringFlows": 1
+  },
+  "failures": [
+    {
+      "variant": "sequentialApprovedRecipes",
+      "trial": 1,
+      "message": "AssertionError [ERR_ASSERTION]: {\"ok\":false,\"error\":{\"code\":\"agent_access\",\"message\":\"Approve connection in the active editor first.\"}}"
+    }
+  ],
+  "browserHeapBytes": {
+    "combinedMedian": 42100000
+  },
+  "limitations": [
+    "Tool wall times include MCP stdio, local HTTP bridge, editor queue and response serialization; the current public protocol does not expose separate queue, validation, cache preparation, transaction or UI refresh timers.",
+    "Browser heap is an exposed Chromium estimate, not the editor's tracked source bytes or total process/GPU working set.",
+    "Dry-run reports validate generated source caches; they do not evaluate final Boolean mesh topology or physical fit."
+  ]
+}

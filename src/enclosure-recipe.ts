@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { recordAgentPerformance } from "./agent-performance";
 import { partMembers, partSources } from "./assembly";
 import { prepareComposite } from "./compositor";
 import {
@@ -401,6 +402,13 @@ export class EnclosureRecipes {
   async create(parameters: EnclosureParameters, options: BatchOptions) {
     return this.apply(parameters, options);
   }
+  async createWithFeatures(
+    parameters: EnclosureParameters,
+    definitions: FeatureDefinition[],
+    options: BatchOptions,
+  ) {
+    return this.apply(parameters, options, undefined, { definitions });
+  }
   async update(
     baseId: string,
     lidId: string,
@@ -451,8 +459,14 @@ export class EnclosureRecipes {
     parameters: EnclosureParameters,
     options: BatchOptions,
     existing?: { baseId: string; lidId: string },
-    edit?: { definition?: FeatureDefinition; attachmentId?: string; remove?: boolean },
+    edit?: {
+      definition?: FeatureDefinition;
+      definitions?: FeatureDefinition[];
+      attachmentId?: string;
+      remove?: boolean;
+    },
   ) {
+    const recipeStarted = performance.now();
     try {
       const plan = enclosurePlan(parameters),
         p = plan.parameters,
@@ -515,10 +529,30 @@ export class EnclosureRecipes {
           });
       }
       const features = structuredClone(old?.features ?? []);
+      for (const definition of edit?.definitions ?? []) {
+        const validated = validateFeatures([
+          {
+            sourceIds: featurePlan(p, definition).map((_, i) => `$feature${features.length}_${i}`),
+            definition,
+          },
+        ])[0];
+        features.push(validated);
+      }
       const index = edit?.attachmentId
         ? features.findIndex((f) => f.sourceIds[0] === edit.attachmentId)
         : -1;
       if (edit?.attachmentId && index < 0) throw new Error("Unknown attachment ID.");
+      if (!old && features.length) {
+        for (const role of ["base", "lid"] as const)
+          steps.push({
+            command: {
+              type: "part.define",
+              objectId: refs[role],
+              clearanceMM: p.lid.clearanceMm,
+              enclosure: { role, parameters: p },
+            },
+          });
+      }
       if (edit?.remove) {
         const [removed] = features.splice(index, 1);
         steps.push({
@@ -546,17 +580,19 @@ export class EnclosureRecipes {
             definition: structuredClone(edit.definition),
           });
       }
-      if (old)
+      if (features.length)
         for (const [fi, feature] of features.entries()) {
           const generated = featurePlan(p, feature.definition);
           const creating = feature.sourceIds[0].startsWith("$");
-          const root = this.layers.project.layerStack.get(old.ids.base).transform;
+          const root = old
+            ? this.layers.project.layerStack.get(old.ids.base).transform
+            : identityTransform();
           for (const [i, def] of generated.entries()) {
             const id = feature.sourceIds[i];
             if (!creating) {
               const node = this.layers.project.layerStack.get(id);
               if (
-                this.layers.project.layerStack.hierarchy.parent(id) !== old.ids.base ||
+                this.layers.project.layerStack.hierarchy.parent(id) !== old!.ids.base ||
                 !node.primitive ||
                 node.array
               )
@@ -565,7 +601,7 @@ export class EnclosureRecipes {
                 );
               const target =
                 def.target === "base"
-                  ? this.layers.project.layerStack.get(old.ids.base)
+                  ? this.layers.project.layerStack.get(old!.ids.base)
                   : this.layers.project.layerStack.get(feature.sourceIds[def.target]);
               if (
                 !target.booleanModifiers?.some(
@@ -596,11 +632,16 @@ export class EnclosureRecipes {
               steps.push({
                 command: { type: "object.rename", id, name: `${feature.definition.name} ${i + 1}` },
               });
-              steps.push({ command: { type: "part.assign", objectId: id, partId: old.ids.base } });
+              steps.push({
+                command: { type: "part.assign", objectId: id, partId: old?.ids.base ?? refs.base },
+              });
               steps.push({
                 command: {
                   type: "boolean.create",
-                  id: def.target === "base" ? old.ids.base : feature.sourceIds[def.target],
+                  id:
+                    def.target === "base"
+                      ? (old?.ids.base ?? refs.base)
+                      : feature.sourceIds[def.target],
                   sourceId: id,
                   operation: def.operation,
                 },
@@ -643,6 +684,11 @@ export class EnclosureRecipes {
       });
       if (old && p.name !== old.parameters.name)
         steps.push({ command: { type: "object.rename", id: refs.lid, name: `${p.name} Lid` } });
+      recordAgentPerformance("enclosure.recipe-plan", performance.now() - recipeStarted, {
+        old: !!old,
+        features: features.length,
+        commands: steps.length,
+      });
       // Only the recipe can replace its existing cutter type without changing its ID.
       const cutoutId =
         index >= 0 && edit?.definition?.kind === "cutout" ? edit.attachmentId : undefined;

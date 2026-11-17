@@ -5,6 +5,7 @@ import {
   agentTransaction,
   describeAgentResult,
 } from "./agent-activity";
+import { recordAgentPerformance } from "./agent-performance";
 import type { FeatureDefinition } from "./enclosure-features";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
@@ -45,7 +46,7 @@ export type AgentProposal = {
   expiresAt: number;
   steps: ModellingStep[];
   recipe?:
-    | { type: "create"; parameters: EnclosureParameters }
+    | { type: "create"; parameters: EnclosureParameters; features?: FeatureDefinition[] }
     | { type: "update"; baseId: string; lidId: string; parameters: EnclosureParameters }
     | {
         type: "feature-set";
@@ -61,7 +62,10 @@ export type AgentProposal = {
 };
 function executeProposal(api: ModellingAPI, proposal: AgentProposal, options: BatchOptions) {
   const recipe = proposal.recipe;
-  if (recipe?.type === "create") return api.enclosure.create(recipe.parameters, options);
+  if (recipe?.type === "create")
+    return recipe.features?.length
+      ? api.enclosure.createWithFeatures(recipe.parameters, recipe.features, options)
+      : api.enclosure.create(recipe.parameters, options);
   if (recipe?.type === "update")
     return api.enclosure.update(recipe.baseId, recipe.lidId, recipe.parameters, options);
   if (recipe?.type === "feature-set")
@@ -118,10 +122,13 @@ export function agentExecutor(
     Map<string, { request: string; result: unknown }>
   >();
   const notifyChanged = () => {
+    const started = performance.now();
     try {
       changed();
     } catch {
       /* UI refresh cannot undo or invalidate a committed transaction. */
+    } finally {
+      recordAgentPerformance("agent.ui-refresh", performance.now() - started);
     }
   };
   const execute = async (job: AgentJob, signal: AbortSignal): Promise<unknown> => {
@@ -204,35 +211,99 @@ export function agentExecutor(
         const controller = new AbortController();
         proposals.controller = controller;
         proposals.notify();
-        const preview = await executeProposal(api, proposal, {
+        const previewStarted = performance.now();
+        const finishPreview = (preview: Awaited<ReturnType<typeof executeProposal>>) => {
+          recordAgentPerformance("agent.proposal-preview", performance.now() - previewStarted, {
+            recipe: proposal.recipe?.type,
+            ok: preview.ok,
+          });
+          proposal.preview = preview;
+          const currentEditor = typeof editor === "function" ? editor() : editor;
+          proposal.state =
+            preview.ok &&
+            !controller.signal.aborted &&
+            !signal.aborted &&
+            currentEditor === layers &&
+            api.revision === proposal.expectedRevision
+              ? "awaiting approval"
+              : "rejected/error";
+          if (proposals.current === proposal) proposals.notify();
+          return preview.ok && proposal.state === "awaiting approval"
+            ? { ok: true, revision: api.revision, value: structuredClone(proposal) }
+            : preview.ok
+              ? error("cancelled", "Proposal invalidated during staging.")
+              : preview;
+        };
+        const preview = executeProposal(api, proposal, {
           expectedRevision: proposal.expectedRevision,
           dryRun: true,
           signal: AbortSignal.any([signal, controller.signal]),
         });
-        proposal.preview = preview;
-        const currentEditor = typeof editor === "function" ? editor() : editor;
-        proposal.state =
-          preview.ok &&
-          !controller.signal.aborted &&
-          !signal.aborted &&
-          currentEditor === layers &&
-          api.revision === proposal.expectedRevision
-            ? "awaiting approval"
-            : "rejected/error";
-        proposals.notify();
-        return preview.ok && proposal.state === "awaiting approval"
-          ? { ok: true, revision: api.revision, value: structuredClone(proposal) }
-          : preview.ok
-            ? error("cancelled", "Proposal invalidated during staging.")
-            : preview;
+        if (job.name === "propose_enclosure" && a.waitForPreview === false) {
+          void preview.then(finishPreview).catch((e) =>
+            finishPreview({
+              ok: false,
+              revision: api.revision,
+              error: {
+                code: "operation_failed",
+                message: e instanceof Error ? e.message : "Enclosure preview failed.",
+              },
+            }),
+          );
+          return { ok: true, revision: api.revision, value: structuredClone(proposal) };
+        }
+        return finishPreview(await preview);
       }
       if (!p || p.id !== a.proposalId) return error("not_found", "Unknown proposal.");
+      const proposalValue = () => {
+        if (a.summaryOnly !== true) return structuredClone(p);
+        const failedPreview = p.preview && !p.preview.ok ? p.preview.error : undefined;
+        const failedApply =
+          p.result &&
+          typeof p.result === "object" &&
+          "ok" in p.result &&
+          !p.result.ok &&
+          "error" in p.result
+            ? p.result.error
+            : undefined;
+        const appliedResult = p.result as
+          | { ok: true; revision: string; value: { partIds?: unknown; features?: unknown } }
+          | undefined;
+        return {
+          id: p.id,
+          state: p.state,
+          title: p.title,
+          expectedRevision: p.expectedRevision,
+          expiresAt: p.expiresAt,
+          ...(p.state === "applied" && appliedResult?.ok
+            ? {
+                result: {
+                  ok: true,
+                  revision: appliedResult.revision,
+                  value: {
+                    ...(appliedResult.value.partIds
+                      ? { partIds: appliedResult.value.partIds }
+                      : {}),
+                    ...(appliedResult.value.features
+                      ? { features: appliedResult.value.features }
+                      : {}),
+                  },
+                },
+              }
+            : {}),
+          ...((failedApply ?? failedPreview) ? { error: failedApply ?? failedPreview } : {}),
+        };
+      };
       if (job.name === "cancel_proposal") {
         proposals.invalidate();
         return { ok: true, revision: api.revision, value: structuredClone(p) };
       }
-      if (job.name === "get_proposal" && p.state === "applied" && proposals.owner === layers)
-        return { ok: true, revision: api.revision, value: structuredClone(p) };
+      if (
+        job.name === "get_proposal" &&
+        ["applying", "applied"].includes(p.state) &&
+        proposals.owner === layers
+      )
+        return { ok: true, revision: api.revision, value: proposalValue() };
       if (
         proposals.owner !== layers ||
         p.expectedRevision !== api.revision ||
@@ -245,7 +316,7 @@ export function agentExecutor(
         );
       }
       if (job.name === "get_proposal")
-        return { ok: true, revision: api.revision, value: structuredClone(p) };
+        return { ok: true, revision: api.revision, value: proposalValue() };
       if (!canEdit()) return error("permission_denied", "Editing permission was revoked.");
       if (p.state !== "approved")
         return error("permission_denied", "Explicit browser proposal approval required.");
@@ -253,26 +324,47 @@ export function agentExecutor(
       proposals.notify();
       const controller = new AbortController();
       proposals.controller = controller;
-      const result = await executeProposal(api, p, {
+      const applyStarted = performance.now();
+      const timeout = AbortSignal.timeout(Math.max(1, p.expiresAt - Date.now()));
+      const apply = executeProposal(api, p, {
         expectedRevision: p.expectedRevision,
         preserveSelection: true,
-        signal: AbortSignal.any([
-          signal,
-          controller.signal,
-          AbortSignal.timeout(Math.max(1, p.expiresAt - Date.now())),
-        ]),
+        signal:
+          job.name === "apply_approved_proposal" && a.waitForApply === false
+            ? AbortSignal.any([controller.signal, timeout])
+            : AbortSignal.any([signal, controller.signal, timeout]),
       });
-      if (result.ok)
-        Object.assign(result.value, {
-          inspection: [
-            ...new Set([...result.value.changes.created, ...result.value.changes.modified]),
-          ].map((id) => api.query({ type: "geometry.diagnostics", id })),
+      const finishApply = (result: Awaited<typeof apply>) => {
+        recordAgentPerformance("agent.proposal-apply", performance.now() - applyStarted, {
+          recipe: p.recipe?.type,
+          ok: result.ok,
         });
-      p.result = result;
-      p.state = result.ok ? "applied" : "rejected/error";
-      proposals.notify();
-      if (result.ok) notifyChanged();
-      return result;
+        if (result.ok)
+          Object.assign(result.value, {
+            inspection: [
+              ...new Set([...result.value.changes.created, ...result.value.changes.modified]),
+            ].map((id) => api.query({ type: "geometry.diagnostics", id })),
+          });
+        p.result = result;
+        p.state = result.ok ? "applied" : "rejected/error";
+        if (proposals.current === p) proposals.notify();
+        if (result.ok) notifyChanged();
+        return result;
+      };
+      if (job.name === "apply_approved_proposal" && a.waitForApply === false) {
+        void apply.then(finishApply).catch((e) =>
+          finishApply({
+            ok: false,
+            revision: api.revision,
+            error: {
+              code: "operation_failed",
+              message: e instanceof Error ? e.message : "Proposal apply failed.",
+            },
+          }),
+        );
+        return { ok: true, revision: api.revision, value: structuredClone(p) };
+      }
+      return finishApply(await apply);
     }
     if (job.name === "scene_summary") return api.query({ type: "scene.summary" });
     if (job.name === "list_objects") return api.query({ type: "object.list" });

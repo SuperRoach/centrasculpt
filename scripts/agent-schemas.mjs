@@ -474,8 +474,15 @@ tools.propose_enclosure = {
       ...revision,
       title: z.string().trim().min(1).max(120),
       description: z.string().trim().min(1).max(2000),
+      waitForPreview: z.boolean().optional(),
       recipe: z.discriminatedUnion("type", [
-        z.object({ type: z.literal("create"), parameters }).strict(),
+        z
+          .object({
+            type: z.literal("create"),
+            parameters,
+            features: z.array(featureDefinition).max(10).optional(),
+          })
+          .strict(),
         z.object({ type: z.literal("update"), baseId: id, lidId: id, parameters }).strict(),
         z
           .object({
@@ -493,15 +500,23 @@ tools.propose_enclosure = {
     })
     .strict(),
   description:
-    "Stage one standalone Phase 7.1 enclosure recipe. Separate browser approval required; it cannot nest in apply_changes/propose_changes or combine with connector commands.",
+    "Stage one standalone enclosure recipe. A new enclosure may include up to ten cutout and mounting definitions in the same atomic proposal. Set waitForPreview:false to return while the browser shows Previewing…, then poll get_proposal until it reaches awaiting approval or rejected/error. Separate browser approval required; it cannot nest in apply_changes/propose_changes or combine with connector commands.",
 };
 for (const name of ["get_proposal", "cancel_proposal", "apply_approved_proposal"])
   tools[name] = {
-    schema: z.object({ proposalId: id }).strict(),
+    schema: z
+      .object({
+        proposalId: id,
+        ...(name === "get_proposal" ? { summaryOnly: z.boolean().optional() } : {}),
+        ...(name === "apply_approved_proposal" ? { waitForApply: z.boolean().optional() } : {}),
+      })
+      .strict(),
     description:
       name === "apply_approved_proposal"
-        ? "Commit the exact browser-approved proposal once as one Undo transaction. This tool cannot approve. Stale, changed or expired plans reject; inspect scene state before making a new proposal."
-        : "Inspect or cancel the current memory-only proposal.",
+        ? "Commit the exact browser-approved proposal once as one Undo transaction. Set waitForApply:false to return while the browser shows Applying…, then poll get_proposal for applied or rejected/error. This tool cannot approve. Stale, changed or expired plans reject; inspect scene state before making a new proposal."
+        : name === "get_proposal"
+          ? "Inspect the current memory-only proposal. Set summaryOnly:true while polling a long preview/apply to return just state, title, revision, expiry and any error."
+          : "Cancel the current memory-only proposal.",
   };
 
 for (const name of ["enclosure_anchors", "list_enclosure_features", "get_enclosure_feature"])

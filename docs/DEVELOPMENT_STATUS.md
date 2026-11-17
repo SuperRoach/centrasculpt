@@ -1,3 +1,115 @@
+# Phase 8.6a/8.6b — Enclosure MCP performance and common flows — 2026-11-18
+
+## Outcome
+
+Measured real local MCP stdio calls through the temporary HTTP bridge into a
+disposable Chromium editor. Added an atomic common-flow proposal, shortened
+preview validation, optional asynchronous preview/apply status, and compact
+proposal polling. The existing explicit browser approval remains the point of
+consent. No screenshots were captured; authentic tightly cropped desktop and
+Quest images remain deferred until the user is at their PC.
+
+## Measurement
+
+The complete three-trial comparison used actual MCP transport and ended at the
+same enclosure/cutout/posts definitions and dimensions. The sequential path
+created the enclosure, inspected it, added a cutout and posts, resized the
+enclosure, then updated the cutout. The combined path created the enclosure,
+cutout and posts in one proposal at the same final dimensions, then inspected
+it. It measured:
+
+| Flow | Wall time p50 | Tool calls p50 | Approvals | Undo entries |
+| --- | ---: | ---: | ---: | ---: |
+| Sequential create, cutout and mounting recipes | 38.23 s | 77 | 5 | 5 |
+| One combined create proposal | 24.48 s | 50 | 1 | 1 |
+
+That is 36% lower median wall time and 35% fewer MCP calls, while reducing
+approvals and Undo entries by 80%. The original successful run used proposal
+polling that returned full proposal content. A later rerun used compact status
+polling (500 ms cadence): all three combined trials passed with p50 25.50 s,
+36 calls, 1 approval and 1 Undo entry. Its sequential refresh stopped during
+trial one when the active editor heartbeat expired, after partial tool calls;
+those partial sequential timings are not treated as a comparison. The raw JSON
+at [enclosure-mcp-benchmark.json](../outputs/phase-8-6/enclosure-mcp-benchmark.json)
+records that incomplete refresh and the three complete compact-polling combined
+trials. The earlier complete three-trial comparison is retained here because
+the flow definitions, geometry work and apply path were unchanged; polling
+cadence/response size changed afterward.
+
+The complete comparison recorded preview p50 677 ms sequentially across 15
+proposal previews and 327 ms for the combined proposal; apply p50 was 182 ms
+across 15 sequential applies and 234 ms for the combined apply. Inspection p50
+was about 247 ms sequentially and 240 ms combined. Each flow included repeated
+scene inspection. Per-tool time is MCP request-to-response time and includes
+stdio, the local bridge, editor queueing and serialization.
+
+## Bottleneck and implementation
+
+Profiling showed recipe planning around 0.2 ms p50 and the UI refresh around
+4 ms p50. Primitive SDF cache evaluation was roughly 137–179 ms p50 in recorded
+runs. Display-mesh preparation was usually near zero but had a 1.9–2.1 s p95
+for a source cache; batch totals reached roughly 20–22 s p95 in repeated
+source-heavy proposals. Repeatedly preparing display meshes while validating
+isolated dry-run clones was the justified safe target. The batch dry-run now
+evaluates and validates each generated source cache without preparing derived
+display chunks. The committed apply still evaluates the complete source and
+builds its normal display mesh. Source identities, quality/resource limits,
+transaction guards and rollback are preserved. Recipe planning, clone,
+primitive cache, mesh, command, batch, proposal and refresh timers are opt-in
+dev profiling; profiling is disabled unless explicitly enabled in the page.
+
+The recipe API accepts up to ten optional feature definitions on enclosure
+creation and builds base, lid, cutout, mounting features and metadata through
+one validated transaction and Undo entry. The MCP `propose_enclosure` schema
+also accepts optional asynchronous preview and apply flags. Status polling can
+request `summaryOnly`; defaults keep the prior synchronous/full-response
+behavior. Apply status remains revision-aware and cancellable and retains the
+proposal expiry. The feature schema/limits and the browser’s separate approval
+interaction remain in force.
+
+## Correctness and verification
+
+- Three successful combined trials had matching requested enclosure parameters
+  and feature definitions. The flow refused an apply before explicit approval,
+  then applied once and undid as one history action.
+- Added coverage for combined feature creation, preview non-mutation, unique
+  source aliases, schema limits, one-entry Undo/native restore, async status and
+  cancellation rollback of caches and history. Existing agent tests continue
+  to cover stale revisions, duplicate apply, expiry, tracking, refusals, feature
+  limits and schema compatibility.
+- `npm run check` passed formatting, lint, strict TypeScript, production build,
+  and **1,793/1,793 tests** (zero failures, cancellations or skips).
+- The existing `npm run test:agent:browser` smoke could not reach the enclosure
+  workflow: it failed earlier at its hidden `<option>` “Parametric box” selector
+  in `scripts/agent-smoke.mjs:267`. The dedicated benchmark used a disposable
+  browser/editor and actual stdio MCP transport instead. This is not a physical
+  Quest, print-fit, or headset performance result.
+
+The benchmark reports Chromium heap around 39.6 MB in the earlier comparison
+and 42.1 MB in the later combined trials. This is a browser estimate, not source
+cache bytes, total process memory, or GPU memory. The protocol does not expose
+separate transport queue, validation, cache, transaction and refresh timers, so
+wall-time attribution between those internal stages is incomplete. Preview
+validation checks the source caches; it is not a final Boolean topology or
+physical-fit validation.
+
+## Handoff
+
+1. Re-run the sequential and combined benchmark with a stable editor heartbeat
+   to get a full before/after comparison using compact status polling. Keep the
+   same fixture and actual MCP transport, and preserve per-trial data.
+2. Profile larger but safe enclosure definitions to check admission limits,
+   proposal expiry, bridge timeouts and cancel responsiveness. Inspect the
+   combined single-transaction Undo/native restore path with more features.
+3. On the intended PC, capture genuine element-level, tightly cropped desktop
+   and Quest screenshots and update discoverability docs. No screenshot work was
+   done in this phase.
+4. Keep save/load/export optimisation and Phase 9 sparse-SDF integration
+   deferred. Text, Lighting, Face Resize and the existing Enclosure UX were not
+   intentionally changed by this work.
+
+---
+
 # Three-point lighting shadow follow-up — 2026-11-16
 
 ## 1. Scope
