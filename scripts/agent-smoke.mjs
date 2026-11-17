@@ -119,6 +119,21 @@ smoke: try {
       panel.height <= panel.viewportHeight,
       `panel height exceeds viewport: ${JSON.stringify(panel)}`,
     );
+    const panelBox = await page.locator("#local-agent-panel").boundingBox();
+    const launcherBox = await page
+      .getByRole("button", { name: "Open local agent access", exact: true })
+      .boundingBox();
+    assert(panelBox && launcherBox, "agent panel and launcher are visible together");
+    assert(
+      panelBox.width <= (viewport.width <= 640 ? 280 : 310),
+      `agent panel stays compact at ${viewport.width}px: ${panelBox.width}px`,
+    );
+    assert.equal(panelBox.x, launcherBox.x, "panel aligns with the launcher");
+    assert.equal(
+      launcherBox.y - (panelBox.y + panelBox.height),
+      8,
+      "panel opens above the launcher",
+    );
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   client = new Client({ name: "centra-browser-smoke", version: "1" });

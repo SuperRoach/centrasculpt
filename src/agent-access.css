@@ -1,4 +1,4 @@
-.agent-access{position:fixed;bottom:18px;left:18px;z-index:10000;width:min(310px,calc(100vw - 36px));box-sizing:border-box;padding:20px;border:1px solid #d5ddce;border-radius:16px;background:#fafbf7;color:#293b3a;box-shadow:0 8px 32px #233c3a18;font:13px/1.5 system-ui,sans-serif}
+.agent-access{box-sizing:border-box;padding:20px;border:1px solid #d5ddce;border-radius:16px;background:#fafbf7;color:#293b3a;box-shadow:0 8px 32px #233c3a18;font:13px/1.5 system-ui,sans-serif}
 .agent-access [hidden]{display:none!important}
 .agent-access-heading{display:flex;align-items:center;gap:11px}
 .agent-access-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border:1px solid #cddbbb;border-radius:11px;background:#eaf1df;color:#526e3f;font-size:23px}
@@ -35,9 +35,6 @@
 .agent-access .agent-access-status{position:absolute;right:48px;top:26px;width:8px;height:8px;padding:0;margin:0;background:transparent;font-size:0}
 .agent-access .agent-access-status::before{width:8px;height:8px}
 .agent-access-heading{padding-right:30px;margin-bottom:18px}
-.agent-access-launcher{position:fixed;bottom:18px;left:18px;z-index:10000;display:grid;place-items:center;width:42px;height:42px;padding:0;border:1px solid #cddbbb;border-radius:13px;background:#fafbf7;color:#526e3f;box-shadow:0 4px 16px #233c3a18;font:23px system-ui;cursor:pointer}
-.agent-access-launcher::after{content:"";position:absolute;right:5px;top:5px;width:6px;height:6px;border-radius:50%;background:#9ca695}
-.agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after{background:#00e64d}
 .agent-access-launcher:focus-visible{outline:2px solid #80966d;outline-offset:3px}
 .agent-access .agent-access-status{top:23px;width:18px;height:18px;display:grid;place-items:center;overflow:hidden;white-space:nowrap;letter-spacing:0;gap:0;color:transparent}
 .agent-access .agent-access-status::before{flex:none}
@@ -53,28 +50,58 @@
 .agent-proposal ol { padding-left: 20px; font-size: 11px; }
 .agent-proposal button { margin-top: 6px; }
 
-.agent-access { overflow: auto; overscroll-behavior: contain; }
 .agent-proposal-explanation { font-size: 11px; color: #65715e; }
 
-/* Quiet by default: the status chip never opens or takes focus for incoming work. */
-#local-agent-panel.agent-access {
+.agent-access, .agent-access-launcher {
+  --agent-edge: 18px;
+  --agent-left: max(var(--agent-edge), env(safe-area-inset-left));
+  --agent-right: max(var(--agent-edge), env(safe-area-inset-right));
+  --agent-bottom: max(18px, env(safe-area-inset-bottom));
+  --agent-launcher-size: 36px;
   position: fixed;
-  inset-block: max(12px, env(safe-area-inset-top)) max(70px, calc(env(safe-area-inset-bottom) + 64px));
-  height: fit-content;
-  max-height: min(calc(100vh - 88px), calc(100dvh - 88px));
+  left: var(--agent-left);
+  z-index: 10000;
 }
-.agent-access-launcher { width: auto; min-width: 104px; height: 32px; padding: 0 20px 0 11px; border-radius: 16px; font: 500 11px/1 system-ui, sans-serif; box-shadow: 0 2px 8px #233c3a0d; }
-.agent-access-launcher::after { top: 12px; right: 9px; }
 
-.agent-access-launcher { width: 36px; min-width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: 12px; }
-.agent-access-launcher::after { top: 4px; right: 4px; width: 5px; height: 5px; }
+.agent-access {
+  bottom: calc(var(--agent-bottom) + var(--agent-launcher-size) + 8px);
+  width: min(310px, calc(100vw - var(--agent-left) - var(--agent-right)));
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - var(--agent-bottom) - var(--agent-launcher-size) - 8px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 640px) {
+  .agent-access, .agent-access-launcher { --agent-edge: 12px; }
+  .agent-access { width: min(280px, calc(100vw - var(--agent-left) - var(--agent-right))); padding: 16px; }
+}
+
+.agent-access-launcher {
+  bottom: var(--agent-bottom);
+  display: grid;
+  place-items: center;
+  width: var(--agent-launcher-size);
+  height: var(--agent-launcher-size);
+  padding: 0;
+  border: 1px solid #cddbbb;
+  border-radius: 12px;
+  background: #fafbf7;
+  color: #526e3f;
+  box-shadow: 0 2px 8px #233c3a0d;
+  cursor: pointer;
+}
+
+.agent-access-launcher:is([data-state=connected], [data-state=editing]):not(:hover, :focus-visible, [aria-expanded=true], [data-activity=review]) {
+  background: #fafbf780;
+  border-color: #cddbbb80;
+  color: #526e3f99;
+  box-shadow: none;
+}
+
 .agent-access-launcher[data-activity=review] { border-color: #8b9d73; background: #f0f5e8; }
 
-/* Keep the floating panel independent of the responsive editor sidebar layout. */
-aside.agent-access { width: min(310px, calc(100vw - 36px)); min-width: 0; max-width: 310px; right: auto; }
-@media (max-width: 640px) { aside.agent-access { width: min(280px, calc(100vw - 24px)); max-width: 280px; left: 12px; padding: 16px; } }
 /* Centre the status ring on the smaller sparkle in the 20px launcher SVG. */
-.agent-access-launcher::after { box-sizing: border-box; top: 6px; right: 6.5px; width: 8px; height: 8px; border: 1px solid #9ca695; background: transparent; }
+.agent-access-launcher::after { content: ""; position: absolute; border-radius: 50%; box-sizing: border-box; top: 6px; right: 6.5px; width: 8px; height: 8px; border: 1px solid #9ca695; background: transparent; }
 .agent-access-launcher[data-state=connected]::after,.agent-access-launcher[data-state=editing]::after { border-color: #00b83d; background: #00e64d; }
 .agent-access-launcher::after { transition: background-color 220ms ease, border-color 220ms ease; }
 @media (prefers-reduced-motion: reduce) { .agent-access-launcher::after { transition: none; } }

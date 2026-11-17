@@ -28,7 +28,7 @@ export function mountAgentAccess(
   },
 ) {
   let credentials = initialCredentials;
-  const panel = document.createElement("aside");
+  const panel = document.createElement("section");
   panel.className = "agent-access";
   panel.setAttribute("aria-label", "Local agent access (development)");
   panel.innerHTML = `
