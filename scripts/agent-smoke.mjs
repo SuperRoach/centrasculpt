@@ -94,6 +94,33 @@ smoke: try {
   await page.goto(origin);
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByRole("button", { name: "Approve connection", exact: true }).waitFor();
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 390, height: 600 },
+    { width: 320, height: 360 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const panel = await page.locator("#local-agent-panel").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        height: Math.round(rect.height),
+        viewportHeight: window.innerHeight,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
+      };
+    });
+    assert(
+      panel.top >= -1 && panel.bottom <= panel.viewportHeight + 1,
+      `Local Agent Access panel exceeds ${viewport.width}×${viewport.height}: ${JSON.stringify(panel)}`,
+    );
+    assert(
+      panel.height <= panel.viewportHeight,
+      `panel height exceeds viewport: ${JSON.stringify(panel)}`,
+    );
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   client = new Client({ name: "centra-browser-smoke", version: "1" });
   await client.connect(
     new StdioClientTransport({
@@ -264,7 +291,11 @@ smoke: try {
     translation: [before.value.millimetresPerModelUnit * 1.2, 0, 0],
   });
   assert(moved.ok, JSON.stringify(moved));
-  await page.getByText(object.value.name, { exact: true }).first().waitFor();
+  await page
+    .getByText(object.value.name, { exact: true })
+    .filter({ visible: true })
+    .first()
+    .waitFor();
   await page.waitForTimeout(2200); // Commit pulse has expired; framing must move the camera, not geometry.
   const canvasBefore = await page.locator("#viewport canvas").first().screenshot();
   const revisionBeforeShow = (await call("scene_summary")).revision;
@@ -291,6 +322,27 @@ smoke: try {
     ) < 1e-8,
   );
   const highlightedImage = await page.screenshot({ path: `${output}/browser-created.png` });
+  const expandedPanel = await page.locator("#local-agent-panel").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      top: Math.round(rect.top),
+      bottom: Math.round(rect.bottom),
+      height: Math.round(rect.height),
+      viewportHeight: window.innerHeight,
+      position: style.position,
+      insetBlockStart: style.insetBlockStart,
+      insetBlockEnd: style.insetBlockEnd,
+      maxHeight: style.maxHeight,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    };
+  });
+  assert.equal(expandedPanel.position, "fixed", "agent panel stays anchored to the viewport");
+  assert(
+    expandedPanel.top >= -1 && expandedPanel.bottom <= expandedPanel.viewportHeight + 1,
+    `expanded Local Agent Access panel exceeds viewport: ${JSON.stringify(expandedPanel)}`,
+  );
   const upperBorderPixels = await page.evaluate(
     async (bytes) => {
       const bitmap = await createImageBitmap(
@@ -801,7 +853,11 @@ smoke: try {
   // Ordinary editor history remains functional after the MCP process exits.
   const redo = page.locator("#redo");
   await redo.click();
-  await page.getByText("Associative enclosure Base", { exact: true }).first().waitFor();
+  await page
+    .getByText("Associative enclosure Base", { exact: true })
+    .filter({ visible: true })
+    .first()
+    .waitFor();
   await page.screenshot({ path: `${output}/browser-disconnected-redo.png` });
   assert.deepEqual(pageErrors, []);
   await stop(server);
@@ -812,7 +868,7 @@ smoke: try {
   const normalRequests = [];
   page.on("request", (request) => normalRequests.push(request.url()));
   await page.goto(origin);
-  await page.locator("canvas").first().waitFor();
+  await page.locator("canvas:visible").first().waitFor();
   assert.equal(
     await page.getByRole("button", { name: "Approve connection", exact: true }).count(),
     0,

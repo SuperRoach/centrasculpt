@@ -630,6 +630,38 @@ pagefind-modal-trigger .pf-trigger-btn {
   }
 }
 
+@media (max-width: 420px) {
+  .topbar {
+    padding: 0 10px;
+    gap: 4px;
+  }
+  .brand {
+    font-size: 17px;
+    gap: 2px;
+  }
+  .mark {
+    font-size: 26px;
+    margin-right: 0;
+  }
+  .top-actions {
+    flex-shrink: 0;
+    gap: 4px;
+  }
+  .top-actions button {
+    padding: 6px 7px;
+    font-size: 11px;
+  }
+  #search-open .pf-trigger-btn {
+    width: 42px !important;
+    min-width: 42px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+  #search-open .pf-trigger-btn::before {
+    content: "⌕";
+    font-size: 20px;
+  }
+}
 @media (max-width: 380px) {
   .topbar {
     height: auto;

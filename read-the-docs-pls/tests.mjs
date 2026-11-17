@@ -14,7 +14,7 @@ test("stable public routes are unique, intentional and fully generated", async (
     routes,
   );
   assert.equal(new Set(routes).size, routes.length);
-  assert.equal(routes.length, 26);
+  assert.equal(routes.length, 29);
   assert.deepEqual(JSON.parse(await read("dist/routes.json")), routes);
 });
 test("every internal link, fragment, script and stylesheet resolves inside output", async () => {
@@ -83,6 +83,41 @@ test("critical topics, commands, format units and deferred boundaries are docume
     desktop: ["Cmd/Ctrl + Z", "Cmd/Ctrl + Shift + Z", "E / D / C", "R / F / V", "G / T"],
     quest: ["Support stick left/right", "Support stick up/down", "Both grips", "adb reverse"],
     primitives: ["Cone", "Capsule", "Torus", "Tyre shape", "Pyramid"],
+    text: [
+      "Helvetiker Regular",
+      "1–20 supported characters",
+      "Letter height",
+      "Letter spacing",
+      "Depth",
+      "Union",
+      "Difference",
+      "counters",
+      "desktop-only",
+      ".form",
+      "GLB",
+      "STL",
+    ],
+    lighting: [
+      "Three-Point Lighting",
+      "Key",
+      "Fill",
+      "Rim",
+      "Ambient / Environment",
+      "Inspection Light",
+      "1024 × 1024",
+      "PCF soft",
+      "Passthrough",
+    ],
+    enclosures: [
+      "outside elevation",
+      "inside face",
+      "Mounting posts",
+      "Bore diameter",
+      "translation snap",
+      "Face Resize",
+      "wall/corner",
+      "lid fit",
+    ],
     export: [
       "Actual size (1:1)",
       "200 mm",
@@ -107,7 +142,7 @@ test("critical topics, commands, format units and deferred boundaries are docume
       "Allow editing",
       "get_capabilities",
     ],
-    faq: ["Personal Shapes", "Use as Stamp", "8.1", "8.2", "Quest hardware"],
+    faq: ["Personal Shapes", "Use as Stamp", "Phase 9", "sparse-SDF", "Quest hardware"],
   };
   for (const [id, words] of Object.entries(topics))
     for (const word of words) assert.ok(by(id).includes(word), `${id} missing ${word}`);

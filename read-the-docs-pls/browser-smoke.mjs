@@ -58,7 +58,7 @@ try {
   await page.reload();
   assert.equal(await page.locator("html").getAttribute("data-theme"), "dark");
   await page.screenshot({ path: new URL("desktop-dark.png", evidence).pathname, fullPage: true });
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k");
   await page.locator("pagefind-modal dialog input").waitFor();
   await page.locator("pagefind-modal dialog input").fill("tyre");
   await page.locator(".pf-result-link").first().waitFor();
@@ -89,7 +89,7 @@ try {
   const search = await page.evaluate(async () => {
     const pf = await import("./pagefind/pagefind.js");
     const out = {};
-    for (const term of ["calibration", "fallback", "proposal", "capsule", ".form"]) {
+    for (const term of ["calibration", "fallback", "proposal", "capsule", ".form", "Helvetiker", "Key shadows", "mounting bore"]) {
       const results = await pf.search(term);
       out[term] = results.results.length;
     }
@@ -100,10 +100,14 @@ try {
     await page.setViewportSize({ width, height: 844 });
     for (const route of routes) {
       await page.goto(`${base}/${route}`);
-      assert.ok(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-        `${width}px overflow ${route}`,
-      );
+      const mobileOverflow = await page.evaluate(() => ({
+        fits: document.documentElement.scrollWidth <= innerWidth,
+        elements: [...document.querySelectorAll("body *")]
+          .filter((el) => el.getBoundingClientRect().right > innerWidth + 1)
+          .slice(0, 8)
+          .map((el) => ({ tag: el.tagName, id: el.id, class: el.className, right: Math.round(el.getBoundingClientRect().right) })),
+      }));
+      assert.ok(mobileOverflow.fits, `${width}px overflow ${route}: ${JSON.stringify(mobileOverflow.elements)}`);
     }
     await page.goto(base);
     assert.equal(await page.locator("#sidebar").isVisible(), false);

@@ -1,6 +1,6 @@
 # Centra Sculpt field guide
 
-Phase 7.6.1 public user documentation: 26 pages, three illustrated tutorials, an
+Phase 8.5b public user documentation: 29 pages, three screenshot-illustrated tutorials and one text walkthrough, an
 interactive Tool Wheel schematic, a glossary and a tool-choice guide. This independent static site lives here;
 `../docs/` remains the technical engineering/handover archive. No app/engine imports
 are shipped to readers. No runtime API, account, CDN, analytics or external font.
@@ -78,7 +78,7 @@ Screenshots and reports go to ignored `../work/docs-7-6/`.
 If shell browser launch is blocked by host permissions, keep preview running and
 open http://127.0.0.1:4176/__qa.html in a real browser. Click **Run checks**. This
 repository-owned harness automates real Pagefind queries, axe WCAG A/AA checks,
-all 23 pages at 1440/390/320 px, mobile navigation, theme persistence, shortcut
+all 29 pages at 1440/390/320 px, mobile navigation, theme persistence, shortcut
 events and focus return. It also tests `/nested-guide/` as a project-path alias.
 These preview-only QA endpoints are not copied into `dist/` or deployed. Keyboard
 Tab/Shift+Tab, Escape and visual screenshots still need a real interaction check;
@@ -145,6 +145,6 @@ print acceptance is claimed. Keep pending labels until real captures are checked
 
 Validation: build then `npm --prefix read-the-docs-pls test` (links, assets,
 provenance and source/schema checks), then `npm --prefix read-the-docs-pls run
-test:browser` (26 routes, axe, actual Pagefind search, responsive layouts,
+test:browser` (29 routes, axe, actual Pagefind search, responsive layouts,
 keyboard/touch, lightbox and reduced motion). Repository `npm run check` is also
 required. See `docs/DEVELOPMENT_STATUS.md` for this run's exact results.

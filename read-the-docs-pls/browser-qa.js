@@ -99,6 +99,15 @@ document.querySelector("#run").onclick = async () => {
       doc.querySelector(".pf-result-link").textContent.includes("primitives"),
       "real Pagefind search finds primitives for tyre",
     );
+    for (const [term, route] of [["Helvetiker", "text.html"], ["Key shadows", "lighting.html"], ["mounting bore", "enclosures.html"]]) {
+      input.value = term;
+      input.dispatchEvent(new frame.contentWindow.Event("input", { bubbles: true }));
+      await until(() => doc.querySelector(".pf-result-link"));
+      assert(
+        [...doc.querySelectorAll(".pf-result-link")].some((link) => link.href.includes(route)),
+        `real Pagefind search finds ${term} in ${route}`,
+      );
+    }
     const modalResult = await frame.contentWindow.axe.run(doc, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
     });

@@ -53,11 +53,16 @@
 .agent-proposal ol { padding-left: 20px; font-size: 11px; }
 .agent-proposal button { margin-top: 6px; }
 
-.agent-access { max-height: calc(100vh - 36px); overflow: auto; }
+.agent-access { overflow: auto; overscroll-behavior: contain; }
 .agent-proposal-explanation { font-size: 11px; color: #65715e; }
 
 /* Quiet by default: the status chip never opens or takes focus for incoming work. */
-.agent-access { bottom: 70px; max-height: calc(100vh - 88px); }
+#local-agent-panel.agent-access {
+  position: fixed;
+  inset-block: max(12px, env(safe-area-inset-top)) max(70px, calc(env(safe-area-inset-bottom) + 64px));
+  height: fit-content;
+  max-height: min(calc(100vh - 88px), calc(100dvh - 88px));
+}
 .agent-access-launcher { width: auto; min-width: 104px; height: 32px; padding: 0 20px 0 11px; border-radius: 16px; font: 500 11px/1 system-ui, sans-serif; box-shadow: 0 2px 8px #233c3a0d; }
 .agent-access-launcher::after { top: 12px; right: 9px; }
 

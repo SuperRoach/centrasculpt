@@ -75,3 +75,26 @@ or generated UI. Capture provenance is in screenshots/manifest.json. Earlier
 headless-shell clay attempts hit the tracking guard; accepted captures use full
 installed Chromium and real committed dabs. No app/engine/export source edits,
 user project access, commit, push or publication.
+
+## Documentation refresh — 16 November 2026
+
+The public guide now has 29 routes. Added source-grounded Text and Lighting guides
+and a text-only labelled-enclosure walkthrough; existing screenshot assets were
+left intact. Rechecked `src/parametric-primitive.ts`, `src/primitive-tools.ts`,
+`src/primitive-ui.ts`, `src/project.ts`, `src/lighting.ts`, `src/lighting-ui.ts`,
+`src/light-rig.ts`, `src/shadows.ts`, `src/xr-world-menu.ts`,
+`src/enclosure-feature-ui.ts`, `src/enclosure-feature-guide.ts`,
+`src/enclosure-features.ts`, `src/independent-layers.ts`, `src/surface.ts`,
+`src/ui.ts`, and the corresponding primitive, lighting, enclosure and export
+regression tests. The checkout also contains the active three-point shadow work;
+this pass did not edit app implementation files.
+
+Documented Text as a single-line bundled Helvetiker Regular source with desktop
+parameter editing, default VR placement, native version 23 persistence, analytic
+glyph counters and sampled Boolean/export limits. Documented Key-only casting,
+source/result receiving, fixed 1024 PCF soft map, display-only persistence and
+unverified Quest/Passthrough performance. Expanded enclosure wall/corner/taper,
+mounting post/bore, frame placement, feature selection, Move, Scale/Face Resize,
+Undo and physical-fit guidance. Sparse-SDF production integration remains
+explicitly deferred; Quest interaction, headset performance, slicer and physical
+fit acceptance remain open where noted.
