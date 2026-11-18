@@ -1,5 +1,21 @@
 # Centra Sculpt roadmap
 
+## Phase 8.6c — Discoverability & UX Polish (2026-11-18)
+
+- Desktop follow-up adds direct project menu actions for browser saves and
+  portable files, contextual Layers shortcuts, and focus retention on redraw.
+- Delivered selection-driven desktop Text editing and enclosure feature settings,
+  clearer Key/Fill/Rim and Inspection Light labels, announced Scale guidance,
+  and accessible Export preset help. Save/Open Project controls identify native
+  `.form` files.
+- Focused tests, build and disposable Chromium text/lighting/export and
+  enclosure/face-resize flows passed. The full `npm run check` result and
+  remaining narrow-width acceptance are in the dated [development handover](DEVELOPMENT_STATUS.md).
+- Phase 8.6d element-level authentic screenshots are deferred until the user is
+  at their PC; the handover includes selectors and a crop list. Physical Quest
+  shadow performance remains unverified. Phase 8.7 I/O performance, Phase 9
+  sparse SDF and the two MCP smoke/benchmark follow-ups remain separate.
+
 ## Phase 8.6a/8.6b — Enclosure MCP performance and common flows (2026-11-18)
 
 - Delivered actual local stdio MCP profiling and an atomic enclosure + cutout +

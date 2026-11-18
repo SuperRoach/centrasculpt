@@ -1,3 +1,23 @@
+### Project menu and layer shortcuts (2026-11-18)
+
+- Open the Centra Sculpt menu to save in this browser, download a portable
+  `.form`, open the Library, or import a project file.
+- Use **Edit Text**, **Edit Enclosure**, **Edit Cutout**, or **Edit Mounting
+  Posts** on the selected layer to open its settings. Keyboard focus follows
+  the shortcut and stays on the layer control when its row redraws.
+
+### Find editing controls from the selected source — Phase 8.6c (2026-11-18)
+
+- Selecting a Text source opens its desktop editing controls. Selecting an
+  enclosure cutout or mounting source opens its associated feature settings
+  when Enclosure is open.
+- Key, Fill, Rim and temporary Inspection lighting now explain their roles,
+  including which lights cast shadows. Scale guidance explains fixed-face and
+  centre resizing while a supported box is selected.
+- Export settings announce what the chosen quality preset does; Save Project
+  and Open Project identify native `.form` files. VR detailed text editing and
+  headset shadow performance remain acceptance items.
+
 ### Key light shadows — 2026-11-16
 
 - Enable Cast Shadows inside Key Light in desktop World Settings · Lighting or

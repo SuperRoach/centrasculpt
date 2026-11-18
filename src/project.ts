@@ -40,6 +40,32 @@ export const MAX_PROJECT_TRIANGLES = 1_000_000;
 export const MAX_PROJECT_LAYERS = 20;
 export const MAX_PROJECT_VOXELS = 2 * MAX_PROJECT_RESOLUTION ** 3;
 export const MAX_PROJECT_BYTES = 16 + 65536 + MAX_PROJECT_VOXELS * 12 + REFERENCE_LIMITS.totalBytes;
+const CAMERA_MIN_DISTANCE = 1.2;
+const CAMERA_MAX_DISTANCE = 9;
+const CAMERA_MAX_COORDINATE = 1000;
+
+/** Desktop framing may exceed the camera range saved in portable projects. */
+export function cameraForProjectSave(
+  camera: ProjectSettings["camera"],
+  fallback: ProjectSettings["camera"],
+): ProjectSettings["camera"] {
+  const { position, target } = camera;
+  const fits = (point: readonly number[]) =>
+    point.every((value) => Number.isFinite(value) && Math.abs(value) <= CAMERA_MAX_COORDINATE);
+  if (!fits(position) || !fits(target)) return fallback;
+  const [x, y, z] = position.map((value, i) => value - target[i]);
+  const distance = Math.hypot(x, y, z);
+  if (distance === 0) return fallback;
+  if (distance >= CAMERA_MIN_DISTANCE && distance <= CAMERA_MAX_DISTANCE) return camera;
+  const boundedDistance =
+    distance < CAMERA_MIN_DISTANCE ? CAMERA_MIN_DISTANCE : CAMERA_MAX_DISTANCE;
+  const bounded: ProjectSettings["camera"]["position"] = [
+    target[0] + (x / distance) * boundedDistance,
+    target[1] + (y / distance) * boundedDistance,
+    target[2] + (z / distance) * boundedDistance,
+  ];
+  return fits(bounded) ? { position: bounded, target } : fallback;
+}
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Project metadata must be an object.");
@@ -49,7 +75,9 @@ function triple(value: unknown): [number, number, number] {
   if (
     !Array.isArray(value) ||
     value.length !== 3 ||
-    !value.every((v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1000)
+    !value.every(
+      (v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= CAMERA_MAX_COORDINATE,
+    )
   )
     throw new Error("Invalid camera coordinates.");
   return [...value] as [number, number, number];
@@ -95,7 +123,7 @@ function validateSettings(value: unknown, version = PROJECT_VERSION): ProjectSet
   const position = triple(camera.position),
     target = triple(camera.target);
   const distance = Math.hypot(...position.map((v, i) => v - target[i]));
-  if (distance < 1.2 - 1e-6 || distance > 9 + 1e-6)
+  if (distance < CAMERA_MIN_DISTANCE - 1e-6 || distance > CAMERA_MAX_DISTANCE + 1e-6)
     throw new Error("Camera distance is outside the supported range.");
   return {
     mode: data.mode as BrushMode,

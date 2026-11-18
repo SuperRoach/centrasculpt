@@ -1,3 +1,109 @@
+# Desktop project and Layers shortcuts — 2026-11-18
+
+- The Centra Sculpt project menu now offers **Save in Browser**, **Download
+  .form**, **Open from Library**, and **Import .form**. Save feedback and the
+  existing quick save and long press use the same project actions.
+- Browser saves and portable downloads record a supported camera distance even
+  when Frame or Lighting zoomed in closer or farther in the live viewport.
+- Selected text, enclosure base/lid, cutout, and mounting source layers offer a
+  shortcut to their existing editor. Shortcuts can open a closed panel and move
+  keyboard focus to the destination. Layer selection, visibility and lock
+  controls retain focus when their row redraws.
+- `npm run check` passed all 1,794 tests with localhost enabled. Chromium
+  exercised all four project menu actions in a disposable profile, reopened
+  the downloaded file, checked the menu at 390 px, and verified keyboard
+  focus for editing text and cutouts and for toggling layer visibility.
+
+---
+
+# Phase 8.6c — Discoverability & UX Polish — 2026-11-18
+
+## Outcome
+
+Shipped a focused desktop discoverability pass across text primitives,
+enclosure features, lighting, box face resize, and project/export controls.
+No modelling source, geometry, `.form` schema, history, Boolean, export
+processing, agent consent, or recovery behavior changed. Detailed text editing
+remains desktop-only; VR keeps its existing World Settings and placement flows.
+
+## UI changes
+
+- Selecting a different Text source in Layers now opens Primitives in
+  **Edit selected** mode and labels the selected source and current text, so its
+  string, alignment, height, spacing, and depth controls are immediately shown.
+  Choosing **Create new** still works while that source remains selected.
+- With the Enclosure panel open, selecting a cutout or mounting source now
+  opens the nested **Cutouts & mounting** editor and loads the associated
+  feature definition. The existing feature picker, placement guide, validation,
+  preview and atomic apply remain in use.
+- Lighting summaries distinguish **Key** (main light and shadow caster),
+  **Fill** (softens shadows), **Rim** (edge light), and temporary **Inspection
+  Light**. Key’s control is explicitly named **Key shadows · Cast shadows**;
+  Inspection documents that it always casts while active and is not saved.
+- The Scale guidance is now a polite status message for keyboard and assistive
+  technology. For eligible rectangular boxes it explains face drag, the fixed
+  opposite face and centre scaling; other layers are told when face handles are
+  available.
+- The existing **Export…** action has a descriptive accessible name, title and
+  dialog relationship. The selected quality preset's explanation is announced
+  as a live status. Save Project and Open Project clarify that they use native
+  `.form` files; the header Save action and its current status remain available.
+
+## Verification
+
+- Focused `parametric-primitives` tests passed: **39/39**.
+- `npm run check:types` and `npm run build` passed.
+- Disposable Chromium smoke passed for selection-driven text editing,
+  Key/Fill/Rim and Inspection labels, export quality explanation, Save/Open
+  labels, and export-dialog focus return.
+- Disposable Chromium enclosure/face-resize smoke passed for selected-cutter
+  feature binding, the Scale face-handle guidance, pointer ownership, one-entry
+  commit, Undo/Redo and symmetric centre shift.
+- Repository-wide `npm run check` passed: format, lint, strict types, production
+  build and **1,793/1,793 tests** (no failures, cancellations or skips). Biome
+  reports filesystem warnings for prior broken Chromium profile symlinks under
+  `work/`, plus its existing warnings/infos; no profile or recovery artifacts
+  were removed.
+
+## Remaining gaps and acceptance
+
+- No small/mobile viewport smoke was available in this pass. The changes use
+  existing details panels, labels and responsive layouts; verify narrow-width
+  scrolling and tap targets before closing the phase.
+- Physical Quest checks remain open: confirm existing VR Text creation and
+  placement, find Key Shadows and Inspection in World Settings, and measure
+  shadow frame time/thermal behavior on the headset. Desktop Chromium does not
+  establish headset performance.
+- Print fit, slicer acceptance, and physical dimensions remain model-specific;
+  this UI pass changed none of them.
+- Save/load/export performance remains Phase 8.7. Phase 9 sparse SDF and the
+  compact-poll sequential MCP rerun / agent hidden-option selector follow-ups
+  remain separate non-blocking work.
+
+## Phase 8.6d screenshot shot list — deferred until PC access
+
+Use authentic running-app captures tightly cropped to each element; do not use
+full-screen or fabricated UI images. Suggested view and selectors:
+
+1. **Text source:** selected Layers row beside the open Primitives panel;
+   include `.primitive-panel`, `input[aria-label="Text"]`, alignment, letter
+   height, spacing and depth fields.
+2. **Cutout:** selected cutter row and open `.enclosure-feature-panel`; crop
+   `select[aria-label="Enclosure attachment"]`, placement fields and the wall
+   guide. Capture a separate mounting-post crop with numbered floor centres.
+3. **Lighting:** crop `.lighting-panel` at Key Light with
+   `input[aria-label="Key shadows · Cast shadows"]`; a separate Inspection
+   Light crop should include its temporary/always-casts explanation.
+4. **Face resize:** crop `#viewport` around a selected supported box while
+   `[data-tool="scale"][aria-pressed="true"]`; include one face handle, the
+   centre handle and `#transform-note`.
+5. **Export:** crop `#export-dialog[open]` around `#export-format`,
+   `#export-quality`, `#export-quality-note` and the three export scopes.
+6. **Save / load:** crop the open `#project-menu` with New, Open Project,
+   Library and Help, then a separate crop of `#header-save` and its status.
+
+---
+
 # Phase 8.6a/8.6b — Enclosure MCP performance and common flows — 2026-11-18
 
 ## Outcome

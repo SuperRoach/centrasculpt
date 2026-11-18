@@ -5,6 +5,10 @@ export function mountExportDialog(refresh: () => void, busy: () => boolean): voi
   const first = document.querySelector('label[for="export-format"]')!;
   const parent = first.parentElement!;
   const opener = document.createElement("button");
+  opener.type = "button";
+  opener.setAttribute("aria-controls", "export-dialog");
+  opener.setAttribute("aria-label", "Open export settings and choose an export preset");
+  opener.title = "Choose STL or GLB, quality, physical size and export scope";
   opener.id = "open-export";
   opener.textContent = "Export…";
   const dialog = document.createElement("dialog");
@@ -38,6 +42,8 @@ export function mountExportDialog(refresh: () => void, busy: () => boolean): voi
   basic.append(formatField, qualityField);
   const qualityNote = document.createElement("p");
   qualityNote.id = "export-quality-note";
+  qualityNote.setAttribute("role", "status");
+  qualityNote.setAttribute("aria-live", "polite");
   quality.setAttribute("aria-describedby", qualityNote.id);
   const sizingRow = document.createElement("div");
   sizingRow.className = "export-sizing-row";

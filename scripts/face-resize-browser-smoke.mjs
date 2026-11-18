@@ -131,6 +131,21 @@ try {
     .filter({ hasText: /^Opened / })
     .waitFor();
   if (enclosure) {
+    const enclosurePanel = page.locator(".enclosure-panel");
+    if (await enclosurePanel.evaluate((el) => el.open))
+      await enclosurePanel.locator(":scope > summary").click();
+    await page.getByRole("button", { name: cutter.name, exact: true }).click();
+    assert.equal(await enclosurePanel.evaluate((el) => el.open), false);
+    await page.getByRole("button", { name: "Edit Cutout", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => {
+      const panel = document.querySelector(".enclosure-feature-panel");
+      return (
+        panel?.open &&
+        panel.querySelector('select[aria-label="Feature kind"]')?.value === "cutout" &&
+        panel.querySelector('select[aria-label="Enclosure attachment"]') === document.activeElement
+      );
+    });
     const quality = page.locator("#composite-quality");
     await quality.evaluate((el) => {
       el.closest("details").open = true;
@@ -144,10 +159,11 @@ try {
     .filter({ hasText: "Preview ready" })
     .waitFor({ timeout: 60_000 });
   await page.locator('[data-tool="scale"]').click();
-  await page
-    .locator("#transform-note")
-    .filter({ hasText: /^Face Resize:/ })
-    .waitFor();
+  await page.locator("#transform-note").filter({ hasText: "opposite face stays fixed" }).waitFor();
+  assert.match(
+    await page.locator("#transform-note").textContent(),
+    /centre handle to scale evenly/,
+  );
   const canvas = page.locator("#viewport canvas").first();
   const rect = await canvas.boundingBox();
   assert(rect);

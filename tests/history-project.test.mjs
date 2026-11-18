@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SculptHistory } from "../work/test-build/history.mjs";
-import { MAX_PROJECT_BYTES, openProject, saveProject } from "../work/test-build/project.mjs";
+import {
+  cameraForProjectSave,
+  MAX_PROJECT_BYTES,
+  openProject,
+  saveProject,
+} from "../work/test-build/project.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { ClayStroke } from "../work/test-build/stroke.mjs";
 
@@ -13,6 +18,19 @@ const settings = {
   camera: { position: [2.4, 1.7, 3.3], target: [0.1, 0, 0] },
 };
 const center = { x: 0, y: 0, z: 0.8 };
+test("saving an extreme desktop frame preserves its target and direction at a supported distance", () => {
+  const target = [0, 0, 2];
+  const close = { position: [0, 0, 2.5], target };
+  const far = { position: [0, 0, 42], target };
+  assert.deepEqual(cameraForProjectSave(close, settings.camera), { position: [0, 0, 3.2], target });
+  assert.deepEqual(cameraForProjectSave(far, settings.camera), { position: [0, 0, 11], target });
+  assert.equal(cameraForProjectSave(settings.camera, close), settings.camera);
+  assert.equal(
+    cameraForProjectSave({ position: target, target }, settings.camera),
+    settings.camera,
+  );
+  assert.equal(close.position[2], 2.5);
+});
 function brushAction(volume, history, mode = "add") {
   history.begin();
   for (let i = 0; i < 10; i++)

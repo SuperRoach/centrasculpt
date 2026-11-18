@@ -219,6 +219,14 @@ export function enclosureUI(tools: EnclosureControls, host: HTMLElement, busy: (
   sync();
   return {
     sync,
+    openSelected(feature: boolean) {
+      if (busy() || tools.pending) return;
+      panel.open = true;
+      tools.openSelected(true);
+      features.followLayerSelection();
+      sync();
+      if (!feature || !features.focusSelected()) title.focus();
+    },
     followLayerSelection: features.followLayerSelection,
     viewportTarget: features.viewportTarget,
   };

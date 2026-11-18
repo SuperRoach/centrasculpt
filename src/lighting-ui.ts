@@ -106,7 +106,13 @@ export function lightingUI(
   button(panel, "Frame Lights", () => frameLights?.());
   for (const id of LIGHT_IDS) {
     const group = document.createElement("details");
-    group.innerHTML = `<summary>${id[0].toUpperCase() + id.slice(1)} Light</summary>`;
+    const role =
+      id === "key"
+        ? "main light · casts shadows"
+        : id === "fill"
+          ? "softens shadows"
+          : "edge light";
+    group.innerHTML = `<summary>${id[0].toUpperCase() + id.slice(1)} Light · ${role}</summary>`;
     panel.append(group);
     groups.set(id, group);
     const light = () => (display().lighting ?? defaults).lights[id];
@@ -118,7 +124,7 @@ export function lightingUI(
     if (id === "key")
       input(
         group,
-        "Cast shadows",
+        "Key shadows · Cast shadows",
         "checkbox",
         () => !!display().lighting?.shadows?.enabled,
         (v) => {
@@ -185,7 +191,7 @@ export function lightingUI(
   });
   const inspection = document.createElement("details");
   inspection.innerHTML =
-    "<summary>Inspection Light · temporary</summary><p>Overrides the rig; not saved. Stops when leaving XR or opening a project.</p>";
+    "<summary>Inspection Light · temporary orbiting shadow preview</summary><p>Overrides the rig while active and always casts shadows. This preview is not saved; it stops when leaving XR or opening a project. Key shadows are controlled separately under Key Light.</p>";
   panel.append(inspection);
   input(
     inspection,

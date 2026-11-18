@@ -358,7 +358,6 @@ export function enclosureFeatureUI(
     const selection = editor.project.activeLayerId;
     const followSelection =
       enclosureOpen() &&
-      panel.open &&
       !busy() &&
       !tools.pending &&
       !editor.selectedGroupId &&
@@ -412,9 +411,12 @@ export function enclosureFeatureUI(
     if (followSelection && attachmentsReady) {
       previousSelection = selection;
       const feature = features.find(({ sourceIds }) => sourceIds.includes(selection));
-      if (feature && feature.sourceIds[0] !== selected.value) {
-        selected.value = feature.sourceIds[0];
-        loadFeature(feature);
+      if (feature) {
+        panel.open = true;
+        if (feature.sourceIds[0] !== selected.value) {
+          selected.value = feature.sourceIds[0];
+          loadFeature(feature);
+        }
       }
     }
     const disabled = busy() || tools.pending || !base;
@@ -454,13 +456,26 @@ export function enclosureFeatureUI(
     }
   }
   panel.ontoggle = () => {
-    previousSelection = undefined;
+    if (panel.open) previousSelection = undefined;
     refresh();
     sync();
   };
   sync();
   return {
     sync,
+    focusSelected() {
+      const active = tools.layers().project.activeLayerId;
+      if (
+        !panel.open ||
+        selected.disabled ||
+        !cached.some(
+          ({ sourceIds }) => sourceIds[0] === selected.value && sourceIds.includes(active),
+        )
+      )
+        return false;
+      selected.focus();
+      return true;
+    },
     viewportTarget(): EnclosureViewportTarget | undefined {
       if (!panel.open || !enclosureOpen() || busy()) return;
       const editor = tools.layers();

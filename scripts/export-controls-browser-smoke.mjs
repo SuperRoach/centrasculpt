@@ -87,10 +87,20 @@ try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
   await page.goto("http://127.0.0.1:5250");
   const history = await page.locator("#history-info").textContent();
+  assert.equal(
+    await page.locator("#open-export").getAttribute("aria-label"),
+    "Open export settings and choose an export preset",
+  );
+  assert.equal(await page.locator("#open-export").getAttribute("aria-controls"), "export-dialog");
   await openExport(page);
   assert.equal(await page.locator("#export-dialog .export-basics #export-quality").count(), 1);
   assert.equal(await page.locator("#export-format option:checked").textContent(), "STL");
   assert.match(await page.locator("#export-format").getAttribute("title"), /millimetres/);
+  assert.match(await page.locator("#export-quality-note").textContent(), /simplify flat regions/);
+  assert.equal(
+    await page.locator("#export-quality").getAttribute("aria-describedby"),
+    "export-quality-note",
+  );
   assert.equal(await page.locator("#export-actual-size").isChecked(), true);
   assert.equal(await page.locator("#export-curved").isChecked(), false);
   await page.locator("#export-actual-size").uncheck();

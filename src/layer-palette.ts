@@ -7,6 +7,13 @@ import { MAX_PROJECT_LAYERS } from "./project";
 import type { MenuButton, MenuContent } from "./xr-menu-model";
 
 const PAGE = 4;
+type LayerEditor = "text" | "enclosure" | "cutout" | "mounting";
+const LAYER_EDITOR_LABELS: Record<LayerEditor, string> = {
+  text: "Edit Text",
+  enclosure: "Edit Enclosure",
+  cutout: "Edit Cutout",
+  mounting: "Edit Mounting Posts",
+};
 /** Explicit ray targets instead of drag/drop. Page size stays fixed at both UI scales. */
 export class LayerPaletteModel {
   dragged: string | null = null;
@@ -769,6 +776,7 @@ export class DesktopLayerPalette {
     private busy: () => boolean = () => false,
     private beforeAction: () => void = () => {},
     private layerSelected: () => void = () => {},
+    private openEditor?: (editor: LayerEditor) => void,
   ) {
     legacy.before(this.host);
     this.host.className = "hierarchy-palette";
@@ -777,22 +785,41 @@ export class DesktopLayerPalette {
   }
   render(): void {
     this.booleans.sync();
-    const l = this.layers(),
-      h = l.project.layerStack.hierarchy,
-      key = JSON.stringify([
-        h.snapshot(),
-        l.project.layerStack.layers.map((layer) =>
-          l.display.colour(l.project.id, layer.id, layer.order),
-        ),
-        l.project.layerStack.layers.map((layer) => layer.booleanModifiers),
-        l.selectedGroupId,
-        l.project.activeLayerId,
-        [...l.collapsedGroups],
-        l.duplicating,
-        this.busy(),
-      ]);
+    const l = this.layers();
+    const stack = l.project.layerStack;
+    const h = stack.hierarchy;
+    const layer = l.selectedGroupId ? undefined : l.active.layer;
+    let editor: LayerEditor | undefined;
+    if (layer && this.openEditor) {
+      const parentId = h.parent(layer.id);
+      const parent = stack.layers.find(({ id }) => id === parentId);
+      const feature = parent?.assemblyPart?.enclosure?.features?.find(({ sourceIds }) =>
+        sourceIds.includes(layer.id),
+      );
+      if (feature) editor = feature.definition.kind;
+      else if (layer.assemblyPart?.enclosure) editor = "enclosure";
+      else if (layer.primitive?.kind === "text") editor = "text";
+    }
+    const key = JSON.stringify([
+      h.snapshot(),
+      l.project.layerStack.layers.map((layer) =>
+        l.display.colour(l.project.id, layer.id, layer.order),
+      ),
+      l.project.layerStack.layers.map((layer) => layer.booleanModifiers),
+      l.selectedGroupId,
+      l.project.activeLayerId,
+      editor,
+      [...l.collapsedGroups],
+      l.duplicating,
+      this.busy(),
+    ]);
     if (key === this.key) return;
     this.key = key;
+    const focused = this.host.contains(document.activeElement)
+        ? (document.activeElement as HTMLElement)
+        : null,
+      focusedId = focused?.closest<HTMLElement>("[data-node-id]")?.dataset.nodeId,
+      focusKey = focused?.dataset.layerFocus;
     this.host.replaceChildren();
     const run = (action: () => void) => {
       if (this.busy()) return;
@@ -894,6 +921,8 @@ export class DesktopLayerPalette {
         }
       });
       title.className = "hierarchy-name";
+      title.dataset.layerFocus = "name";
+      title.setAttribute("aria-pressed", String(card.classList.contains("active")));
       const nameLabel = document.createElement("span");
       nameLabel.className = "layer-name-label";
       nameLabel.textContent = n.name;
@@ -943,6 +972,7 @@ export class DesktopLayerPalette {
         );
       visibility.setAttribute("aria-label", `${n.localVisible ? "Hide" : "Show"} ${n.name}`);
       visibility.setAttribute("aria-pressed", String(n.localVisible));
+      visibility.dataset.layerFocus = "visibility";
       visibility.innerHTML = n.localVisible
         ? '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>'
         : '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m3 3 18 18M10.6 5.1 12 5c6.5 0 10 7 10 7a20 20 0 0 1-3.2 4M6.2 6.2A22 22 0 0 0 2 12s3.5 7 10 7a13 13 0 0 0 5.8-1.8"/></svg>';
@@ -961,6 +991,7 @@ export class DesktopLayerPalette {
           : "Lock layer";
       lock.setAttribute("aria-label", `${n.localLocked ? "Unlock" : "Lock"} ${n.name}`);
       lock.setAttribute("aria-pressed", String(n.locked));
+      lock.dataset.layerFocus = "lock";
       lock.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="${n.locked ? "M8 10V7a4 4 0 0 1 8 0v3" : "M8 10V7a4 4 0 0 1 8 0"}"/><path d="M12 14v3"/></svg>`;
       if (h.children(n.id).length && l.collapsedGroups.has(n.id)) {
         const count = document.createElement("span");
@@ -974,9 +1005,17 @@ export class DesktopLayerPalette {
         ? l.selectedGroupId === n.id
         : !l.selectedGroupId && l.project.activeLayerId === n.id;
       if (!selected) continue;
+      if (editor) {
+        const destination = editor;
+        const shortcut = button(card, LAYER_EDITOR_LABELS[destination], () =>
+          this.openEditor?.(destination),
+        );
+        shortcut.dataset.layerFocus = "editor";
+      }
       const name = document.createElement("input");
       name.value = n.name;
       name.maxLength = 128;
+      name.dataset.layerFocus = "rename";
       name.setAttribute("aria-label", "Rename " + n.name);
       name.disabled = n.locked || this.busy() || l.duplicating;
       name.addEventListener("keydown", (event) => {
@@ -1179,6 +1218,21 @@ export class DesktopLayerPalette {
         later.title = "Evaluate later";
         later.setAttribute("aria-label", "Evaluate " + n.name + " later");
       }
+    }
+    if (focusedId && document.activeElement === document.body) {
+      const row = Array.from(this.host.querySelectorAll<HTMLElement>("[data-node-id]")).find(
+        (element) => element.dataset.nodeId === focusedId,
+      );
+      const replacement = Array.from(
+        row?.querySelectorAll<HTMLElement>("[data-layer-focus]:enabled") ?? [],
+      ).find((element) => element.dataset.layerFocus === focusKey);
+      (
+        replacement ??
+        row?.querySelector<HTMLButtonElement>(".hierarchy-name:enabled") ??
+        this.host.querySelector<HTMLButtonElement>(".active .hierarchy-name:enabled")
+      )?.focus({
+        preventScroll: true,
+      });
     }
   }
 }

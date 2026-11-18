@@ -54,7 +54,7 @@ import { prepareLibrary } from "./library-worker-client";
 import { LightRig } from "./light-rig";
 import { lightingUI } from "./lighting-ui";
 import { ModellingAPI, type ModellingCommand } from "./modelling-api";
-import { MAX_PROJECT_BYTES, type ProjectSettings } from "./project";
+import { cameraForProjectSave, MAX_PROJECT_BYTES, type ProjectSettings } from "./project";
 import { ProjectBrowser } from "./project-browser";
 import { ProjectLibrary } from "./project-library";
 import { checksum, encodeManualProject, RecoveryMemoryError } from "./project-snapshot";
@@ -147,7 +147,7 @@ let recovery: RecoveryController | undefined;
 const stabilityMetrics = new StabilityMetrics();
 let stabilityText = "";
 let precision: PrecisionTools | undefined;
-let primitivesUI: { sync: () => void } | undefined;
+let primitivesUI: ReturnType<typeof primitiveUI> | undefined;
 let primitivePreview: PrimitiveDraftPreview | undefined;
 let enclosureControlsUI: ReturnType<typeof enclosureUI> | undefined;
 let assemblyControlsUI: { sync: () => void } | undefined;
@@ -1466,9 +1466,7 @@ document.getElementById("cut-apply")!.addEventListener("click", (event) => {
 const disposeSavePress = bindDesktopSavePress(
   document.querySelector<HTMLButtonElement>("#header-save")!,
   () => document.getElementById("save-project")!.click(),
-  () => {
-    void projectBrowser.activate("library:download-current");
-  },
+  downloadCurrentProject,
 );
 document.getElementById("new-project")!.addEventListener("click", () => {
   if (loadingProject || xrBlocked() || ui.modalOpen || !layers.recoveryReady) return;
@@ -2228,6 +2226,10 @@ desktopLayers = new DesktopLayerPalette(
   () => loadingProject || ui.modalOpen || xrBlocked(),
   () => stop(),
   () => enclosureControlsUI?.followLayerSelection(),
+  (editor) => {
+    if (editor === "text") primitivesUI?.openSelectedText();
+    else enclosureControlsUI?.openSelected(editor !== "enclosure");
+  },
 );
 document.querySelector(".layers-panel")!.addEventListener(
   "click",
@@ -3004,12 +3006,12 @@ const projectBrowser = new ProjectBrowser(
         await recovery?.settle();
         const settings: ProjectSettings = {
           ...ui.settings,
-          camera: {
-            position: xrBlocked()
-              ? source.project.settings.camera.position
-              : camera.position.toArray(),
-            target: xrBlocked() ? source.project.settings.camera.target : controls.target.toArray(),
-          },
+          camera: xrBlocked()
+            ? source.project.settings.camera
+            : cameraForProjectSave(
+                { position: camera.position.toArray(), target: controls.target.toArray() },
+                source.project.settings.camera,
+              ),
         };
         const presentation = display.snapshot(source.project.id, source.project.layerStack.layers),
           tools = editorTools?.snapshotPreferences(),
@@ -3088,6 +3090,11 @@ libraryButton.onclick = () => {
 };
 document.getElementById("new-project")!.before(libraryButton);
 const projectMenu = document.getElementById("project-menu")!;
+async function downloadCurrentProject() {
+  if (loadingProject || xrBlocked() || ui.modalOpen || projectBrowser.busy) return;
+  await projectBrowser.activate("library:download-current");
+  ui.projectMessage(projectBrowser.status, projectBrowser.error);
+}
 document.getElementById("about-version")!.textContent = `Version ${__APP_VERSION__}`;
 for (const button of projectMenu.querySelectorAll<HTMLButtonElement>("button")) {
   button.addEventListener("click", () => {
@@ -3097,11 +3104,11 @@ for (const button of projectMenu.querySelectorAll<HTMLButtonElement>("button")) 
       document.querySelector<HTMLDialogElement>("#about-dialog")!.showModal();
     } else if (action === "library") {
       if (!loadingProject && !xrBlocked()) libraryButton.click();
+    } else if (action === "download-current") {
+      void downloadCurrentProject();
     } else if (action) document.getElementById(action)?.click();
   });
 }
-document.getElementById("open-project")!.textContent = "Import Project";
-document.getElementById("save-project")!.textContent = "Save in Browser";
 window.addEventListener("beforeunload", (event) => {
   if (projectBrowser.dirty || projectBrowser.busy) {
     event.preventDefault();
@@ -3352,14 +3359,14 @@ function updateSaveIndicator(): void {
   });
   button.disabled = loadingProject || xrBlocked() || ui.modalOpen || !layers.recoveryReady;
   const label = SAVE_LABELS[state],
-    title = `${label}${projectBrowser.error ? " · " + projectBrowser.status : manualSaveError ? " · " + manualSaveError : recoveryWarning ? " · " + recoveryWarning : ""} · Click to save · Hold to download .form`;
+    title = `${label}${projectBrowser.error ? " · " + projectBrowser.status : manualSaveError ? " · " + manualSaveError : recoveryWarning ? " · " + recoveryWarning : ""} · Click to save in this browser · Hold to download .form`;
   if (button.dataset.state !== state) {
     button.dataset.state = state;
     document.getElementById("header-save-status")!.textContent = label;
   }
   if (button.title !== title) {
     button.title = title;
-    button.setAttribute("aria-label", `Save project — ${label}`);
+    button.setAttribute("aria-label", `Save in browser — ${label}`);
   }
 }
 function updateRecoveryUI(): void {

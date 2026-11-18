@@ -24,7 +24,7 @@ export function primitiveUI(
     state: (open: boolean, editing: boolean) => void;
     source: () => PrimitiveSource | undefined;
   },
-): { sync: () => void } {
+) {
   if (!tools.source) tools.editing = false;
   const panel = document.createElement("details");
   panel.className = "primitive-panel";
@@ -401,11 +401,21 @@ export function primitiveUI(
   host.append(panel);
   let key = "",
     arrayKey = "",
-    project = tools.layers().project;
+    project = tools.layers().project,
+    selectedLayerId = tools.layers().project.activeLayerId;
   const sync = () => {
     if (project !== tools.layers().project) {
       project = tools.layers().project;
       panel.open = false;
+      selectedLayerId = "";
+    }
+    const editor = tools.layers();
+    if (editor.project.activeLayerId !== selectedLayerId) {
+      selectedLayerId = editor.project.activeLayerId;
+      if (!editor.selectedGroupId && editor.active.layer.primitive?.kind === "text") {
+        tools.editing = true;
+        panel.open = true;
+      }
     }
     if (panel.open && tools.editing && !tools.source) tools.editing = false;
     const selected = tools.source,
@@ -503,7 +513,7 @@ export function primitiveUI(
     transformPanel.hidden = !selected;
     units.textContent = tools.settings.unit;
     name.textContent = selected
-      ? tools.layers().active.layer.name
+      ? `${source.kind === "text" ? `Text · ` : ""}${tools.layers().active.layer.name}`
       : `New ${primitiveLabel(tools.draft)}`;
     for (const [kind, b] of shapeButtons)
       b.setAttribute(
@@ -522,7 +532,10 @@ export function primitiveUI(
     create.textContent = `Create ${primitiveLabel(tools.draft)}`;
     result.hidden = editing && !selected;
     result.textContent = selected
-      ? `${primitiveWorldDimensions(source, tools.layers().active.layer.transform)
+      ? `${source.kind === "text" ? `“${source.text}” · ` : ""}${primitiveWorldDimensions(
+          source,
+          tools.layers().active.layer.transform,
+        )
           .map((v) => toDisplay(v, tools.settings).toFixed(2))
           .join(" × ")} ${tools.settings.unit} · physical bounds`
       : `${source.kind === "text" ? "Bundled Helvetiker outlines · XY face · Z extrusion" : source.kind === "torus" ? "Ring centreline radius · tube diameter · XZ ring, Y axis" : source.kind === "capsule" ? "Overall Y height ≥ diameter · hemispherical ends" : source.kind === "tapered-box" ? "Independent X widths and Z depths · bottom −Y, top +Y" : source.kind === "pyramid" ? "X width · Z depth · base −Y, apex +Y" : source.kind === "box" ? "X width · Y height · Z depth" : source.kind === "cylinder" ? "X/Z diameter · Y height" : "X width · Y height · Z depth"} · drag handles to size, then Create`;
@@ -702,5 +715,15 @@ export function primitiveUI(
     }
   };
   sync();
-  return { sync };
+  return {
+    sync,
+    openSelectedText() {
+      if (busy() || tools.pending || tools.layers().active.layer.primitive?.kind !== "text") return;
+      tools.editing = true;
+      panel.open = true;
+      sync();
+      const field = dimensions.querySelector<HTMLInputElement>('input[type="text"]:enabled');
+      (field ?? title).focus();
+    },
+  };
 }
