@@ -1,3 +1,12 @@
+### Place 3D components in the viewport — Phase 8.8b
+
+- Click a component in the desktop viewport. Use **W** to Move, **Q** to Rotate,
+  and **Escape** to cancel a drag.
+- Snap to an enclosure surface with a millimetre gap. The component panel
+  shows wall and clearance warnings as you drag.
+- Preview and confirm mounting posts for the Pi 4, Pi Zero 2 W and Generic PCB.
+  Component references stay out of STL and GLB exports.
+
 ### 3D electronics references — Phase 8.8 (2026-11-23)
 
 - Open **References → 3D Components** to place a Raspberry Pi 4, Pi Zero 2 W,

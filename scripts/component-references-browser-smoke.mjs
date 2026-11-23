@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
+import { PerspectiveCamera, Vector3 } from "three";
+import { componentSurfaceMm } from "../work/test-build/component-view.mjs";
 import { DEFAULT_ENCLOSURE } from "../work/test-build/enclosure-recipe.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { createHeadlessEditor } from "./headless-enclosure.mjs";
@@ -13,10 +15,14 @@ const fixture = await api.enclosure.create(
   { expectedRevision: api.revision },
 );
 assert(fixture.ok, JSON.stringify(fixture));
+const basePart = layers.project.layerStack.get(fixture.value.partIds.base);
+const floor = new Vector3(...basePart.transform.position);
+const mm = layers.display.precision.millimetresPerUnit;
+floor.y += componentSurfaceMm(basePart) / mm;
 const native = Buffer.from(saveSculptProject(layers.project));
 layers.dispose();
 
-const port = "5279";
+const port = process.env.CENTRA_COMPONENT_SMOKE_PORT ?? "5279";
 const url = `http://127.0.0.1:${port}`;
 const server = spawn(
   process.execPath,
@@ -48,6 +54,7 @@ try {
   const errors = [];
   async function newPage() {
     const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+    page.setDefaultTimeout(15000);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(url);
     return page;
@@ -69,6 +76,7 @@ try {
       });
   }
   await open(page, native);
+  assert(await page.locator("#component-layers").isHidden());
   const references = page.locator("#reference-panel");
   const panel = page.locator("#component-panel");
   for (const details of [references, panel]) {
@@ -76,7 +84,71 @@ try {
       await details.locator(":scope > summary").click();
   }
   const button = (name) => panel.getByRole("button", { name, exact: true });
-  for (const preset of ["pcb", "tactile", "pi4"]) {
+  await button("Insert component").click();
+  const canvas = page.locator("#viewport > canvas");
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  assert(box);
+  const camera = new PerspectiveCamera(38, box.width / box.height, 0.01, 100);
+  camera.position.set(2, 2, 3);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld();
+  const screen = (x, y, z) => {
+    const point = new Vector3(x, y, z).project(camera);
+    return [box.x + (box.width * (1 + point.x)) / 2, box.y + (box.height * (1 - point.y)) / 2];
+  };
+  const handleSize = (camera.position.length() * 1.9 * Math.tan((Math.PI * 19) / 180) * 0.85) / 4;
+  const xField = panel.getByLabel("Position X (mm)");
+  const yField = panel.getByLabel("Position Y (mm)");
+  const zField = panel.getByLabel("Position Z (mm)");
+  const rotatedY = panel.getByLabel("Rotation Y (degrees)");
+  async function beginDrag(at, dx, dy) {
+    await page.mouse.move(...at);
+    await page.mouse.down();
+    await page.mouse.move(at[0] + dx, at[1] + dy, { steps: 6 });
+  }
+  await page.mouse.click(...screen(0.19, 0.016, 0.08));
+  await page
+    .locator("#status")
+    .filter({ hasText: "Component reference · W Move" })
+    .waitFor()
+    .catch(async (error) => {
+      throw new Error(
+        `Viewport selection: ${await page.locator("#status").textContent()} · ${errors.join(", ")}`,
+        { cause: error },
+      );
+    });
+  const xHandle = screen(handleSize * 0.4, 0, 0);
+  await page.keyboard.down("e");
+  await beginDrag(xHandle, 30, 7);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await page.keyboard.up("e");
+  assert.equal(Number(await xField.inputValue()), 0);
+  await beginDrag(xHandle, 30, 7);
+  await canvas.dispatchEvent("pointercancel", { pointerId: 1 });
+  await page.mouse.up();
+  assert.equal(Number(await xField.inputValue()), 0);
+
+  await page.keyboard.press("q");
+  await page.keyboard.down("f");
+  await beginDrag(screen(handleSize * 0.5, 0, 0), 24, 20);
+  await page.mouse.up();
+  await page.keyboard.up("f");
+  assert(Math.abs(Number(await rotatedY.inputValue())) > 1);
+  assert.equal(Number(await panel.getByLabel("Rotation X (degrees)").inputValue()), 0);
+  assert.equal(Number(await panel.getByLabel("Rotation Z (degrees)").inputValue()), 0);
+
+  await page.keyboard.press("w");
+  await page.keyboard.down("e");
+  await beginDrag(xHandle, 27, 4);
+  await page.mouse.up();
+  await page.keyboard.up("e");
+  assert(Math.abs(Number(await xField.inputValue())) > 1);
+  assert(Math.abs(Number(await yField.inputValue())) < 1e-7);
+  assert(Math.abs(Number(await zField.inputValue())) < 1e-7);
+  await page.keyboard.press("Escape");
+  for (const preset of ["tactile", "pi4"]) {
     await panel.getByLabel("Component preset").selectOption(preset);
     await button("Insert component").click();
   }
@@ -86,6 +158,32 @@ try {
   await button("Apply placement").click();
   await panel.getByLabel("Underside gap (mm)").fill("5.5");
   await button("Snap to enclosure surface").click();
+  await panel.getByText(/Floor clearance 5.50 mm/).waitFor();
+  const board = floor.clone().add(new Vector3(0, 5.5 / mm, 0));
+  const snappedHandleSize =
+    (handleSize * camera.position.distanceTo(board)) / camera.position.length();
+  await button("Move").click();
+  await page.keyboard.down("e");
+  await beginDrag(screen(board.x + snappedHandleSize * 0.4, board.y, board.z), 15, 2);
+  await page.mouse.up();
+  await page.keyboard.up("e");
+  assert(Math.abs(Number(await xField.inputValue())) > 1);
+  assert.equal(Number(await yField.inputValue()), 0);
+  await panel.getByText(/Floor clearance 5.50 mm/).waitFor();
+  await xField.fill("0");
+  await button("Apply placement").click();
+
+  await button("Rotate").click();
+  await page.keyboard.down("f");
+  await beginDrag(screen(board.x + snappedHandleSize * 0.5, board.y, board.z), 12, 8);
+  await page.mouse.up();
+  await page.keyboard.up("f");
+  assert(Math.abs(Number(await rotatedY.inputValue())) > 1);
+  assert.equal(Number(await panel.getByLabel("Rotation X (degrees)").inputValue()), 0);
+  assert.equal(Number(await panel.getByLabel("Rotation Z (degrees)").inputValue()), 0);
+  await rotatedY.fill("0");
+  await button("Apply placement").click();
+  await panel.getByText(/Floor clearance 5.50 mm/).waitFor();
   await button("Preview mounting posts").click();
   await panel.getByRole("status").filter({ hasText: "Showing Pi 4 mounting posts" }).waitFor();
   await button("Cancel mounting preview").click();
@@ -118,6 +216,7 @@ try {
   );
   const pi = result.displayPreferences.components[2];
   assert.equal(pi.hostId, base);
+  assert(Math.abs(result.displayPreferences.components[0].positionMm[0]) > 1);
   assert.equal(pi.gapMm, 5.5);
   const part = result.layerStack.get(base).assemblyPart.enclosure;
   assert.equal(part.features[0].definition.heightMm, 5.5);
@@ -140,9 +239,27 @@ try {
     await reopenedComponents.getByLabel("Project component").locator("option").count(),
     3,
   );
+  const componentRows = reopened.getByRole("region", { name: "Component references" });
+  const switchRow = componentRows.getByRole("button", { name: /tactile switch/ });
+  const sculptLayers = reopened.locator(".hierarchy-palette [data-node-id]");
+  const sculptCount = await sculptLayers.count();
+  await switchRow.click();
+  assert.equal(await switchRow.getAttribute("aria-pressed"), "true");
+  assert(await reopenedComponents.locator(".reference-card.is-selected").isVisible());
+  assert.equal(
+    await reopenedComponents.getByLabel("Project component").inputValue(),
+    await switchRow.getAttribute("data-component-id"),
+  );
+  reopened.once("dialog", (dialog) => dialog.dismiss());
+  await reopened.keyboard.press("Backspace");
+  assert(await switchRow.isVisible());
+  reopened.once("dialog", (dialog) => dialog.accept());
+  await reopened.keyboard.press("Delete");
+  await switchRow.waitFor({ state: "detached" });
+  assert.equal(await sculptLayers.count(), sculptCount);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: component insertion, attachment, gap, cancelled preview, confirmed mounting posts and native round-trip",
+    "PASS: component picking, constrained free and snapped drags, interrupted gestures, mounting preview, native reopen and component selection/deletion through Layers",
   );
 } finally {
   await browser?.close();

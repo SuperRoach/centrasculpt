@@ -1,4 +1,6 @@
 import {
+  Box3,
+  Box3Helper,
   BoxGeometry,
   BufferAttribute,
   type BufferGeometry,
@@ -11,6 +13,7 @@ import {
   MeshStandardMaterial,
   Path,
   Quaternion,
+  type Raycaster,
   Shape,
   Vector3,
 } from "three";
@@ -84,23 +87,46 @@ type ComponentGeometry = {
   object: Group;
   geometryKey: string;
   rotationKey?: string;
-  verticalExtent?: [number, number];
+  bounds?: Box3;
 };
 
-function verticalExtent(object: Group, rotation: Quaternion): [number, number] {
+function rotatedBounds(object: Group, rotation: Quaternion): Box3 {
   const point = new Vector3();
-  let minimum = Infinity;
-  let maximum = -Infinity;
+  const bounds = new Box3();
   for (const child of object.children) {
     if (!(child instanceof Mesh)) continue;
     const vertices = child.geometry.getAttribute("position");
-    for (let index = 0; index < vertices.count; index++) {
-      point.fromBufferAttribute(vertices, index).applyQuaternion(rotation);
-      minimum = Math.min(minimum, point.y);
-      maximum = Math.max(maximum, point.y);
-    }
+    for (let index = 0; index < vertices.count; index++)
+      bounds.expandByPoint(point.fromBufferAttribute(vertices, index).applyQuaternion(rotation));
   }
-  return [minimum, maximum];
+  return bounds;
+}
+
+export function componentClearance(bounds: Box3, host: SdfLayer): string {
+  const intent = host.assemblyPart?.enclosure;
+  if (!intent) return "";
+  const p = intent.parameters;
+  const x = Math.max(Math.abs(bounds.min.x), Math.abs(bounds.max.x));
+  const z = Math.max(Math.abs(bounds.min.z), Math.abs(bounds.max.z));
+  const wall = Math.min(p.innerWidthMm / 2 - x, p.innerDepthMm / 2 - z);
+  const corner = Math.max(0, p.cornerRadiusMm - p.wallThicknessMm);
+  const cornerOverlap =
+    corner > 0 &&
+    Math.hypot(
+      Math.max(0, x - p.innerWidthMm / 2 + corner),
+      Math.max(0, z - p.innerDepthMm / 2 + corner),
+    ) > corner;
+  const plane = componentSurfaceMm(host);
+  const base = intent.role === "base";
+  const gap = base ? bounds.min.y - plane : plane - bounds.max.y;
+  const warnings = [];
+  if (wall < 0) warnings.push("Component envelope crosses a wall.");
+  else if (cornerOverlap) warnings.push("Component envelope may overlap a rounded corner.");
+  if (gap < -0.001)
+    warnings.push(base ? "Component intersects the floor." : "Component intersects the lid.");
+  if (base && bounds.max.y > plane + p.innerHeightMm - p.lid.lipDepthMm)
+    warnings.push("Component reaches the reserved lid region.");
+  return `${base ? "Floor" : "Lid"} clearance ${gap.toFixed(2)} mm · wall margin ${wall.toFixed(2)} mm. ${warnings.join(" ")}`.trim();
 }
 
 function release(object: Group) {
@@ -133,7 +159,8 @@ export function componentMounting(
   boreDiameterMm: number,
 ): MountingDefinition {
   if (
-    record.preset !== "pi4" ||
+    !["pi4", "zero2", "pcb"].includes(record.preset) ||
+    componentHoles(record).length === 0 ||
     host.id !== record.hostId ||
     host.assemblyPart?.enclosure?.role !== "base" ||
     record.gapMm === undefined ||
@@ -142,11 +169,13 @@ export function componentMounting(
     record.rotation[2] !== 0 ||
     record.scale !== 1
   )
-    throw new Error("Use a full-size Pi 4 snapped above a base, with rotation around Y only.");
+    throw new Error(
+      "Use a full-size board with mounting holes snapped above a base, with rotation around Y only.",
+    );
   const rotation = componentRotation(record);
   return {
     kind: "mounting",
-    name: "Pi 4 mounting posts",
+    name: `${record.preset === "pi4" ? "Pi 4" : presetFor(record.preset).name} mounting posts`,
     anchor: "enclosure.base.floor",
     centresMm: componentHoles(record).map(({ x, z }) => {
       const centre = new Vector3(x, 0, z).applyQuaternion(rotation);
@@ -161,14 +190,42 @@ export function componentMounting(
 
 export class ComponentView {
   readonly group = new Group();
+  private readonly outline = new Box3Helper(new Box3(), 0x74dbff);
+  clearance = "";
   private readonly cache = new Map<string, ComponentGeometry>();
 
   constructor(parent: Group) {
     this.group.name = "3D component references";
-    parent.add(this.group);
+    parent.add(this.group, this.outline);
+    this.outline.visible = false;
+    const materials = this.outline.material;
+    if (!Array.isArray(materials)) materials.depthTest = false;
+    this.outline.renderOrder = 10;
   }
 
-  sync(records: ComponentReference[], hosts: readonly SdfLayer[], mm: number) {
+  object(id: string) {
+    const object = this.cache.get(id)?.object;
+    return object?.visible ? object : undefined;
+  }
+
+  pick(ray: Raycaster): string | undefined {
+    let distance = Infinity;
+    let selected: string | undefined;
+    for (const [id, { object }] of this.cache) {
+      if (!object.visible) continue;
+      object.updateWorldMatrix(true, true);
+      const hit = ray.intersectObject(object.children[0], false)[0];
+      if (hit && hit.distance < distance) {
+        distance = hit.distance;
+        selected = id;
+      }
+    }
+    return selected;
+  }
+
+  sync(records: ComponentReference[], hosts: readonly SdfLayer[], mm: number, selected?: string) {
+    this.outline.visible = false;
+    this.clearance = "";
     for (const [id, cached] of this.cache) {
       if (records.some((record) => record.id === id)) continue;
       release(cached.object);
@@ -193,19 +250,26 @@ export class ComponentView {
       if (!object.visible) continue;
       const rotation = componentRotation(record);
       const position = new Vector3(...record.positionMm);
-      if (host && record.gapMm !== undefined) {
+      if (host && (record.gapMm !== undefined || selected === record.id)) {
         const rotationKey = record.rotation.join(",");
-        if (cached.rotationKey !== rotationKey || !cached.verticalExtent) {
+        if (cached.rotationKey !== rotationKey || !cached.bounds) {
           cached.rotationKey = rotationKey;
-          cached.verticalExtent = verticalExtent(object, rotation);
+          cached.bounds = rotatedBounds(object, rotation);
         }
-        const [minimum, maximum] = cached.verticalExtent;
+        const { min, max } = cached.bounds;
         const inverted = host.assemblyPart?.enclosure?.role === "lid";
-        position.y =
-          componentSurfaceMm(host) +
-          (inverted
-            ? -record.gapMm - maximum * record.scale
-            : record.gapMm - minimum * record.scale);
+        if (record.gapMm !== undefined)
+          position.y =
+            componentSurfaceMm(host) +
+            (inverted ? -record.gapMm - max.y * record.scale : record.gapMm - min.y * record.scale);
+        if (selected === record.id)
+          this.clearance = componentClearance(
+            new Box3(
+              min.clone().multiplyScalar(record.scale).add(position),
+              max.clone().multiplyScalar(record.scale).add(position),
+            ),
+            host,
+          );
       }
       object.matrix.compose(
         position.divideScalar(mm),
@@ -214,6 +278,16 @@ export class ComponentView {
       );
       if (host) object.matrix.premultiply(transformMatrix(host.transform));
       object.matrixWorldNeedsUpdate = true;
+      if (selected === record.id) {
+        const [mesh] = object.children as Mesh[];
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        this.outline.box.copy(mesh.geometry.boundingBox!);
+        const material = this.outline.material;
+        if ("color" in material && material.color instanceof Color)
+          material.color.set(record.gapMm === undefined ? 0x74dbff : 0x79e6a3);
+        if (this.outline.parent !== object) object.add(this.outline);
+        this.outline.visible = true;
+      }
       for (const child of object.children) {
         if (!(child instanceof Mesh)) continue;
         child.material.opacity = record.opacity;
@@ -230,6 +304,8 @@ export class ComponentView {
   dispose() {
     for (const { object } of this.cache.values()) release(object);
     this.cache.clear();
+    this.outline.dispose();
+    this.outline.removeFromParent();
     this.group.removeFromParent();
   }
 }

@@ -3,6 +3,7 @@ import { partOwner } from "./assembly";
 import { partBounds, restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
 import { assemblyUI } from "./assembly-ui";
 import { exportNeedsEvaluation, exportResolution, prepareBooleanExport } from "./boolean-export";
+import { ComponentTransformTool } from "./component-transform";
 import { componentUI } from "./component-ui";
 import { ComponentView } from "./component-view";
 import { frameAgentBounds } from "./desktop-navigation";
@@ -90,7 +91,13 @@ import {
   type SurfaceSnapTarget,
   snappedPose,
 } from "./surface-snapping";
-import { copyTransform, hasUniformScale, identityTransform, uniformScale } from "./transform";
+import {
+  copyTransform,
+  hasUniformScale,
+  identityTransform,
+  transformMatrix,
+  uniformScale,
+} from "./transform";
 import {
   LayerTransformTools,
   rotateAxisForShortcut,
@@ -161,6 +168,7 @@ const input = new InputOwnership();
 const stampClick = new StampClickGesture();
 let transformTools: LayerTransformTools | undefined;
 let ghostRotation: ShapeRotationTool | undefined;
+let componentTransform: ComponentTransformTool | undefined;
 let referenceEditor: ReferenceTransformTool | undefined;
 let viewportTools: ReturnType<typeof createViewportTools> | undefined;
 const scene = new THREE.Scene();
@@ -451,6 +459,7 @@ function stopSculpt(commit = false) {
     renderer.domElement.releasePointerCapture(captured);
 }
 function stop() {
+  componentTransform?.setMode(null);
   referenceEditor?.setMode(null);
   stampClick.cancel();
   ghostRotation?.finish();
@@ -503,6 +512,11 @@ renderer.domElement.addEventListener(
     assemblyControlsUI?.sync();
     enclosureControlsUI?.sync();
   },
+  true,
+);
+renderer.domElement.addEventListener(
+  "pointerdown",
+  (event) => componentTransform?.pick(event),
   true,
 );
 transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () => layers, input, {
@@ -672,6 +686,7 @@ function syncViewportTools(): void {
 }
 function chooseWorkspace(tool: WorkspaceTool, fromXR = false): void {
   if (loadingProject || ui.modalOpen || (xrBlocked() && !fromXR)) return;
+  componentsUI?.deselect();
   precision?.start(0);
   editorTools?.clearMoveSelection();
   stop();
@@ -694,6 +709,7 @@ function chooseWorkspace(tool: WorkspaceTool, fromXR = false): void {
 }
 function chooseLayerMode(mode: EditorMode, fromXR = false): void {
   if (loadingProject || ui.modalOpen || (xrBlocked() && !fromXR)) return;
+  componentsUI?.deselect();
   precision?.start(0);
   editorTools?.clearMoveSelection();
   stop();
@@ -896,6 +912,15 @@ window.addEventListener("keydown", (event) => {
     document.getElementById("save-project")!.click();
     return;
   }
+  if (event.key === "Escape" && componentTransform?.active) {
+    event.preventDefault();
+    if (componentTransform.cancel()) ui.status("Component placement cancelled");
+    else {
+      componentTransform.setMode(null);
+      ui.status("Component placement ended");
+    }
+    return;
+  }
   if (event.key === "Escape" && precision?.primitives.assembly.ownsPointer) {
     event.preventDefault();
     void precision.primitives.assembly.run("cancel");
@@ -927,21 +952,30 @@ window.addEventListener("keydown", (event) => {
   }
   if (
     event.target instanceof Element &&
-    event.target.closest('input:not([type="range"]),textarea,select,[contenteditable="true"]')
+    event.target.closest(
+      'input:not([type="range"]),textarea,select,[contenteditable="true"],[role="textbox"]',
+    )
   )
     return;
+  const componentId = componentsUI?.deletionTarget;
   if (
     handleLayerDeleteShortcut(
       event,
       loadingProject ||
-        renderer.xr.isPresenting ||
-        input.referenceEditing ||
+        xrBlocked() ||
+        (componentId
+          ? !!referenceEditor?.mode || !!componentTransform?.draft
+          : input.referenceEditing) ||
         !!precision?.primitives.assembly.ownsPointer,
       event.target instanceof Element &&
         !!event.target.closest(
           'input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"]',
         ),
       () => {
+        if (componentId) {
+          componentsUI.remove(componentId);
+          return;
+        }
         stop();
         try {
           const node = layers.transformNode;
@@ -975,11 +1009,22 @@ window.addEventListener("keydown", (event) => {
     frameSelected();
     return;
   }
+  if (componentTransform?.active && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    if (componentTransform.constrain(event.code)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.code === "KeyW" || event.code === "KeyQ") {
+      event.preventDefault();
+      componentTransform.setMode(event.code === "KeyW" ? "translate" : "rotate");
+      return;
+    }
+  }
   if (input.referenceEditing && !event.metaKey && !event.ctrlKey && !event.altKey) {
     const mode = ({ w: "translate", e: "rotate", r: "scale" } as const)[
       event.key.toLowerCase() as "w" | "e" | "r"
     ];
-    if (event.key === "Escape" || mode) {
+    if (!componentTransform?.active && (event.key === "Escape" || mode)) {
       event.preventDefault();
       referenceEditor?.setMode(event.key === "Escape" ? null : mode);
       return;
@@ -1183,6 +1228,7 @@ ui.onTransformAction((action) => {
 });
 ui.onLayerAction(async (action, id, value) => {
   if (loadingProject || xrBlocked()) return;
+  componentsUI?.deselect();
   stop();
   try {
     if (action === "new" || action === "new-empty")
@@ -2227,7 +2273,10 @@ desktopLayers = new DesktopLayerPalette(
   () => refresh(),
   (text) => ui.projectMessage(text, true),
   () => loadingProject || ui.modalOpen || xrBlocked(),
-  () => stop(),
+  () => {
+    componentsUI?.deselect();
+    stop();
+  },
   () => enclosureControlsUI?.followLayerSelection(),
   (editor) => {
     if (editor === "text") primitivesUI?.openSelectedText();
@@ -2934,6 +2983,7 @@ referenceEditor = new ReferenceTransformTool(
   input,
   {
     beforeDrag: () => {
+      componentTransform?.setMode(null);
       stampClick.cancel();
       ghostRotation?.finish();
       transformTools?.finish();
@@ -2965,7 +3015,72 @@ const componentsUI = componentUI(
   referencesUI.panel,
   () => layers,
   componentEnclosure,
-  () => loadingProject || ui.modalOpen || xrBlocked(),
+  document.getElementById("layer-list")!,
+  () => loadingProject || ui.modalOpen || xrBlocked() || !!componentTransform?.draft,
+  (mode) => componentTransform?.setMode(mode),
+);
+referencesUI.panel.addEventListener(
+  "click",
+  (event) => {
+    if (event.target instanceof Element && !event.target.closest("#component-panel")) {
+      componentTransform?.setMode(null);
+      componentsUI.deselect();
+    }
+  },
+  true,
+);
+componentTransform = new ComponentTransformTool(
+  camera,
+  renderer.domElement,
+  scene,
+  componentView,
+  input,
+  {
+    target: () => {
+      const record = display.components.find(
+        (candidate) => candidate.id === componentsUI.selectedId,
+      );
+      if (!record?.visible) return;
+      const host = layers.project.layerStack.layers.find((layer) => layer.id === record.hostId);
+      if (record.hostId && !host?.assemblyPart?.enclosure) return;
+      const frame = componentView.group;
+      frame.updateWorldMatrix(true, false);
+      const world = frame.matrixWorld.clone();
+      if (host) world.multiply(transformMatrix(host.transform));
+      return { record, frame: world, mm: display.precision.millimetresPerUnit };
+    },
+    select: componentsUI.select,
+    deselect: componentsUI.deselect,
+    commit: (original, draft) => {
+      const index = display.components.indexOf(original);
+      if (index >= 0) display.components[index] = draft;
+      componentsUI.sync();
+    },
+    busy: () =>
+      loadingProject ||
+      ui.modalOpen ||
+      xrBlocked() ||
+      input.suspended ||
+      !!referenceEditor?.mode ||
+      !!precision?.active ||
+      !!precision?.primitives.placing ||
+      !!primitivePreview?.active ||
+      shapeGhost.model.enabled ||
+      componentEnclosure.pending,
+    before: () => {
+      stampClick.cancel();
+      transformTools?.finish();
+      stopSculpt();
+    },
+    changed: () => {
+      cursor.visible = false;
+      transformTools?.sync();
+      if (componentTransform?.active)
+        ui.status("Component reference · W Move · Q Rotate · Escape to exit");
+    },
+    camera: (enabled) => (controls.enabled = enabled),
+    status: (text) => ui.status(text),
+  },
 );
 const libraryDialog = document.createElement("dialog");
 libraryDialog.className = "project-library-dialog";
@@ -3712,6 +3827,7 @@ import.meta.hot?.dispose(() => {
   referenceEditor?.dispose();
   references.dispose();
   componentEnclosure.cancel();
+  componentTransform?.dispose();
   componentView.dispose();
   renderer.dispose();
   lifecycle.dispose();
@@ -3813,11 +3929,17 @@ renderer.setAnimationLoop((now, frame) => {
   referenceEditor?.sync();
   referencesUI.sync();
   componentsUI.sync();
+  const componentDraft = componentTransform?.draft;
   componentView.sync(
-    display.components,
+    componentDraft
+      ? display.components.map((item) => (item.id === componentDraft.id ? componentDraft : item))
+      : display.components,
     layers.project.layerStack.layers,
     display.precision.millimetresPerUnit,
+    xrBlocked() ? undefined : componentsUI.deletionTarget,
   );
+  componentTransform?.sync();
+  componentsUI.clearance(componentView.clearance);
   renderEmulatorFrame?.(now);
   if (undoXRReplay && frame && renderer.xr.isPresenting) {
     const space = renderer.xr.getReferenceSpace();

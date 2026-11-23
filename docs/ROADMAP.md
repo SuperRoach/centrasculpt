@@ -1,5 +1,16 @@
 # Centra Sculpt roadmap
 
+## Phase 8.8b — Interactive 3D component placement
+
+- Desktop reference picking, Move and Rotate handles, axis constraints and
+  drag cancellation.
+- Enclosure-relative floor and lid snapping with configurable clearance,
+  positioning along the mounting plane and fit warnings.
+- Preview and confirm associative posts for Pi 4, Pi Zero 2 W and Generic PCB.
+  Native saves retain display-only component references.
+- Phase 8.8c covers connector cutouts and button plungers. Immersive editing
+  and physical Quest testing remain deferred.
+
 ## Phase 8.8 — 3D electronics component references (2026-11-23)
 
 - Five built-in dimensioned presets, separate project reference quota, and

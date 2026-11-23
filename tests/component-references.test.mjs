@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Box3, Group, Vector3 } from "three";
+import { Box3, Group, Raycaster, Vector3 } from "three";
 import { installFileReader } from "../scripts/fixtures/export-node.mjs";
 import { RecoveryBrowserWorker } from "../scripts/fixtures/node-recovery-worker.mjs";
 import { createHeadlessEditor } from "../scripts/headless-enclosure.mjs";
@@ -11,6 +11,7 @@ import {
 } from "../work/test-build/component-references.mjs";
 import {
   ComponentView,
+  componentClearance,
   componentMounting,
   componentSurfaceMm,
 } from "../work/test-build/component-view.mjs";
@@ -180,6 +181,87 @@ test("part-relative Pi snap, mounting preview, Undo, native save and recovery", 
     view.dispose();
     layers.dispose();
   }
+});
+
+test("Generic PCB and Pi Zero 2 W stage standard floor-mounted posts", async () => {
+  const { layers, api } = createHeadlessEditor();
+  try {
+    const options = () => ({ expectedRevision: api.revision });
+    const {
+      partIds: { base, lid },
+    } = ok(
+      await api.enclosure.create(
+        { ...DEFAULT_ENCLOSURE, innerWidthMm: 110, innerDepthMm: 75, innerHeightMm: 28 },
+        options(),
+      ),
+    );
+    const host = layers.project.layerStack.get(base);
+    const common = { hostId: base, gapMm: 5, positionMm: [4, 0, -3], rotation: [0, 90, 0] };
+    const [pcb, zero] = validateComponents([
+      record({ ...common, holes: [{ x: 11, z: 6, diameter: 3.1 }] }),
+      record({ ...common, id: "zero", preset: "zero2" }),
+    ]);
+    assert.throws(() => componentMounting(record(common), host, 6, 2), /mounting holes/);
+    const generic = componentMounting(pcb, host, 6, 2.4);
+    const pi = componentMounting(zero, host, 6, 2.2);
+    assert.deepEqual(
+      generic.centresMm.map((p) => p.map(Math.round)),
+      [[10, -14]],
+    );
+    assert.deepEqual(
+      pi.centresMm.map((p) => p.map((v) => Number(v.toFixed(2)))),
+      [
+        [-7.5, 26],
+        [15.5, 26],
+        [-7.5, -32],
+        [15.5, -32],
+      ],
+    );
+    assert.equal(pi.boreDiameterMm, 2.2);
+    for (const definition of [generic, pi]) {
+      const revision = api.revision;
+      ok(await api.enclosure.setFeature(base, lid, definition, { ...options(), dryRun: true }));
+      assert.equal(api.revision, revision);
+      ok(await api.enclosure.setFeature(base, lid, definition, options()));
+    }
+    assert.equal(api.enclosure.features(base, lid).length, 2);
+    layers.undo();
+    assert.equal(api.enclosure.features(base, lid).length, 1);
+    layers.undo(true);
+    assert.equal(api.enclosure.features(base, lid).length, 2);
+
+    const floor = componentSurfaceMm(host);
+    assert.match(
+      componentClearance(
+        new Box3(new Vector3(-25, floor + 5, -15), new Vector3(25, floor + 7, 15)),
+        host,
+      ),
+      /Floor clearance 5.00 mm · wall margin 22.50 mm\.$/,
+    );
+    assert.match(
+      componentClearance(
+        new Box3(new Vector3(-56, floor - 1, -15), new Vector3(25, floor + 35, 15)),
+        host,
+      ),
+      /crosses a wall.*intersects the floor.*reserved lid region/,
+    );
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("component picking finds the closest visible reference without hitting its outline", () => {
+  const view = new ComponentView(new Group());
+  const ray = new Raycaster(new Vector3(0, 1, 0), new Vector3(0, -1, 0));
+  const lower = record();
+  const upper = record({ id: "upper", positionMm: [0, 10, 0] });
+  view.sync([lower, upper], [], 100, lower.id);
+  assert.equal(view.pick(ray), upper.id);
+  view.sync([lower, { ...upper, visible: false }], [], 100, lower.id);
+  assert.equal(view.pick(ray), lower.id);
+  ray.ray.origin.x = 0.3;
+  assert.equal(view.pick(ray), undefined);
+  view.dispose();
 });
 
 test("visible component meshes leave both STL and GLB output byte-identical", async () => {

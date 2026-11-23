@@ -1,3 +1,31 @@
+# Phase 8.8b — Interactive 3D component placement
+
+In the desktop viewport, click a component to select it and show the Move
+handles. Use **W** for Move and **Q** for Rotate, or use the buttons in
+**References → 3D Components**. The existing axis keys apply to handle drags
+(E/D/C for Move and R/F/V for Rotate). Escape cancels an active drag without
+changing the saved component pose. Click away or press Escape again to exit.
+
+Snap to an enclosure base floor or lid with a configurable clearance in
+millimetres. A green outline indicates a snapped component. Move handles
+follow the enclosure X/Z plane and rotation uses the enclosure Y axis. The
+component panel reports clearance and envelope warnings for wall, floor,
+rounded-corner and reserved lid space. Warnings use the reference mesh envelope
+and the enclosure recipe, so rounded-corner and lid-region warnings can be
+conservative. Numeric placement stays available for independent axis edits.
+
+Pi 4, Pi Zero 2 W and Generic PCB mounting previews use the associative
+enclosure recipe and require confirmation. Pi Zero 2 W centres use the
+manufacturer's 65 × 30 mm outline and 3.5 mm edge offsets. Enter the post
+bore for the Pi Zero and Generic PCB. The bore describes the chosen post
+hardware. Component pose edits use display metadata and generated posts use
+modelling Undo/Redo.
+
+References travel with native projects and recovery. The desktop selection
+outline and gizmo are separate from VR component rendering and printable
+geometry. Headset manipulation and physical Quest testing remain deferred.
+Phase 8.8c covers connector cutouts and button plungers.
+
 # Phase 8.8 — 3D electronics component references — 2026-11-23
 
 ### 1. What changed

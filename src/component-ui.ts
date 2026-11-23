@@ -1,3 +1,4 @@
+import { partOwner } from "./assembly";
 import {
   COMPONENT_LIMIT,
   COMPONENT_PRESETS,
@@ -16,13 +17,14 @@ export function componentUI(
   parent: Element,
   editor: () => IndependentLayers,
   tools: EnclosureControls,
+  layerList: Element,
   blocked: () => boolean,
+  viewportMode: (mode: "translate" | "rotate" | null) => void,
 ) {
   const panel = document.createElement("details");
   panel.className = "precision-settings";
   panel.id = "component-panel";
-  panel.innerHTML =
-    "<summary>3D Components</summary><p>Physical references for enclosure design. Dimensions use mm. References stay out of exports.</p>";
+  panel.innerHTML = "<summary>3D Components</summary><p>References don't appear in exports.</p>";
   parent.append(panel);
   const picker = document.createElement("select");
   const selected = document.createElement("select");
@@ -30,6 +32,18 @@ export function componentUI(
   const status = document.createElement("p");
   status.setAttribute("role", "status");
   const form = document.createElement("div");
+  form.className = "reference-card";
+  const group = document.createElement("section");
+  group.id = "component-layers";
+  group.setAttribute("aria-label", "Component references");
+  const heading = document.createElement("h3");
+  heading.className = "eyebrow";
+  heading.textContent = "Components";
+  const rows = document.createElement("div");
+  group.append(heading, rows);
+  group.hidden = true;
+  layerList.after(group);
+  const clearanceLabel = document.createElement("p");
   const metadata = document.createElement("p");
   const source = document.createElement("a");
   source.target = "_blank";
@@ -75,6 +89,8 @@ export function componentUI(
   const hosts = () =>
     editor().project.layerStack.layers.filter((layer) => !!layer.assemblyPart?.enclosure);
   let selectedId = "";
+  let layerSelection = "";
+  let layerKey = "";
   let projectId = "";
   let lastKey = "";
   let previewOwner: ComponentReference | undefined;
@@ -102,15 +118,24 @@ export function componentUI(
     };
     const next = validateComponents([...records(), added]);
     records().push(next[next.length - 1]);
-    selectedId = added.id;
+    selectComponent(added.id);
   });
   field(panel, "Project component", selected);
-  selected.onchange = () => {
-    selectedId = selected.value;
-    sync(true);
-  };
+  selected.onchange = () => selectComponent(selected.value);
   panel.append(form, status);
-  form.append(metadata, source);
+  form.append(metadata, source, clearanceLabel);
+  const toolbar = document.createElement("div");
+  toolbar.className = "reference-edit-toolbar";
+  form.append(toolbar);
+  const move = button(toolbar, "Move", () => {
+    layerSelection = selectedId;
+    viewportMode("translate");
+  });
+  const rotate = button(toolbar, "Rotate", () => {
+    layerSelection = selectedId;
+    viewportMode("rotate");
+  });
+  button(toolbar, "Done", () => viewportMode(null));
   const dims = document.createElement("fieldset");
   const holes = document.createElement("fieldset");
   const dimensions = ["Width X (mm)", "Thickness Y (mm)", "Depth Z (mm)"].map((label) =>
@@ -130,7 +155,7 @@ export function componentUI(
       row,
       x: num(row, `Hole ${i + 1} X (mm)`, 0),
       z: num(row, `Hole ${i + 1} Z (mm)`, 0),
-      diameter: num(row, `Hole ${i + 1} diameter (mm)`, 2.7),
+      diameter: num(row, `Hole ${i + 1} diameter (mm)`, 0),
     };
   });
   function showHoles() {
@@ -179,20 +204,32 @@ export function componentUI(
     replace(next);
   });
   const gap = num(form, "Underside gap (mm)", 5);
+  function snapHost() {
+    const stack = editor().project.layerStack;
+    const active = partOwner(stack, stack.activeLayerId);
+    return hosts().find(({ id }) => id === host.value) ?? hosts().find(({ id }) => id === active);
+  }
   const snap = button(form, "Snap to enclosure surface", () => {
     const record = current();
-    if (!hosts().some(({ id }) => id === record.hostId))
-      throw new Error("Apply an enclosure attachment first.");
-    replace({ ...record, gapMm: gap.valueAsNumber });
+    const part = snapHost();
+    if (!part) throw new Error("Select an enclosure base or lid.");
+    replace({ ...record, hostId: part.id, gapMm: gap.valueAsNumber });
+    status.textContent = `Snapped to ${part.name} with ${gap.valueAsNumber} mm clearance.`;
   });
-  button(form, "Remove component", () => {
+  function remove(id: string) {
     const list = records();
-    list.splice(list.indexOf(current()), 1);
-    selectedId = "";
-  });
+    const index = list.findIndex((record) => record.id === id);
+    if (blocked() || tools.pending || index < 0) return;
+    if (!window.confirm(`Delete ${presetFor(list[index].preset).name} reference?`)) return;
+    viewportMode(null);
+    list.splice(index, 1);
+    selectedId = layerSelection = "";
+    sync(true);
+  }
+  button(form, "Delete reference…", () => remove(selectedId));
   const mounting = document.createElement("fieldset");
   const legend = document.createElement("legend");
-  legend.textContent = "Pi 4 mounting posts";
+  legend.textContent = "Board mounting posts";
   mounting.append(legend);
   const outer = num(mounting, "Post diameter (mm)", 6);
   const bore = num(mounting, "Bore diameter (mm)", 2);
@@ -200,7 +237,7 @@ export function componentUI(
     if (tools.pending) return;
     const record = current();
     const part = hosts().find(({ id }) => id === record.hostId);
-    if (!part) throw new Error("Attach this Pi 4 to an enclosure base.");
+    if (!part) throw new Error("Snap this board to an enclosure base.");
     const definition = componentMounting(record, part, outer.valueAsNumber, bore.valueAsNumber);
     tools.editPart(part.id);
     previewOwner = record;
@@ -226,16 +263,64 @@ export function componentUI(
       previewOwner = undefined;
     };
 
+  function selectComponent(id: string) {
+    selectedId = layerSelection = id;
+    if (parent instanceof HTMLDetailsElement) parent.open = true;
+    panel.open = true;
+    sync(true);
+  }
+
+  function syncLayers(list: ComponentReference[]) {
+    const entries = list.map(
+      (item, index) =>
+        [item.id, `${presetFor(item.preset).name} · ${index + 1}`, item.visible] as const,
+    );
+    const disabled = blocked();
+    const key = JSON.stringify([entries, layerSelection, disabled]);
+    if (key === layerKey) return;
+    layerKey = key;
+    group.hidden = entries.length === 0;
+    const focused = (document.activeElement as HTMLElement | null)?.dataset.componentId;
+    rows.replaceChildren(
+      ...entries.map(([id, label, visible]) => {
+        const row = document.createElement("div");
+        row.className = `layer-row${id === layerSelection ? " active" : ""}`;
+        const select = document.createElement("button");
+        select.type = "button";
+        select.className = "layer-select";
+        select.textContent = visible ? label : `${label} · Hidden`;
+        select.dataset.componentId = id;
+        select.setAttribute("aria-pressed", String(id === layerSelection));
+        select.disabled = disabled;
+        select.onclick = () => {
+          viewportMode(null);
+          selectComponent(id);
+          selected.scrollIntoView({ block: "nearest" });
+        };
+        row.append(select);
+        return row;
+      }),
+    );
+    if (focused)
+      Array.from(rows.querySelectorAll("button"))
+        .find((button) => button.dataset.componentId === focused)
+        ?.focus();
+  }
+
+  let borePreset: ComponentPreset | undefined;
   function sync(force = false) {
     tools.sync();
     const id = editor().project.id;
     if (projectId !== id) {
       projectId = id;
-      selectedId = "";
+      selectedId = layerSelection = "";
       previewOwner = undefined;
       status.textContent = "";
     }
     const list = records();
+    if (!list.some((record) => record.id === layerSelection)) layerSelection = "";
+    syncLayers(list);
+    form.classList.toggle("is-selected", !!layerSelection);
     if (!list.some((record) => record.id === selectedId)) selectedId = list[0]?.id ?? "";
     const record = list.find((record) => record.id === selectedId);
     const available = hosts();
@@ -243,6 +328,7 @@ export function componentUI(
       tools.cancel();
       previewOwner = undefined;
     }
+    snap.disabled = !snapHost();
     preview.disabled = confirm.disabled = cancel.disabled = tools.pending;
     confirm.disabled ||= !tools.featureReady;
     cancel.disabled = !previewOwner;
@@ -260,7 +346,7 @@ export function componentUI(
     if (!record) return;
     const preset = presetFor(record.preset);
     const [width, thickness, depth] = componentDimensions(record);
-    metadata.textContent = `${width} × ${depth} × ${thickness} mm · ${preset.verified}. ${preset.unspecified}.`;
+    metadata.textContent = `${[width, depth, thickness].map((size) => Number((size * record.scale).toFixed(3))).join(" × ")} mm · ${preset.verified}. ${preset.unspecified}.`;
     source.hidden = !preset.drawing;
     if (preset.drawing) {
       source.href = preset.drawing;
@@ -277,7 +363,7 @@ export function componentUI(
     holeFields.forEach(({ x, z, diameter }, i) => {
       x.value = String(record.holes?.[i]?.x ?? 0);
       z.value = String(record.holes?.[i]?.z ?? 0);
-      diameter.value = String(record.holes?.[i]?.diameter ?? 2.7);
+      diameter.value = record.holes?.[i] ? String(record.holes[i].diameter) : "";
     });
     const hostOptions: [string, string][] = [
       ["", "Sculpture"],
@@ -296,9 +382,36 @@ export function componentUI(
     opacity.value = String(record.opacity);
     visible.checked = record.visible;
     gap.value = String(record.gapMm ?? 5);
-    snap.disabled = !available.some(({ id }) => id === record.hostId);
-    mounting.hidden = record.preset !== "pi4";
+    snap.disabled = !snapHost();
+    move.disabled = rotate.disabled =
+      !record.visible || (!!record.hostId && !available.some(({ id }) => id === record.hostId));
+    mounting.hidden = !["pi4", "pcb", "zero2"].includes(record.preset);
+    if (borePreset !== record.preset) {
+      borePreset = record.preset;
+      bore.value = record.preset === "pi4" ? "2" : "";
+    }
   }
+  host.onchange = () => {
+    snap.disabled = !snapHost();
+  };
   sync();
-  return { sync };
+  return {
+    sync,
+    get selectedId() {
+      return selectedId;
+    },
+    select: selectComponent,
+    deselect() {
+      if (!layerSelection) return;
+      layerSelection = "";
+      sync();
+    },
+    get deletionTarget() {
+      return layerSelection;
+    },
+    remove,
+    clearance(text: string) {
+      if (clearanceLabel.textContent !== text) clearanceLabel.textContent = text;
+    },
+  };
 }

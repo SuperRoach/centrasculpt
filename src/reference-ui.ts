@@ -20,14 +20,14 @@ export function referenceUI(
   details.className = "precision-settings";
   details.id = "reference-panel";
   details.innerHTML =
-    "<summary>REFERENCES · IMAGES / STL</summary><p>PNG/JPEG/STL · six assets · STL up to 100,000 triangles/file, 200,000 total · 6 MiB/file · 12 MiB total · 8.8 megapixels. STL references are centred and normalised to a display size; original file coordinates have unspecified units and are not calibrated project dimensions. Workspace anchors follow navigation, sculpture anchors also turn with the sculpture.</p>";
+    "<summary>References</summary><p>PNG, JPEG or STL. STL imports are resized for display.</p>";
   const picker = document.createElement("input");
   picker.type = "file";
   picker.accept = "image/png,image/jpeg,.stl";
   picker.multiple = true;
   picker.hidden = true;
   const add = document.createElement("button");
-  add.textContent = "Import image or STL reference…";
+  add.textContent = "Import image or STL…";
   const status = document.createElement("p");
   status.setAttribute("role", "status");
   const alert = document.createElement("div");
@@ -37,7 +37,7 @@ export function referenceUI(
   const errorText = document.createElement("p"),
     dismiss = document.createElement("button");
   dismiss.type = "button";
-  dismiss.textContent = "Dismiss error";
+  dismiss.textContent = "Dismiss";
   alert.append(errorText, dismiss);
   dismiss.onclick = () => {
     alert.hidden = true;
@@ -137,8 +137,7 @@ export function referenceUI(
         alert.hidden = true;
         target.references.push(...staged);
         view.selected = staged.at(-1)?.id ?? view.selected;
-        status.textContent =
-          "References imported. Select an image and choose Move to place it on desktop, or use References in VR.";
+        status.textContent = "References imported.";
       } catch (e) {
         status.textContent = "Import failed. Your current references are unchanged.";
         showError(
@@ -173,9 +172,6 @@ export function referenceUI(
     if (next === key) return;
     key = next;
     list.replaceChildren();
-    const estimate = document.createElement("p");
-    estimate.textContent = `${records.length}/6 · ${(records.reduce((n, r) => n + r.bytes.length, 0) / 1048576).toFixed(2)} MiB compressed · ${(records.reduce((n, r) => n + (r.mime === "model/stl" ? 0 : (r.width * r.height * 4 * 4) / 3), 0) / 1048576).toFixed(1)} MiB estimated GPU textures`;
-    list.append(estimate);
     for (const record of records) {
       const selected = view.selected === record.id,
         row = document.createElement("fieldset");
@@ -244,18 +240,12 @@ export function referenceUI(
               record.visible = true;
               view.selected = record.id;
               editor.setMode(mode);
-              status.textContent = `${label} reference · drag the handles in the viewport. Image unlocked; Done returns to sculpting.`;
+              status.textContent = `${label} reference`;
             },
             false,
             editor.mode === mode,
           );
         button(toolbar, "Done", () => editor.setMode(null), !editor.mode);
-        const hint = document.createElement("p");
-        hint.className = "reference-hint";
-        hint.textContent = editor.mode
-          ? "Drag viewport handles · orbit between drags · Done to sculpt"
-          : "Choose Move, Rotate or Size to edit on desktop.";
-        row.append(hint);
       }
       button(actions, record.visible ? "Hide" : "Show", () => {
         editor?.setMode(null);
@@ -383,7 +373,7 @@ export function referenceUI(
       row.append(precise);
       const more = document.createElement("details"),
         moreSummary = document.createElement("summary");
-      moreSummary.textContent = "More image settings";
+      moreSummary.textContent = "More settings";
       more.open = moreOpen.has(record.id);
       more.ontoggle = () => {
         if (more.open) moreOpen.add(record.id);
@@ -406,7 +396,7 @@ export function referenceUI(
         },
         record.locked,
       );
-      button(more, "Delete image…", () => {
+      button(more, "Delete reference…", () => {
         if (confirm(`Delete reference “${record.name}”?`)) {
           editor?.setMode(null);
           display().references = records.filter((r) => r !== record);
