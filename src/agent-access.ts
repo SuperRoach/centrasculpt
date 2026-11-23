@@ -5,7 +5,7 @@ import {
   agentTransaction,
   describeAgentResult,
 } from "./agent-activity";
-import { recordAgentPerformance } from "./agent-performance";
+import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import type { FeatureDefinition } from "./enclosure-features";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
@@ -158,7 +158,8 @@ export function agentExecutor(
           : { status: "unknown", transactionId },
       };
     }
-    const request = JSON.stringify(a);
+    const request =
+      job.name === "apply_changes" && transactionId !== undefined ? JSON.stringify(a) : "";
     if (job.name === "apply_changes" && transactionId !== undefined) {
       const receipt = ledger.get(transactionId);
       if (receipt)
@@ -189,6 +190,7 @@ export function agentExecutor(
           ["preview computing", "awaiting approval", "approved", "applying"].includes(p.state)
         )
           return error("busy", "Cancel the existing proposal first.");
+        const stagingStarted = performance.now();
         const proposal: AgentProposal = {
           id: newId(),
           state: "preview computing",
@@ -212,6 +214,7 @@ export function agentExecutor(
         proposals.controller = controller;
         proposals.notify();
         const previewStarted = performance.now();
+        recordAgentPerformance("agent.proposal-staging", previewStarted - stagingStarted);
         const finishPreview = (preview: Awaited<ReturnType<typeof executeProposal>>) => {
           recordAgentPerformance("agent.proposal-preview", performance.now() - previewStarted, {
             recipe: proposal.recipe?.type,
@@ -329,6 +332,9 @@ export function agentExecutor(
       const apply = executeProposal(api, p, {
         expectedRevision: p.expectedRevision,
         preserveSelection: true,
+        coalesceSourceMeshYields:
+          p.recipe !== undefined &&
+          !(agentPerformanceEnabled() && window.__centraAgentProfileReferenceMeshScheduling),
         signal:
           job.name === "apply_approved_proposal" && a.waitForApply === false
             ? AbortSignal.any([controller.signal, timeout])

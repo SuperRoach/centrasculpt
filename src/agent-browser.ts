@@ -9,6 +9,7 @@ import { captureScenePreview } from "./agent-preview";
 export { frameAgentBounds } from "./agent-feedback";
 
 import { type AgentJob, AgentProposals, agentExecutor } from "./agent-access";
+import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import { readAgentEditingPreference, saveAgentEditingPreference } from "./agent-preferences";
 import type { IndependentLayers } from "./independent-layers";
 import { ModellingAPI } from "./modelling-api";
@@ -490,6 +491,8 @@ export function mountAgentAccess(
           () => controller.abort(),
           Math.max(0, job.deadline - Date.now()),
         );
+        const profile = agentPerformanceEnabled();
+        const started = profile ? performance.now() : 0;
         const operation = async () => {
           if (job.name !== "capture_scene_preview" && job.name !== "inspect_print_mesh")
             return execute(job, controller.signal);
@@ -532,7 +535,13 @@ export function mountAgentAccess(
             ok: false,
             error: { code: "operation_failed", message: error.message },
           }))
-          .then((result) => post("/result", { id: job.id, result }))
+          .then(async (result) => {
+            const finished = profile ? performance.now() : 0;
+            if (profile) recordAgentPerformance(`agent.job.${job.name}`, finished - started);
+            await post("/result", { id: job.id, result });
+            if (profile)
+              recordAgentPerformance("agent.result-upload", performance.now() - finished);
+          })
           .catch(() => reset("Bridge disconnected; inspect the scene before retrying."))
           .finally(() => {
             clearTimeout(deadline);

@@ -13,6 +13,7 @@ export async function startAgentBridge({
   host = "127.0.0.1",
   allowedHostnames = [new URL(origin).hostname],
 } = {}) {
+  const profile = process.env.CENTRA_AGENT_PROFILE === "1";
   const token = randomBytes(32).toString("hex"),
     browserToken = randomBytes(32).toString("hex"),
     sessionId = randomUUID();
@@ -137,7 +138,10 @@ export async function startAgentBridge({
         }
         if (req.url === "/poll") {
           const job = pending && !pending.delivered && data.ready !== false ? pending.job : null;
-          if (pending && job) pending.delivered = true;
+          if (pending && job) {
+            pending.delivered = true;
+            if (profile) pending.deliveredAt = performance.now();
+          }
           return send(200, { approved, editing, job });
         }
         if (req.url === "/result" && pending && pending.job.id === data.id) {
@@ -153,6 +157,16 @@ export async function startAgentBridge({
             )
               data.result = fail("Missing preview image or inconsistent metadata.");
             else data.result.image = { data: image.data, mimeType: image.mimeType };
+          }
+          if (profile) {
+            const now = performance.now();
+            console.info(
+              `[centra-agent-profile] ${JSON.stringify({
+                name: pending.job.name,
+                queuedMs: pending.deliveredAt - pending.queuedAt,
+                dispatchedMs: now - pending.deliveredAt,
+              })}`,
+            );
           }
           pending.resolve(data.result);
           pending = null;
@@ -174,6 +188,7 @@ export async function startAgentBridge({
       const result = await new Promise((resolve) => {
         pending = {
           resolve,
+          ...(profile ? { queuedAt: performance.now() } : {}),
           delivered: false,
           job: { ...call, id: randomUUID(), deadline: Date.now() + timeout - 2000 },
           timer: setTimeout(

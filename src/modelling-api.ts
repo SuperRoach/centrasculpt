@@ -1,4 +1,4 @@
-import { recordAgentPerformance } from "./agent-performance";
+import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import { type FitReport, partMembers, partOwner } from "./assembly";
 import {
   type ConnectorOptions,
@@ -145,6 +145,7 @@ export type BatchOptions = {
   signal?: AbortSignal;
   dryRun?: boolean;
   preserveSelection?: boolean;
+  coalesceSourceMeshYields?: boolean;
   measureBounds?: string;
 };
 export type BatchReport = {
@@ -363,7 +364,8 @@ export class ModellingAPI {
     options: BatchOptions,
     replaceEnclosureCutoutId?: string,
   ): Promise<ModellingResult<BatchReport>> {
-    const profileStarted = performance.now();
+    const profile = agentPerformanceEnabled();
+    const profileStarted = profile ? performance.now() : 0;
     let owner: symbol | undefined, checkpoint: number | undefined;
     let temporary: IndependentLayers | undefined;
     let admitted = false;
@@ -423,6 +425,7 @@ export class ModellingAPI {
         )
           this.fail("unsupported", "This command is not supported inside a modelling batch.");
       }
+      if (profile) recordAgentPerformance("batch.validation", performance.now() - profileStarted);
       this.pending = true;
       admitted = true;
       let target = this.layers;
@@ -448,10 +451,11 @@ export class ModellingAPI {
         temporary = new IndependentLayers(project);
         temporary.selectedGroupId = this.layers.selectedGroupId;
         target = temporary;
-        recordAgentPerformance("batch.dry-run-clone", performance.now() - stagingStarted, {
-          trackedBytes: this.layers.trackedBytes,
-          layers: this.layers.project.layerStack.layers.length,
-        });
+        if (profile)
+          recordAgentPerformance("batch.dry-run-clone", performance.now() - stagingStarted, {
+            trackedBytes: this.layers.trackedBytes,
+            layers: this.layers.project.layerStack.layers.length,
+          });
       }
       const api = new ModellingAPI(target, this.canEdit);
       const selectedBefore = target.project.activeLayerId;
@@ -500,6 +504,7 @@ export class ModellingAPI {
             { expectedRevision: api.revision, signal: options.signal },
             replaceEnclosureCutoutId,
             options.dryRun === true,
+            options.coalesceSourceMeshYields === true,
           ),
         );
         recordAgentPerformance(`batch.command.${command.type}`, performance.now() - commandStarted);
@@ -532,6 +537,7 @@ export class ModellingAPI {
           (n) => api.objectMetadata(n.id),
         ),
       );
+      const commitStarted = profile ? performance.now() : 0;
       target.withModellingLease(owner, () => {
         if (options.preserveSelection) {
           if (target.project.layerStack.layers.some((l) => l.id === selectedBefore))
@@ -547,6 +553,10 @@ export class ModellingAPI {
         target.finishAssemblyTransaction(start);
       });
       checkpoint = undefined;
+      if (profile)
+        recordAgentPerformance("batch.transaction-commit", performance.now() - commitStarted, {
+          dryRun: !!options.dryRun,
+        });
       target.releaseModellingLease(owner);
       owner = undefined;
       return {
@@ -588,11 +598,12 @@ export class ModellingAPI {
           : error,
       );
     } finally {
-      recordAgentPerformance("batch.total", performance.now() - profileStarted, {
-        dryRun: !!options.dryRun,
-        commandCount: Array.isArray(steps) ? steps.length : 0,
-        trackedBytes: this.layers.trackedBytes,
-      });
+      if (profile)
+        recordAgentPerformance("batch.total", performance.now() - profileStarted, {
+          dryRun: !!options.dryRun,
+          commandCount: Array.isArray(steps) ? steps.length : 0,
+          trackedBytes: this.layers.trackedBytes,
+        });
       if (owner) (temporary ?? this.layers).releaseModellingLease(owner);
       temporary?.dispose();
       if (admitted) this.pending = false;
@@ -699,6 +710,7 @@ export class ModellingAPI {
     options: { expectedRevision: string; signal?: AbortSignal },
     replaceEnclosureCutoutId?: string,
     skipSourceMeshing = false,
+    coalesceSourceMeshYields = false,
   ): Promise<ModellingResult<{ id: string; fit?: FitReport }>> {
     let selected: string | undefined,
       group: string | null = null;
@@ -995,6 +1007,7 @@ export class ModellingAPI {
               options.signal,
               undefined,
               skipSourceMeshing,
+              coalesceSourceMeshYields,
             )
           ).id;
           break;
@@ -1005,6 +1018,7 @@ export class ModellingAPI {
             options.signal,
             undefined,
             skipSourceMeshing,
+            coalesceSourceMeshYields,
           );
           break;
         case "object.transform":

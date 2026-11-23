@@ -1,5 +1,16 @@
 # Centra Sculpt roadmap
 
+## Phase 8.6e — MCP enclosure performance follow-up (2026-11-23)
+
+- Combined create p50 improved from 18.74 s to
+  11.28 s with 27 → 17
+  MCP calls. Shorter mesh scheduling waits require fewer status requests.
+- Dedicated stdio-to-Chromium measurements cover basic, electronics and
+  associative edit fixtures, with native project round trips and Undo/Redo.
+  See the [benchmark and handover](PHASE_8_6_ENCLOSURE_MCP.md).
+- Retain existing proposal approval and source admission boundaries. Phase 9
+  sparse SDF remains deferred.
+
 ## Phase 8.6c — Discoverability & UX Polish (2026-11-18)
 
 - Desktop follow-up adds direct project menu actions for browser saves and

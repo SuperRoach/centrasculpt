@@ -1,3 +1,51 @@
+# Phase 8.6e — MCP enclosure performance follow-up — 2026-11-23
+
+### 1. What changed
+
+Approved MCP enclosure recipes share display-mesh work across short time
+slices. The benchmark uses disposable Chromium contexts, a warmup and five
+valid measured runs per workflow. Added opt-in browser, bridge and stdio
+timings with per-trial call, approval, Undo and sampled heap estimates.
+
+### 2. Architectural decisions
+
+Yield less often while retaining bounded chunk checks and a yield before
+publishing each source. Scope scheduling to approved enclosure recipes and
+retain proposal previews, explicit browser consent, transaction and resource
+guards. Existing compound recipes still accept up to ten optional definitions
+within the modelling limits.
+
+### 3. Build and test results
+
+Focused MCP/enclosure tests passed **58/58**. `npm run check`
+passed format, lint, strict TypeScript, build and **1794/1794** tests.
+The three enclosure fixtures also passed disposable Chromium Undo/Redo and
+native save/import/reopen. The full MCP-to-browser smoke passed on an isolated retry with the installed Chromium executable. The first run reached evaluated diagnostics and was cancelled at its deadline.
+
+### 4. Benchmarks and regressions
+
+The same combined fixture improved from **18.74 s** to
+**11.28 s** p50 (40%) and from 27
+to 17 MCP calls. Five-run baseline and post-change figures,
+stage breakdown, memory estimates and reproduction commands are in the
+[Phase 8.6 enclosure MCP report](PHASE_8_6_ENCLOSURE_MCP.md).
+
+### 5. Known limitations and blockers
+
+Chromium JavaScript heap and active renderer time are estimates. Use the
+existing approval limits for large recipes. Phase 8.7 save/load/export work,
+Phase 9 sparse SDF, physical Quest measurements and print acceptance remain
+deferred.
+
+### 6. Handover
+
+Use compact status and reuse the committed revision and returned IDs when
+sequencing dependent edits. Remaining status latency includes the editor's
+250 ms delivery cadence. Use the stage timings to compare cooperative yield overhead first. A bounded
+completion wait is a secondary option if the last status poll dominates.
+
+---
+
 # Desktop project and Layers shortcuts — 2026-11-18
 
 - The Centra Sculpt project menu now offers **Save in Browser**, **Download

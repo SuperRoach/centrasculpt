@@ -1,3 +1,9 @@
+### Faster approved enclosure changes through MCP — Phase 8.6e (2026-11-23)
+
+- Approved enclosure plans spend less time preparing their display meshes and
+  typically finish with fewer status checks. Review and approve each plan in
+  the browser as before.
+
 ### Project menu and layer shortcuts (2026-11-18)
 
 - Open the Centra Sculpt menu to save in this browser, download a portable

@@ -6,6 +6,7 @@ import { capabilityRegistry, commandTools, hasImage, tools } from "./agent-schem
 import { readSession } from "./agent-session.mjs";
 
 const sessionPath = process.argv[2];
+const profile = process.env.CENTRA_AGENT_PROFILE === "1";
 let lastSession;
 const { version: buildVersion } = JSON.parse(
   await readFile(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
@@ -31,6 +32,8 @@ for (const [name, tool] of Object.entries(tools)) {
     name,
     { description: tool.description, inputSchema: tool.schema },
     async (args, extra) => {
+      const started = profile ? performance.now() : 0;
+      let responseHeaders = started;
       let result;
       try {
         const response = await post(
@@ -38,6 +41,7 @@ for (const [name, tool] of Object.entries(tools)) {
           { name, args },
           AbortSignal.any([extra.signal, AbortSignal.timeout(15000)]),
         );
+        if (profile) responseHeaders = performance.now();
         if (hasImage(name)) {
           const reader = response.body.getReader();
           const chunks = [];
@@ -86,9 +90,22 @@ for (const [name, tool] of Object.entries(tools)) {
       }
       const image = result.image;
       delete result.image;
+      const serializing = profile ? performance.now() : 0;
+      const text = JSON.stringify(result);
+      if (profile) {
+        console.error(
+          `[centra-agent-profile] ${JSON.stringify({
+            name,
+            bridgeMs: responseHeaders - started,
+            parseMs: serializing - responseHeaders,
+            textSerializationMs: performance.now() - serializing,
+            textBytes: Buffer.byteLength(text),
+          })}`,
+        );
+      }
       return {
         content: [
-          { type: "text", text: JSON.stringify(result) },
+          { type: "text", text },
           ...(result.ok && image ? [{ type: "image", ...image }] : []),
         ],
         structuredContent: result,

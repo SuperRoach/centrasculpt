@@ -1,5 +1,6 @@
 import type { Material } from "three";
 import { BufferAttribute, Color, Group, MeshStandardMaterial, Vector3 } from "three";
+import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import type { ExportSource } from "./export-mesh";
 import type { LayerOperation, SculptProject, SdfLayer } from "./layers";
 import { booleanRoots, validateBooleanGraph } from "./live-boolean";
@@ -841,7 +842,21 @@ export class BooleanComposite {
     this.syncMetadata();
     if (this.running) return this.running;
     this.buildingDraft = this.interactive;
-    this.running = this.build()
+    const profile = agentPerformanceEnabled();
+    const started = profile ? performance.now() : 0;
+    const build = this.build();
+    this.running = (
+      profile
+        ? build.then((finished) => {
+            if (profile)
+              recordAgentPerformance("boolean.rebuild", performance.now() - started, {
+                finished,
+                ...(finished ? this.stats : {}),
+              });
+            return finished;
+          })
+        : build
+    )
       .catch((error) => {
         this.failedVersion = this.version;
         if (

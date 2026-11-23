@@ -9,7 +9,7 @@ import {
   Quaternion,
   Vector3,
 } from "three";
-import { recordAgentPerformance } from "./agent-performance";
+import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import { validateAssembly } from "./assembly";
 import type { BakeOptions, BakeProgress, BakeStats, SurfaceView } from "./bake";
 import {
@@ -3508,8 +3508,18 @@ export class IndependentLayers {
     signal?: AbortSignal,
     placement?: VolumeTransform,
     skipMeshing = false,
+    coalesceMeshYields = false,
   ): Promise<SdfLayer> {
-    return this.regenerateSource(value, id, signal, placement, undefined, undefined, skipMeshing);
+    return this.regenerateSource(
+      value,
+      id,
+      signal,
+      placement,
+      undefined,
+      undefined,
+      skipMeshing,
+      coalesceMeshYields,
+    );
   }
   enclosureScaleRole(id: string): "cutout" | "post" | "bore" | undefined {
     const owner = this.enclosureFeatureForSource(id);
@@ -3659,6 +3669,7 @@ export class IndependentLayers {
     progress?: (fraction: number) => void,
     localPose?: VolumeTransform,
     skipMeshing = false,
+    coalesceMeshYields = false,
   ): Promise<SdfLayer> {
     this.assertAvailable();
     if (this.selectedGroupId) throw new Error("Select a child layer for procedural editing.");
@@ -3790,6 +3801,10 @@ export class IndependentLayers {
         MAX_PROJECT_TRIANGLES -
         [...this.runtimes.values()].reduce((n, r) => n + (r === old ? 0 : r.triangles), 0);
       const meshStarted = performance.now();
+      const profile = agentPerformanceEnabled();
+      let meshYieldedMs = 0;
+      let meshYieldCount = 0;
+      let meshSliceDeadline = meshStarted + 3;
       const meshChunks = candidate.mesher.pendingChunks;
       if (!skipMeshing) {
         progress?.(0.65);
@@ -3805,12 +3820,28 @@ export class IndependentLayers {
             throw new Error(`${sourceLabel} staged mesh exceeds the memory budget. Source kept.`);
           if (candidate.triangles > triangleBudget)
             throw new Error(`${sourceLabel} exceeds the project triangle budget. Source kept.`);
-          await yieldBake();
+          // Keep the existing two-chunk capacity checks. Enclosure proposals combine
+          // cheap chunks into the same time slice to avoid thousands of timer turns.
+          if (
+            !coalesceMeshYields ||
+            !candidate.mesher.pendingChunks ||
+            performance.now() >= meshSliceDeadline
+          ) {
+            const yieldStarted = profile ? performance.now() : 0;
+            await yieldBake();
+            if (profile) {
+              meshYieldedMs += performance.now() - yieldStarted;
+              meshYieldCount++;
+            }
+            meshSliceDeadline = performance.now() + 3;
+          }
         }
       }
       recordAgentPerformance("source.primitive-mesh-preparation", performance.now() - meshStarted, {
         skipMeshing,
         meshChunks,
+        yieldedMs: meshYieldedMs,
+        yieldCount: meshYieldCount,
       });
       check();
       this.discardFuture();
