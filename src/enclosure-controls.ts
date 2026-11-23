@@ -148,10 +148,13 @@ export class EnclosureControls {
     }
   }
   editSelected() {
+    const stack = this.layers().project.layerStack;
+    this.editPart(partOwner(stack, stack.activeLayerId));
+  }
+  editPart(root: string | null) {
     this.sync();
     const l = this.layers(),
-      stack = l.project.layerStack,
-      root = partOwner(stack, l.project.activeLayerId);
+      stack = l.project.layerStack;
     const intent = root ? stack.get(root).assemblyPart?.enclosure : undefined;
     if (!root || !intent) throw new Error("Select an enclosure Base or Lid first.");
     const others = stack.layers.filter(

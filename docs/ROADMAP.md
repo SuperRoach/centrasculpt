@@ -1,5 +1,14 @@
 # Centra Sculpt roadmap
 
+## Phase 8.8 — 3D electronics component references (2026-11-23)
+
+- Five built-in dimensioned presets, separate project reference quota, and
+  desktop placement with desktop and VR rendering.
+- Enclosure base and lid attachment, surface snapping and confirmed Pi 4
+  mounting posts through the existing enclosure feature recipe.
+- Deferred work includes connector and actuator cutouts, printable plungers,
+  headset placement controls and physical Quest acceptance.
+
 ## Phase 8.6e — MCP enclosure performance follow-up (2026-11-23)
 
 - Combined create p50 improved from 18.74 s to

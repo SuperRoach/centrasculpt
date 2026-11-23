@@ -15,7 +15,7 @@ export function referenceUI(
   parent: Element,
   blocked: () => boolean,
   editor?: ReferenceEditorPort,
-): { import: () => void; sync: () => void } {
+): { import: () => void; sync: () => void; panel: HTMLDetailsElement } {
   const details = document.createElement("details");
   details.className = "precision-settings";
   details.id = "reference-panel";
@@ -418,5 +418,5 @@ export function referenceUI(
     }
   };
   sync();
-  return { import: open, sync };
+  return { import: open, sync, panel: details };
 }

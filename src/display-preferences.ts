@@ -1,3 +1,4 @@
+import { type ComponentReference, validateComponents } from "./component-references";
 import { type LightingSettings, validateLighting } from "./lighting";
 import { defaultPrecision, type PrecisionSettings, validatePrecision } from "./physical-units";
 import { type ReferenceImage, validateReferences } from "./reference-images";
@@ -30,6 +31,7 @@ export type ProjectDisplayPreferences = {
   world?: WorldDisplayPreferences;
   lighting?: LightingSettings;
   references?: ReferenceImage[];
+  components?: ComponentReference[];
 };
 /** Optional native-project display metadata, kept separate from SDF data and export materials. */
 export function validateProjectDisplay(
@@ -68,6 +70,7 @@ export function validateProjectDisplay(
     ...(data.precision === undefined ? {} : { precision: validatePrecision(data.precision) }),
     ...(data.supportGuide === undefined ? {} : { supportGuide: data.supportGuide as boolean }),
     ...(data.lighting === undefined ? {} : { lighting: validateLighting(data.lighting) }),
+    ...(data.components === undefined ? {} : { components: validateComponents(data.components) }),
     ...(data.references === undefined ? {} : { references: validateReferences(data.references) }),
     ...(world === undefined ? {} : { world }),
     ...(vrUiScale === undefined ? {} : { vrUiScale }),
@@ -84,6 +87,7 @@ export class LayerDisplayPreferences {
   precision = defaultPrecision();
   lighting?: LightingSettings;
   references: ReferenceImage[] = [];
+  components: ComponentReference[] = [];
   world = defaultWorldSettings();
   vrUiScale: VRUIScale = "normal";
   supportGuide = true;
@@ -121,6 +125,7 @@ export class LayerDisplayPreferences {
       precision: structuredClone(this.precision),
       ...(!this.supportGuide ? { supportGuide: false } : {}),
       ...(this.lighting ? { lighting: structuredClone(this.lighting) } : {}),
+      ...(this.components.length ? { components: this.components } : {}),
       ...(this.references.length ? { references: this.references } : {}),
       ...(this.world.studioBackground === "neutral-grey" &&
       !this.world.groundGrid &&
@@ -153,6 +158,7 @@ export class LayerDisplayPreferences {
     this.assemblyPreview = validated?.assemblyPreview ?? false;
     this.lighting = validated?.lighting;
     this.references = validated?.references ?? [];
+    this.components = validated?.components ?? [];
     this.world = validated?.world ?? defaultWorldSettings();
     this.vrUiScale = validated?.vrUiScale ?? "normal";
     this.supportGuide = validated?.supportGuide ?? true;

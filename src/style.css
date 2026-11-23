@@ -721,3 +721,11 @@ header .brand { border: 0; padding: 4px 0; border-radius: 5px; }
 .layers-panel #composition-mode,
 .layers-panel #render-style,
 .layers-panel #viewport-mode { margin: 8px 0 0; }
+
+#component-panel { margin-block: 10px; }
+#component-panel label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(70px, 1fr); align-items: center; gap: 8px; margin-block: 6px; font-size: 12px; }
+#component-panel label > :is(input, select) { min-width: 0; }
+#component-panel input[type="checkbox"] { justify-self: start; }
+#component-panel fieldset { margin: 8px 0; min-width: 0; border: 1px solid #daddd3; border-radius: 4px; }
+#component-panel button { margin: 3px 4px 3px 0; }
+#component-panel a { font-size: 12px; }

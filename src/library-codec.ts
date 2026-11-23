@@ -14,6 +14,7 @@ export function renameNative(data: ArrayBuffer, name: string, duplicate = false)
     for (const l of metadata.layers) add(l.id);
     for (const g of metadata.hierarchy?.groups ?? []) add(g.id);
     for (const r of metadata.displayPreferences?.references ?? []) add(r.id);
+    for (const r of metadata.displayPreferences?.components ?? []) add(r.id);
     const remap = (v: unknown): unknown =>
       typeof v === "string"
         ? (ids.get(v) ?? v)
@@ -48,6 +49,10 @@ export function renameNative(data: ArrayBuffer, name: string, duplicate = false)
     if (metadata.displayPreferences?.colours)
       metadata.displayPreferences.colours = remap(metadata.displayPreferences.colours);
     for (const r of metadata.displayPreferences?.references ?? []) r.id = ids.get(r.id);
+    for (const r of metadata.displayPreferences?.components ?? []) {
+      r.id = ids.get(r.id);
+      if (r.hostId && ids.has(r.hostId)) r.hostId = ids.get(r.hostId);
+    }
   }
   const text = new TextEncoder().encode(JSON.stringify(metadata));
   if (text.length > 65536) throw new Error("Project metadata limit exceeded.");

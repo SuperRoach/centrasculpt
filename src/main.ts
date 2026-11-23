@@ -3,9 +3,12 @@ import { partOwner } from "./assembly";
 import { partBounds, restoreAssemblyPreview, withExportMemory } from "./assembly-tools";
 import { assemblyUI } from "./assembly-ui";
 import { exportNeedsEvaluation, exportResolution, prepareBooleanExport } from "./boolean-export";
+import { componentUI } from "./component-ui";
+import { ComponentView } from "./component-view";
 import { frameAgentBounds } from "./desktop-navigation";
 import { DesktopPreviewPerformance } from "./desktop-preview-performance";
 import { bindDesktopSavePress } from "./desktop-save-press";
+import { EnclosureControls } from "./enclosure-controls";
 import { enclosureUI } from "./enclosure-ui";
 import { EnclosureViewportGuide } from "./enclosure-viewport-guide";
 import type { CurvedReductionOptions } from "./export-decimation";
@@ -2953,6 +2956,17 @@ const referencesUI = referenceUI(
   () => loadingProject || ui.modalOpen || xrBlocked(),
   referenceEditor,
 );
+const componentView = new ComponentView(xrRig.turntable.group);
+const componentEnclosure = new EnclosureControls(
+  () => layers,
+  () => refresh(),
+);
+const componentsUI = componentUI(
+  referencesUI.panel,
+  () => layers,
+  componentEnclosure,
+  () => loadingProject || ui.modalOpen || xrBlocked(),
+);
 const libraryDialog = document.createElement("dialog");
 libraryDialog.className = "project-library-dialog";
 libraryDialog.setAttribute("aria-label", "Project library");
@@ -3697,6 +3711,8 @@ import.meta.hot?.dispose(() => {
   lighting.dispose();
   referenceEditor?.dispose();
   references.dispose();
+  componentEnclosure.cancel();
+  componentView.dispose();
   renderer.dispose();
   lifecycle.dispose();
   recovery?.dispose();
@@ -3796,6 +3812,12 @@ renderer.setAnimationLoop((now, frame) => {
   worldUI.sync();
   referenceEditor?.sync();
   referencesUI.sync();
+  componentsUI.sync();
+  componentView.sync(
+    display.components,
+    layers.project.layerStack.layers,
+    display.precision.millimetresPerUnit,
+  );
   renderEmulatorFrame?.(now);
   if (undoXRReplay && frame && renderer.xr.isPresenting) {
     const space = renderer.xr.getReferenceSpace();

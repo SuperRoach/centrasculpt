@@ -1,3 +1,11 @@
+### 3D electronics references — Phase 8.8 (2026-11-23)
+
+- Open **References → 3D Components** to place a Raspberry Pi 4, Pi Zero 2 W,
+  ESP32-DevKitC V4, adjustable PCB or tactile switch at a physical size.
+- Attach a component to an enclosure base or lid and snap it with a gap in
+  millimetres. Preview and confirm Pi 4 mounting posts as editable enclosure
+  features. Component references travel with the project and stay out of mesh exports.
+
 ### Faster approved enclosure changes through MCP — Phase 8.6e (2026-11-23)
 
 - Approved enclosure plans spend less time preparing their display meshes and

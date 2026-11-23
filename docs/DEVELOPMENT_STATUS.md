@@ -1,3 +1,51 @@
+# Phase 8.8 — 3D electronics component references — 2026-11-23
+
+### 1. What changed
+
+References now offers five procedural component presets with millimetre
+dimensions, numeric transforms, opacity, enclosure attachment and surface snap.
+The Generic PCB accepts up to four explicit through-holes. The Pi 4 uses the
+documented 58 × 49 mm mounting pattern.
+
+### 2. Architectural decisions
+
+The project display metadata stores up to 12 component records and their host
+IDs. Browser library duplication remaps host links. A separate turntable scene
+group owns the generated meshes, outside SDF evaluation and STL/GLB assembly.
+The local mounting tool stages a standard enclosure feature and adds its eight
+sources in one approved transaction.
+
+### 3. Build and test results
+
+`npm run check` passed all 1,798 tests. The four component tests cover physical
+geometry, part-relative placement, mounting, Undo/Redo, native save,
+duplication, worker recovery and byte-identical STL/GLB with visible references.
+The disposable Chromium smoke passed insertion, floor snap, preview cancellation,
+post confirmation and native reopen in a fresh context. All eight field guide
+tests passed. Run `node scripts/component-references-browser-smoke.mjs` after
+building to repeat the browser flow.
+
+### 4. Performance and regressions
+
+Component rendering uses bounded, disposable procedural geometry with no runtime
+asset downloads. The existing six imported-reference slots and their formats
+continue to use the existing native payload.
+
+### 5. Known limitations
+
+Preset provenance distinguishes documented dimensions from illustrative
+housings. Check real hardware before choosing production clearances. The Pi 4
+post tool expects a full-size reference with only a Y rotation and a positive
+gap over the base. References whose enclosure part is deleted hide until the
+part is restored or the reference is reattached. Component placement edits use
+the display preferences, and generated mounting posts participate in model Undo.
+
+### 6. Handover
+
+Connector and actuator cutouts, printable plungers, headset editing and
+physical Quest performance checks remain deferred. Desktop controls and the
+mounting workflow are described in the field guide's References page.
+
 # Phase 8.6e — MCP enclosure performance follow-up — 2026-11-23
 
 ### 1. What changed
