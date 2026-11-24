@@ -1,5 +1,14 @@
 # Centra Sculpt roadmap
 
+## Phase 8.8c — Connector cutouts and printable button plungers
+
+- Desktop base-wall previews and measured openings for Pi 4, ESP32, generic
+  ports and tactile switches.
+- Optional independent round plunger with measured travel, shaft fit and an
+  exterior cap stop.
+- Pending physical-print acceptance for cable access, shaft fit and travel.
+  Lid openings, retention features and immersive feature editing remain open.
+
 ## Phase 8.8b — Interactive 3D component placement
 
 - Desktop reference picking, Move and Rotate handles, axis constraints and
@@ -8,7 +17,7 @@
   positioning along the mounting plane and fit warnings.
 - Preview and confirm associative posts for Pi 4, Pi Zero 2 W and Generic PCB.
   Native saves retain display-only component references.
-- Phase 8.8c covers connector cutouts and button plungers. Immersive editing
+- Immersive editing
   and physical Quest testing remain deferred.
 
 ## Phase 8.8 — 3D electronics component references (2026-11-23)

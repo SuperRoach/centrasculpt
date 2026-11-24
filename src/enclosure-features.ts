@@ -362,7 +362,7 @@ export function scaledEnclosureFeature(
 }
 
 export function featureWorldPose(
-  def: ReturnType<typeof featurePlan>[number],
+  def: Pick<ReturnType<typeof featurePlan>[number], "positionMm" | "rotation">,
   root: VolumeTransform,
   mm: number,
 ): VolumeTransform {

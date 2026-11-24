@@ -220,3 +220,47 @@ export function validateComponents(value: unknown): ComponentReference[] {
     return record;
   });
 }
+
+export type FunctionalFeature = {
+  id: string;
+  name: string;
+  type: "usb" | "hdmi" | "power" | "port" | "button";
+  outward: XYZ;
+  up: XYZ;
+  source?: string;
+  confidence: "user-measured" | "illustrative-location";
+};
+
+export function functionalFeatures(preset: ComponentPreset): FunctionalFeature[] {
+  const feature = (
+    id: string,
+    name: string,
+    type: FunctionalFeature["type"],
+    outward: XYZ,
+    up: XYZ = [0, 1, 0],
+  ): FunctionalFeature => ({
+    id,
+    name,
+    type,
+    outward,
+    up,
+    source: presetFor(preset).drawing,
+    confidence: "illustrative-location",
+  });
+  switch (preset) {
+    case "pi4":
+      return [
+        feature("usb3", "Pi 4 USB 3 stack", "usb", [1, 0, 0]),
+        feature("usb2", "Pi 4 USB 2 stack", "usb", [1, 0, 0]),
+        feature("hdmi0", "Pi 4 micro HDMI 0", "hdmi", [0, 0, 1]),
+        feature("hdmi1", "Pi 4 micro HDMI 1", "hdmi", [0, 0, 1]),
+        feature("power", "Pi 4 USB-C power", "power", [0, 0, 1]),
+      ];
+    case "devkit":
+      return [feature("usb", "DevKitC Micro USB", "usb", [0, 0, 1])];
+    case "tactile":
+      return [feature("actuator", "Tactile button", "button", [0, 1, 0], [0, 0, 1])];
+    default:
+      return [];
+  }
+}

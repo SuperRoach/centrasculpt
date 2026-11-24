@@ -1,3 +1,25 @@
+# Phase 8.8c — Connector cutouts and printable button plungers
+
+The desktop 3D Components panel projects measured functional faces onto an
+attached enclosure base wall. Pi 4 USB stacks, Micro HDMI and USB-C power,
+ESP32-DevKitC V4 Micro USB, the generic tactile actuator and a configurable
+generic port use the existing enclosure cutout recipe. The preview reports the
+target wall, opening dimensions and inside gap. It shows the measured face,
+actuator sweep and optional plunger in distinct colours. Confirmed cutouts are
+ordinary editable enclosure features. A button opening and its plunger can be
+committed together as one undoable transaction. The cap and shaft use a union
+inside a separate printable part.
+
+Port housings, actuator face and body height, physical stroke, cable reach and
+fit tolerances require measurements for the specific hardware. The tool accepts
+base-wall openings perpendicular to a wall on unscaled assemblies. The fitted
+cap is an inward stop. Retention and physical-print acceptance are pending.
+Moving the switch or resizing the enclosure requires rechecking plunger fit.
+
+Verified in disposable Chromium with Pi 4 USB, rotated ESP32 USB, a measured
+tactile switch and native save/reopen. Model tests exercise stale revisions,
+cancellation, atomic Undo/Redo and independent plunger STL topology.
+
 # Phase 8.8b — Interactive 3D component placement
 
 In the desktop viewport, click a component to select it and show the Move

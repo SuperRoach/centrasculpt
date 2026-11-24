@@ -805,3 +805,212 @@ test("scaling a mounting post updates pattern height and bores, with atomic canc
     layers.dispose();
   }
 });
+
+test("measured USB openings follow component pose and refuse misleading previews", async () => {
+  const { componentOpening } = await import("../work/test-build/component-openings.mjs");
+  const { functionalFeatures } = await import("../work/test-build/component-references.mjs");
+  const { layers: l, api } = createHeadlessEditor();
+  try {
+    const {
+      partIds: { base, lid },
+    } = ok(
+      await api.enclosure.create(
+        {
+          ...DEFAULT_ENCLOSURE,
+          innerWidthMm: 110,
+          innerDepthMm: 90,
+          innerHeightMm: 28,
+        },
+        options(api),
+      ),
+    );
+    const host = l.project.layerStack.get(base);
+    const record = {
+      preset: "pi4",
+      hostId: base,
+      visible: true,
+      scale: 1,
+      gapMm: 3,
+      positionMm: [0, 0, 5],
+      rotation: [0, 0, 0],
+    };
+    const m = {
+      centre: [45, 9, 1],
+      shape: "rectangle",
+      width: 13,
+      height: 15,
+      horizontal: 0.4,
+      vertical: 0.5,
+      cable: 0.5,
+    };
+    const usb = functionalFeatures("pi4")[0];
+    const { opening, depth } = componentOpening(record, host, usb, m);
+    assert.equal(depth, 10);
+    assert.equal(opening.anchor, WALL_ANCHORS[1]);
+    assert.equal(opening.uMm, -6);
+    assert(Math.abs(opening.vMm - 12) < 1e-8);
+    assert.equal(opening.widthMm, 14.8);
+    assert.equal(opening.heightMm, 17);
+    assert.throws(() => componentOpening(record, host, usb, m, WALL_ANCHORS[0]), /functional axis/);
+    assert.throws(
+      () => componentOpening(record, host, usb, { ...m, width: NaN }),
+      /measured envelope/,
+    );
+    assert.throws(() => componentOpening(record, host, usb, { ...m, cable: 50 }), /overlaps/);
+    assert.throws(() => componentOpening({ ...record, scale: 2 }, host, usb, m), /full-size/);
+    const esp = { ...record, preset: "devkit", positionMm: [10, 0, -20], rotation: [0, 90, 0] };
+    const espResult = componentOpening(esp, host, functionalFeatures("devkit")[0], {
+      ...m,
+      centre: [0, 3, 25],
+      width: 8,
+      height: 4,
+    });
+    assert.equal(espResult.opening.anchor, WALL_ANCHORS[1]);
+    assert(Math.abs(espResult.opening.uMm - 20) < 1e-8);
+    assert.equal(espResult.depth, 20);
+    const before = bytes(l);
+    const preview = ok(
+      await api.enclosure.setFeature(base, lid, opening, { ...options(api), dryRun: true }),
+    );
+    assert.equal(preview.features.length, 1);
+    assert.deepEqual(bytes(l), before);
+    const { revision } = api;
+    ok(await api.enclosure.setFeature(base, lid, opening, options(api)));
+    assert.equal(
+      (await api.enclosure.setFeature(base, lid, espResult.opening, { expectedRevision: revision }))
+        .error.code,
+      "revision_conflict",
+    );
+    ok(await api.enclosure.setFeature(base, lid, espResult.opening, options(api)));
+    const reopened = openSculptProject(saveSculptProject(l.project));
+    assert.deepEqual(
+      reopened.layerStack
+        .get(base)
+        .assemblyPart.enclosure.features.map(({ definition }) => definition),
+      [opening, espResult.opening],
+    );
+    const { exportPartSTL } = await import("../work/test-build/assembly-tools.mjs");
+    assert.equal((await exportPartSTL(l, base, undefined, "fast")).report.components, 1);
+  } finally {
+    l.dispose();
+  }
+});
+
+test("measured switch creates a separate editable and independently printable plunger atomically", async () => {
+  const { componentOpening } = await import("../work/test-build/component-openings.mjs");
+  const { functionalFeatures } = await import("../work/test-build/component-references.mjs");
+  const { exportPartSTL } = await import("../work/test-build/assembly-tools.mjs");
+  const { layers: l, api } = createHeadlessEditor();
+  try {
+    const p = { ...DEFAULT_ENCLOSURE, innerHeightMm: 24 };
+    const {
+      partIds: { base, lid },
+    } = ok(await api.enclosure.create(p, options(api)));
+    const host = l.project.layerStack.get(base);
+    const record = {
+      preset: "tactile",
+      hostId: base,
+      visible: true,
+      scale: 1,
+      positionMm: [0, 0, p.innerDepthMm / 2 - 7.5],
+      rotation: [90, 0, 0],
+    };
+    const switchFeature = functionalFeatures("tactile")[0];
+    const measured = {
+      centre: [0, 4.5, 0],
+      shape: "round",
+      width: 3.3,
+      horizontal: 0.35,
+      travel: 0.5,
+      usableDepth: 1,
+      plunger: { diameter: 8, height: 2, shaft: 4, length: 3 + p.wallThicknessMm + 0.5 },
+    };
+    assert.throws(
+      () => componentOpening(record, host, switchFeature, { ...measured, travel: undefined }),
+      /actuator travel/,
+    );
+    assert.throws(
+      () => componentOpening(record, host, switchFeature, { ...measured, usableDepth: 0.2 }),
+      /usable inward depth/,
+    );
+    assert.throws(
+      () => componentOpening(record, host, switchFeature, { ...measured, horizontal: 0 }),
+      /positive radial/,
+    );
+    assert.throws(
+      () =>
+        componentOpening(record, host, switchFeature, {
+          ...measured,
+          plunger: { ...measured.plunger, length: 3 },
+        }),
+      /shaft length/,
+    );
+    const { opening, plunger, depth } = componentOpening(record, host, switchFeature, measured);
+    assert.equal(depth, 3);
+    assert.equal(opening.widthMm, 4.7);
+    const before = bytes(l);
+    ok(
+      await api.enclosure.setFeature(
+        base,
+        lid,
+        opening,
+        { ...options(api), dryRun: true },
+        undefined,
+        plunger,
+      ),
+    );
+    assert.deepEqual(bytes(l), before);
+    const controller = new AbortController();
+    controller.abort();
+    assert.equal(
+      (
+        await api.enclosure.setFeature(
+          base,
+          lid,
+          opening,
+          { ...options(api), signal: controller.signal },
+          undefined,
+          plunger,
+        )
+      ).error.code,
+      "cancelled",
+    );
+    assert.deepEqual(bytes(l), before);
+    const {
+      aliases: { buttonCap, buttonShaft },
+    } = ok(await api.enclosure.setFeature(base, lid, opening, options(api), undefined, plunger));
+    const built = bytes(l);
+    const part = l.project.layerStack.get(buttonCap);
+    assert(part.assemblyPart);
+    assert.deepEqual(
+      part.booleanModifiers.map(({ sourceId }) => sourceId),
+      [buttonShaft],
+    );
+    assert(
+      !partSources(l.project.layerStack, base).some(
+        ({ id }) => id === buttonCap || id === buttonShaft,
+      ),
+    );
+    const printed = await exportPartSTL(l, buttonCap, undefined, "fast");
+    assert.equal(printed.report.components, 1);
+    for (const key of [
+      "boundaryEdges",
+      "nonManifoldEdges",
+      "inconsistentEdges",
+      "degenerateTriangles",
+    ])
+      assert.equal(printed.report[key], 0, key);
+    l.undo();
+    assert.deepEqual(bytes(l), before);
+    l.undo(true);
+    assert.deepEqual(bytes(l), built);
+    const reopened = openSculptProject(saveSculptProject(l.project));
+    assert(reopened.layerStack.get(buttonCap).assemblyPart);
+    assert.equal(
+      reopened.layerStack.get(base).assemblyPart.enclosure.features[0].definition.name,
+      opening.name,
+    );
+  } finally {
+    l.dispose();
+  }
+});

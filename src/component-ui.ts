@@ -1,15 +1,20 @@
+import type { Raycaster } from "three";
 import { partOwner } from "./assembly";
+import { componentOpening, pickComponentWall } from "./component-openings";
 import {
   COMPONENT_LIMIT,
   COMPONENT_PRESETS,
   type ComponentPreset,
   type ComponentReference,
   componentDimensions,
+  type FunctionalFeature,
+  functionalFeatures,
   presetFor,
   validateComponents,
 } from "./component-references";
 import { componentMounting } from "./component-view";
 import type { EnclosureControls } from "./enclosure-controls";
+import { WALL_ANCHORS, type WallAnchor } from "./enclosure-features";
 import type { IndependentLayers } from "./independent-layers";
 import { newId } from "./layers";
 
@@ -63,12 +68,17 @@ export function componentUI(
     field(parent, name, input);
     return input;
   }
-  function button(parent: HTMLElement, name: string, action: () => void | Promise<void>) {
+  function button(
+    parent: HTMLElement,
+    name: string,
+    action: () => void | Promise<void>,
+    allowPending = false,
+  ) {
     const el = document.createElement("button");
     el.type = "button";
     el.textContent = name;
     el.onclick = async () => {
-      if (blocked()) return;
+      if (blocked() || (tools.pending && !allowPending)) return;
       try {
         status.textContent = "";
         await action();
@@ -263,6 +273,279 @@ export function componentUI(
       previewOwner = undefined;
     };
 
+  const openings = document.createElement("fieldset");
+  const openingLegend = document.createElement("legend");
+  openingLegend.textContent = "Connector and button openings";
+  const fit = document.createElement("p");
+  openings.append(openingLegend, fit);
+  form.append(openings);
+  const featureChoice = document.createElement("select");
+  field(openings, "Functional feature", featureChoice);
+  const facing = document.createElement("select");
+  options(
+    facing,
+    [
+      ["front", "+Z"],
+      ["right", "+X"],
+      ["back", "−Z"],
+      ["left", "−X"],
+      ["top", "+Y"],
+      ["bottom", "−Y"],
+    ],
+    "front",
+  );
+  field(openings, "Generic outward axis", facing);
+  const walls = document.createElement("select");
+  options(
+    walls,
+    [
+      ["", "Propose from functional axis"],
+      ...WALL_ANCHORS.map((id): [string, string] => [id, id.split(".").at(-1)!]),
+    ],
+    "",
+  );
+  field(openings, "Target base wall", walls);
+  const shape = document.createElement("select");
+  options(
+    shape,
+    [
+      ["rectangle", "Rectangular"],
+      ["round", "Circular"],
+    ],
+    "rectangle",
+  );
+  field(openings, "Opening shape", shape);
+  const blank = (parent: HTMLElement, label: string) => {
+    const input = num(parent, label, 0);
+    input.value = "";
+    return input;
+  };
+  const centre = [
+    blank(openings, "Functional face local X (mm)"),
+    blank(openings, "Functional face local Y (mm)"),
+    blank(openings, "Functional face local Z (mm)"),
+  ];
+  const width = blank(openings, "Measured envelope width or diameter (mm)");
+  const height = blank(openings, "Measured envelope height (mm)");
+  const horizontal = num(openings, "Horizontal or radial clearance per side (mm)", 0);
+  const vertical = num(openings, "Vertical clearance per side (mm)", 0);
+  const cable = num(openings, "Cable access allowance per side (mm)", 0);
+  const travel = blank(openings, "Measured actuator travel (mm)");
+  const usableDepth = blank(openings, "Usable inward actuator depth (mm)");
+  const include = document.createElement("input");
+  include.type = "checkbox";
+  field(openings, "Include printable button plunger", include);
+  const plungerFields = document.createElement("fieldset");
+  openings.append(plungerFields);
+  const cap = blank(plungerFields, "Cap diameter (mm)");
+  const capHeight = blank(plungerFields, "Cap height (mm)");
+  const shaft = blank(plungerFields, "Shaft diameter (mm)");
+  const shaftLength = blank(plungerFields, "Shaft length (mm)");
+  const owner = Symbol("component opening");
+  let openingRecord: ComponentReference | undefined;
+  let openingSelection = "";
+  const generic: FunctionalFeature = {
+    id: "generic",
+    name: "Generic connector",
+    type: "port",
+    outward: [0, 0, 1],
+    up: [0, 1, 0],
+    confidence: "user-measured",
+  };
+  function chosenFeature(record: ComponentReference): FunctionalFeature {
+    const feature = functionalFeatures(record.preset).find(
+      (item) => item.id === featureChoice.value,
+    );
+    if (feature) return feature;
+    const axis = facing.value;
+    if (axis === "top" || axis === "bottom")
+      return { ...generic, outward: [0, axis === "top" ? 1 : -1, 0], up: [0, 0, 1] };
+    return {
+      ...generic,
+      outward:
+        axis === "right"
+          ? [1, 0, 0]
+          : axis === "left"
+            ? [-1, 0, 0]
+            : [0, 0, axis === "front" ? 1 : -1],
+    };
+  }
+  function openingFields() {
+    const round = shape.value === "round";
+    const actuator = featureChoice.value === "actuator";
+    facing.parentElement!.hidden = featureChoice.value !== generic.id;
+    height.parentElement!.hidden = vertical.parentElement!.hidden = round;
+    cable.parentElement!.hidden = actuator;
+    travel.parentElement!.hidden =
+      usableDepth.parentElement!.hidden =
+      include.parentElement!.hidden =
+        !actuator;
+    plungerFields.hidden = !actuator || !include.checked;
+  }
+  function invalidateOpening() {
+    if (openingRecord && (tools.ownsFeature(owner) || tools.pending)) tools.cancel();
+    openingRecord = undefined;
+  }
+  for (const input of openings.querySelectorAll("input, select")) {
+    input.addEventListener("input", () => {
+      cancelWallPick();
+      invalidateOpening();
+      fit.textContent = "Preview the opening to check its dimensions and wall fit.";
+      openingFields();
+      refreshOpeningButtons();
+    });
+  }
+  function clearMeasurements() {
+    walls.value = "";
+    for (const input of [
+      width,
+      height,
+      travel,
+      usableDepth,
+      ...centre,
+      cap,
+      capHeight,
+      shaft,
+      shaftLength,
+    ])
+      input.value = "";
+    include.checked = false;
+    fit.textContent =
+      "Measure the functional face relative to the component origin at the underside centre. Its visual housings are illustrative.";
+    openingFields();
+  }
+  featureChoice.addEventListener("change", () => {
+    shape.value = featureChoice.value === "actuator" ? "round" : "rectangle";
+    clearMeasurements();
+  });
+  const stageOpening = button(openings, "Preview opening in 3D", async () => {
+    cancelWallPick();
+    status.textContent = "";
+    const record = current();
+    const part = hosts().find(({ id }) => id === record.hostId);
+    if (!part) throw new Error("Attach this component to an enclosure base.");
+    const feature = chosenFeature(record);
+    const result = componentOpening(
+      record,
+      part,
+      feature,
+      {
+        centre: centre.map((input) => input.valueAsNumber) as ComponentReference["positionMm"],
+        shape: shape.value === "round" ? "round" : "rectangle",
+        width: width.valueAsNumber,
+        height: height.valueAsNumber,
+        horizontal: horizontal.valueAsNumber,
+        vertical: vertical.valueAsNumber,
+        cable: cable.valueAsNumber,
+        travel: travel.valueAsNumber,
+        usableDepth: usableDepth.valueAsNumber,
+        plunger:
+          feature.type === "button" && include.checked
+            ? {
+                diameter: cap.valueAsNumber,
+                height: capHeight.valueAsNumber,
+                shaft: shaft.valueAsNumber,
+                length: shaftLength.valueAsNumber,
+              }
+            : undefined,
+      },
+      (walls.value || undefined) as WallAnchor | undefined,
+    );
+    tools.editPart(part.id);
+    openingRecord = record;
+    await tools.stageFeature(result.opening, undefined, false, {
+      owner,
+      envelope: result.envelope,
+      plunger: result.plunger,
+    });
+    status.textContent = tools.feedback;
+    if (openingRecord !== record || !tools.ownsFeature(owner)) return;
+    const { opening, depth, wallThickness } = result;
+    const clearance =
+      opening.shape === "round"
+        ? `${result.horizontal} mm radial clearance`
+        : `${result.horizontal} mm horizontal and ${result.vertical} mm vertical clearance per side`;
+    fit.textContent = [
+      `${opening.anchor.split(".").at(-1)} wall · ${opening.widthMm.toFixed(2)} × ${opening.heightMm.toFixed(2)} mm opening · ${wallThickness} mm wall · ${depth.toFixed(2)} mm inside gap.`,
+      `${clearance}.`,
+      result.cable ? `${result.cable} mm extra cable allowance per side.` : "",
+      result.travel ? `${result.travel} mm measured actuator travel.` : "",
+      "Amber shows the opening. Cyan shows the measured envelope.",
+      result.plunger
+        ? "Violet shows the plunger. The cap limits inward travel and can lift out. Check fit and travel on a physical print."
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  });
+  const applyOpening = button(openings, "Create connector opening", async () => {
+    if (openingRecord !== current() || !tools.ownsFeature(owner))
+      throw new Error("Preview this opening again after changing the component or enclosure.");
+    await tools.confirm(owner);
+    openingRecord = undefined;
+    status.textContent = tools.feedback;
+  });
+  const cancelOpening = button(
+    openings,
+    "Cancel opening preview",
+    () => {
+      invalidateOpening();
+      status.textContent = "Opening preview cancelled.";
+    },
+    true,
+  );
+  let wallPickRecord: ComponentReference | undefined;
+  function cancelWallPick() {
+    if (!wallPickRecord) return false;
+    wallPickRecord = undefined;
+    refreshOpeningButtons();
+    status.textContent = "Wall picking cancelled.";
+    return true;
+  }
+  const pickWall = button(openings, "Pick wall in viewport", () => {
+    if (cancelWallPick()) return;
+    const record = current();
+    const base = hosts().find(({ id }) => id === record.hostId);
+    if (
+      !base?.visible ||
+      base.assemblyPart?.enclosure?.role !== "base" ||
+      editor().viewMode !== "separate"
+    )
+      throw new Error("Attach to a visible enclosure base and switch to the separate layers view.");
+    invalidateOpening();
+    viewportMode(null);
+    wallPickRecord = record;
+    status.textContent = "Click a flat wall on the attached enclosure base. Escape cancels.";
+  });
+  openings.insertBefore(pickWall, stageOpening);
+  function pickWallAt(ray: Raycaster) {
+    if (!wallPickRecord || tools.pending || blocked()) return;
+    const base = hosts().find(({ id }) => id === wallPickRecord?.hostId);
+    const wall = base && pickComponentWall(ray, editor(), base);
+    if (!wall) {
+      status.textContent = "Click a visible flat wall on the attached enclosure base.";
+      return;
+    }
+    wallPickRecord = undefined;
+    walls.value = wall;
+    refreshOpeningButtons();
+    stageOpening.click();
+  }
+  function refreshOpeningButtons() {
+    pickWall.textContent = wallPickRecord ? "Cancel wall picking" : "Pick wall in viewport";
+    pickWall.disabled = tools.pending;
+    pickWall.setAttribute("aria-pressed", String(!!wallPickRecord));
+    stageOpening.disabled = tools.pending;
+    applyOpening.disabled = tools.pending || !tools.ownsFeature(owner);
+    cancelOpening.disabled = !openingRecord;
+    applyOpening.textContent =
+      featureChoice.value !== "actuator"
+        ? "Create connector opening"
+        : include.checked
+          ? "Create opening and printable plunger"
+          : "Create button opening";
+  }
+
   function selectComponent(id: string) {
     selectedId = layerSelection = id;
     if (parent instanceof HTMLDetailsElement) parent.open = true;
@@ -324,13 +607,40 @@ export function componentUI(
     if (!list.some((record) => record.id === selectedId)) selectedId = list[0]?.id ?? "";
     const record = list.find((record) => record.id === selectedId);
     const available = hosts();
+    if (openingRecord && openingRecord !== record) invalidateOpening();
+    if (
+      wallPickRecord &&
+      (wallPickRecord !== record ||
+        !panel.open ||
+        (parent instanceof HTMLDetailsElement && !parent.open) ||
+        blocked())
+    )
+      cancelWallPick();
+    refreshOpeningButtons();
+    const openingKey = JSON.stringify([id, record?.id, record?.preset]);
+    if (openingKey !== openingSelection) {
+      openingSelection = openingKey;
+      options(
+        featureChoice,
+        [
+          ...(record ? functionalFeatures(record.preset) : []).map((feature): [string, string] => [
+            feature.id,
+            feature.name,
+          ]),
+          [generic.id, generic.name],
+        ],
+        functionalFeatures(record?.preset ?? "pcb")[0]?.id ?? generic.id,
+      );
+      shape.value = featureChoice.value === "actuator" ? "round" : "rectangle";
+      clearMeasurements();
+    }
     if (previewOwner && previewOwner !== record) {
       tools.cancel();
       previewOwner = undefined;
     }
     snap.disabled = !snapHost();
     preview.disabled = confirm.disabled = cancel.disabled = tools.pending;
-    confirm.disabled ||= !tools.featureReady;
+    confirm.disabled ||= !tools.featureReady || tools.componentFeatureReady;
     cancel.disabled = !previewOwner;
     insert.disabled = list.length >= COMPONENT_LIMIT;
     const key = JSON.stringify([list, selectedId, available.map(({ id, name }) => [id, name])]);
@@ -397,6 +707,11 @@ export function componentUI(
   sync();
   return {
     sync,
+    get pickingWall() {
+      return !!wallPickRecord;
+    },
+    pickWallAt,
+    cancelWallPick,
     get selectedId() {
       return selectedId;
     },

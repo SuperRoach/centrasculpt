@@ -200,6 +200,95 @@ try {
         cause: error,
       });
     });
+  const featureFields = panel.getByRole("group", { name: "Connector and button openings" });
+  const fill = async (fields) => {
+    for (const [label, value] of Object.entries(fields))
+      await featureFields.getByLabel(label, { exact: true }).fill(String(value));
+  };
+  const feedback = panel.getByRole("status");
+  const waitNotice = async (message) => {
+    await feedback
+      .filter({ hasText: message })
+      .waitFor({ timeout: 20000 })
+      .catch(async (error) => {
+        throw new Error(
+          `Expected ${message}. Component panel says ${await feedback.textContent()}`,
+          { cause: error },
+        );
+      });
+  };
+  const featurePose = (x, y, z, width, height) =>
+    fill({
+      "Functional face local X (mm)": x,
+      "Functional face local Y (mm)": y,
+      "Functional face local Z (mm)": z,
+      "Measured envelope width or diameter (mm)": width,
+      ...(height ? { "Measured envelope height (mm)": height } : {}),
+      "Horizontal or radial clearance per side (mm)": 0.35,
+    });
+
+  await featurePose(45, 9, 1, 13, 15);
+  await featureFields.getByLabel("Target base wall").selectOption("enclosure.base.wall.front");
+  await button("Preview opening in 3D").click();
+  await waitNotice("functional axis");
+  await featureFields.getByLabel("Target base wall").selectOption("");
+  await button("Preview opening in 3D").click();
+  await waitNotice("Showing Pi 4 USB 3 stack opening");
+  await button("Cancel opening preview").click();
+  assert(await button("Create connector opening").isDisabled());
+  await button("Pick wall in viewport").click();
+  await page.keyboard.press("Escape");
+  await waitNotice("Wall picking cancelled");
+  await button("Pick wall in viewport").click();
+  assert(await button("Create connector opening").isDisabled());
+  await canvas.scrollIntoViewIfNeeded();
+  const wallX = floor.x + (55 + DEFAULT_ENCLOSURE.wallThicknessMm) / mm;
+  await page.mouse.click(...screen(wallX, floor.y + 8 / mm, floor.z));
+  await waitNotice("Showing Pi 4 USB 3 stack opening");
+  assert.equal(
+    await featureFields.getByLabel("Target base wall").inputValue(),
+    "enclosure.base.wall.right",
+  );
+  await button("Create connector opening").click();
+  await waitNotice("Attachment applied");
+
+  await panel.getByLabel("Component preset").selectOption("devkit");
+  await button("Insert component").click();
+  await panel.getByLabel("Attach to enclosure part").selectOption(base);
+  await yField.fill("-2");
+  await zField.fill("-18");
+  await rotatedY.fill("90");
+  await button("Apply placement").click();
+  await featurePose(0, 3, 25, 8, 4);
+  await featureFields.getByLabel("Vertical clearance per side (mm)").fill("0.4");
+  await button("Preview opening in 3D").click();
+  await waitNotice("Showing DevKitC Micro USB opening");
+  await button("Create connector opening").click();
+  await waitNotice("Attachment applied");
+
+  await panel
+    .getByLabel("Project component")
+    .selectOption({ label: "Generic 6 × 6 mm tactile switch · 2" });
+  await panel.getByLabel("Attach to enclosure part").selectOption(base);
+  await zField.fill("30");
+  await panel.getByLabel("Rotation X (degrees)").fill("90");
+  await button("Apply placement").click();
+  await featurePose(0, 4.5, 0, 3.3);
+  await button("Preview opening in 3D").click();
+  await waitNotice("actuator travel");
+  await featureFields.getByLabel("Include printable button plunger").check();
+  await fill({
+    "Measured actuator travel (mm)": 0.5,
+    "Usable inward actuator depth (mm)": 1,
+    "Cap diameter (mm)": 8,
+    "Cap height (mm)": 2,
+    "Shaft diameter (mm)": 4,
+    "Shaft length (mm)": 3 + DEFAULT_ENCLOSURE.wallThicknessMm + 0.5,
+  });
+  await button("Preview opening in 3D").click();
+  await waitNotice("Showing Tactile button opening");
+  await button("Create opening and printable plunger").click();
+  await waitNotice("Attachment applied");
   await page.locator("#project-menu-toggle").click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -212,7 +301,7 @@ try {
   const result = openSculptProject(Uint8Array.from(bytes).buffer);
   assert.deepEqual(
     result.displayPreferences.components.map((item) => item.preset),
-    ["pcb", "tactile", "pi4"],
+    ["pcb", "tactile", "pi4", "devkit"],
   );
   const pi = result.displayPreferences.components[2];
   assert.equal(pi.hostId, base);
@@ -226,6 +315,11 @@ try {
     [19, -24.5],
     [19, 24.5],
   ]);
+  assert.deepEqual(
+    part.features.slice(1).map(({ definition }) => definition.anchor),
+    ["enclosure.base.wall.right", "enclosure.base.wall.right", "enclosure.base.wall.front"],
+  );
+  assert(result.layerStack.layers.find((layer) => layer.name === "Button plunger")?.assemblyPart);
   await page.context().close();
   const reopened = await newPage();
   await open(reopened, bytes);
@@ -237,7 +331,7 @@ try {
     .waitFor({ state: "attached" });
   assert.equal(
     await reopenedComponents.getByLabel("Project component").locator("option").count(),
-    3,
+    4,
   );
   const componentRows = reopened.getByRole("region", { name: "Component references" });
   const switchRow = componentRows.getByRole("button", { name: /tactile switch/ });
@@ -259,7 +353,7 @@ try {
   assert.equal(await sculptLayers.count(), sculptCount);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: component picking, constrained free and snapped drags, interrupted gestures, mounting preview, native reopen and component selection/deletion through Layers",
+    "PASS: component picking, constrained free and snapped drags, interrupted gestures, mounting preview, measured USB and button cutouts, separate plunger, native reopen and component selection/deletion through Layers",
   );
 } finally {
   await browser?.close();

@@ -516,7 +516,25 @@ renderer.domElement.addEventListener(
 );
 renderer.domElement.addEventListener(
   "pointerdown",
-  (event) => componentTransform?.pick(event),
+  (event) => {
+    if (
+      componentsUI?.pickingWall &&
+      event.button === 0 &&
+      event.pointerType === "mouse" &&
+      !loadingProject &&
+      !ui.modalOpen &&
+      !xrBlocked()
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      updatePointer(event);
+      camera.updateWorldMatrix(true, false);
+      raycaster.setFromCamera(pointer, camera);
+      componentsUI.pickWallAt(raycaster);
+      return;
+    }
+    componentTransform?.pick(event);
+  },
   true,
 );
 transformTools = new LayerTransformTools(camera, renderer.domElement, scene, () => layers, input, {
@@ -910,6 +928,10 @@ window.addEventListener("keydown", (event) => {
   ) {
     event.preventDefault();
     document.getElementById("save-project")!.click();
+    return;
+  }
+  if (event.key === "Escape" && componentsUI?.cancelWallPick()) {
+    event.preventDefault();
     return;
   }
   if (event.key === "Escape" && componentTransform?.active) {

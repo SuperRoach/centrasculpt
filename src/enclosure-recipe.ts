@@ -1,6 +1,7 @@
 import { Vector3 } from "three";
 import { recordAgentPerformance } from "./agent-performance";
 import { partMembers, partSources } from "./assembly";
+import type { Plunger } from "./component-openings";
 import { prepareComposite } from "./compositor";
 import {
   type EnclosureFeature,
@@ -429,10 +430,16 @@ export class EnclosureRecipes {
     definition: FeatureDefinition,
     options: BatchOptions,
     attachmentId?: string,
+    plunger?: Plunger,
   ) {
     try {
       const old = this.inspect(baseId, lidId);
-      return this.apply(old.parameters, options, { baseId, lidId }, { definition, attachmentId });
+      return this.apply(
+        old.parameters,
+        options,
+        { baseId, lidId },
+        { definition, attachmentId, plunger },
+      );
     } catch (e) {
       return this.invalid(e);
     }
@@ -464,6 +471,7 @@ export class EnclosureRecipes {
       definitions?: FeatureDefinition[];
       attachmentId?: string;
       remove?: boolean;
+      plunger?: Plunger;
     },
   ) {
     const recipeStarted = performance.now();
@@ -692,6 +700,45 @@ export class EnclosureRecipes {
       // Only the recipe can replace its existing cutter type without changing its ID.
       const cutoutId =
         index >= 0 && edit?.definition?.kind === "cutout" ? edit.attachmentId : undefined;
+      if (edit?.plunger && existing) {
+        const root = this.layers.project.layerStack.get(existing.baseId).transform;
+        const [cap, shaft] = edit.plunger.pieces;
+        for (const [as, piece] of [
+          ["buttonCap", cap],
+          ["buttonShaft", shaft],
+        ] as const) {
+          steps.push(
+            { as, command: { type: "primitive.create", unit: "mm", source: piece.source } },
+            {
+              command: {
+                type: "object.transform",
+                id: `$${as}`,
+                unit: "mm",
+                transform: featureWorldPose(piece, root, mm),
+              },
+            },
+            {
+              command: {
+                type: "object.rename",
+                id: `$${as}`,
+                name: as === "buttonCap" ? "Button plunger" : "Button shaft",
+              },
+            },
+          );
+        }
+        steps.push(
+          {
+            command: {
+              type: "boolean.create",
+              id: "$buttonCap",
+              sourceId: "$buttonShaft",
+              operation: "union",
+            },
+          },
+          { command: { type: "part.define", objectId: "$buttonCap", clearanceMM: 0 } },
+          { command: { type: "part.assign", objectId: "$buttonShaft", partId: "$buttonCap" } },
+        );
+      }
       const result = await this.api.batch(steps, options, cutoutId);
       return result.ok
         ? {

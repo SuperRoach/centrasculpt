@@ -1,3 +1,11 @@
+### Create openings from 3D components — Phase 8.8c
+
+- Preview and create a measured connector or button opening on an enclosure
+  base wall. Use the wall dropdown or pick a wall in the viewport with your mouse.
+- Add a separate printable round plunger when you know the actuator travel
+  and dimensions. Select it in Layers and use **Export current layer** with STL
+  at actual size.
+
 ### Place 3D components in the viewport — Phase 8.8b
 
 - Click a component in the desktop viewport. Use **W** to Move, **Q** to Rotate,

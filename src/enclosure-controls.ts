@@ -1,6 +1,15 @@
-import { Group, Mesh, MeshBasicMaterial, Vector3 } from "three";
+import {
+  BoxGeometry,
+  type BufferGeometry,
+  CylinderGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  Vector3,
+} from "three";
 import { partOwner } from "./assembly";
 import { previewAssembly } from "./assembly-tools";
+import type { OpeningEnvelope, OpeningPiece, Plunger } from "./component-openings";
 import { type FeatureDefinition, featurePlan, featureWorldPose } from "./enclosure-features";
 import { DEFAULT_ENCLOSURE, type EnclosureParameters, enclosurePlan } from "./enclosure-recipe";
 import type { IndependentLayers } from "./independent-layers";
@@ -13,6 +22,9 @@ import {
 import { transformMatrix } from "./transform";
 import type { XRControllerState } from "./xr-input";
 import type { MenuContent } from "./xr-menu-model";
+
+type ComponentOpeningPreview = { owner: symbol; envelope: OpeningEnvelope; plunger?: Plunger };
+
 export const ENCLOSURE_FIELDS = {
   innerWidthMm: "Inside width",
   innerDepthMm: "Inside depth",
@@ -49,10 +61,17 @@ export class EnclosureControls {
     pair: { base: string; lid: string };
     definition?: FeatureDefinition;
     attachmentId?: string;
+    accessory?: ComponentOpeningPreview;
   };
   get featureReady() {
     this.sync();
     return !!this.featureStage && this.featureStage.revision === this.layers().modellingRevision;
+  }
+  ownsFeature(owner: symbol) {
+    return this.featureReady && this.featureStage?.accessory?.owner === owner;
+  }
+  get componentFeatureReady() {
+    return this.featureReady && !!this.featureStage?.accessory;
   }
   get selectedPair() {
     this.sync();
@@ -251,38 +270,55 @@ export class EnclosureControls {
     editor: IndependentLayers,
     base: string,
   ) {
-    const mm = editor.display.precision.millimetresPerUnit;
     for (const def of featurePlan(p, definition)) {
+      this.outline(def, editor, base, def.operation === "difference" ? 0xffbd70 : 0x70d5ba);
+    }
+  }
+  private outline(
+    def: OpeningPiece,
+    editor: IndependentLayers,
+    base: string,
+    colour: number,
+    geometry?: BufferGeometry,
+  ) {
+    const mm = editor.display.precision.millimetresPerUnit;
+    if (!geometry) {
       const source = Object.fromEntries(
         Object.entries(def.source).map(([key, value]) => [
           key,
           typeof value === "number" ? value / mm : value,
         ]),
       ) as PrimitiveSource;
-      const mesh = new Mesh(
-        primitiveGeometry(source, 32),
-        new MeshBasicMaterial({
-          color: def.operation === "difference" ? 0xffbd70 : 0x70d5ba,
-          wireframe: true,
-          depthTest: false,
-          transparent: true,
-          opacity: 0.65,
-        }),
-      );
-      const pose = featureWorldPose(def, editor.project.layerStack.get(base).transform, mm);
-      mesh.position.set(...(pose.position.map((v) => v / mm) as [number, number, number]));
-      mesh.rotation.set(...pose.rotation, "XYZ");
-      mesh.scale.fromArray(pose.scale);
-      mesh.raycast = () => {};
-      this.preview.add(mesh);
+      geometry = primitiveGeometry(source, 32);
     }
+    const mesh = new Mesh(
+      geometry,
+      new MeshBasicMaterial({
+        color: colour,
+        wireframe: true,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.65,
+      }),
+    );
+    const pose = featureWorldPose(def, editor.project.layerStack.get(base).transform, mm);
+    mesh.position.set(...(pose.position.map((v) => v / mm) as [number, number, number]));
+    mesh.rotation.set(...pose.rotation, "XYZ");
+    mesh.scale.fromArray(pose.scale);
+    mesh.raycast = () => {};
+    this.preview.add(mesh);
   }
   async saveFeature(definition: FeatureDefinition, attachmentId?: string) {
     if (this.pending) return;
     // The recipe validates the geometry and publishes one atomic batch.
     await this.stageFeature(definition, attachmentId, true);
   }
-  async stageFeature(definition?: FeatureDefinition, attachmentId?: string, apply = false) {
+  async stageFeature(
+    definition?: FeatureDefinition,
+    attachmentId?: string,
+    apply = false,
+    accessory?: ComponentOpeningPreview,
+  ) {
     if (this.pending) return;
     this.sync();
     this.clearStage();
@@ -298,6 +334,7 @@ export class EnclosureControls {
         pair,
         definition: structuredClone(definition),
         attachmentId,
+        accessory,
       };
       await this.confirm();
       return;
@@ -308,7 +345,14 @@ export class EnclosureControls {
     try {
       const options = { expectedRevision: revision, dryRun: true, signal: this.abort.signal };
       const result = definition
-        ? await api.enclosure.setFeature(pair.base, pair.lid, definition, options, attachmentId)
+        ? await api.enclosure.setFeature(
+            pair.base,
+            pair.lid,
+            definition,
+            options,
+            attachmentId,
+            accessory?.plunger,
+          )
         : await api.enclosure.removeFeature(pair.base, pair.lid, attachmentId ?? "", options);
       if (!result.ok) throw new Error(result.error.message);
       if (this.abort.signal.aborted || this.layers() !== editor || api.revision !== revision)
@@ -319,24 +363,44 @@ export class EnclosureControls {
         pair,
         definition: definition ? structuredClone(definition) : undefined,
         attachmentId,
+        accessory,
       };
       if (definition) {
         const p = api.enclosure.inspect(pair.base, pair.lid).parameters;
         this.featureOutlines(definition, p, editor, pair.base);
+        if (accessory) {
+          // The measured sweep is a display overlay. Thin faces need no printable source budget.
+          const source = accessory.envelope.source;
+          const geometry =
+            source.kind === "box"
+              ? new BoxGeometry(source.width, source.height, source.depth)
+              : new CylinderGeometry(source.diameter / 2, source.diameter / 2, source.height, 32);
+          const unit = 1 / editor.display.precision.millimetresPerUnit;
+          this.outline(
+            accessory.envelope,
+            editor,
+            pair.base,
+            0x74dbff,
+            geometry.scale(unit, unit, unit),
+          );
+          for (const piece of accessory.plunger?.pieces ?? [])
+            this.outline(piece, editor, pair.base, 0xc4a4ff);
+        }
         (editor.group.parent ?? editor.group).add(this.preview);
       }
       this.feedback = definition
         ? `Showing ${attachmentId ? editor.project.layerStack.get(attachmentId).name : definition.name} on the enclosure. Save the feature to keep it.`
         : "Remove this feature and its generated sources?";
     } catch (e) {
+      this.clearStage();
       this.feedback = e instanceof Error ? e.message : String(e);
     } finally {
       this.pending = false;
       this.changed();
     }
   }
-  async confirm() {
-    if (this.pending || !this.ready) return;
+  async confirm(owner?: symbol) {
+    if (this.pending || !this.ready || this.featureStage?.accessory?.owner !== owner) return;
     if (this.featureStage) {
       const staged = this.featureStage;
       this.clearStage();
@@ -352,6 +416,7 @@ export class EnclosureControls {
               staged.definition,
               options,
               staged.attachmentId,
+              staged.accessory?.plunger,
             )
           : await api.enclosure.removeFeature(
               staged.pair.base,

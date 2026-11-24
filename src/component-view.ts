@@ -152,6 +152,29 @@ export function componentSurfaceMm(host: SdfLayer): number {
     : -p.lid.thicknessMm / 2;
 }
 
+export function componentPositionMm(record: ComponentReference, host: SdfLayer): Vector3 {
+  const position = new Vector3(...record.positionMm);
+  if (record.gapMm === undefined) return position;
+  const object = meshFor(record);
+  try {
+    const bounds = rotatedBounds(object, componentRotation(record));
+    position.y = snappedHeight(record, host, bounds);
+    return position;
+  } finally {
+    release(object);
+  }
+}
+
+function snappedHeight(record: ComponentReference, host: SdfLayer, bounds: Box3): number {
+  const gap = record.gapMm ?? 0;
+  return (
+    componentSurfaceMm(host) +
+    (host.assemblyPart?.enclosure?.role === "lid"
+      ? -gap - bounds.max.y * record.scale
+      : gap - bounds.min.y * record.scale)
+  );
+}
+
 export function componentMounting(
   record: ComponentReference,
   host: SdfLayer,
@@ -257,11 +280,7 @@ export class ComponentView {
           cached.bounds = rotatedBounds(object, rotation);
         }
         const { min, max } = cached.bounds;
-        const inverted = host.assemblyPart?.enclosure?.role === "lid";
-        if (record.gapMm !== undefined)
-          position.y =
-            componentSurfaceMm(host) +
-            (inverted ? -record.gapMm - max.y * record.scale : record.gapMm - min.y * record.scale);
+        if (record.gapMm !== undefined) position.y = snappedHeight(record, host, cached.bounds);
         if (selected === record.id)
           this.clearance = componentClearance(
             new Box3(

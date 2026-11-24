@@ -36,6 +36,7 @@ for (const name of [
   "assembly-ui",
   "assembly-controls",
   "connector-placement",
+  "component-openings",
   "component-references",
   "component-view",
   "modelling-api",

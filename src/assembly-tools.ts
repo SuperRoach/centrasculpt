@@ -446,6 +446,7 @@ export async function previewAssembly(
         effectiveResolutionMM,
         (c.stats?.step ?? 0) * layers.display.precision.millimetresPerUnit,
       );
+      c.group.userData.layerId = part.id;
       group.add(c.group);
     }
     layers.installAssemblyPreview({ group, current, dispose, bytes });
