@@ -1,5 +1,14 @@
 # Centra Sculpt roadmap
 
+## Phase 8.9 — Analytic source persistence
+
+Version 24 can omit exact rebuildable primitive caches in an opt-in build.
+The full 20-source electronics enclosure fits with 63³ source grids under
+the existing project caps. The reader also accepts versions 1–23 and keeps
+dense sculpt data lossless. Before enabling v24 writes by default, validate
+the reconstruction fingerprint and editor staging on Quest and additional
+browser engines. See [Native project format](NATIVE_PROJECT_FORMAT.md).
+
 ## Phase 8.8f — Native save admission and export scheduling
 
 - The native triangle count now gates parametric changes and assembly batches.

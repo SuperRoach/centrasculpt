@@ -153,6 +153,7 @@ let restoredSaveKey = "",
   manualSaveError = "",
   manualSaving = false;
 let libraryAbort = new AbortController();
+let projectLoadAbort: AbortController | undefined;
 let loadingProject = false;
 let recovery: RecoveryController | undefined;
 const stabilityMetrics = new StabilityMetrics();
@@ -1554,6 +1555,33 @@ document.getElementById("open-project")!.addEventListener("click", () => {
   projectFile.value = "";
   projectFile.click();
 });
+function projectLoadFeedback(action: "open" | "import") {
+  const operation = new AbortController();
+  projectLoadAbort = operation;
+  const signal = AbortSignal.any([libraryAbort.signal, operation.signal]);
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  status.textContent = "Validating project data…";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = `Cancel project ${action}`;
+  cancel.onclick = () => operation.abort();
+  const host =
+    document.querySelector("dialog[open]:modal") ??
+    document.getElementById("project-message")!.parentElement!;
+  host.append(status, cancel);
+  return {
+    signal,
+    progress: (text: string) => {
+      status.textContent = text;
+    },
+    finish: () => {
+      status.remove();
+      cancel.remove();
+      if (projectLoadAbort === operation) projectLoadAbort = undefined;
+    },
+  };
+}
 async function openProjectFile(
   file: File,
   buffer?: ArrayBuffer,
@@ -1561,7 +1589,8 @@ async function openProjectFile(
   libraryOpen = false,
   replacementConfirmed = false,
 ): Promise<boolean> {
-  if (loadingProject || (!libraryOpen && xrBlocked()) || !layers.recoveryReady) return false;
+  if (loadingProject || projectLoadAbort || (!libraryOpen && xrBlocked()) || !layers.recoveryReady)
+    return false;
   if (
     !replacementConfirmed &&
     !libraryOpen &&
@@ -1580,8 +1609,9 @@ async function openProjectFile(
   transformTools?.sync();
   ui.projectMessage("Validating all layer data…");
   let candidate: IndependentLayers | undefined;
+  let releaseDisplayCache: (() => void) | undefined;
   let previewWarning = "";
-  const signal = libraryAbort.signal;
+  const { signal, progress, finish } = projectLoadFeedback("open");
   try {
     await recovery?.settle();
     if (file.size > MAX_PROJECT_BYTES)
@@ -1589,27 +1619,53 @@ async function openProjectFile(
     const prepared = await prepareLibrary(
       { kind: "decode", data: buffer ?? (await file.arrayBuffer()) },
       signal,
+      (completed, total) => progress(`Preparing project layers · ${completed}/${total}`),
     );
-    const project = hydrateProject(prepared.snapshot!);
-    if (expectedProjectId && project.id !== expectedProjectId)
+    const snapshot = prepared.snapshot!;
+    if (expectedProjectId && snapshot.id !== expectedProjectId)
       throw new Error("Recovery project identity does not match its record.");
+    // The existing Boolean display mesh is rebuildable. Stop its background work and
+    // reclaim its allocation while keeping the old project, sources and Undo intact.
+    if (prepared.analytic) releaseDisplayCache = await layers.composite.releaseForExport();
+    if (signal.aborted) throw new Error("Project open cancelled.");
+    const stagingBudget = prepared.analytic
+      ? 256 * 1024 ** 2 - layers.trackedBytes - layers.composite.trackedBytes
+      : undefined;
+    const assertStagingBytes = (bytes: number) => {
+      if (stagingBudget !== undefined && bytes > stagingBudget)
+        throw new Error(
+          "Opening this project exceeds the editor memory budget. Try from a smaller project.",
+        );
+    };
+    if (stagingBudget !== undefined)
+      assertStagingBytes(
+        snapshot.layers.reduce((sum, layer) => sum + 2 * layer.values.byteLength, 0),
+      );
+    const project = hydrateProject(snapshot);
     candidate = new IndependentLayers(project, new LayerDisplayPreferences(), true);
+    const checkStaging = () => {
+      if (signal.aborted) throw new Error("Project open cancelled.");
+      if (stagingBudget !== undefined && candidate)
+        assertStagingBytes(candidate.trackedBytes + candidate.composite.trackedBytes);
+    };
+    checkStaging();
+    progress("Rebuilding viewport meshes…");
     for (const layer of project.layerStack.layers) {
       const runtime = candidate.runtime(layer.id);
       while (runtime.rebuild(2, 2)) {
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        if (signal.aborted) throw new Error("Project open cancelled.");
+        checkStaging();
       }
+      checkStaging();
     }
-    if (signal.aborted) throw new Error("Project open cancelled.");
     candidate.viewMode = layers.viewMode;
     try {
-      await restoreAssemblyPreview(candidate, signal);
+      await restoreAssemblyPreview(candidate, signal, stagingBudget);
     } catch (error) {
       if (signal.aborted) throw error;
       previewWarning = ` Assembly preview could not be rebuilt: ${message(error)} Use Assembly → Show assembly preview to retry.`;
     }
-    if (signal.aborted) throw new Error("Project open cancelled.");
+    checkStaging();
     references.clear();
     referenceEditor?.finish();
     xrExperience!.rig.sculptureRoot.remove(layers.group, layers.composite.group);
@@ -1654,7 +1710,9 @@ async function openProjectFile(
     if (libraryOpen) throw error;
     return false;
   } finally {
+    finish();
     candidate?.dispose();
+    releaseDisplayCache?.();
     loadingProject = false;
     refresh();
     ui.projectBusy(false);
@@ -1663,25 +1721,32 @@ async function openProjectFile(
 }
 projectFile.addEventListener("change", () => {
   const file = projectFile.files?.[0];
-  if (file)
-    void projectBrowser.run(async () => {
-      if (file.size > MAX_PROJECT_BYTES)
-        throw new Error("Project file exceeds the supported size limit.");
+  projectFile.value = "";
+  if (!file || loadingProject || projectLoadAbort) return;
+  void projectBrowser.run(async () => {
+    if (file.size > MAX_PROJECT_BYTES)
+      throw new Error("Project file exceeds the supported size limit.");
+    const { signal, progress, finish } = projectLoadFeedback("import");
+    try {
       const prepared = await prepareLibrary(
         {
           kind: "import",
           data: await file.arrayBuffer(),
           name: file.name.replace(/\.form$/i, "").slice(0, 80) || "Imported project",
         },
-        libraryAbort.signal,
+        signal,
+        (completed, total) => progress(`Preparing project layers · ${completed}/${total}`),
       );
-      await projectBrowser.store.put(prepared.record!, prepared.data, null);
+      await projectBrowser.store.put(prepared.record!, prepared.data, null, signal);
       projectBrowser.selected = prepared.record!.id;
       await projectBrowser.refresh();
       projectBrowser.status =
         "Imported into this browser. Select Open when ready; current edits are kept.";
       showProjectBrowser();
-    });
+    } finally {
+      finish();
+    }
+  });
 });
 let exportAbort: AbortController | null = null;
 const cancelExport = document.querySelector<HTMLButtonElement>("#cancel-export")!;
@@ -3153,6 +3218,7 @@ const libraryDialog = document.createElement("dialog");
 libraryDialog.className = "project-library-dialog";
 libraryDialog.setAttribute("aria-label", "Project library");
 document.body.append(libraryDialog);
+libraryDialog.addEventListener("close", () => projectLoadAbort?.abort());
 let libraryRenderKey = "";
 function renderProjectBrowser() {
   if (!libraryDialog.open) return;

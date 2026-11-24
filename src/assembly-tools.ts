@@ -429,17 +429,23 @@ async function encodePartSTL(
 }
 
 /** Restore only the saved view intent; derived meshes are rebuilt from editable sources. */
-export async function restoreAssemblyPreview(layers: IndependentLayers, signal?: AbortSignal) {
-  if (layers.display.assemblyPreview) return previewAssembly(layers, signal);
+export async function restoreAssemblyPreview(
+  layers: IndependentLayers,
+  signal?: AbortSignal,
+  memoryLimit?: number,
+) {
+  if (layers.display.assemblyPreview) return previewAssembly(layers, signal, memoryLimit);
 }
 /** Evaluated part meshes stay independent. No assembly-wide union or per-frame rebuild. */
 export async function previewAssembly(
   layers: IndependentLayers,
   signal?: AbortSignal,
+  memoryLimit = 256 * 1024 ** 2,
 ): Promise<{ capped: boolean; effectiveResolutionMM: number }> {
   if (!layers.recoveryReady) throw new Error("Finish the current edit first.");
   layers.clearAssemblyPreview();
   const revision = layers.sourceRevision,
+    budget = Math.min(memoryLimit, 256 * 1024 ** 2),
     current = () => layers.recoveryReady && layers.sourceRevision === revision && !signal?.aborted;
   const group = new Group(),
     built: BooleanComposite[] = [],
@@ -465,10 +471,7 @@ export async function previewAssembly(
       const project = new SculptProject(new LayerStack(sources), layers.project.settings);
       const c = new BooleanComposite(project, material, 128, material, current);
       c.availableBytes = () =>
-        256 * 1024 ** 2 -
-        layers.trackedBytes -
-        layers.composite.trackedBytes -
-        (bytes() - c.trackedBytes);
+        budget - layers.trackedBytes - layers.composite.trackedBytes - (bytes() - c.trackedBytes);
       built.push(c);
       await c.flush();
       new ExportWork(signal, current).check();

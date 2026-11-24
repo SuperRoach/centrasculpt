@@ -1615,3 +1615,22 @@ test("cancelling a pending preview also cancels its queued export", async () => 
     l.dispose();
   }
 });
+
+test("restoring an assembly preview honours the memory reserved for the previous project", async () => {
+  const { l } = await setup();
+  try {
+    const { restoreAssemblyPreview } = await import("../work/test-build/assembly-tools.mjs");
+    l.display.assemblyPreview = true;
+    const before = l.project.layerStack.layers.map((layer) => layer.volume.values.slice());
+    const revision = l.sourceRevision;
+    await assert.rejects(() => restoreAssemblyPreview(l, undefined, 1), /budget|memory/i);
+    assert.equal(l.assemblyPreviewActive, false);
+    assert.equal(l.sourceRevision, revision);
+    assert.deepEqual(
+      l.project.layerStack.layers.map((layer) => layer.volume.values),
+      before,
+    );
+  } finally {
+    l.dispose();
+  }
+});

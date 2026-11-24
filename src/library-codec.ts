@@ -1,5 +1,5 @@
 import { newId } from "./layers";
-import { openSculptProject, saveSculptProject } from "./project";
+import { ANALYTIC_PROJECT_VERSION, openSculptProject, saveSculptProject } from "./project";
 import { libraryName, type ProjectRecord } from "./project-library";
 /** Called on validated native bytes. Only metadata is rewritten; binary asset offsets are payload-relative. */
 export function renameNative(data: ArrayBuffer, name: string, duplicate = false): ArrayBuffer {
@@ -99,12 +99,15 @@ export function describeNative(
 export function importNative(
   data: ArrayBuffer,
   name: string,
+  onProgress?: (completed: number, total: number) => void,
 ): { data: ArrayBuffer; record: ProjectRecord } {
   const source = new DataView(data).getUint32(8, true),
-    project = openSculptProject(data);
+    project = openSculptProject(data, onProgress);
   project.name = libraryName(name);
   const canonical = renameNative(
-    saveSculptProject(project, project.displayPreferences),
+    source === ANALYTIC_PROJECT_VERSION
+      ? data
+      : saveSculptProject(project, project.displayPreferences),
     name,
     true,
   );

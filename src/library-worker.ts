@@ -1,14 +1,18 @@
 import { importNative } from "./library-codec";
-import { openSculptProject } from "./project";
+import { ANALYTIC_PROJECT_VERSION, openSculptProject } from "./project";
 import { projectTransfer } from "./project-transfer";
 import { newProjectData } from "./project-workflow";
 
 self.onmessage = ({ data: request }) => {
   try {
+    const progress = (completed: number, total: number) =>
+      self.postMessage({ progress: { completed, total } });
     if (request.kind === "decode") {
-      const snapshot = projectTransfer(openSculptProject(request.data));
+      const project = openSculptProject(request.data, progress);
+      const analytic = new DataView(request.data).getUint32(8, true) === ANALYTIC_PROJECT_VERSION;
+      const snapshot = projectTransfer(project);
       self.postMessage(
-        { result: { snapshot } },
+        { result: { snapshot, analytic } },
         {
           transfer: [
             ...new Set([
@@ -24,7 +28,7 @@ self.onmessage = ({ data: request }) => {
     }
     const result =
       request.kind === "import"
-        ? importNative(request.data, request.name)
+        ? importNative(request.data, request.name, progress)
         : { data: newProjectData(request.resolution, request.contents, request.settings) };
     self.postMessage({ result }, { transfer: [result.data] });
   } catch (error) {

@@ -1,3 +1,11 @@
+### Save smaller analytic projects — Phase 8.9 preview
+
+- The opt-in native format stores matching primitive definitions and rebuilds
+  their exact fields on open. Sculpted clay, paint and masks travel with the file.
+- The default-resolution 20-source electronics enclosure can save and reopen
+  in an analytic-enabled build. Project open shows layer progress and offers
+  cancellation while the current project stays available.
+
 ### Keep enclosure edits saveable and prepare STL faster — Phase 8.8f
 
 - Parametric and assembly edits check the native triangle budget before

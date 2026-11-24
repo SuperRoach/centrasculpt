@@ -1,3 +1,165 @@
+# Phase 8.9 — Analytic source persistence
+
+Version 24 adds mixed native storage for exact rebuildable primitive SDF fields
+and complete voxel fields. Versions 1–23 remain readable. Version 10 was
+already assigned to hierarchy parenting and the Phase 8.8 enclosure uses
+version 19. The existing native writer stays the default. Use
+`VITE_CENTRA_ANALYTIC_PROJECTS=1` at Vite startup or build time to opt in.
+[Format, eligibility, resource limits and compatibility](NATIVE_PROJECT_FORMAT.md)
+
+## Enclosure capacity and geometry
+
+The actual Phase 8.8e/8.8f workflow saved and reopened **20 sources at 63³**
+in Chromium using the local MCP stdio adapter and bridge. It retained the
+Pi 4, rotated DevKitC and tactile switch references, four mounting posts, both
+USB openings, button opening, base, lid, captured plunger and retainer.
+Refitting the reopened DevKitC opening changed its wall position and kept its
+cutter ID across approval, Undo, Redo and a second save. The test restored the
+original fit before comparing exports. Corrupt encoding and cancelled project
+open retained the current scene. The application continued enforcing browser
+connection, edit and proposal approval.
+
+The default-resolution archive used 29,888 bytes and rebuilt 5,000,940 samples
+without storing distance voxels. For identical full geometry, the old writer
+refused at the button shaft at 1,020,288 counted triangles. The legacy file size and successful save/open times are therefore unavailable.
+The archived 33³ fixture is the paired enclosure baseline. The existing
+triangle, layer, voxel and editor memory caps were retained.
+
+The four default-resolution Chromium STL downloads matched the accepted
+Phase 8.8f STLs byte-for-byte. Dimensions in millimetres were 106 × 33 × 70
+for the base, 106 × 7 × 70 for the lid, about 7.998 × 7.998 × 8.500 for the
+plunger and 7.997 × 7.997 × 3.000 for the retainer. Native benchmark trials
+compared every reconstructed Float32 sample and the saved metadata. GLB hashes
+matched for the small box, mixed clay and the evaluated live Boolean assembly.
+The four bounded enclosure parts also produced identical scoped GLBs using the
+existing 512 MiB export option. Whole-assembly Fast GLB was refused at
+1,291,116 triangles in both formats under the unchanged 1,000,000 limit.
+A scoped Fast GLB at the default memory setting needed about 286 MiB.
+
+## Native codec benchmark
+
+Apple M5 Pro, macOS arm64, Node 26.8.1. A fresh process per workload and
+encoding, one warmup and five recorded trials, with p95 reported as the
+largest of five observations. The legacy path selects the version supported
+by the feature set. Both modes use the current reader and writer implementation.
+Save measures serialization to memory. Open includes preflight and reconstruction
+through a complete decoded project. RSS samples include the test process,
+the comparison instance and storage harness. The raw report also records
+OS process high-water RSS, reconstruction through the last layer, recovery read
+with a checksum and reopen, and duplicate rewrite plus fake IndexedDB commit.
+
+| Workload | Format | File bytes | Stored / rebuilt samples | Save ms med / p95 | Open ms med / p95 | Sampled RSS MiB med / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Small box | 11 | 1,000,928 | 250,047 / 0 | 18.8 / 23.5 | 14.5 / 14.9 | 193.4 / 195.4 |
+| Small box | 24 | 828 | 0 / 250,047 | 7.5 / 15.3 | 7.8 / 8.0 | 180.3 / 180.3 |
+| 20-source electronics, 33³ | 19 | 2,902,312 | 718,740 / 0 | 47.2 / 68.9 | 50.6 / 50.9 | 227.7 / 235.2 |
+| 20-source electronics, 33³ | 24 | 29,290 | 0 / 718,740 | 29.2 / 29.5 | 30.6 / 31.0 | 197.5 / 197.7 |
+| 20-source electronics, 63³ | Legacy refused | — | — | — | — | — |
+| 20-source electronics, 63³ | 24 | 29,888 | 0 / 5,000,940 | 195.1 / 196.4 | 206.1 / 206.2 | 287.4 / 289.5 |
+| Mixed clay and boxes | 11 | 3,050,576 | 762,238 / 0 | 59.4 / 61.3 | 38.6 / 38.8 | 225.8 / 231.3 |
+| Mixed clay and boxes | 24 | 1,050,376 | 262,144 / 500,094 | 32.3 / 36.9 | 21.6 / 25.0 | 232.4 / 237.5 |
+| Dense clay, 128³ | 3 (legacy) | 8,389,210 | 2,097,152 / 0 | 111.2 / 122.0 | 63.2 / 67.8 | 305.4 / 321.7 |
+| Dense clay, 128³ | 3 (opt-in) | 8,389,210 | 2,097,152 / 0 | 111.3 / 124.7 | 66.8 / 68.3 | 309.7 / 325.9 |
+| Live Boolean assembly | 12 | 6,004,809 | 1,500,282 / 0 | 94.1 / 121.3 | 81.4 / 82.7 | 262.0 / 278.9 |
+| Live Boolean assembly | 24 | 4,182 | 0 / 1,500,282 | 44.2 / 44.4 | 45.9 / 46.3 | 230.0 / 235.2 |
+| Button parts and references | 14 | 580,820 | 143,748 / 0 | 13.6 / 21.1 | 10.5 / 10.8 | 173.7 / 175.0 |
+| Button parts and references | 24 | 6,201 | 0 / 143,748 | 5.8 / 13.5 | 6.1 / 6.2 | 185.3 / 185.4 |
+
+The bounded archive shrank 99.0%. The comparable mixed project kept all
+262,144 sculpt samples. Clay-only output kept v3 and its original byte count.
+The new format avoids repeated native marching-tetrahedra triangle estimates
+for eligible fields. It keeps the in-memory field and its scratch space.
+
+## Chromium benchmarks and recovery
+
+Chromium 158.0.8127.18 ran one warmup and five measured trials for each of the
+13 successful archive variants. These trials used the real native worker,
+snapshot hydration and disposable Chromium IndexedDB. They excluded viewport
+meshing. “Recovery” includes an IndexedDB read, checksum and native open.
+“Duplicate” includes the metadata rewrite and a new Library transaction.
+
+| Archive | Worker open ms med / p95 | Recovery ms med / p95 | Duplicate ms med / p95 | Renderer heap p95 MiB | Timer interval p95 ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Bounded enclosure v19 | 104.1 / 108.8 | 111.8 / 113.7 | 3.1 / 3.5 | 52.8 | 11.0 |
+| Bounded enclosure v24 | 97.9 / 98.1 | 98.1 / 98.6 | 1.0 / 2.1 | 48.9 | 10.1 |
+| Default-resolution enclosure v24 | 281.9 / 285.7 | 281.7 / 284.2 | 2.1 / 2.9 | 143.3 | 10.6 |
+
+The 65 measured worker and storage trials produced zero renderer tasks of
+50 ms or more. The longest observed 8 ms timer interval was 28.3 ms
+in the dense clay workload. Sampled renderer heap excludes worker and GPU
+memory. The full editor path is substantially slower because it also
+rebuilds the viewport. One actual recovery restore took 19.68 s, preserved
+the 20 sources, three component references and original project ID, and
+resaved as v24. The checkpoint was seeded in the test database and restored
+through the editor UI. Resave exercised the production snapshot worker.
+
+The full Chromium MCP cycle had 9/9 successful scenarios and no browser
+errors across 146 MCP calls. The final 29,888-byte native download took
+1.93 s. Import plus full editor reopen took 24.12 s and recorded six main-thread
+tasks of at least 50 ms, with a 214 ms maximum. The refitted 29,901-byte
+archive resaved in 1.50 s. These editor timings are single-run observations.
+The four High-quality STL exports took 57.91 s in total. Peak renderer
+heap and backing storage across the entire cycle were 83.8 MiB and 320.9 MiB.
+The cycle used the existing 512 MiB export setting.
+
+## Regression validation
+
+The clean starting branch was at 4346372. The quick suite passed 21/21 on
+the baseline and updated code. The final `npm run check` passed formatting,
+lint, strict TypeScript, production build and all **1,811 tests in 132 files**.
+The focused project, component, enclosure, export, recovery and MCP command
+passed **202/202**. The existing production Chromium component workflow and
+the standalone Chromium MCP browser smoke both passed. The full check also
+covered the assembly-preview memory-reservation regression. Native rename and duplication of the full
+Chromium fixture reopened all 20 fields exactly with three remapped
+associations and distinct copy IDs.
+
+An early repeated end-to-end open timed out while the current Boolean
+viewport was still rebuilding. Temporarily releasing that derived cache
+resolved the follow-up run while keeping source history. The legacy native
+triangle refusal and aggregate GLB refusal are intentional limit results.
+The checkout includes its existing Biome warnings and Vite bundle advisory.
+
+## Reproduce
+
+Run from the repository root. Use the Phase 8.8f archive in the codec
+command. If it is unavailable, run the component MCP fixture command without
+the feature flag or `--default-resolution`, and supply that bounded archive
+instead. All browser runs use disposable contexts.
+
+```sh
+npm run test:quick
+npm test -- analytic-project component-references enclosure recovery project export agent-access
+npm run check
+VITE_CENTRA_ANALYTIC_PROJECTS=1 CENTRA_COMPONENT_REPORT=work/phase-8-9/browser-verified CENTRA_COMPONENT_MCP_PORT=5285 node scripts/component-mcp-smoke.mjs --default-resolution --cancel-first
+node --expose-gc scripts/benchmark-analytic-project.mjs work/phase-8-8f/electronics-enclosure.form work/phase-8-9/browser-verified/electronics-enclosure.form
+node scripts/benchmark-analytic-browser.mjs
+node scripts/component-references-browser-smoke.mjs
+AGENT_SMOKE_HOST=127.0.0.1 AGENT_SMOKE_REPORT=work/phase-8-9/agent AGENT_SMOKE_PORT=5289 npm run test:agent:browser
+```
+
+Compare the four downloads by SHA-256 with their Phase 8.8f counterparts.
+
+```sh
+shasum -a 256 work/phase-8-8f/{electronics-validation-base,electronics-validation-lid,button-plunger,button-retainer}.stl
+shasum -a 256 work/phase-8-9/browser-verified/*.stl
+```
+
+Artifacts are in `work/phase-8-9/`. `codec-benchmark.json` and
+`browser-benchmark.json` contain the trials and summaries.
+`browser-verified/integration.json` contains the MCP and export evidence,
+with both native archives and the four STLs beside it.
+
+## Remaining validation
+
+Version 24 writes stay opt-in pending validation on additional JavaScript
+engines and physical Quest hardware. The first version keeps the
+reconstructed cache resident. A browser or evaluator that changes Float32
+results can fail the fingerprint check. Large current scenes with retained
+history can exhaust staging memory and refuse a replacement until opened
+from a smaller scene. The full fixture and exports have host validation.
+Physical print fit remains separate.
+
 # Phase 8.8f — Save reliability and export performance
 
 The native save and recovery encoders share a 1,000,000-triangle source

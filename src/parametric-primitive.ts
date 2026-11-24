@@ -586,7 +586,8 @@ export function* evaluatePrimitive(
 export function validatePrimitiveCache(
   source: PrimitiveSource,
   volume: import("./volume-store").VolumeStore,
-): void {
+  exact = false,
+): boolean {
   const s = validatePrimitive(source),
     expectedExtent =
       Math.max(...primitiveDimensions(s)) *
@@ -597,8 +598,10 @@ export function validatePrimitiveCache(
     volume.resolution > 63 ||
     volume.dimensions.some((n) => n !== volume.resolution) ||
     volume.latticeMin?.some((n) => n !== 0)
-  )
+  ) {
+    if (exact) return false;
     throw new Error("Invalid primitive cache layout.");
+  }
   let i = 0;
   for (let z = 0; z < volume.resolution; z++)
     for (let y = 0; y < volume.resolution; y++)
@@ -606,9 +609,12 @@ export function validatePrimitiveCache(
         const expected = Math.fround(
           primitiveDistance(s, volume.coordinate(x), volume.coordinate(y), volume.coordinate(z)),
         );
-        if (volume.readVoxel(i++) !== expected)
+        const actual = volume.readVoxel(i++);
+        if (exact && !Object.is(actual, expected)) return false;
+        if (actual !== expected)
           throw new Error("Primitive cache does not match its source parameters.");
       }
+  return true;
 }
 /** Exact model-axis bounds of the mathematical shape under its inherited affine pose. */
 export function primitiveWorldDimensions(

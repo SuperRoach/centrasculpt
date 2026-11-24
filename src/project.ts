@@ -14,7 +14,12 @@ import {
   validateName,
 } from "./layers";
 import { validateBooleanGraph } from "./live-boolean";
-import { validatePrimitiveCache } from "./parametric-primitive";
+import {
+  evaluatePrimitive,
+  type PrimitiveSource,
+  primitiveDimensions,
+  validatePrimitiveCache,
+} from "./parametric-primitive";
 import { REFERENCE_LIMITS } from "./reference-images";
 import { MAX_RESOLUTION } from "./resolution";
 import { sculptMask } from "./sculpt-mask";
@@ -35,11 +40,61 @@ export type ProjectSettings = SculptSettings & {
 };
 const MAGIC = [70, 79, 82, 77, 83, 68, 70, 0]; // FORMSDF\0
 export const PROJECT_VERSION = 9;
+export const ANALYTIC_PROJECT_VERSION = 24;
+const ANALYTIC_ENCODING = "primitive-sdf-v1";
+const ANALYTIC_WRITES = import.meta.env?.VITE_CENTRA_ANALYTIC_PROJECTS === "1";
+const MAX_ANALYTIC_SAMPLES = 20 * 63 ** 3;
+const MAX_NATIVE_DECODE_BYTES = 256 * 1024 ** 2;
+const MAX_METADATA_BYTES = 65_536;
+// Include per-page overhead before allocating dense fields or restoring sparse channels.
+const SPARSE_PAGE_SAMPLES = 256;
+const SPARSE_PAGE_BYTES = 4 * SPARSE_PAGE_SAMPLES + 64;
+
+function analyticDimensions(source: PrimitiveSource | undefined) {
+  // Limit v1 to constant-cost distance evaluators with a centred fitted lattice.
+  if (
+    !source ||
+    source.kind === "text" ||
+    source.kind === "pyramid" ||
+    source.kind === "tapered-box"
+  )
+    return undefined;
+  const dims = primitiveDimensions(source);
+  if (source.kind === "sphere" && dims.some((n) => n !== dims[0])) return undefined;
+  return dims;
+}
+
+function cacheFingerprint(values: Float32Array): number {
+  const words = new Uint32Array(values.buffer, values.byteOffset, values.length);
+  let hash = 2166136261;
+  for (const word of words) hash = Math.imul(hash ^ word, 16777619);
+  return hash >>> 0;
+}
+
+function analyticRecord(layer: SdfLayer) {
+  const { primitive, volume } = layer;
+  const dimensions = analyticDimensions(primitive);
+  const values = volume.getDenseView();
+  if (
+    !primitive ||
+    !dimensions ||
+    !values ||
+    volume.resolution % 2 !== 1 ||
+    volume.extent !== Math.max(...dimensions) * 0.6 ||
+    volume.voxelSize.some((v) => v !== (2 * volume.extent) / (volume.resolution - 1))
+  )
+    return undefined;
+  // Byte equality includes signed zero. Existing voxel storage remains available.
+  if (!validatePrimitiveCache(primitive, volume, true)) return undefined;
+  return { encoding: ANALYTIC_ENCODING, dimensions, fingerprint: cacheFingerprint(values) };
+}
+
 export const MAX_PROJECT_RESOLUTION = MAX_RESOLUTION;
 export const MAX_PROJECT_TRIANGLES = 1_000_000;
 export const MAX_PROJECT_LAYERS = 20;
 export const MAX_PROJECT_VOXELS = 2 * MAX_PROJECT_RESOLUTION ** 3;
-export const MAX_PROJECT_BYTES = 16 + 65536 + MAX_PROJECT_VOXELS * 12 + REFERENCE_LIMITS.totalBytes;
+export const MAX_PROJECT_BYTES =
+  16 + MAX_METADATA_BYTES + MAX_PROJECT_VOXELS * 12 + REFERENCE_LIMITS.totalBytes;
 const CAMERA_MIN_DISTANCE = 1.2;
 const CAMERA_MAX_DISTANCE = 9;
 const CAMERA_MAX_COORDINATE = 1000;
@@ -148,6 +203,7 @@ function validateVoxels(
   values: Float32Array,
   resolution: number | [number, number, number],
   extent: number,
+  countTriangles = true,
 ): number {
   const [nx, ny, nz] =
     typeof resolution === "number" ? [resolution, resolution, resolution] : resolution;
@@ -163,7 +219,7 @@ function validateVoxels(
         )
           throw new Error("The SDF volume boundary must remain positive.");
       }
-  return countProjectVolumeTriangles(values, [nx, ny, nz]);
+  return countTriangles ? countProjectVolumeTriangles(values, [nx, ny, nz]) : 0;
 }
 
 function countProjectVolumeTriangles(values: Float32Array, [nx, ny, nz]: [number, number, number]) {
@@ -200,11 +256,13 @@ function projectTriangleBudgetError(triangles: number, name: string): Error {
 export function assertProjectTriangleBudget(
   layers: readonly SdfLayer[],
   candidate?: SdfLayer,
+  analyticSources = ANALYTIC_WRITES,
 ): void {
   let triangles = 0;
   for (const layer of candidate
     ? [...layers.filter((l) => l.id !== candidate.id), candidate]
     : layers) {
+    if (analyticSources && analyticRecord(layer)) continue;
     const volume = layer.volume;
     const values =
       volume.getDenseView() ??
@@ -262,7 +320,7 @@ function openLegacyProject(buffer: ArrayBuffer): { volume: SDFVolume; settings: 
   if (version !== 1 && version !== 2)
     throw new Error("Unsupported project version. This app supports versions 1 and 2.");
   const length = view.getUint32(12, true);
-  if (length < 2 || length > 65536 || 16 + length > buffer.byteLength)
+  if (length < 2 || length > MAX_METADATA_BYTES || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
   let metadata: Record<string, unknown>;
   try {
@@ -306,6 +364,7 @@ function openLegacyProject(buffer: ArrayBuffer): { volume: SDFVolume; settings: 
 export function saveSculptProject(
   project: SculptProject,
   display: ProjectDisplayPreferences | undefined = project.displayPreferences,
+  analyticSources = ANALYTIC_WRITES,
 ): ArrayBuffer {
   validateBooleanGraph(project.layerStack.layers);
   const settings = validateSettings(project.settings),
@@ -313,6 +372,8 @@ export function saveSculptProject(
   if (layers.length < 1 || layers.length > MAX_PROJECT_LAYERS)
     throw new Error(`Projects support 1–${MAX_PROJECT_LAYERS} stored layer records.`);
   let offset = 0,
+    totalSamples = 0,
+    analyticSamples = 0,
     totalTriangles = 0;
   const maskPayloads = layers.map((l) => ({
     base: sculptMask(l.volume).defaultValue,
@@ -329,9 +390,14 @@ export function saveSculptProject(
       n = volume.resolution;
     if (n < 3 || n > MAX_PROJECT_RESOLUTION || volume.extent <= 0 || volume.extent > 10)
       throw new Error("Project grid exceeds supported limits.");
-    if (layer.primitive) validatePrimitiveCache(layer.primitive, volume);
+    const source = analyticSources ? analyticRecord(layer) : undefined;
+    if (!source && layer.primitive) validatePrimitiveCache(layer.primitive, volume);
     const count = volumeSampleCount(volume);
-    if (offset + count > MAX_PROJECT_VOXELS)
+    totalSamples += count;
+    if (source) analyticSamples += count;
+    if (analyticSamples > MAX_ANALYTIC_SAMPLES)
+      throw new Error("Analytic reconstruction sample budget exceeded.");
+    if (totalSamples > MAX_PROJECT_VOXELS)
       throw new Error("Aggregate project voxel budget exceeded.");
     const data =
       volume.getDenseView() ??
@@ -339,7 +405,7 @@ export function saveSculptProject(
         min: [0, 0, 0],
         max: volume.dimensions.map((v) => v - 1) as [number, number, number],
       }).values;
-    totalTriangles += validateVoxels(data, volume.dimensions, volume.extent);
+    totalTriangles += validateVoxels(data, volume.dimensions, volume.extent, !source);
     if (totalTriangles > MAX_PROJECT_TRIANGLES)
       throw projectTriangleBudgetError(totalTriangles, layer.name);
     const mask = maskPayloads[layers.indexOf(layer)],
@@ -357,6 +423,7 @@ export function saveSculptProject(
       : undefined;
     const result = {
       ...metadata,
+      source,
       paint,
       mask: maskDescriptor,
       grid: {
@@ -367,9 +434,9 @@ export function saveSculptProject(
         latticeMin: volume.latticeMin ?? [0, 0, 0],
       },
       voxelOffset: offset,
-      voxelCount: count,
+      voxelCount: source ? 0 : count,
     };
-    offset += count;
+    offset += result.voxelCount;
     return result;
   });
   validateAssembly(project.layerStack);
@@ -419,9 +486,26 @@ export function saveSculptProject(
       layers: descriptors,
     }),
   );
-  if (metadata.length > 65536) throw new Error("Project metadata exceeds the supported limit.");
+  if (metadata.length > MAX_METADATA_BYTES)
+    throw new Error("Project metadata exceeds the supported limit.");
   if (16 + metadata.length + offset * 4 + maskBytes + paintBytes + assetOffset > MAX_PROJECT_BYTES)
     throw new Error("Project including paint exceeds the native file size limit.");
+  if (
+    analyticSamples &&
+    16 +
+      MAX_METADATA_BYTES +
+      offset * 4 +
+      maskBytes +
+      paintBytes +
+      2 * assetOffset +
+      totalSamples * 8 +
+      layers.reduce(
+        (sum, { volume }) => sum + sculptMask(volume).memoryBytes + sculptPaint(volume).memoryBytes,
+        0,
+      ) >
+      MAX_NATIVE_DECODE_BYTES
+  )
+    throw new Error("Native project reconstruction exceeds the memory budget. Split the project.");
   const buffer = new ArrayBuffer(
       16 + metadata.length + offset * 4 + maskBytes + paintBytes + assetOffset,
     ),
@@ -430,96 +514,19 @@ export function saveSculptProject(
   bytes.set(MAGIC);
   view.setUint32(
     8,
-    layers.some((l) => [l.primitive, l.primitiveOriginal].some((s) => s?.kind === "text"))
-      ? 23
-      : layers.some((l) =>
-            [l.primitive, l.primitiveOriginal].some((s) => s?.kind === "tapered-box"),
-          )
-        ? 22
-        : layers.some((l) =>
-              [l.primitive, l.primitiveOriginal].some(
-                (s) => s?.kind === "torus" && s.tyre !== undefined,
-              ),
-            )
-          ? 21
-          : layers.some((l) =>
-                [l.primitive, l.primitiveOriginal].some(
-                  (s) =>
-                    s &&
-                    (["capsule", "torus", "pyramid"].includes(s.kind) ||
-                      (s.kind === "cylinder" && (s.topDiameter === 0 || s.bottomDiameter === 0))),
-                ),
-              )
-            ? 20
-            : layers.some((l) => l.assemblyPart?.enclosure?.features !== undefined)
-              ? 19
-              : layers.some((l) =>
-                    [l.primitive, l.primitiveOriginal].some(
-                      (s) =>
-                        s?.kind === "sphere" &&
-                        (s.width !== undefined || s.height !== undefined || s.depth !== undefined),
-                    ),
-                  )
-                ? 18
-                : layers.some((l) =>
-                      [l.primitive, l.primitiveOriginal].some(
-                        (s) =>
-                          s?.kind === "cylinder" &&
-                          (s.topDiameter !== undefined || s.bottomDiameter !== undefined),
-                      ),
-                    )
-                  ? 17
-                  : layers.some(
-                        (l) =>
-                          l.assemblyPart?.enclosure ||
-                          (l.primitiveOriginal?.kind === "box" &&
-                            l.primitiveOriginal.cornerRadius !== undefined) ||
-                          (l.primitive?.kind === "box" && l.primitive.cornerRadius !== undefined),
-                      )
-                    ? 16
-                    : layers.some(
-                          (l) => l.array?.scalePerItem !== undefined && l.array.scalePerItem !== 1,
-                        )
-                      ? 15
-                      : layers.some((l) => l.assemblyPart)
-                        ? 14
-                        : layers.some((l) => l.array)
-                          ? 13
-                          : layers.some((l) => l.booleanModifiers?.length)
-                            ? 12
-                            : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
-                              ? 11
-                              : [
-                                    ...project.layerStack.layers,
-                                    ...project.layerStack.hierarchy.groups,
-                                  ].some((l) =>
-                                    project.layerStack.layers.some(
-                                      (parent) =>
-                                        parent.id === project.layerStack.hierarchy.parent(l.id),
-                                    ),
-                                  )
-                                ? 10
-                                : assets.some((a) => a.mime === "model/stl")
-                                  ? 9
-                                  : hasPaint
-                                    ? 8
-                                    : project.layerStack.hierarchy.enabled
-                                      ? 7
-                                      : hasMasks
-                                        ? 6
-                                        : assets.length
-                                          ? 5
-                                          : layers.every((l) => isLegacyCubicGrid(l.volume))
-                                            ? 3
-                                            : 4,
+    analyticSamples
+      ? ANALYTIC_PROJECT_VERSION
+      : legacyVersion(layers, project, assets, hasPaint, hasMasks),
     true,
   );
   view.setUint32(12, metadata.length, true);
   bytes.set(metadata, 16);
   let index = 0;
-  for (const layer of layers)
+  for (const [a, layer] of layers.entries()) {
+    if (descriptors[a].source) continue;
     for (let i = 0; i < volumeSampleCount(layer.volume); i++)
       view.setFloat32(16 + metadata.length + index++ * 4, layer.volume.readVoxel(i), true);
+  }
   let maskStart = 16 + metadata.length + offset * 4;
   if (hasMasks)
     for (const mask of maskPayloads)
@@ -543,7 +550,98 @@ export function saveSculptProject(
   }
   return buffer;
 }
-export function openSculptProject(buffer: ArrayBuffer): SculptProject {
+function legacyVersion(
+  layers: readonly SdfLayer[],
+  project: SculptProject,
+  assets: readonly { mime: string }[],
+  hasPaint: boolean,
+  hasMasks: boolean,
+): number {
+  return layers.some((l) => [l.primitive, l.primitiveOriginal].some((s) => s?.kind === "text"))
+    ? 23
+    : layers.some((l) => [l.primitive, l.primitiveOriginal].some((s) => s?.kind === "tapered-box"))
+      ? 22
+      : layers.some((l) =>
+            [l.primitive, l.primitiveOriginal].some(
+              (s) => s?.kind === "torus" && s.tyre !== undefined,
+            ),
+          )
+        ? 21
+        : layers.some((l) =>
+              [l.primitive, l.primitiveOriginal].some(
+                (s) =>
+                  s &&
+                  (["capsule", "torus", "pyramid"].includes(s.kind) ||
+                    (s.kind === "cylinder" && (s.topDiameter === 0 || s.bottomDiameter === 0))),
+              ),
+            )
+          ? 20
+          : layers.some((l) => l.assemblyPart?.enclosure?.features !== undefined)
+            ? 19
+            : layers.some((l) =>
+                  [l.primitive, l.primitiveOriginal].some(
+                    (s) =>
+                      s?.kind === "sphere" &&
+                      (s.width !== undefined || s.height !== undefined || s.depth !== undefined),
+                  ),
+                )
+              ? 18
+              : layers.some((l) =>
+                    [l.primitive, l.primitiveOriginal].some(
+                      (s) =>
+                        s?.kind === "cylinder" &&
+                        (s.topDiameter !== undefined || s.bottomDiameter !== undefined),
+                    ),
+                  )
+                ? 17
+                : layers.some(
+                      (l) =>
+                        l.assemblyPart?.enclosure ||
+                        (l.primitiveOriginal?.kind === "box" &&
+                          l.primitiveOriginal.cornerRadius !== undefined) ||
+                        (l.primitive?.kind === "box" && l.primitive.cornerRadius !== undefined),
+                    )
+                  ? 16
+                  : layers.some(
+                        (l) => l.array?.scalePerItem !== undefined && l.array.scalePerItem !== 1,
+                      )
+                    ? 15
+                    : layers.some((l) => l.assemblyPart)
+                      ? 14
+                      : layers.some((l) => l.array)
+                        ? 13
+                        : layers.some((l) => l.booleanModifiers?.length)
+                          ? 12
+                          : layers.some((l) => l.primitive || l.volume.extent <= 0.85)
+                            ? 11
+                            : [
+                                  ...project.layerStack.layers,
+                                  ...project.layerStack.hierarchy.groups,
+                                ].some((l) =>
+                                  project.layerStack.layers.some(
+                                    (parent) =>
+                                      parent.id === project.layerStack.hierarchy.parent(l.id),
+                                  ),
+                                )
+                              ? 10
+                              : assets.some((a) => a.mime === "model/stl")
+                                ? 9
+                                : hasPaint
+                                  ? 8
+                                  : project.layerStack.hierarchy.enabled
+                                    ? 7
+                                    : hasMasks
+                                      ? 6
+                                      : assets.length
+                                        ? 5
+                                        : layers.every((l) => isLegacyCubicGrid(l.volume))
+                                          ? 3
+                                          : 4;
+}
+export function openSculptProject(
+  buffer: ArrayBuffer,
+  onProgress?: (completed: number, total: number) => void,
+): SculptProject {
   if (buffer.byteLength < 16 || buffer.byteLength > MAX_PROJECT_BYTES)
     throw new Error("Project file size is invalid or exceeds the supported limit.");
   const view = new DataView(buffer),
@@ -555,32 +653,10 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     const legacy = openLegacyProject(buffer);
     return createBaseProject(legacy.volume, legacy.settings, true);
   }
-  if (
-    version !== 3 &&
-    version !== 4 &&
-    version !== 5 &&
-    version !== 6 &&
-    version !== 7 &&
-    version !== 8 &&
-    version !== 9 &&
-    version !== 10 &&
-    version !== 11 &&
-    version !== 12 &&
-    version !== 13 &&
-    version !== 14 &&
-    version !== 15 &&
-    version !== 16 &&
-    version !== 17 &&
-    version !== 18 &&
-    version !== 19 &&
-    version !== 20 &&
-    version !== 21 &&
-    version !== 22 &&
-    version !== 23
-  )
-    throw new Error("Unsupported project version. This app supports versions 1–23.");
+  if (version < 3 || version > ANALYTIC_PROJECT_VERSION)
+    throw new Error("Unsupported project version. This app supports versions 1–24.");
   const length = view.getUint32(12, true);
-  if (length < 2 || length > 65536 || 16 + length > buffer.byteLength)
+  if (length < 2 || length > MAX_METADATA_BYTES || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
   let metadata: Record<string, unknown>;
   try {
@@ -602,8 +678,10 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
   )
     throw new Error("Invalid stored layer count.");
   let expectedOffset = 0,
+    totalSamples = 0,
+    analyticSamples = 0,
     totalTriangles = 0;
-  const layers = metadata.layers.map((value) => {
+  const plans = metadata.layers.map((value) => {
     const record = object(value),
       layer = validateLayerMetadata(record),
       grid = object(record.grid),
@@ -650,25 +728,45 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     )
       throw new Error("Layer voxel size does not match its grid and bounds.");
     const count = dims.reduce((a, b) => a * b, 1);
+    const source = record.source === undefined ? undefined : object(record.source);
+    if (source) {
+      if (version !== ANALYTIC_PROJECT_VERSION || source.encoding !== ANALYTIC_ENCODING)
+        throw new Error("Unsupported native source encoding.");
+      const physical = analyticDimensions(layer.primitive);
+      if (
+        !physical ||
+        n < 33 ||
+        n > 63 ||
+        n % 2 !== 1 ||
+        dims.some((d) => d !== n) ||
+        latticeMin.some((v) => v !== 0) ||
+        extent !== Math.max(...physical) * 0.6 ||
+        grid.voxelSize.some((v) => v !== spacing) ||
+        !Array.isArray(source.dimensions) ||
+        source.dimensions.length !== 3 ||
+        physical.some((v, i) => v !== (source.dimensions as number[])[i]) ||
+        typeof source.fingerprint !== "number" ||
+        !Number.isInteger(source.fingerprint) ||
+        source.fingerprint < 0 ||
+        source.fingerprint > 0xffffffff
+      )
+        throw new Error("Invalid analytic source definition or reconstruction grid.");
+      analyticSamples += count;
+    }
+    totalSamples += count;
+    if (analyticSamples > MAX_ANALYTIC_SAMPLES || totalSamples > MAX_PROJECT_VOXELS)
+      throw new Error(
+        "Project cache sample budget exceeded. Split the project into smaller files.",
+      );
+    const stored = source ? 0 : count;
     if (
       record.voxelOffset !== expectedOffset ||
-      record.voxelCount !== count ||
-      expectedOffset + count > MAX_PROJECT_VOXELS ||
-      16 + length + (expectedOffset + count) * 4 > buffer.byteLength
+      record.voxelCount !== stored ||
+      16 + length + (expectedOffset + stored) * 4 > buffer.byteLength
     )
       throw new Error("Invalid layer voxel offset or payload length.");
-    const values = new Float32Array(count);
-    for (let i = 0; i < count; i++)
-      values[i] = view.getFloat32(16 + length + (expectedOffset + i) * 4, true);
-    totalTriangles += validateVoxels(values, dims, extent);
-    if (totalTriangles > MAX_PROJECT_TRIANGLES)
-      throw new Error("Aggregate project triangle budget exceeded.");
-    expectedOffset += count;
-    const volume = new SDFVolume(n, extent, false, {
-      dimensions: dims,
-      latticeMin: latticeMin as [number, number, number],
-    });
-    volume.values.set(values);
+    const offset = expectedOffset;
+    expectedOffset += stored;
     if (
       (layer.assemblyPart?.enclosure ||
         (layer.primitiveOriginal?.kind === "box" &&
@@ -727,12 +825,27 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
     if (layer.array?.scalePerItem !== undefined && layer.array.scalePerItem !== 1 && version < 15)
       throw new Error("Progressive array scaling requires project version 15.");
     if (layer.array && version < 13) throw new Error("Arrays require project version 13.");
-    if (layer.primitive) {
-      if (version < 11) throw new Error("Primitives require project version 11.");
-      validatePrimitiveCache(layer.primitive, volume);
-    }
-    return new SdfLayer(volume, layer);
+    if (layer.primitive && version < 11) throw new Error("Primitives require project version 11.");
+    return { layer, source, n, extent, dims, latticeMin, offset, count };
   });
+  // Validate identities, hierarchy and linked metadata against lightweight holders.
+  // These validators depend on definitions and poses. No source grid is allocated here.
+  const layers = plans.map(({ layer }) => new SdfLayer(new SDFVolume(3, 1, false), layer));
+  const stack = new LayerStack(layers, active);
+  if (metadata.hierarchy !== undefined) {
+    if (version < 7) throw new Error("Hierarchy requires project version 7.");
+    stack.hierarchy.restore(metadata.hierarchy);
+  }
+  validateBooleanGraph(stack.layers);
+  validateAssembly(stack);
+  for (const layer of layers)
+    if (layer.assemblyPart?.enclosure?.features?.length) validateFeatureLinks(stack, layer.id);
+  const tools =
+    metadata.toolPreferences === undefined
+      ? undefined
+      : validateToolPreferences(metadata.toolPreferences);
+  const restoreChannels: (() => void)[] = [];
+  let sparseBytes = 0;
   let assetStart = 16 + length + expectedOffset * 4;
   if (
     version >= 6 &&
@@ -749,27 +862,33 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
         !Number.isSafeInteger(count) ||
         typeof count !== "number" ||
         count < 0 ||
-        count > volumeSampleCount(layers[a].volume) ||
+        count > plans[a].count ||
         descriptor.byteOffset !== offset ||
         assetStart + offset + count * 8 > buffer.byteLength
       )
         throw new Error("Invalid mask payload.");
-      const mask = sculptMask(layers[a].volume);
-      mask.uniform(base);
+      const start = assetStart + offset;
+      restoreChannels.push(() => {
+        const mask = sculptMask(layers[a].volume);
+        mask.uniform(base);
+        for (let i = start; i < start + count * 8; i += 8)
+          mask.write(view.getUint32(i, true), view.getFloat32(i + 4, true));
+      });
       let previous = -1;
       for (let i = 0; i < count; i++) {
         const id = view.getUint32(assetStart + offset, true),
           value = view.getFloat32(assetStart + offset + 4, true);
         if (
           id <= previous ||
-          id >= volumeSampleCount(layers[a].volume) ||
+          id >= plans[a].count ||
           !Number.isFinite(value) ||
           value < 0 ||
           value > 1 ||
           value === base
         )
           throw new Error("Invalid mask samples.");
-        mask.write(id, value);
+        if (Math.floor(id / SPARSE_PAGE_SAMPLES) !== Math.floor(previous / SPARSE_PAGE_SAMPLES))
+          sparseBytes += SPARSE_PAGE_BYTES;
         previous = id;
         offset += 8;
       }
@@ -792,33 +911,36 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
           typeof count !== "number" ||
           !Number.isSafeInteger(count) ||
           count < 0 ||
-          count > volumeSampleCount(layers[a].volume) ||
+          count > plans[a].count ||
           d.byteOffset !== offset ||
           assetStart + offset + count * 8 > buffer.byteLength
         )
           throw new Error("Invalid paint payload.");
+        const start = assetStart + offset;
+        restoreChannels.push(() => {
+          const channel = sculptPaint(layers[a].volume).channels[k];
+          for (let i = start; i < start + count * 8; i += 8)
+            channel.write(view.getUint32(i, true), view.getFloat32(i + 4, true));
+        });
         let previous = -1;
         for (let i = 0; i < count; i++) {
           const id = view.getUint32(assetStart + offset, true),
             v = view.getFloat32(assetStart + offset + 4, true);
-          if (
-            id <= previous ||
-            id >= volumeSampleCount(layers[a].volume) ||
-            !Number.isFinite(v) ||
-            v <= 0 ||
-            v > 1
-          )
+          if (id <= previous || id >= plans[a].count || !Number.isFinite(v) || v <= 0 || v > 1)
             throw new Error("Invalid paint sample.");
-          sculptPaint(layers[a].volume).channels[k].write(id, v);
+          if (Math.floor(id / SPARSE_PAGE_SAMPLES) !== Math.floor(previous / SPARSE_PAGE_SAMPLES))
+            sparseBytes += SPARSE_PAGE_BYTES;
           previous = id;
           offset += 8;
         }
       }
-      const paint = sculptPaint(layers[a].volume);
-      for (let k = 0; k < 3; k++)
-        for (const [id, v] of paint.channels[k].entries())
-          if (v > paint.channels[3].read(id) + 1e-6)
-            throw new Error("Invalid premultiplied paint.");
+      restoreChannels.push(() => {
+        const paint = sculptPaint(layers[a].volume);
+        for (let k = 0; k < 3; k++)
+          for (const [id, v] of paint.channels[k].entries())
+            if (v > paint.channels[3].read(id) + 1e-6)
+              throw new Error("Invalid premultiplied paint.");
+      });
     }
     assetStart += offset;
   }
@@ -852,26 +974,55 @@ export function openSculptProject(buffer: ArrayBuffer): SculptProject {
       const { byteOffset, byteLength, ...record } = r;
       return { ...record, bytes };
     });
+    sparseBytes += offset; // Retained reference copies.
     assetStart += offset;
   }
   if (buffer.byteLength !== assetStart) throw new Error("Unexpected trailing voxel data.");
-  const stack = new LayerStack(layers, active);
-  if (metadata.hierarchy !== undefined) {
-    if (version < 7) throw new Error("Hierarchy requires project version 7.");
-    stack.hierarchy.restore(metadata.hierarchy);
+  const display =
+    metadata.displayPreferences === undefined
+      ? undefined
+      : validateProjectDisplay(
+          metadata.displayPreferences,
+          layers.map((layer) => layer.id),
+        );
+  if (
+    version === ANALYTIC_PROJECT_VERSION &&
+    buffer.byteLength - length + MAX_METADATA_BYTES + totalSamples * 8 + sparseBytes >
+      MAX_NATIVE_DECODE_BYTES
+  )
+    throw new Error("Native project reconstruction exceeds the memory budget. Split the project.");
+  for (const [index, { source, n, extent, dims, latticeMin, offset, count }] of plans.entries()) {
+    const layer = layers[index];
+    let volume: SDFVolume;
+    if (source && layer.primitive) {
+      const evaluation = evaluatePrimitive(layer.primitive, n, count, undefined, 4096);
+      let step = evaluation.next();
+      while (!step.done) step = evaluation.next();
+      volume = step.value;
+      validateVoxels(volume.values, dims, extent, false);
+      if (cacheFingerprint(volume.values) !== source.fingerprint)
+        throw new Error(
+          "Analytic cache differs from the saved source. Reopen with a compatible Centra Sculpt build.",
+        );
+    } else {
+      volume = new SDFVolume(n, extent, false, {
+        dimensions: dims,
+        latticeMin: latticeMin as [number, number, number],
+      });
+      for (let i = 0; i < count; i++)
+        volume.values[i] = view.getFloat32(16 + length + (offset + i) * 4, true);
+      totalTriangles += validateVoxels(volume.values, dims, extent);
+      if (totalTriangles > MAX_PROJECT_TRIANGLES)
+        throw new Error("Aggregate project triangle budget exceeded.");
+      if (layer.primitive) validatePrimitiveCache(layer.primitive, volume);
+    }
+    onProgress?.(index + 1, plans.length);
+    layer.volume = volume;
   }
-  validateBooleanGraph(stack.layers);
-  validateAssembly(stack);
-  for (const layer of stack.layers)
-    if (layer.assemblyPart?.enclosure?.features?.length) validateFeatureLinks(stack, layer.id);
+  for (const restore of restoreChannels) restore();
   const project = new SculptProject(stack, settings, name, id);
-  if (metadata.toolPreferences !== undefined)
-    project.toolPreferences = validateToolPreferences(metadata.toolPreferences);
-  if (metadata.displayPreferences !== undefined)
-    project.displayPreferences = validateProjectDisplay(
-      metadata.displayPreferences,
-      layers.map((layer) => layer.id),
-    );
+  project.toolPreferences = tools;
+  project.displayPreferences = display;
   return project;
 }
 /** Compatibility reader for existing consumers; new application code uses the project model. */

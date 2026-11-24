@@ -7,7 +7,13 @@ export function prepareLibrary(
     | { kind: "import"; data: ArrayBuffer; name: string }
     | { kind: "new"; resolution: number; contents: string; settings: ProjectSettings },
   signal: AbortSignal,
-): Promise<{ data: ArrayBuffer; record?: ProjectRecord; snapshot?: ProjectSnapshot }> {
+  onProgress?: (completed: number, total: number) => void,
+): Promise<{
+  data: ArrayBuffer;
+  record?: ProjectRecord;
+  snapshot?: ProjectSnapshot;
+  analytic?: boolean;
+}> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       reject(new Error("Project operation cancelled."));
@@ -28,6 +34,10 @@ export function prepareLibrary(
       reject(new Error(e.message));
     };
     worker.onmessage = ({ data }) => {
+      if (data.progress) {
+        onProgress?.(data.progress.completed, data.progress.total);
+        return;
+      }
       stop();
       if (data.error)
         reject(Object.assign(new Error(data.error.message), { code: data.error.code }));
