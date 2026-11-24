@@ -807,7 +807,9 @@ test("scaling a mounting post updates pattern height and bores, with atomic canc
 });
 
 test("measured USB openings follow component pose and refuse misleading previews", async () => {
-  const { componentOpening } = await import("../work/test-build/component-openings.mjs");
+  const { componentOpening, openingIsStale } = await import(
+    "../work/test-build/component-openings.mjs"
+  );
   const { functionalFeatures } = await import("../work/test-build/component-references.mjs");
   const { layers: l, api } = createHeadlessEditor();
   try {
@@ -826,7 +828,9 @@ test("measured USB openings follow component pose and refuse misleading previews
     );
     const host = l.project.layerStack.get(base);
     const record = {
+      id: "pi-board",
       preset: "pi4",
+      opacity: 1,
       hostId: base,
       visible: true,
       scale: 1,
@@ -844,6 +848,22 @@ test("measured USB openings follow component pose and refuse misleading previews
       cable: 0.5,
     };
     const usb = functionalFeatures("pi4")[0];
+    const preset = usb.measurements;
+    assert.deepEqual(preset.centre, [45.5, undefined, 0.66]);
+    assert.equal(preset.width, 13.82);
+    assert.equal(preset.height, 16);
+    assert.equal(functionalFeatures("devkit")[0].measurements.height, undefined);
+    const presetOpening = componentOpening(record, host, usb, {
+      ...m,
+      centre: [preset.centre[0], 9, preset.centre[2]],
+      width: preset.width,
+      height: preset.height,
+    }).opening;
+    assert.deepEqual(presetOpening.association.manufacturer.fields, ["x", "z", "width", "height"]);
+    assert.throws(
+      () => componentOpening(record, host, usb, { ...m, horizontal: -0.1 }),
+      /clearance/,
+    );
     const { opening, depth } = componentOpening(record, host, usb, m);
     assert.equal(depth, 10);
     assert.equal(opening.anchor, WALL_ANCHORS[1]);
@@ -858,7 +878,13 @@ test("measured USB openings follow component pose and refuse misleading previews
     );
     assert.throws(() => componentOpening(record, host, usb, { ...m, cable: 50 }), /overlaps/);
     assert.throws(() => componentOpening({ ...record, scale: 2 }, host, usb, m), /full-size/);
-    const esp = { ...record, preset: "devkit", positionMm: [10, 0, -20], rotation: [0, 90, 0] };
+    const esp = {
+      ...record,
+      id: "esp-board",
+      preset: "devkit",
+      positionMm: [10, 0, -20],
+      rotation: [0, 90, 0],
+    };
     const espResult = componentOpening(esp, host, functionalFeatures("devkit")[0], {
       ...m,
       centre: [0, 3, 25],
@@ -882,15 +908,72 @@ test("measured USB openings follow component pose and refuse misleading previews
       "revision_conflict",
     );
     ok(await api.enclosure.setFeature(base, lid, espResult.opening, options(api)));
-    const reopened = openSculptProject(saveSculptProject(l.project));
+    l.display.components.push(record, esp);
+    const display = l.display.snapshot(l.project.id, l.project.layerStack.layers);
+    const native = saveSculptProject(l.project, display);
+    const reopened = openSculptProject(native);
     assert.deepEqual(
       reopened.layerStack
         .get(base)
         .assemblyPart.enclosure.features.map(({ definition }) => definition),
       [opening, espResult.opening],
     );
+    const copied = openSculptProject(renameNative(native, "Associated openings copy", true));
+    const copiedBoard = copied.displayPreferences.components[0];
+    const copiedBase = copied.layerStack.get(copiedBoard.hostId);
+    const copiedAssociation = copiedBase.assemblyPart.enclosure.features[0].definition.association;
+    assert.notEqual(copiedBoard.id, record.id);
+    assert.equal(copiedAssociation.componentId, copiedBoard.id);
+    assert.equal(copiedAssociation.partId, copiedBase.id);
+    assert.equal(openingIsStale(copiedAssociation, copiedBoard, copiedBase), false);
+    const { RecoveryBrowserWorker } = await import("../scripts/fixtures/node-recovery-worker.mjs");
+    const { encodeRecovery } = await import("../work/test-build/recovery-client.mjs");
+    const previousWorker = globalThis.Worker;
+    globalThis.Worker = RecoveryBrowserWorker;
+    try {
+      const recovery = await encodeRecovery(
+        l,
+        l.project.settings,
+        display,
+        undefined,
+        new AbortController().signal,
+        () => true,
+      );
+      const recovered = openSculptProject(recovery.data);
+      assert.deepEqual(recovered.displayPreferences.components, [record, esp]);
+      assert.deepEqual(
+        recovered.layerStack.get(base).assemblyPart.enclosure.features[0].definition.association,
+        opening.association,
+      );
+    } finally {
+      globalThis.Worker = previousWorker;
+    }
     const { exportPartSTL } = await import("../work/test-build/assembly-tools.mjs");
     assert.equal((await exportPartSTL(l, base, undefined, "fast")).report.components, 1);
+    const association = opening.association;
+    const moved = { ...record, positionMm: [0, 0, 7] };
+    const currentHost = l.project.layerStack.get(base);
+    assert.equal(openingIsStale(association, record, currentHost), false);
+    assert.equal(openingIsStale(association, moved, currentHost), true);
+    assert.equal(openingIsStale(association, undefined, currentHost), true);
+    assert.equal(openingIsStale(association, { ...record, hostId: lid }, currentHost), true);
+    const id = currentHost.assemblyPart.enclosure.features[0].sourceIds[0];
+    const updated = componentOpening(moved, currentHost, usb, association.measurements).opening;
+    const beforeUpdate = bytes(l);
+    const staged = ok(
+      await api.enclosure.setFeature(base, lid, updated, { ...options(api), dryRun: true }, id),
+    );
+    assert.equal(staged.features[0].sourceIds[0], id);
+    assert.deepEqual(bytes(l), beforeUpdate);
+    const applied = ok(await api.enclosure.setFeature(base, lid, updated, options(api), id));
+    assert.equal(applied.features[0].sourceIds[0], id);
+    assert.equal(applied.features[0].definition.widthMm, opening.widthMm);
+    assert.equal(applied.features[0].definition.uMm, -8);
+    const afterUpdate = bytes(l);
+    l.undo();
+    assert.deepEqual(bytes(l), beforeUpdate);
+    l.undo(true);
+    assert.deepEqual(bytes(l), afterUpdate);
   } finally {
     l.dispose();
   }
@@ -908,6 +991,7 @@ test("measured switch creates a separate editable and independently printable pl
     } = ok(await api.enclosure.create(p, options(api)));
     const host = l.project.layerStack.get(base);
     const record = {
+      id: "tactile-switch",
       preset: "tactile",
       hostId: base,
       visible: true,
@@ -945,7 +1029,30 @@ test("measured switch creates a separate editable and independently printable pl
         }),
       /shaft length/,
     );
-    const { opening, plunger, depth } = componentOpening(record, host, switchFeature, measured);
+    assert.equal(
+      componentOpening(record, host, switchFeature, measured).plunger.retainer,
+      undefined,
+    );
+    const captured = {
+      ...measured,
+      plunger: { ...measured.plunger, retainer: { diameter: 8, thickness: 3 } },
+    };
+    assert.throws(
+      () =>
+        componentOpening(record, host, switchFeature, {
+          ...captured,
+          plunger: { ...captured.plunger, retainer: { diameter: 8, thickness: 4 } },
+        }),
+      /gap behind/,
+    );
+    const { opening, plunger, depth } = componentOpening(record, host, switchFeature, captured);
+    assert.equal(plunger.retainer[0].source.diameter, 8);
+    assert.equal(plunger.retainer[0].source.height, depth);
+    assert.equal(plunger.retainer[1].source.diameter, 4.7);
+    assert.equal(
+      plunger.pieces[0].positionMm[2] - 1 - (p.innerDepthMm / 2 + p.wallThicknessMm),
+      0.5,
+    );
     assert.equal(depth, 3);
     assert.equal(opening.widthMm, 4.7);
     const before = bytes(l);
@@ -977,7 +1084,7 @@ test("measured switch creates a separate editable and independently printable pl
     );
     assert.deepEqual(bytes(l), before);
     const {
-      aliases: { buttonCap, buttonShaft },
+      aliases: { buttonCap, buttonShaft, buttonRetainer, retainerSocket },
     } = ok(await api.enclosure.setFeature(base, lid, opening, options(api), undefined, plunger));
     const built = bytes(l);
     const part = l.project.layerStack.get(buttonCap);
@@ -992,20 +1099,66 @@ test("measured switch creates a separate editable and independently printable pl
       ),
     );
     const printed = await exportPartSTL(l, buttonCap, undefined, "fast");
+    const printedRetainer = await exportPartSTL(l, buttonRetainer, undefined, "fast");
     assert.equal(printed.report.components, 1);
+    assert.equal(printedRetainer.report.components, 1);
     for (const key of [
       "boundaryEdges",
       "nonManifoldEdges",
       "inconsistentEdges",
       "degenerateTriangles",
     ])
-      assert.equal(printed.report[key], 0, key);
+      assert.equal(printed.report[key] + printedRetainer.report[key], 0, key);
     l.undo();
     assert.deepEqual(bytes(l), before);
     l.undo(true);
     assert.deepEqual(bytes(l), built);
     const reopened = openSculptProject(saveSculptProject(l.project));
     assert(reopened.layerStack.get(buttonCap).assemblyPart);
+    assert(reopened.layerStack.get(buttonRetainer).assemblyPart);
+    const feature = reopened.layerStack.get(base).assemblyPart.enclosure.features[0];
+    assert.deepEqual(feature.definition.association.printableIds, [
+      buttonCap,
+      buttonShaft,
+      buttonRetainer,
+      retainerSocket,
+    ]);
+    const { renameNative } = await import("../work/test-build/library-codec.mjs");
+    const copied = openSculptProject(
+      renameNative(saveSculptProject(l.project), "Button assembly copy", true),
+    );
+    const copiedBase = copied.layerStack.layers.find(
+      (layer) => layer.assemblyPart?.enclosure?.role === "base",
+    );
+    const copyLink = copiedBase.assemblyPart.enclosure.features[0].definition.association;
+    assert.equal(copyLink.partId, copiedBase.id);
+    assert.notDeepEqual(copyLink.printableIds, feature.definition.association.printableIds);
+    assert.equal(copied.layerStack.get(copyLink.printableIds[2]).name, "Button retainer");
+    const currentHost = l.project.layerStack.get(base);
+    const moved = { ...record, positionMm: [1, 0, record.positionMm[2] - 1] };
+    const refit = componentOpening(
+      moved,
+      currentHost,
+      switchFeature,
+      feature.definition.association.measurements,
+      undefined,
+      true,
+    );
+    ok(
+      await api.enclosure.setFeature(
+        base,
+        lid,
+        refit.opening,
+        options(api),
+        feature.sourceIds[0],
+        refit.plunger,
+      ),
+    );
+    assert.deepEqual(
+      l.project.layerStack.get(base).assemblyPart.enclosure.features[0].definition.association
+        .printableIds,
+      feature.definition.association.printableIds,
+    );
     assert.equal(
       reopened.layerStack.get(base).assemblyPart.enclosure.features[0].definition.name,
       opening.name,

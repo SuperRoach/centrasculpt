@@ -1,3 +1,12 @@
+### Prefill connector openings and capture buttons — Phase 8.8d
+
+- Select a Pi 4 or ESP32-DevKitC V4 connector to fill its documented dimensions
+  and suggest a wall. Measure any blank fields and preview the finished cutout.
+- After moving a component, review **Generated openings** and confirm an
+  updated opening. The update keeps its feature identity and supports Undo.
+- Choose a captured button for a printable plunger with a separate socketed
+  retainer. Export each part at actual size.
+
 ### Create openings from 3D components — Phase 8.8c
 
 - Preview and create a measured connector or button opening on an enclosure

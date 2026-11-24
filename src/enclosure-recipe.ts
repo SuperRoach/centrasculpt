@@ -581,7 +581,16 @@ export class EnclosureRecipes {
             features[index].definition.kind !== edit.definition.kind
           )
             throw new Error("Changing feature type/count requires removing it first.");
-          features[index].definition = structuredClone(edit.definition);
+          const before = features[index].definition;
+          const next = structuredClone(edit.definition);
+          if (
+            before.kind === "cutout" &&
+            before.association &&
+            next.kind === "cutout" &&
+            !next.association
+          )
+            next.association = { ...before.association, manuallyEdited: true };
+          features[index].definition = next;
         } else
           features.push({
             sourceIds: generated.map((_, i) => `$attachment${i}`),
@@ -657,6 +666,83 @@ export class EnclosureRecipes {
             }
           }
         }
+      if (edit?.plunger && existing) {
+        const base = this.layers.project.layerStack.get(existing.baseId);
+        const stack = this.layers.project.layerStack;
+        const original = index >= 0 ? old?.features[index]?.definition : undefined;
+        const previous =
+          original?.kind === "cutout" ? original.association?.printableIds : undefined;
+        const feature = features[index < 0 ? features.length - 1 : index];
+        const association =
+          feature.definition.kind === "cutout" ? feature.definition.association : undefined;
+        const pieces = [...edit.plunger.pieces, ...(edit.plunger.retainer ?? [])];
+        if (index >= 0 && (!previous || previous.length !== pieces.length))
+          throw new Error(
+            "Restore the original printable button parts before updating the opening.",
+          );
+        const ids =
+          previous ??
+          ["$buttonCap", "$buttonShaft", "$buttonRetainer", "$retainerSocket"].slice(
+            0,
+            pieces.length,
+          );
+        const names = ["Button plunger", "Button shaft", "Button retainer", "Retainer socket"];
+        for (const [i, piece] of pieces.entries()) {
+          const id = ids[i];
+          if (previous) {
+            const layer = stack.layers.find((candidate) => candidate.id === id);
+            const root = i % 2 === 0 ? layer : stack.get(ids[i - 1]);
+            const modifier = root?.booleanModifiers?.[0];
+            if (
+              !layer?.primitive ||
+              layer.primitive.kind !== piece.source.kind ||
+              !root?.assemblyPart ||
+              root.booleanModifiers?.length !== 1 ||
+              modifier?.sourceId !== ids[i - (i % 2) + 1] ||
+              modifier.operation !== (i < 2 ? "union" : "difference") ||
+              stack.hierarchy.parent(ids[i - (i % 2) + 1]) !== root.id
+            )
+              throw new Error(
+                "Restore the original printable button parts before updating the opening.",
+              );
+          }
+          steps.push(
+            previous
+              ? { command: { type: "primitive.update", id, unit: "mm", source: piece.source } }
+              : {
+                  as: id.slice(1),
+                  command: { type: "primitive.create", unit: "mm", source: piece.source },
+                },
+            {
+              command: {
+                type: "object.transform",
+                id,
+                unit: "mm",
+                transform: featureWorldPose(piece, base.transform, mm),
+              },
+            },
+          );
+          if (!previous) steps.push({ command: { type: "object.rename", id, name: names[i] } });
+        }
+        if (!previous) {
+          for (let i = 0; i < pieces.length; i += 2) {
+            const [id, sourceId] = ids.slice(i, i + 2);
+            steps.push(
+              {
+                command: {
+                  type: "boolean.create",
+                  id,
+                  sourceId,
+                  operation: i === 0 ? "union" : "difference",
+                },
+              },
+              { command: { type: "part.define", objectId: id, clearanceMM: 0 } },
+              { command: { type: "part.assign", objectId: sourceId, partId: id } },
+            );
+          }
+        }
+        if (association) association.printableIds = ids;
+      }
       for (const role of ["base", "lid"] as const)
         steps.push({
           command: {
@@ -700,45 +786,6 @@ export class EnclosureRecipes {
       // Only the recipe can replace its existing cutter type without changing its ID.
       const cutoutId =
         index >= 0 && edit?.definition?.kind === "cutout" ? edit.attachmentId : undefined;
-      if (edit?.plunger && existing) {
-        const root = this.layers.project.layerStack.get(existing.baseId).transform;
-        const [cap, shaft] = edit.plunger.pieces;
-        for (const [as, piece] of [
-          ["buttonCap", cap],
-          ["buttonShaft", shaft],
-        ] as const) {
-          steps.push(
-            { as, command: { type: "primitive.create", unit: "mm", source: piece.source } },
-            {
-              command: {
-                type: "object.transform",
-                id: `$${as}`,
-                unit: "mm",
-                transform: featureWorldPose(piece, root, mm),
-              },
-            },
-            {
-              command: {
-                type: "object.rename",
-                id: `$${as}`,
-                name: as === "buttonCap" ? "Button plunger" : "Button shaft",
-              },
-            },
-          );
-        }
-        steps.push(
-          {
-            command: {
-              type: "boolean.create",
-              id: "$buttonCap",
-              sourceId: "$buttonShaft",
-              operation: "union",
-            },
-          },
-          { command: { type: "part.define", objectId: "$buttonCap", clearanceMM: 0 } },
-          { command: { type: "part.assign", objectId: "$buttonShaft", partId: "$buttonCap" } },
-        );
-      }
       const result = await this.api.batch(steps, options, cutoutId);
       return result.ok
         ? {
@@ -748,6 +795,18 @@ export class EnclosureRecipes {
               plan,
               features: features.map((f) => ({
                 ...f,
+                definition:
+                  f.definition.kind === "cutout" && f.definition.association?.printableIds
+                    ? {
+                        ...f.definition,
+                        association: {
+                          ...f.definition.association,
+                          printableIds: f.definition.association.printableIds.map((id) =>
+                            id.startsWith("$") ? result.value.aliases[id.slice(1)] : id,
+                          ),
+                        },
+                      }
+                    : f.definition,
                 sourceIds: f.sourceIds.map((id) =>
                   id.startsWith("$") ? result.value.aliases[id.slice(1)] : id,
                 ),

@@ -1,4 +1,5 @@
 import { Matrix3, type Raycaster, Vector3 } from "three";
+import type { OpeningAssociation } from "./component-opening-association";
 import type { ComponentReference, FunctionalFeature } from "./component-references";
 import { componentPositionMm, componentRotation } from "./component-view";
 import {
@@ -21,20 +22,79 @@ export type OpeningPiece<Source extends PrimitiveSource = PrimitiveSource> = {
 export type OpeningEnvelope = OpeningPiece<Extract<PrimitiveSource, { kind: "box" | "cylinder" }>>;
 export type Plunger = {
   pieces: [OpeningPiece, OpeningPiece];
+  retainer?: [OpeningPiece, OpeningPiece];
 };
 
-export type OpeningMeasurements = {
-  centre: Vec3;
-  shape: CutoutDefinition["shape"];
-  width: number;
-  height: number;
-  horizontal: number;
-  vertical: number;
-  cable: number;
-  travel?: number;
-  usableDepth?: number;
-  plunger?: { diameter: number; height: number; shaft: number; length: number };
-};
+export type OpeningMeasurements = OpeningAssociation["measurements"];
+
+function openingPose(
+  record: ComponentReference,
+  host: SdfLayer,
+  hasPlunger: boolean,
+): OpeningAssociation["pose"] {
+  const parameters = host.assemblyPart?.enclosure?.parameters;
+  if (!parameters) throw new Error("This opening requires an enclosure.");
+  return {
+    position: [...record.positionMm],
+    rotation: [...record.rotation],
+    scale: record.scale,
+    ...(record.dimensions ? { dimensions: [...record.dimensions] } : {}),
+    ...(record.gapMm === undefined ? {} : { gap: record.gapMm }),
+    ...(hasPlunger
+      ? {
+          partPosition: [...host.transform.position] as Vec3,
+          partRotation: [...host.transform.rotation] as Vec3,
+        }
+      : {}),
+    wallThickness: parameters.wallThicknessMm,
+    cavity: [
+      parameters.innerWidthMm,
+      parameters.innerDepthMm,
+      parameters.innerHeightMm,
+      parameters.floorThicknessMm,
+      parameters.lid.lipDepthMm,
+    ],
+  };
+}
+
+export function openingIsStale(
+  association: OpeningAssociation,
+  record: ComponentReference | undefined,
+  host: SdfLayer,
+) {
+  if (
+    association.manuallyEdited ||
+    !record ||
+    record.hostId !== host.id ||
+    association.partId !== host.id
+  )
+    return true;
+  const previous = association.pose;
+  const current = openingPose(record, host, !!association.measurements.plunger);
+  return (
+    current.scale !== previous.scale ||
+    current.gap !== previous.gap ||
+    current.wallThickness !== previous.wallThickness ||
+    current.cavity.some((value, i) => value !== previous.cavity[i]) ||
+    current.partPosition?.some((value, i) => value !== previous.partPosition?.[i]) ||
+    current.partRotation?.some((value, i) => value !== previous.partRotation?.[i]) ||
+    JSON.stringify(current.dimensions) !== JSON.stringify(previous.dimensions) ||
+    current.position.some((value, i) => Math.abs(value - previous.position[i]) > 1e-8) ||
+    current.rotation.some((value, i) => value !== previous.rotation[i]) ||
+    host.transform.scale.some((value) => Math.abs(value - 1) > 1e-8)
+  );
+}
+
+export function suggestedOpeningWall(record: ComponentReference, feature: FunctionalFeature) {
+  const direction = new Vector3(...feature.outward).applyQuaternion(componentRotation(record));
+  const normals = [
+    [0, 0, 1],
+    [1, 0, 0],
+    [0, 0, -1],
+    [-1, 0, 0],
+  ] as const;
+  return WALL_ANCHORS[normals.findIndex((axis) => direction.dot(new Vector3(...axis)) > 1 - 1e-10)];
+}
 
 function measure(value: number, label: string, min = 0) {
   if (!Number.isFinite(value) || value < min || value > 1000)
@@ -48,6 +108,7 @@ export function componentOpening(
   feature: FunctionalFeature,
   measurements: OpeningMeasurements,
   wall?: WallAnchor,
+  refitPlunger = false,
 ) {
   const intent = host.assemblyPart?.enclosure;
   if (record.hostId !== host.id || intent?.role !== "base" || !record.visible)
@@ -62,7 +123,7 @@ export function componentOpening(
   const face = new Vector3(...m.centre)
     .applyQuaternion(rotation)
     .add(componentPositionMm(record, host));
-  const direction = new Vector3(...feature.outward).applyQuaternion(rotation);
+  const suggestedWall = suggestedOpeningWall(record, feature);
   const button = feature.type === "button";
   const width = measure(m.width, "envelope width or diameter", 0.05);
   const height = m.shape === "round" ? width : measure(m.height, "envelope height", 0.05);
@@ -70,10 +131,7 @@ export function componentOpening(
   const vertical = m.shape === "round" ? horizontal : measure(m.vertical, "vertical clearance");
   const cable = button ? 0 : measure(m.cable, "cable allowance");
   const anchor = enclosureAnchors(p).find(
-    (candidate) =>
-      WALL_ANCHORS.some((id) => id === candidate.id) &&
-      (!wall || wall === candidate.id) &&
-      direction.dot(new Vector3(...candidate.normal)) > 1 - 1e-10,
+    (candidate) => candidate.id === suggestedWall && (!wall || wall === candidate.id),
   );
   if (!anchor)
     throw new Error(
@@ -123,16 +181,70 @@ export function componentOpening(
     insetMm: 0,
   };
   const [cut] = featurePlan(p, opening);
+  const preset = feature.measurements;
+  const fields: NonNullable<OpeningAssociation["manufacturer"]>["fields"] = [];
+  if (preset && m.shape === "rectangle") {
+    if (m.centre[0] === preset.centre[0]) fields.push("x");
+    if (m.centre[2] === preset.centre[2]) fields.push("z");
+    if (width === preset.width) fields.push("width");
+    if (height === preset.height) fields.push("height");
+  }
+  opening.association = {
+    version: 1,
+    componentId: record.id,
+    partId: host.id,
+    featureId: feature.id,
+    pose: openingPose(record, host, !!m.plunger),
+    axes: { outward: [...feature.outward], up: [...feature.up] },
+    measurements: {
+      centre: [...m.centre],
+      shape: m.shape,
+      width,
+      height,
+      horizontal,
+      vertical,
+      cable,
+      ...(button ? { travel, usableDepth: m.usableDepth } : {}),
+      ...(m.plunger
+        ? {
+            plunger: {
+              diameter: m.plunger.diameter,
+              height: m.plunger.height,
+              shaft: m.plunger.shaft,
+              length: m.plunger.length,
+              ...(m.plunger.retainer ? { retainer: { ...m.plunger.retainer } } : {}),
+            },
+          }
+        : {}),
+    },
+    ...(preset && fields.length
+      ? {
+          manufacturer: {
+            verification: preset.verification,
+            model: preset.model,
+            revision: preset.revision,
+            sourceUrl: preset.sourceUrl,
+            ...(preset.heightSourceUrl ? { heightSourceUrl: preset.heightSourceUrl } : {}),
+            fields,
+          },
+        }
+      : {}),
+  };
   if (opening.vMm + opening.heightMm / 2 >= p.innerHeightMm - p.lid.lipDepthMm)
     throw new Error("The opening reaches the lid seating region.");
   let plunger: Plunger | undefined;
+  let outwardPlay: number | undefined;
   if (m.plunger && shaft !== undefined) {
     if (!button || m.shape !== "round" || horizontal <= 0)
       throw new Error("Use a round button opening with positive radial shaft clearance.");
     const cap = measure(m.plunger.diameter, "cap diameter", 0.05);
     const height = measure(m.plunger.height, "cap height", 0.05);
-    const length = measure(m.plunger.length, "shaft length", 0.05);
     const required = depth + p.wallThicknessMm + travel;
+    const length =
+      refitPlunger || (m.plunger.retainer && Number.isNaN(m.plunger.length))
+        ? required
+        : measure(m.plunger.length, "shaft length", 0.05);
+    opening.association.measurements.plunger!.length = length;
     if (Math.abs(length - required) > 0.01)
       throw new Error(
         `Set shaft length to ${required.toFixed(3)} mm so the cap reaches the wall at the entered travel.`,
@@ -146,11 +258,34 @@ export function componentOpening(
       rotation: cut.rotation,
     });
     const overlap = Math.min(height / 2, 0.5);
+    let shaftTip = 0;
+    let retainer: Plunger["retainer"];
+    if (m.plunger.retainer) {
+      const diameter = measure(m.plunger.retainer.diameter, "retainer diameter", 0.05);
+      const thickness = measure(m.plunger.retainer.thickness, "retainer thickness", 2);
+      const socket = shaft + 2 * horizontal;
+      if (diameter < socket + 2)
+        throw new Error("Allow at least 1 mm of retainer material radially around the socket.");
+      if (thickness > depth)
+        throw new Error("The retainer is thicker than the gap behind the wall.");
+      if (opening.vMm + diameter / 2 >= p.innerHeightMm - p.lid.lipDepthMm)
+        throw new Error("The retainer reaches the lid seating region.");
+      featurePlan(p, { ...opening, widthMm: diameter, heightMm: diameter });
+      outwardPlay = Math.max(0, depth - thickness);
+      const socketDepth = thickness - 1;
+      const overshoot = 0.2;
+      shaftTip = thickness - socketDepth;
+      retainer = [
+        piece(diameter, thickness, thickness / 2),
+        piece(socket, socketDepth + overshoot, shaftTip + (socketDepth + overshoot) / 2),
+      ];
+    }
     plunger = {
       pieces: [
         piece(cap, height, length + height / 2),
-        piece(shaft, length + overlap, (length + overlap) / 2),
+        piece(shaft, length + overlap - shaftTip, (length + overlap + shaftTip) / 2),
       ],
+      retainer,
     };
   }
   // The cyan envelope starts at the measured mating face and shows inward travel.
@@ -174,6 +309,7 @@ export function componentOpening(
   return {
     opening,
     plunger,
+    outwardPlay,
     envelope,
     depth,
     travel,

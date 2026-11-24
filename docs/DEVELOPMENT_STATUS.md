@@ -1,3 +1,59 @@
+# Phase 8.8d — Component library refinement
+
+Pi 4 and ESP32-DevKitC V4 connector selections prefill nominal board-plane
+positions and housing widths from the manufacturers’ DXFs. Raspberry Pi also
+specifies housing heights. Measure local Y from the PCB underside to the centre
+of the intended opening. Measure the ESP32 height as well. The enclosure wall
+is suggested from the transformed axis. Clearance and cable allowance are
+independent additions per side, and the preview lists the resulting dimensions.
+
+| Connector | Local X (mm) | Local Z (mm) | Nominal width × height (mm) |
+| --- | ---: | ---: | --- |
+| Pi 4 USB 3 stack | 45.5 | 0.66 | 13.82 × 16 |
+| Pi 4 USB 2 stack | 45.5 | 19.39 | 13.92 × 16 |
+| Pi 4 micro HDMI 0 | −16.5 | 29.43 | 7.2 × 3 |
+| Pi 4 micro HDMI 1 | −3 | 29.43 | 7.2 × 3 |
+| Pi 4 USB-C power | −31.3 | 29.25 | 8.65 × 3.2 |
+| DevKitC V4 Micro USB | −0.0254 | 25.0756 | 6.6 × measure |
+
+Positions use the board-outline centre and the housing/mating-face projection
+in the drawing. Pi USB stack widths and lateral positions enclose the DXF
+housing bounds. The ESP32 width represents the leading lip. Check the actual
+connector envelope, plug overmould, reach through the wall and printer fit.
+USB interface specifications define mating geometry and provide context for
+cable fit. The board drawing supplies placement, so no generic USB interface
+dimension is used to infer the installed socket height.
+
+Sources: [Pi 4 DXF, RP-008342-DS](https://pip.raspberrypi.com/documents/RP-008342-DS),
+[Pi 4 PDF, RP-001185-MD-1](https://pip-assets.raspberrypi.com/categories/559-mechanical/documents/RP-001185-MD-1-Mechanical%20Drawing.pdf),
+[Espressif V4 DXF](https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_dimensions.dxf),
+[Espressif V4 schematic, J1](https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_sch.pdf),
+and [USB-IF Type-C specification](https://www.usb.org/usb-type-cr-cable-and-connector-specification).
+
+Generated openings carry their source component and feature IDs, part ID,
+measurements, clearance, manufacturer fields and generation pose. Generated
+openings in the desktop component panel flag stale alignment. Review and
+confirm a replacement on the original enclosure base to keep the cutter ID.
+A captured button refit also updates the original printable parts. A reference
+reattached to a different base needs a new opening on that base. Remove any
+unneeded cuts and standalone button parts explicitly. Older manual features
+retain their existing editing workflow. A duplicate of an individual cutter
+is an independent feature. A duplicate of the project remaps its associations.
+
+Captured buttons add a separately printable blind-socket retainer. Insert the
+plunger from outside and bond the retainer to the shaft from inside. Leave the
+wall and sliding surfaces free of adhesive. Fit the switch after the adhesive
+sets. The outer cap limits the inward stroke. The retainer limits withdrawal,
+with outward play reported in the preview. The design requires measured
+switch travel and enough cavity space for the retainer and actuator. Export
+**Button plunger** and **Button retainer** individually at 1:1 STL. Physical
+fit, bond durability and Quest controller interaction remain acceptance tasks.
+
+Lid openings remain a follow-up. The current recipe stores attachments on the
+base and assumes base-owned Boolean sources. The lid-top reference anchor
+would need a validated lid cutter, lid-specific Boolean ordering and native
+ownership and transaction coverage.
+
 # Phase 8.8c — Connector cutouts and printable button plungers
 
 The desktop 3D Components panel projects measured functional faces onto an

@@ -28,8 +28,18 @@ export function renameNative(data: ArrayBuffer, name: string, duplicate = false)
     metadata.activeLayerId = ids.get(metadata.activeLayerId);
     for (const l of metadata.layers) {
       l.id = ids.get(l.id);
-      for (const feature of l.assemblyPart?.enclosure?.features ?? [])
+      for (const feature of l.assemblyPart?.enclosure?.features ?? []) {
         feature.sourceIds = feature.sourceIds.map((id: string) => ids.get(id));
+        const association = feature.definition.association;
+        if (association) {
+          association.componentId = ids.get(association.componentId) ?? association.componentId;
+          association.partId = ids.get(association.partId) ?? association.partId;
+          if (association.printableIds)
+            association.printableIds = association.printableIds.map(
+              (id: string) => ids.get(id) ?? id,
+            );
+        }
+      }
       if (l.array?.id) l.array.id = newId();
       for (const m of l.booleanModifiers ?? []) {
         m.id = newId();

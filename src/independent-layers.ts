@@ -2447,6 +2447,8 @@ export class IndependentLayers {
           return copy ? [modifier, { ...modifier, id: newId(), sourceId: copy.id }] : [modifier];
         });
         this.setBooleanModifiers(base.id, modifiers);
+        const copiedDefinition = structuredClone(feature.definition);
+        if (copiedDefinition.kind === "cutout") delete copiedDefinition.association;
         this.setAssemblyPart(base.id, {
           ...part,
           enclosure: {
@@ -2455,7 +2457,7 @@ export class IndependentLayers {
               ...features,
               {
                 definition: {
-                  ...feature.definition,
+                  ...copiedDefinition,
                   name: `${feature.definition.name.slice(0, 85)} copy`,
                 },
                 sourceIds: feature.sourceIds.map((sourceId) => copies.get(sourceId)!.id),

@@ -1,5 +1,16 @@
 # Centra Sculpt roadmap
 
+## Phase 8.8d — Connector presets, associated openings and captured buttons
+
+- Pi 4 and ESP32 V4 openings prefill verified nominal dimensions from board
+  drawings. Complete the measurements the drawings leave unspecified.
+- Review and confirm an updated opening when a reference moves. The update
+  keeps its cutter identity and also refits associated button parts.
+- Print a captured plunger and socketed retainer as separate parts. Physical
+  fit and bond durability still require a print trial.
+- Follow-up for lids includes lid-owned attachment sources, base/lid-specific
+  Boolean ordering, validated rim clearances, native persistence and Undo/Redo.
+
 ## Phase 8.8c — Connector cutouts and printable button plungers
 
 - Desktop base-wall previews and measured openings for Pi 4, ESP32, generic

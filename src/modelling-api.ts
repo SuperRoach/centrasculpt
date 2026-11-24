@@ -477,6 +477,7 @@ export class ModellingAPI {
         "parentId",
         "sourceId",
         "sourceIds",
+        "printableIds",
         "partId",
         "moving",
         "target",

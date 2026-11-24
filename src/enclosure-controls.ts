@@ -385,6 +385,8 @@ export class EnclosureControls {
           );
           for (const piece of accessory.plunger?.pieces ?? [])
             this.outline(piece, editor, pair.base, 0xc4a4ff);
+          if (accessory.plunger?.retainer)
+            this.outline(accessory.plunger.retainer[0], editor, pair.base, 0xff95c4);
         }
         (editor.group.parent ?? editor.group).add(this.preview);
       }

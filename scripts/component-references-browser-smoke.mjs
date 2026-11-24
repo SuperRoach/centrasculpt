@@ -10,11 +10,14 @@ import { openSculptProject, saveSculptProject } from "../work/test-build/project
 import { createHeadlessEditor } from "./headless-enclosure.mjs";
 
 const { layers, api } = createHeadlessEditor();
+const seedLayer = layers.project.layerStack.layers[0].id;
 const fixture = await api.enclosure.create(
   { ...DEFAULT_ENCLOSURE, innerWidthMm: 110, innerDepthMm: 75, innerHeightMm: 28 },
   { expectedRevision: api.revision },
 );
 assert(fixture.ok, JSON.stringify(fixture));
+// The fixture uses all 20 layers once both captured-button parts are built.
+layers.deleteObject(seedLayer);
 const basePart = layers.project.layerStack.get(fixture.value.partIds.base);
 const floor = new Vector3(...basePart.transform.position);
 const mm = layers.display.precision.millimetresPerUnit;
@@ -227,7 +230,19 @@ try {
       "Horizontal or radial clearance per side (mm)": 0.35,
     });
 
-  await featurePose(45, 9, 1, 13, 15);
+  assert.equal(await featureFields.getByLabel("Functional face local X (mm)").inputValue(), "45.5");
+  assert.equal(
+    await featureFields.getByLabel("Measured envelope width or diameter (mm)").inputValue(),
+    "13.82",
+  );
+  assert.equal(await featureFields.getByLabel("Measured envelope height (mm)").inputValue(), "16");
+  assert.equal(await featureFields.getByLabel("Functional face local Y (mm)").inputValue(), "");
+  await button("Preview opening in 3D").click();
+  await waitNotice("Enter all three measured coordinates");
+  await fill({
+    "Functional face local Y (mm)": 9,
+    "Horizontal or radial clearance per side (mm)": 0.35,
+  });
   await featureFields.getByLabel("Target base wall").selectOption("enclosure.base.wall.front");
   await button("Preview opening in 3D").click();
   await waitNotice("functional axis");
@@ -259,12 +274,26 @@ try {
   await zField.fill("-18");
   await rotatedY.fill("90");
   await button("Apply placement").click();
-  await featurePose(0, 3, 25, 8, 4);
+  assert.equal(
+    await featureFields.getByLabel("Functional face local X (mm)").inputValue(),
+    "-0.0254",
+  );
+  assert.equal(await featureFields.getByLabel("Measured envelope height (mm)").inputValue(), "");
+  await fill({ "Functional face local Y (mm)": 3, "Measured envelope height (mm)": 4 });
   await featureFields.getByLabel("Vertical clearance per side (mm)").fill("0.4");
   await button("Preview opening in 3D").click();
   await waitNotice("Showing DevKitC Micro USB opening");
   await button("Create connector opening").click();
   await waitNotice("Attachment applied");
+
+  await zField.fill("-17");
+  await button("Apply placement").click();
+  await panel.getByText(/DevKitC Micro USB opening.*Opening is stale/).waitFor();
+  await button("Preview updated opening").click();
+  await waitNotice("Showing DevKitC Micro USB opening");
+  await button("Apply updated opening").click();
+  await waitNotice("Attachment applied");
+  assert.equal(await panel.getByText(/Opening is stale/).count(), 0);
 
   await panel
     .getByLabel("Project component")
@@ -277,13 +306,15 @@ try {
   await button("Preview opening in 3D").click();
   await waitNotice("actuator travel");
   await featureFields.getByLabel("Include printable button plunger").check();
+  await featureFields.getByLabel("Captured button with separate retainer").check();
   await fill({
     "Measured actuator travel (mm)": 0.5,
     "Usable inward actuator depth (mm)": 1,
     "Cap diameter (mm)": 8,
     "Cap height (mm)": 2,
     "Shaft diameter (mm)": 4,
-    "Shaft length (mm)": 3 + DEFAULT_ENCLOSURE.wallThicknessMm + 0.5,
+    "Retainer diameter (mm)": 8,
+    "Retainer thickness (mm)": 3,
   });
   await button("Preview opening in 3D").click();
   await waitNotice("Showing Tactile button opening");
@@ -320,6 +351,12 @@ try {
     ["enclosure.base.wall.right", "enclosure.base.wall.right", "enclosure.base.wall.front"],
   );
   assert(result.layerStack.layers.find((layer) => layer.name === "Button plunger")?.assemblyPart);
+  assert(result.layerStack.layers.find((layer) => layer.name === "Button retainer")?.assemblyPart);
+  assert.equal(
+    part.features[2].definition.association.componentId,
+    result.displayPreferences.components[3].id,
+  );
+  assert.equal(part.features[2].definition.association.pose.position[2], -17);
   await page.context().close();
   const reopened = await newPage();
   await open(reopened, bytes);
@@ -353,7 +390,7 @@ try {
   assert.equal(await sculptLayers.count(), sculptCount);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: component picking, constrained free and snapped drags, interrupted gestures, mounting preview, measured USB and button cutouts, separate plunger, native reopen and component selection/deletion through Layers",
+    "PASS: component picking, constrained free and snapped drags, interrupted gestures, mounting preview, connector presets and stale update, captured button parts, native reopen and component selection/deletion through Layers",
   );
 } finally {
   await browser?.close();

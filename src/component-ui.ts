@@ -1,6 +1,12 @@
 import type { Raycaster } from "three";
 import { partOwner } from "./assembly";
-import { componentOpening, pickComponentWall } from "./component-openings";
+import {
+  componentOpening,
+  type OpeningMeasurements,
+  openingIsStale,
+  pickComponentWall,
+  suggestedOpeningWall,
+} from "./component-openings";
 import {
   COMPONENT_LIMIT,
   COMPONENT_PRESETS,
@@ -277,7 +283,12 @@ export function componentUI(
   const openingLegend = document.createElement("legend");
   openingLegend.textContent = "Connector and button openings";
   const fit = document.createElement("p");
-  openings.append(openingLegend, fit);
+  const connectorDrawing = document.createElement("a");
+  connectorDrawing.textContent = "Connector drawing";
+  connectorDrawing.target = "_blank";
+  connectorDrawing.rel = "noopener";
+  connectorDrawing.hidden = true;
+  openings.append(openingLegend, fit, connectorDrawing);
   form.append(openings);
   const featureChoice = document.createElement("select");
   field(openings, "Functional feature", featureChoice);
@@ -341,6 +352,19 @@ export function componentUI(
   const capHeight = blank(plungerFields, "Cap height (mm)");
   const shaft = blank(plungerFields, "Shaft diameter (mm)");
   const shaftLength = blank(plungerFields, "Shaft length (mm)");
+  const capture = document.createElement("input");
+  capture.type = "checkbox";
+  field(plungerFields, "Captured button with separate retainer", capture);
+  const retainerDiameter = blank(plungerFields, "Retainer diameter (mm)");
+  const retainerThickness = blank(plungerFields, "Retainer thickness (mm)");
+  const generated = document.createElement("fieldset");
+  const generatedLegend = document.createElement("legend");
+  generatedLegend.textContent = "Generated openings";
+  const generatedRows = document.createElement("div");
+  generated.append(generatedLegend, generatedRows);
+  form.after(generated);
+  let generatedKey = "";
+  let updatingId: string | undefined;
   const owner = Symbol("component opening");
   let openingRecord: ComponentReference | undefined;
   let openingSelection = "";
@@ -381,10 +405,18 @@ export function componentUI(
       include.parentElement!.hidden =
         !actuator;
     plungerFields.hidden = !actuator || !include.checked;
+    retainerDiameter.parentElement!.hidden = retainerThickness.parentElement!.hidden =
+      !capture.checked;
+    const record = records().find(({ id }) => id === selectedId);
+    const suggestion = record && suggestedOpeningWall(record, chosenFeature(record));
+    walls.options[0].text = suggestion
+      ? `Suggested ${suggestion.split(".").at(-1)} wall`
+      : "Choose wall · no aligned axis";
   }
   function invalidateOpening() {
     if (openingRecord && (tools.ownsFeature(owner) || tools.pending)) tools.cancel();
     openingRecord = undefined;
+    updatingId = undefined;
   }
   for (const input of openings.querySelectorAll("input, select")) {
     input.addEventListener("input", () => {
@@ -409,25 +441,85 @@ export function componentUI(
       shaftLength,
     ])
       input.value = "";
-    include.checked = false;
-    fit.textContent =
-      "Measure the functional face relative to the component origin at the underside centre. Its visual housings are illustrative.";
+    include.checked = capture.checked = false;
+    retainerDiameter.value = retainerThickness.value = "";
+    const record = records().find(({ id }) => id === selectedId);
+    const preset = record && chosenFeature(record).measurements;
+    connectorDrawing.hidden = !preset;
+    if (preset) {
+      connectorDrawing.href = preset.sourceUrl;
+      centre[0].value = String(preset.centre[0]);
+      centre[2].value = String(preset.centre[2]);
+      width.value = String(preset.width);
+      height.value = preset.height === undefined ? "" : String(preset.height);
+    }
+    fit.textContent = preset
+      ? `${preset.model} · ${preset.revision}. Prefilled manufacturer nominal values are editable. Measure the blank fields from the underside centre, and allow for your cable and print fit.`
+      : "Measure the functional face relative to the component origin at the underside centre.";
     openingFields();
   }
   featureChoice.addEventListener("change", () => {
     shape.value = featureChoice.value === "actuator" ? "round" : "rectangle";
     clearMeasurements();
   });
-  const stageOpening = button(openings, "Preview opening in 3D", async () => {
+  async function previewOpening(
+    record: ComponentReference,
+    feature: FunctionalFeature,
+    measurements: OpeningMeasurements,
+    wall?: WallAnchor,
+    attachmentId?: string,
+  ) {
     cancelWallPick();
-    status.textContent = "";
-    const record = current();
+    invalidateOpening();
     const part = hosts().find(({ id }) => id === record.hostId);
     if (!part) throw new Error("Attach this component to an enclosure base.");
+    const result = componentOpening(record, part, feature, measurements, wall, !!attachmentId);
+    updatingId = attachmentId;
+    const previous = part.assemblyPart?.enclosure?.features?.find(
+      ({ sourceIds }) => sourceIds[0] === attachmentId,
+    );
+    if (previous) result.opening.name = previous.definition.name;
+    tools.editPart(part.id);
+    openingRecord = record;
+    await tools.stageFeature(result.opening, attachmentId, false, {
+      owner,
+      envelope: result.envelope,
+      plunger: result.plunger,
+    });
+    status.textContent = tools.feedback;
+    if (openingRecord !== record || !tools.ownsFeature(owner)) return;
+    if (attachmentId) applyOpening.scrollIntoView({ block: "nearest" });
+    const { opening, depth, wallThickness } = result;
+    const clearance =
+      opening.shape === "round"
+        ? `${result.horizontal} mm radial clearance`
+        : `${result.horizontal} mm horizontal and ${result.vertical} mm vertical clearance per side`;
+    fit.textContent = [
+      result.plunger
+        ? `${opening.association?.measurements.plunger?.length.toFixed(2)} mm fitted length from outside cap to actuator contact face.`
+        : "",
+      `${opening.anchor.split(".").at(-1)} wall · ${opening.widthMm.toFixed(2)} × ${opening.heightMm.toFixed(2)} mm opening · ${wallThickness} mm wall · ${depth.toFixed(2)} mm inside gap.`,
+      `${clearance}.`,
+      result.cable ? `${result.cable} mm extra cable allowance per side.` : "",
+      result.travel ? `${result.travel} mm measured actuator travel.` : "",
+      result.outwardPlay !== undefined
+        ? `${result.outwardPlay.toFixed(2)} mm outward play past the resting actuator.`
+        : "",
+      "Amber shows the opening. Cyan shows the measured envelope.",
+      result.plunger
+        ? result.plunger.retainer
+          ? "Violet shows the plunger. Pink shows the socketed retainer. Insert the shaft from outside, then bond the retainer to the shaft from inside before fitting the switch."
+          : "Violet shows the plunger. The cap limits inward travel and can lift out."
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  const stageOpening = button(openings, "Preview opening in 3D", async () => {
+    const record = current();
     const feature = chosenFeature(record);
-    const result = componentOpening(
+    await previewOpening(
       record,
-      part,
       feature,
       {
         centre: centre.map((input) => input.valueAsNumber) as ComponentReference["positionMm"],
@@ -446,43 +538,24 @@ export function componentUI(
                 height: capHeight.valueAsNumber,
                 shaft: shaft.valueAsNumber,
                 length: shaftLength.valueAsNumber,
+                retainer: capture.checked
+                  ? {
+                      diameter: retainerDiameter.valueAsNumber,
+                      thickness: retainerThickness.valueAsNumber,
+                    }
+                  : undefined,
               }
             : undefined,
       },
       (walls.value || undefined) as WallAnchor | undefined,
     );
-    tools.editPart(part.id);
-    openingRecord = record;
-    await tools.stageFeature(result.opening, undefined, false, {
-      owner,
-      envelope: result.envelope,
-      plunger: result.plunger,
-    });
-    status.textContent = tools.feedback;
-    if (openingRecord !== record || !tools.ownsFeature(owner)) return;
-    const { opening, depth, wallThickness } = result;
-    const clearance =
-      opening.shape === "round"
-        ? `${result.horizontal} mm radial clearance`
-        : `${result.horizontal} mm horizontal and ${result.vertical} mm vertical clearance per side`;
-    fit.textContent = [
-      `${opening.anchor.split(".").at(-1)} wall · ${opening.widthMm.toFixed(2)} × ${opening.heightMm.toFixed(2)} mm opening · ${wallThickness} mm wall · ${depth.toFixed(2)} mm inside gap.`,
-      `${clearance}.`,
-      result.cable ? `${result.cable} mm extra cable allowance per side.` : "",
-      result.travel ? `${result.travel} mm measured actuator travel.` : "",
-      "Amber shows the opening. Cyan shows the measured envelope.",
-      result.plunger
-        ? "Violet shows the plunger. The cap limits inward travel and can lift out. Check fit and travel on a physical print."
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
   });
   const applyOpening = button(openings, "Create connector opening", async () => {
     if (openingRecord !== current() || !tools.ownsFeature(owner))
       throw new Error("Preview this opening again after changing the component or enclosure.");
     await tools.confirm(owner);
     openingRecord = undefined;
+    updatingId = undefined;
     status.textContent = tools.feedback;
   });
   const cancelOpening = button(
@@ -538,8 +611,9 @@ export function componentUI(
     stageOpening.disabled = tools.pending;
     applyOpening.disabled = tools.pending || !tools.ownsFeature(owner);
     cancelOpening.disabled = !openingRecord;
-    applyOpening.textContent =
-      featureChoice.value !== "actuator"
+    applyOpening.textContent = updatingId
+      ? "Apply updated opening"
+      : featureChoice.value !== "actuator"
         ? "Create connector opening"
         : include.checked
           ? "Create opening and printable plunger"
@@ -607,7 +681,13 @@ export function componentUI(
     if (!list.some((record) => record.id === selectedId)) selectedId = list[0]?.id ?? "";
     const record = list.find((record) => record.id === selectedId);
     const available = hosts();
-    if (openingRecord && openingRecord !== record) invalidateOpening();
+    if (
+      openingRecord &&
+      (openingRecord !== record ||
+        !panel.open ||
+        (parent instanceof HTMLDetailsElement && !parent.open))
+    )
+      invalidateOpening();
     if (
       wallPickRecord &&
       (wallPickRecord !== record ||
@@ -633,6 +713,73 @@ export function componentUI(
       );
       shape.value = featureChoice.value === "actuator" ? "round" : "rectangle";
       clearMeasurements();
+    }
+    openingFields();
+    const openingsForComponent = available.flatMap((part) =>
+      (part.assemblyPart?.enclosure?.features ?? []).flatMap(({ definition, sourceIds }) => {
+        if (definition.kind !== "cutout" || !definition.association) return [];
+        const association = definition.association;
+        const linked = list.find(({ id }) => id === association.componentId);
+        if (linked && linked.id !== record?.id) return [];
+        return [
+          {
+            part,
+            definition,
+            association,
+            linked,
+            id: sourceIds[0],
+            stale: openingIsStale(association, linked, part),
+          },
+        ];
+      }),
+    );
+    const nextGeneratedKey = JSON.stringify(
+      openingsForComponent.map(({ id, stale, linked, definition, part }) => [
+        id,
+        stale,
+        linked?.hostId,
+        definition,
+        part.name,
+      ]),
+    );
+    if (generatedKey !== nextGeneratedKey) {
+      generatedKey = nextGeneratedKey;
+      generatedRows.replaceChildren();
+      generated.hidden = !openingsForComponent.length;
+      for (const { part, definition, association, linked, id, stale } of openingsForComponent) {
+        const row = document.createElement("div");
+        const message = document.createElement("p");
+        message.textContent = `${definition.name} · ${part.name}${
+          !linked
+            ? " · Reference deleted"
+            : stale
+              ? linked.hostId !== part.id
+                ? " · Opening is stale. The reference now belongs to a different part or the sculpture."
+                : " · Opening is stale."
+              : ""
+        }`;
+        row.append(message);
+        generatedRows.append(row);
+        if (stale && linked?.hostId === part.id && association.partId === part.id) {
+          button(row, "Preview updated opening", async () => {
+            const currentRecord = current();
+            const feature = functionalFeatures(currentRecord.preset).find(
+              ({ id }) => id === association.featureId,
+            );
+            await previewOpening(
+              currentRecord,
+              {
+                ...(feature ?? generic),
+                ...association.axes,
+                id: association.featureId,
+              },
+              association.measurements,
+              undefined,
+              id,
+            );
+          });
+        }
+      }
     }
     if (previewOwner && previewOwner !== record) {
       tools.cancel();
@@ -701,6 +848,13 @@ export function componentUI(
       bore.value = record.preset === "pi4" ? "2" : "";
     }
   }
+  panel.addEventListener("toggle", () => {
+    if (!panel.open) invalidateOpening();
+  });
+  if (parent instanceof HTMLDetailsElement)
+    parent.addEventListener("toggle", () => {
+      if (!parent.open) invalidateOpening();
+    });
   host.onchange = () => {
     snap.disabled = !snapHost();
   };

@@ -1,4 +1,5 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from "three";
+import { type OpeningAssociation, openingAssociationSchema } from "./component-opening-association";
 import type { EnclosureParameters } from "./enclosure-recipe";
 import type { PrimitiveSource } from "./parametric-primitive";
 import { transformMatrix, type Vec3, type VolumeTransform } from "./transform";
@@ -22,6 +23,7 @@ export type CutoutDefinition = {
   insetMm: number;
   cornerRadiusMm?: number;
   outsideFlareMm?: number;
+  association?: OpeningAssociation;
 };
 export type MountingDefinition = {
   kind: "mounting";
@@ -65,7 +67,9 @@ export function validateFeature(value: unknown): FeatureDefinition {
       "insetMm",
       "cornerRadiusMm",
       "outsideFlareMm",
+      "association",
     ]);
+    if (v.association !== undefined) openingAssociationSchema.parse(v.association);
     if (!WALL_ANCHORS.includes(v.anchor) || !["rectangle", "round"].includes(v.shape))
       throw new Error("Choose a named base wall and rectangle or round opening.");
     for (const key of ["uMm", "vMm"] as const) num(v[key], -1000);
@@ -353,6 +357,7 @@ export function scaledEnclosureFeature(
     next.heightMm = clean(next.heightMm);
     next.uMm = clean(next.uMm);
     next.vMm = clean(next.vMm);
+    if (next.association) next.association.manuallyEdited = true;
   } else {
     next.outerDiameterMm = clean(next.outerDiameterMm);
     next.boreDiameterMm = clean(next.boreDiameterMm);

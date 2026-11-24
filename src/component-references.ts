@@ -221,6 +221,17 @@ export function validateComponents(value: unknown): ComponentReference[] {
   });
 }
 
+export type ConnectorMeasurements = {
+  model: string;
+  revision: string;
+  sourceUrl: string;
+  heightSourceUrl?: string;
+  verification: "manufacturer-nominal";
+  centre: [number, undefined, number];
+  width: number;
+  height?: number;
+};
+
 export type FunctionalFeature = {
   id: string;
   name: string;
@@ -228,7 +239,8 @@ export type FunctionalFeature = {
   outward: XYZ;
   up: XYZ;
   source?: string;
-  confidence: "user-measured" | "illustrative-location";
+  confidence: "user-measured" | "illustrative-location" | "manufacturer-partial";
+  measurements?: ConnectorMeasurements;
 };
 
 export function functionalFeatures(preset: ComponentPreset): FunctionalFeature[] {
@@ -247,17 +259,45 @@ export function functionalFeatures(preset: ComponentPreset): FunctionalFeature[]
     source: presetFor(preset).drawing,
     confidence: "illustrative-location",
   });
+  function measured(
+    item: FunctionalFeature,
+    x: number,
+    z: number,
+    width: number,
+    height?: number,
+  ): FunctionalFeature {
+    const board = presetFor(preset);
+    return {
+      ...item,
+      confidence: "manufacturer-partial",
+      measurements: {
+        model: board.name,
+        revision: preset === "pi4" ? "RP-008342-DS / RP-001185-MD-1" : "DevKitC V4",
+        sourceUrl:
+          preset === "pi4"
+            ? "https://pip.raspberrypi.com/documents/RP-008342-DS"
+            : "https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_dimensions.dxf",
+        heightSourceUrl: height === undefined ? undefined : board.drawing,
+        verification: "manufacturer-nominal",
+        centre: [x, undefined, z],
+        width,
+        height,
+      },
+    };
+  }
   switch (preset) {
     case "pi4":
       return [
-        feature("usb3", "Pi 4 USB 3 stack", "usb", [1, 0, 0]),
-        feature("usb2", "Pi 4 USB 2 stack", "usb", [1, 0, 0]),
-        feature("hdmi0", "Pi 4 micro HDMI 0", "hdmi", [0, 0, 1]),
-        feature("hdmi1", "Pi 4 micro HDMI 1", "hdmi", [0, 0, 1]),
-        feature("power", "Pi 4 USB-C power", "power", [0, 0, 1]),
+        measured(feature("usb3", "Pi 4 USB 3 stack", "usb", [1, 0, 0]), 45.5, 0.66, 13.82, 16),
+        measured(feature("usb2", "Pi 4 USB 2 stack", "usb", [1, 0, 0]), 45.5, 19.39, 13.92, 16),
+        measured(feature("hdmi0", "Pi 4 micro HDMI 0", "hdmi", [0, 0, 1]), -16.5, 29.43, 7.2, 3),
+        measured(feature("hdmi1", "Pi 4 micro HDMI 1", "hdmi", [0, 0, 1]), -3, 29.43, 7.2, 3),
+        measured(feature("power", "Pi 4 USB-C power", "power", [0, 0, 1]), -31.3, 29.25, 8.65, 3.2),
       ];
     case "devkit":
-      return [feature("usb", "DevKitC Micro USB", "usb", [0, 0, 1])];
+      return [
+        measured(feature("usb", "DevKitC Micro USB", "usb", [0, 0, 1]), -0.0254, 25.0756, 6.6),
+      ];
     case "tactile":
       return [feature("actuator", "Tactile button", "button", [0, 1, 0], [0, 0, 1])];
     default:
