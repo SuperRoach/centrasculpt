@@ -5,6 +5,13 @@ import {
   agentTransaction,
   describeAgentResult,
 } from "./agent-activity";
+import {
+  type ComponentEdit,
+  type ComponentRecipe,
+  editComponent,
+  inspectComponents,
+  planComponentFeature,
+} from "./agent-components";
 import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import type { FeatureDefinition } from "./enclosure-features";
 import type { EnclosureParameters } from "./enclosure-recipe";
@@ -46,6 +53,7 @@ export type AgentProposal = {
   expiresAt: number;
   steps: ModellingStep[];
   recipe?:
+    | ComponentRecipe
     | { type: "create"; parameters: EnclosureParameters; features?: FeatureDefinition[] }
     | { type: "update"; baseId: string; lidId: string; parameters: EnclosureParameters }
     | {
@@ -60,7 +68,12 @@ export type AgentProposal = {
   preview?: { ok: boolean; value?: BatchReport; [key: string]: unknown };
   result?: unknown;
 };
-function executeProposal(api: ModellingAPI, proposal: AgentProposal, options: BatchOptions) {
+async function executeProposal(
+  layers: IndependentLayers,
+  api: ModellingAPI,
+  proposal: AgentProposal,
+  options: BatchOptions,
+) {
   const recipe = proposal.recipe;
   if (recipe?.type === "create")
     return recipe.features?.length
@@ -78,6 +91,33 @@ function executeProposal(api: ModellingAPI, proposal: AgentProposal, options: Ba
     );
   if (recipe?.type === "feature-remove")
     return api.enclosure.removeFeature(recipe.baseId, recipe.lidId, recipe.attachmentId, options);
+  if (recipe) {
+    try {
+      if (api.revision !== options.expectedRevision)
+        return {
+          ok: false as const,
+          revision: api.revision,
+          error: { code: "revision_conflict", message: "Scene changed." },
+        };
+      const { definition, plunger, attachmentId, fit } = planComponentFeature(layers, recipe);
+      const result = await api.enclosure.setFeature(
+        recipe.baseId,
+        recipe.lidId,
+        definition,
+        options,
+        attachmentId,
+        plunger,
+      );
+      if (result.ok && fit) Object.assign(result.value, { fit });
+      return result;
+    } catch (e) {
+      return {
+        ok: false as const,
+        revision: api.revision,
+        error: { code: "invalid_input", message: e instanceof Error ? e.message : String(e) },
+      };
+    }
+  }
   return api.batch(proposal.steps, options);
 }
 /** Memory-only, browser-owned consent. Never exposed as an MCP approval tool. */
@@ -176,13 +216,18 @@ export function agentExecutor(
       [
         "propose_changes",
         "propose_enclosure",
+        "propose_component_feature",
         "get_proposal",
         "cancel_proposal",
         "apply_approved_proposal",
       ].includes(job.name)
     ) {
       const p = proposals.current;
-      if (job.name === "propose_changes" || job.name === "propose_enclosure") {
+      if (
+        job.name === "propose_changes" ||
+        job.name === "propose_enclosure" ||
+        job.name === "propose_component_feature"
+      ) {
         if (!canEdit())
           return error("permission_denied", "Enable editing before staging a proposal.");
         if (
@@ -199,7 +244,7 @@ export function agentExecutor(
           expectedRevision: a.expectedRevision as string,
           expiresAt: Date.now() + 120000,
           steps: structuredClone((a.steps ?? []) as ModellingStep[]),
-          ...(job.name === "propose_enclosure"
+          ...(job.name !== "propose_changes"
             ? { recipe: structuredClone(a.recipe as AgentProposal["recipe"]) }
             : {}),
           before: layers.project.layerStack.layers
@@ -237,12 +282,12 @@ export function agentExecutor(
               ? error("cancelled", "Proposal invalidated during staging.")
               : preview;
         };
-        const preview = executeProposal(api, proposal, {
+        const preview = executeProposal(layers, api, proposal, {
           expectedRevision: proposal.expectedRevision,
           dryRun: true,
           signal: AbortSignal.any([signal, controller.signal]),
         });
-        if (job.name === "propose_enclosure" && a.waitForPreview === false) {
+        if (a.waitForPreview === false) {
           void preview.then(finishPreview).catch((e) =>
             finishPreview({
               ok: false,
@@ -329,7 +374,7 @@ export function agentExecutor(
       proposals.controller = controller;
       const applyStarted = performance.now();
       const timeout = AbortSignal.timeout(Math.max(1, p.expiresAt - Date.now()));
-      const apply = executeProposal(api, p, {
+      const apply = executeProposal(layers, api, p, {
         expectedRevision: p.expectedRevision,
         preserveSelection: true,
         coalesceSourceMeshYields:
@@ -371,6 +416,26 @@ export function agentExecutor(
         return { ok: true, revision: api.revision, value: structuredClone(p) };
       }
       return finishApply(await apply);
+    }
+    if (job.name === "inspect_components")
+      return {
+        ok: true,
+        revision: api.revision,
+        value: inspectComponents(layers, a.componentId as string | undefined),
+      };
+    if (job.name === "edit_component" || job.name === "redo") {
+      if (!canEdit()) return error("permission_denied", "Enable editing first.");
+      if (a.expectedRevision !== api.revision) return error("revision_conflict", "Scene changed.");
+      try {
+        const value =
+          job.name === "redo"
+            ? { action: layers.undo(true) }
+            : { componentId: editComponent(layers, a.edit as ComponentEdit) };
+        notifyChanged();
+        return { ok: true, revision: api.revision, value };
+      } catch (e) {
+        return error("invalid_input", e instanceof Error ? e.message : String(e));
+      }
     }
     if (job.name === "scene_summary") return api.query({ type: "scene.summary" });
     if (job.name === "list_objects") return api.query({ type: "object.list" });

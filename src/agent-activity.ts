@@ -29,7 +29,9 @@ const actions: Record<string, string> = {
   create_enclosure: "Create enclosure",
   update_enclosure: "Update enclosure",
   create_connector: "Create connector",
+  edit_component: "Edit component reference",
   undo: "Undo",
+  redo: "Redo",
 };
 const commandActions = new Set([
   "group_create",

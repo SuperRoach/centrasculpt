@@ -3074,8 +3074,10 @@ componentTransform = new ComponentTransformTool(
     select: componentsUI.select,
     deselect: componentsUI.deselect,
     commit: (original, draft) => {
-      const index = display.components.indexOf(original);
-      if (index >= 0) display.components[index] = draft;
+      if (display.components.includes(original))
+        layers.replaceComponentReferences(
+          display.components.map((item) => (item === original ? draft : item)),
+        );
       componentsUI.sync();
     },
     busy: () =>

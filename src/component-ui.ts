@@ -16,7 +16,6 @@ import {
   type FunctionalFeature,
   functionalFeatures,
   presetFor,
-  validateComponents,
 } from "./component-references";
 import { componentMounting } from "./component-view";
 import type { EnclosureControls } from "./enclosure-controls";
@@ -132,8 +131,7 @@ export function componentUI(
       opacity: 1,
       visible: true,
     };
-    const next = validateComponents([...records(), added]);
-    records().push(next[next.length - 1]);
+    editor().replaceComponentReferences([...records(), added]);
     selectComponent(added.id);
   });
   field(panel, "Project component", selected);
@@ -190,9 +188,9 @@ export function componentUI(
   visible.type = "checkbox";
   field(form, "Visible", visible);
   function replace(record: ComponentReference) {
-    const [valid] = validateComponents([record]);
-    const list = records();
-    list[list.findIndex((item) => item.id === valid.id)] = valid;
+    editor().replaceComponentReferences(
+      records().map((item) => (item.id === record.id ? record : item)),
+    );
   }
   button(form, "Apply placement", () => {
     const record = current();
@@ -238,7 +236,7 @@ export function componentUI(
     if (blocked() || tools.pending || index < 0) return;
     if (!window.confirm(`Delete ${presetFor(list[index].preset).name} reference?`)) return;
     viewportMode(null);
-    list.splice(index, 1);
+    editor().replaceComponentReferences(list.filter((item) => item.id !== id));
     selectedId = layerSelection = "";
     sync(true);
   }

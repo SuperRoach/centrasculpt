@@ -42,6 +42,7 @@ for (const name of [
   "component-view",
   "modelling-api",
   "agent-access",
+  "agent-components",
   "agent-performance",
   "agent-preview",
   "mesh-inspection",

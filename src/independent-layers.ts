@@ -20,6 +20,7 @@ import {
   validateBakeOptions,
   yieldBake,
 } from "./bake";
+import { type ComponentReference, validateComponents } from "./component-references";
 import { BooleanComposite, prepareCompositeColour } from "./compositor";
 import type { MoveProgress } from "./deformation-reconstruction";
 import { copyMoveVolume, MoveWork } from "./deformation-reconstruction";
@@ -267,6 +268,12 @@ type HierarchyEntry = {
 };
 type PaintEntry = { kind: "paint"; layerId: string; before: PaintSnapshot; after: PaintSnapshot };
 type TimelineEntry =
+  | {
+      kind: "components";
+      layerId: string;
+      before: ComponentReference[];
+      after: ComponentReference[];
+    }
   | {
       kind: "assembly-batch";
       layerId: string;
@@ -824,6 +831,7 @@ export class IndependentLayers {
     const key = JSON.stringify([
       this.recoveryKey(),
       this.selectedGroupId,
+      this.display.components,
       this.display.precision.millimetresPerUnit,
       this.project.layerStack.layers.map((l) =>
         this.display.colour(this.project.id, l.id, l.order),
@@ -1807,6 +1815,21 @@ export class IndependentLayers {
     group.updateWorldMatrix(true, true);
     this.composite.syncMetadata();
   }
+  replaceComponentReferences(records: ComponentReference[]): void {
+    this.assertAvailable();
+    const after = validateComponents(records);
+    const before = structuredClone(this.display.components);
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    this.discardFuture();
+    this.past.push({ kind: "components", layerId: "", before, after });
+    if (this.past.filter((entry) => entry.kind === "components").length > 100)
+      this.past.splice(
+        this.past.findIndex((entry) => entry.kind === "components"),
+        1,
+      );
+    this.display.components = structuredClone(after);
+    this.committedRevision++;
+  }
   undo(redo = false): string | null {
     this.assertAvailable();
     this.finishStroke();
@@ -1823,6 +1846,13 @@ export class IndependentLayers {
       this.project.layerStack.select(redo ? entry.activeAfter : entry.activeBefore);
       this.selectedGroupId = redo ? entry.selectedAfter : entry.selectedBefore;
       this.syncPresentation();
+      return this.project.activeLayerId;
+    }
+    if (entry.kind === "components") {
+      this.display.components = structuredClone(redo ? entry.after : entry.before);
+      from.pop();
+      to.push(entry);
+      this.committedRevision++;
       return this.project.activeLayerId;
     }
     if (entry.kind === "name") {

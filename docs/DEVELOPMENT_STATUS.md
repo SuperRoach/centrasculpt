@@ -1,3 +1,71 @@
+# Phase 8.8e — Electronics enclosure MCP integration
+
+Local MCP now lists and inspects display-only references, edits component
+placement in millimetres and degrees, and stages mounting posts, measured
+wall openings and associated refits for browser review. Opening previews
+include the functional envelope, wall gap and any printable button pieces.
+The existing browser approval applies to each generated feature. Component
+edits participate in editor Undo/Redo and invalidate proposals at the previous
+revision. ESP32 socket height and connector centre Y require explicit input.
+
+The browser recorded 72 MCP tools. The isolated stdio run passed connection
+consent, read-only inspection, Pi 4 snap and four posts, rotated ESP32 and
+measurement refusals, cutter identity through rejected/approved updates and
+Undo/Redo, captured-button refit, and native save and reopen with the linked
+references intact. The separate desktop smoke passed component picking,
+gesture cancellation, mounting, openings, captured button parts and native
+reopen. The general MCP browser smoke reached evaluated diagnostics, then
+returned a cancellation at its deadline. The combined integration run
+timed out preparing browser STL downloads. A separate High-preset browser
+retry timed out on the base at 300 s. The same four parts passed the
+existing native part exporter on the downloaded browser project.
+
+The native fixture uses 20 parametric layers and three display references. A
+17³ empty seed keeps its source caches within the native archive limit.
+Generation inherits the active source resolution, and a run started from the
+default 64³ seed was rejected on save at the aggregate triangle cap. The cap
+is unchanged. The desktop component panel now reports completion after
+committing an opening. Evaluated assembly preview remains independently
+available.
+
+The six completed stdio scenarios took about 50.2 s and 97 MCP calls, including
+nine deliberate refusals. Browser proposal preview spans for valid requests
+were 47–369 ms and apply spans were 115–1,657 ms. Peak sampled renderer
+JavaScript heap was 66.0 MiB. Four native High preset exports took 101.6 s
+for the base, 42.2 s for the lid, 4.2 s for the plunger and 3.7 s for the
+retainer. These are single-run timings for a component workload with a
+different seed and more sources than the Phase 8.6 enclosure benchmark.
+
+Five bed-oriented 1:1 coupon STL files passed the encoder topology checks
+and a second check of the final binary coordinates. Sampled Pi and ESP
+openings were 14.62 × 16.80 and 7.40 × 4.80 mm. The measured tactile chord
+was 4.58 mm against the 4.60 mm design diameter. Its retainer retained a
+1.00 mm blind floor. All nine validated exports had one closed shell, zero
+non-manifold edges, zero winding errors and zero degenerate triangles.
+General triangle self-intersection checking remains outside the exporter.
+Focused tests passed 45/45, quick tests passed 21/21, and `npm run check`
+passed formatting, lint, strict TypeScript, build and 1802/1802 tests.
+
+To reproduce with an installed Playwright Chromium:
+
+```sh
+node scripts/component-mcp-smoke.mjs --model-only
+node scripts/component-fit-coupons.mjs --enclosure-parts
+node scripts/component-mcp-smoke.mjs --export-only
+npm test -- component-references enclosure-recipe enclosure-features
+npm run build
+node scripts/component-references-browser-smoke.mjs
+AGENT_SMOKE_HOST=127.0.0.1 npm run test:agent:browser
+npm run check
+```
+
+The disposable context and discovery file keep tested project and recovery
+storage isolated. The native fixtures, STL files, print checklist, capability
+inventory and timing reports are in `work/phase-8-8e/`. The fixture uses
+explicit example values for hardware measurements missing from the drawings.
+Physical fit, adhesive retention and switch operation require a print and
+assembly trial.
+
 # Phase 8.8d — Component library refinement
 
 Pi 4 and ESP32-DevKitC V4 connector selections prefill nominal board-plane

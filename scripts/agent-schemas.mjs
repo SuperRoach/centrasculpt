@@ -502,6 +502,97 @@ tools.propose_enclosure = {
   description:
     "Stage one standalone enclosure recipe. A new enclosure may include up to ten cutout and mounting definitions in the same atomic proposal. Set waitForPreview:false to return while the browser shows Previewing…, then poll get_proposal until it reaches awaiting approval or rejected/error. Separate browser approval required; it cannot nest in apply_changes/propose_changes or combine with connector commands.",
 };
+const componentLength = number.min(0).max(1000);
+const componentCoordinate = number.min(-1000).max(1000);
+const componentTarget = { componentId: id, baseId: id, lidId: id };
+tools.inspect_components = {
+  schema: z.strictObject({ componentId: id.optional() }),
+  description:
+    "List component presets, references, host-local envelopes, functional measurements and generated opening associations. Read-only.",
+};
+tools.edit_component = {
+  schema: z.strictObject({
+    ...revision,
+    edit: z.discriminatedUnion("type", [
+      z.strictObject({
+        type: z.literal("insert"),
+        preset: z.enum(["pcb", "pi4", "zero2", "devkit", "tactile"]),
+      }),
+      z.strictObject({
+        type: z.literal("place"),
+        componentId: id,
+        hostId: id.nullable(),
+        positionMm: z.array(number.min(-10000).max(10000)).length(3),
+        rotation: z.array(number.min(-360).max(360)).length(3),
+        gapMm: componentLength.optional(),
+      }),
+      z.strictObject({ type: z.literal("delete"), componentId: id }),
+    ]),
+  }),
+  description:
+    "Insert, place or delete an undoable component reference. Placement uses XYZ in mm and rotation in degrees. Specify gapMm to snap to the host surface.",
+};
+tools.redo = {
+  schema: z.strictObject(revision),
+  description: "Redo the last undone editor transaction.",
+};
+tools.propose_component_feature = {
+  schema: z.strictObject({
+    ...revision,
+    title: z.string().trim().min(1).max(120),
+    description: z.string().trim().min(1).max(2000),
+    waitForPreview: z.boolean().optional(),
+    recipe: z.discriminatedUnion("type", [
+      z.strictObject({
+        type: z.literal("component-mounting"),
+        ...componentTarget,
+        outerDiameterMm: componentLength,
+        boreDiameterMm: componentLength,
+      }),
+      z.strictObject({ type: z.literal("component-update"), ...componentTarget, attachmentId: id }),
+      z.strictObject({
+        type: z.literal("component-opening"),
+        ...componentTarget,
+        featureId: id,
+        wall: z
+          .enum([
+            "enclosure.base.wall.front",
+            "enclosure.base.wall.right",
+            "enclosure.base.wall.back",
+            "enclosure.base.wall.left",
+          ])
+          .optional(),
+        measurements: z.strictObject({
+          x: componentCoordinate.optional(),
+          y: componentCoordinate,
+          z: componentCoordinate.optional(),
+          shape: z.enum(["rectangle", "round"]),
+          width: componentLength.optional(),
+          height: componentLength.optional(),
+          horizontal: componentLength,
+          vertical: componentLength,
+          cable: componentLength,
+          travel: componentLength.optional(),
+          usableDepth: componentLength.optional(),
+          plunger: z
+            .strictObject({
+              diameter: componentLength,
+              height: componentLength,
+              shaft: componentLength,
+              length: componentLength.optional(),
+              retainer: z
+                .strictObject({ diameter: componentLength, thickness: componentLength })
+                .optional(),
+            })
+            .optional(),
+        }),
+      }),
+    ]),
+  }),
+  description:
+    "Preview mounting posts, a measured wall opening with optional printable button parts, or an associated update. Nominal connector fields may be omitted when supplied by the preset. Enter measured Y and any missing dimensions. Apply through the existing browser-approved proposal workflow.",
+};
+
 for (const name of ["get_proposal", "cancel_proposal", "apply_approved_proposal"])
   tools[name] = {
     schema: z
@@ -597,6 +688,13 @@ export const capabilityRegistry = {
   arrays: ["linear", "radial"],
   batchCommands: Object.values(commandTools),
   batchLimits: { minCommands: 1, maxCommands: 64, oneUndo: true, aliases: true },
+  componentReferences: {
+    inspect: "inspect_components",
+    edit: "edit_component",
+    proposeFeature: "propose_component_feature",
+    requiresBrowserApprovalForGeneratedFeatures: true,
+    placementRotationUnit: "degrees",
+  },
   proposal: {
     available: true,
     requiresSeparateBrowserApproval: true,
@@ -616,6 +714,7 @@ export const isWrite = (name) =>
   ![
     "get_proposal",
     "get_transaction",
+    "inspect_components",
     "cancel_proposal",
     "enclosure_anchors",
     "list_enclosure_features",

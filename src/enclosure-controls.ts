@@ -428,7 +428,15 @@ export class EnclosureControls {
             );
         if (!result.ok) throw new Error(result.error.message);
         this.feedback = "Attachment applied. One Undo restores the previous model.";
-        await previewAssembly(staged.editor, this.abort.signal);
+        // Component openings can add three independent printable results. Their
+        // commit is complete here and an evaluated assembly is a separate view.
+        if (!staged.accessory) {
+          try {
+            await previewAssembly(staged.editor, this.abort.signal);
+          } catch (e) {
+            this.feedback += ` Assembly preview unavailable: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
       } catch (e) {
         this.feedback = e instanceof Error ? e.message : String(e);
       } finally {

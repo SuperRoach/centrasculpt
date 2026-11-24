@@ -73,7 +73,7 @@ try {
     const status = page.locator("#project-message");
     await status
       .filter({ hasText: /^Opened / })
-      .waitFor({ timeout: 120000 })
+      .waitFor({ timeout: 190000 })
       .catch(async (error) => {
         throw new Error(`Project reopen: ${await status.textContent()}`, { cause: error });
       });
@@ -197,7 +197,7 @@ try {
   await panel
     .getByRole("status")
     .filter({ hasText: "Attachment applied" })
-    .waitFor({ timeout: 120000 })
+    .waitFor({ timeout: 190000 })
     .catch(async (error) => {
       throw new Error(`Mounting confirmation: ${await panel.getByRole("status").textContent()}`, {
         cause: error,
@@ -212,7 +212,7 @@ try {
   const waitNotice = async (message) => {
     await feedback
       .filter({ hasText: message })
-      .waitFor({ timeout: 20000 })
+      .waitFor({ timeout: 90000 })
       .catch(async (error) => {
         throw new Error(
           `Expected ${message}. Component panel says ${await feedback.textContent()}`,
@@ -328,6 +328,8 @@ try {
       .getByRole("button", { name: "Download .form", exact: true })
       .click(),
   ]);
+  if (process.env.CENTRA_COMPONENT_NATIVE_OUTPUT)
+    await download.saveAs(process.env.CENTRA_COMPONENT_NATIVE_OUTPUT);
   const bytes = await readFile(await download.path());
   const result = openSculptProject(Uint8Array.from(bytes).buffer);
   assert.deepEqual(

@@ -152,6 +152,25 @@ export function componentSurfaceMm(host: SdfLayer): number {
     : -p.lid.thicknessMm / 2;
 }
 
+export function componentEnvelope(record: ComponentReference, host?: SdfLayer) {
+  const object = meshFor(record);
+  try {
+    const bounds = rotatedBounds(object, componentRotation(record));
+    const position = new Vector3(...record.positionMm);
+    if (host && record.gapMm !== undefined) position.y = snappedHeight(record, host, bounds);
+    bounds.min.multiplyScalar(record.scale).add(position);
+    bounds.max.multiplyScalar(record.scale).add(position);
+    return {
+      positionMm: position.toArray(),
+      minMm: bounds.min.toArray(),
+      maxMm: bounds.max.toArray(),
+      clearance: host && componentClearance(bounds, host),
+    };
+  } finally {
+    release(object);
+  }
+}
+
 export function componentPositionMm(record: ComponentReference, host: SdfLayer): Vector3 {
   const position = new Vector3(...record.positionMm);
   if (record.gapMm === undefined) return position;

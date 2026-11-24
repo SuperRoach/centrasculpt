@@ -1,5 +1,17 @@
 # Centra Sculpt roadmap
 
+## Phase 8.8e — Electronics enclosure MCP and physical fit
+
+- Use the local MCP browser review flow for measured connector openings, posts
+  and associated button refits. Inspect stale and deleted-reference links.
+- Run the isolated integration harness and generate actual-size wall, plunger
+  and retainer coupons from the tested native fixture.
+- Print and assemble the coupons to verify cable reach, shaft clearance,
+  actuator travel and adhesive retention.
+- Reconcile modelling admission with the native triangle limit at the default
+  source resolution. Verify browser export and evaluated diagnostic timing
+  for the full electronics workload.
+
 ## Phase 8.8d — Connector presets, associated openings and captured buttons
 
 - Pi 4 and ESP32 V4 openings prefill verified nominal dimensions from board
