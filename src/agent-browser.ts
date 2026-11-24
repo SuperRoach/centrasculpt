@@ -23,6 +23,7 @@ export function mountAgentAccess(
     scene: Object3D;
     frame: (bounds: Box3) => void;
     feedbackBlocked?: () => boolean;
+    onMeshEvaluation?: (active: boolean) => void;
     installFeedbackRenderer?: (render: () => boolean) => void;
     camera?: import("three").PerspectiveCamera;
     blocked: () => boolean;
@@ -530,6 +531,12 @@ export function mountAgentAccess(
             throw new Error("Capture cancelled: scene or connection changed during upload.");
           return metadata;
         };
+        const evaluatingMesh =
+          job.name === "inspect_print_mesh" ||
+          job.name === "get_geometry_diagnostics" ||
+          job.name === "inspect_parts" ||
+          (job.name === "capture_scene_preview" && (job.args.objectId || job.args.partId));
+        if (evaluatingMesh) viewport?.onMeshEvaluation?.(true);
         void operation()
           .catch((error: Error) => ({
             ok: false,
@@ -544,6 +551,7 @@ export function mountAgentAccess(
           })
           .catch(() => reset("Bridge disconnected; inspect the scene before retrying."))
           .finally(() => {
+            if (evaluatingMesh) viewport?.onMeshEvaluation?.(false);
             clearTimeout(deadline);
             running = undefined;
           });

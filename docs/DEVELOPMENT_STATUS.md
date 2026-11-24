@@ -1,3 +1,137 @@
+# Phase 8.8f — Save reliability and export performance
+
+The native save and recovery encoders share a 1,000,000-triangle source
+budget. They count sign changes in the six marching tetrahedra per grid
+cell of every stored layer. This includes independent sculpt and tube
+fields, parametric primitive SDF caches, hidden layers, and Boolean
+operands. Stored triangles are a cost estimate computed from voxel samples.
+Analytic viewport meshes, evaluated Boolean meshes, STL output,
+components and reference images, Undo/Redo snapshots, paint and masks
+are outside the count. The runtime mesh count can differ from the
+native count because parametric sources use analytic viewport geometry.
+
+The 20-source Phase 8.8e fixture has 307,312 counted triangles and
+718,740 samples from a 17³ blank seed and 33³ primitive caches. Rebuilding
+the same analytic sources with the default 64³ seed gives 63³ caches,
+1,147,456 counted triangles and 5,000,940 samples. After creating the
+enclosure, posts and both USB openings, the default project remains
+within budget. The captured-button proposal would cross the limit at
+the shaft, with 1,020,288 triangles in archive order. Native admission
+now checks finished assembly batches before committing the history entry
+and checks individual parametric regenerations before publication. The
+same count runs at save time. Failed batches roll back and preserve the
+prior revision, selection, Undo/Redo and recovery state. The cap and
+existing .form reader and writer formats are unchanged.
+
+Fitting the whole 20-source enclosure in one default-resolution file
+requires a separate architecture change. A future format could store
+validated analytic recipes without serializing their rebuildable SDF
+caches. This needs independent admission for load-time cache regeneration
+and display mesh allocations, compatibility for old versions, and a
+recovery migration that preserves every editable source. The current
+phase keeps the selected source resolution and gives users a refusal
+before the project becomes unsavable.
+
+## High STL performance
+
+The same Phase 8.8e .form, 192³ maximum and 512 MiB budget were used for
+the paired runs. The original Chromium retry timed out preparing the Base
+after 300 s. A progress-instrumented retry reached sampling at 0.7 s,
+meshing at 57.9 s and chunk planar compaction at 81.4 s. It was still
+compacting the Base at 300 s. That run recorded 239 page long tasks, with
+a maximum of 102 ms. The instrumented native Base run spent 86.7 s on
+precompaction, 14.3 s on Boolean evaluation and 78 ms writing binary STL.
+
+The export now yields via scheduled tasks without the nested-browser-timer
+delay, pauses viewport rendering while the export modal owns input, avoids
+unused colour and face-key allocations in unpainted welding, and reuses
+each source's transform matrix for bounds. Browser part encoding uses the
+existing cancellable worker. Evaluation and compaction retain the same
+fields, passes, limits and topology checks.
+
+| Part | Original native | Profiled native before → after | Browser after | Browser size (mm) | Final triangles |
+| --- | ---: | ---: | ---: | --- | ---: |
+| Base | 101.6 s | 109.8 → 47.5 s | 35.5 s | 106 × 33 × 70 | 141,198 |
+| Lid | 42.2 s | 49.4 → 24.0 s | 17.6 s | 106 × 7 × 70 | 113,272 |
+| Plunger | 4.2 s | 3.6 → 2.8 s | 2.0 s | 8 × 8 × 8.5 | 33,962 |
+| Retainer | 3.7 s | 3.1 → 2.5 s | 1.9 s | 8 × 8 × 3 | 23,866 |
+
+Chromium prepared and downloaded the four STL files and print reports in
+57.9 s. Base sampling and meshing CPU time were 5.8 and 0.71 s
+(7.4 s combined wall time). Base compaction took 26.3 s, sizing 60 ms,
+worker round trip 1.61 s, binary encoding 8 ms within the worker, and
+Blob/URL preparation 1.4 ms. The page Long Tasks observer reported zero
+tasks over 50 ms in the optimized run. Browser page renderer samples
+peaked at 67.3 MiB JS heap and 169.8 MiB backing storage. The preceding
+timed-out run reached 55.7 and 161.4 MiB, respectively, before encoding.
+The Base used about 115.1 MiB of tracked derived geometry and field
+storage, with a 280.8 MiB encoder admission estimate. Native sampled
+process RSS peaked at 612.1 MiB before and 595.8 MiB after. These
+measurements cover different allocations. Page heap samples exclude the
+export worker. Admission estimates bound exporter workspace independently
+of process RSS.
+
+The four Chromium STLs matched the four native files and Phase 8.8e
+artifacts byte-for-byte. All four have one shell with zero open edges,
+non-manifold edges, winding conflicts, degenerate faces and inward
+components. Display references contributed no export geometry. The
+five 1:1 coupons for the Pi 4 USB, ESP32 USB, tactile wall, plunger and
+retainer are retained in `work/phase-8-8f/`. Physical fit still needs a
+print and assembly trial.
+
+## Validation
+
+The bounded stdio MCP run passed all six scenarios in 56.9 s, with 98
+tool calls. That fixture was reopened and downloaded as four STLs in
+73.3 s during the acceptance run. The bytes matched the timed baseline
+fixture. The default-resolution run verified both USB openings, associated
+update approval and Undo/Redo, followed by the captured-button budget
+refusal and a native save and reopen with 15 sources. Its Base and Lid
+downloaded in 58.5 s. A separate in-flight cancellation in the same
+Chromium run returned to the export dialog in 71 ms with no links published.
+
+The desktop component browser smoke passed picking, interrupted gestures,
+mounting, connector presets, associated updates, captured button pieces
+and native reopen. The broad focused run passed 232/232 and the final
+focused rerun passed 28/28. Quick tests passed 21/21. The full check passed
+formatting, lint, strict TypeScript, production build and 1,803/1,803
+tests. The live over-budget rollback test confirmed identical native
+bytes, the original public revision and retained Redo.
+
+The final general stdio MCP smoke passed approval, evaluated diagnostics,
+scoped captures, disconnect, ordinary Redo and production isolation. Earlier
+attempts hit the existing bridge deadline during geometry diagnostics or the
+holder PNG capture. Scoped capture uses a neutral material and now skips
+vertex colour generation. The desktop retains its last frame during MCP mesh evaluation
+and continues input and revision checks. The bridge deadline is unchanged.
+
+The per-layer count audit, browser stage traces, native reports and
+validation logs are in `work/phase-8-8f/`.
+
+## Reproduction
+
+Run with installed Playwright Chromium. Point `CENTRA_COMPONENT_REPORT`
+at the fixture/output directory and use a separate directory for the
+default-resolution run. The initial development profile used the
+unchanged Phase 8.8e file in `work/phase-8-8f/electronics-enclosure.form`.
+
+```sh
+CENTRA_COMPONENT_REPORT=work/phase-8-8f/bounded node scripts/component-mcp-smoke.mjs --model-only
+CENTRA_COMPONENT_REPORT=work/phase-8-8f/bounded node scripts/component-mcp-smoke.mjs --export-only
+cp work/phase-8-8e/electronics-enclosure.form work/phase-8-8f/electronics-enclosure.form
+node scripts/component-fit-coupons.mjs work/phase-8-8f --enclosure-parts
+CENTRA_COMPONENT_REPORT=work/phase-8-8f node scripts/component-mcp-smoke.mjs --export-only
+CENTRA_COMPONENT_REPORT=work/phase-8-8f/default-retry node scripts/component-mcp-smoke.mjs --model-only --default-resolution
+CENTRA_COMPONENT_REPORT=work/phase-8-8f/default-retry node scripts/component-mcp-smoke.mjs --export-only --default-resolution --cancel-first
+npm run build
+node scripts/component-references-browser-smoke.mjs
+AGENT_SMOKE_HOST=127.0.0.1 AGENT_SMOKE_REPORT=work/phase-8-8f/agent npm run test:agent:browser
+npm test -- project assembly enclosure component-references stl export
+npm test -- history-project agent-preview component-references
+npm run test:quick
+npm run check
+```
+
 # Phase 8.8e — Electronics enclosure MCP integration
 
 Local MCP now lists and inspects display-only references, edits component

@@ -39,7 +39,7 @@ export async function prepareBooleanExport(
   layers: IndependentLayers,
   project: SculptProject,
   signal?: AbortSignal,
-  stl = true,
+  format: boolean | "geometry-only" = true,
   progress?: (p: ExportProgress) => void,
   memoryLimit = EXPORT_MEMORY_LIMIT,
   resolution: ExportResolution = 192,
@@ -69,7 +69,7 @@ export async function prepareBooleanExport(
         work.check();
         work.progress({ stage: "Meshing evaluated SDF", completed, total });
       },
-      colours: !stl,
+      colours: format === false,
     });
   composite.availableBytes = () =>
     memoryLimit - layers.trackedBytes - layers.composite.trackedBytes;
@@ -83,7 +83,9 @@ export async function prepareBooleanExport(
   };
   try {
     work.check();
+    const evaluationStart = performance.now();
     await composite.flush();
+    const evaluationWallMs = performance.now() - evaluationStart;
     work.check();
     const evaluation = { ...composite.stats! },
       derivedBytes = composite.trackedBytes;
@@ -95,7 +97,7 @@ export async function prepareBooleanExport(
       precompactionStart = performance.now();
     let removedTriangles = 0,
       maxPlanarDeviation = 0;
-    if (stl) {
+    if (format === true) {
       const corners = sources.reduce(
         (n, s) => n + s.chunks.reduce((n, c) => n + c.positions.length / 3, 0),
         0,
@@ -147,6 +149,7 @@ export async function prepareBooleanExport(
       sources,
       profile: {
         evaluation,
+        evaluationWallMs,
         derivedBytes,
         extractionMs,
         precompactionMs: performance.now() - precompactionStart,

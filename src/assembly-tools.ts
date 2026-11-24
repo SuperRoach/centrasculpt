@@ -2,7 +2,12 @@ import { Box3, Euler, Group, type Material, Quaternion, Vector3 } from "three";
 import { inspectFit, layerSources, partMembers, partSources } from "./assembly";
 import { prepareBooleanExport } from "./boolean-export";
 import { BooleanComposite, compositeLayout } from "./compositor";
-import { EXPORT_MEMORY_LIMIT, type ExportQuality, ExportWork } from "./export-mesh";
+import {
+  EXPORT_MEMORY_LIMIT,
+  type ExportProgress,
+  type ExportQuality,
+  ExportWork,
+} from "./export-mesh";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerStack, newId, SculptProject } from "./layers";
 import { booleanRoots } from "./live-boolean";
@@ -10,6 +15,10 @@ import { primitiveDimensions, validatePrimitive } from "./parametric-primitive";
 import { MAX_PROJECT_LAYERS } from "./project";
 import { encodeSTL } from "./stl-export";
 import { copyTransform, identityTransform, transformMatrix, type Vec3 } from "./transform";
+export type PartExportOptions = {
+  progress?: (progress: ExportProgress) => void;
+  encode?: typeof encodeSTL;
+};
 export type MateOptions = {
   moving: string;
   target: string;
@@ -303,11 +312,12 @@ export async function exportPartSTL(
   memoryLimit = EXPORT_MEMORY_LIMIT,
   summary?: (dimensionsMM: number[]) => Promise<void>,
   resolution: 192 | 256 = 192,
+  options: PartExportOptions = {},
 ) {
   let previewWarning = "";
   const result = await withExportMemory(
     layers,
-    () => encodePartSTL(layers, id, signal, quality, memoryLimit, summary, resolution),
+    () => encodePartSTL(layers, id, signal, quality, memoryLimit, summary, resolution, options),
     (message) => {
       previewWarning = message;
     },
@@ -320,47 +330,55 @@ async function encodePartSTL(
   signal: AbortSignal | undefined,
   quality: ExportQuality,
   memoryLimit: number,
-  summary?: (dimensionsMM: number[]) => Promise<void>,
-  resolution: 192 | 256 = 192,
+  summary: ((dimensionsMM: number[]) => Promise<void>) | undefined,
+  resolution: 192 | 256,
+  options: PartExportOptions,
 ) {
   if (!layers.recoveryReady) throw new Error("Finish the current edit first.");
   const revision = layers.sourceRevision,
     current = () => layers.recoveryReady && layers.sourceRevision === revision;
+  const start = performance.now();
   const sources = partSources(layers.project.layerStack, id);
   const project = new SculptProject(new LayerStack(sources), layers.project.settings);
+  const sourcePreparationMs = performance.now() - start;
   const prepared = await prepareBooleanExport(
     layers,
     project,
     signal,
     true,
-    undefined,
+    options.progress,
     memoryLimit,
     resolution,
   );
   try {
     const exported = prepared.sources;
-    const work = new ExportWork(signal, current);
+    const work = new ExportWork(signal, current, options.progress);
+    const boundsStart = performance.now();
     const box = new Box3(),
       point = new Vector3();
-    for (const s of exported)
+    for (const s of exported) {
+      const matrix = transformMatrix(s.transform);
       for (const c of s.chunks)
         for (let i = 0; i < c.positions.length; i += 3) {
           if (i % 12288 === 0)
             await work.pause("Measuring physical part dimensions", i, c.positions.length);
-          box.expandByPoint(
-            point.fromArray(c.positions, i).applyMatrix4(transformMatrix(s.transform)),
-          );
+          box.expandByPoint(point.fromArray(c.positions, i).applyMatrix4(matrix));
         }
+    }
+    const boundsMs = performance.now() - boundsStart;
     const size = box.getSize(point);
     const targetMM = Math.max(size.x, size.y, size.z) * layers.display.precision.millimetresPerUnit;
+    const summaryStart = performance.now();
     await summary?.(size.toArray().map((n) => n * layers.display.precision.millimetresPerUnit));
-    const result = await encodeSTL(
+    const summaryMs = performance.now() - summaryStart;
+    const result = await (options.encode ?? encodeSTL)(
       exported,
       quality,
       prepared.availableBytes(),
       targetMM,
-      new ExportWork(signal, current),
+      work,
     );
+    work.check();
     result.report.effectiveResolutionMM =
       Math.max(...exported.map((source) => source.step)) *
       layers.display.precision.millimetresPerUnit;
@@ -391,7 +409,20 @@ async function encodePartSTL(
         prepared.maxPlanarDeviation,
       );
     }
-    return { ...result, name: layers.project.layerStack.get(id).name };
+    return {
+      ...result,
+      name: layers.project.layerStack.get(id).name,
+      profile: {
+        sourcePreparationMs,
+        preparation: prepared.profile,
+        boundsMs,
+        summaryMs,
+        elapsedMs: performance.now() - start,
+        trackedEditorBytes: layers.trackedBytes,
+        encoderAdmissionBytes: result.estimatedBytes,
+        outputBytes: result.data.byteLength,
+      },
+    };
   } finally {
     prepared.dispose();
   }

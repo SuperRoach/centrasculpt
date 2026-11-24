@@ -58,8 +58,26 @@ export type ExportMeshStats = {
   inconsistentEdges: number;
 };
 export type ExportProgress = { stage: string; completed: number; total: number };
+/** Yield a task without Chromium's nested-timer clamp. Each task closes its ports. */
+export function yieldExportTask(): Promise<void> {
+  const immediate = (
+    globalThis as typeof globalThis & {
+      setImmediate?: (callback: () => void) => void;
+    }
+  ).setImmediate;
+  if (immediate) return new Promise((resolve) => immediate(resolve));
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
 export class ExportWork {
-  private deadline = performance.now() + 3;
+  private deadline = performance.now() + 5;
   constructor(
     readonly signal: AbortSignal = new AbortController().signal,
     readonly current: () => boolean = () => true,
@@ -73,8 +91,8 @@ export class ExportWork {
     this.check();
     if (performance.now() >= this.deadline) {
       this.progress({ stage, completed, total });
-      await new Promise<void>((r) => setTimeout(r, 0));
-      this.deadline = performance.now() + 3;
+      await yieldExportTask();
+      this.deadline = performance.now() + 5;
       this.check();
     }
   }
@@ -196,11 +214,11 @@ async function optimiseMesh(
     weld = new Map<string, number>(),
     faces = new Set<string>();
   let cursor = 0;
+  const ids = [0, 0, 0];
   for (const chunk of source.chunks)
     for (let i = 0; i < chunk.positions.length; i += 9) {
       if (cursor % 1024 === 0) await work.pause("Welding / cleaning", cursor, corners / 3);
       cursor++;
-      const ids: number[] = [];
       for (let k = 0; k < 3; k++) {
         const offset = i + k * 3,
           x = chunk.positions[offset],
@@ -209,36 +227,48 @@ async function optimiseMesh(
           nx = chunk.normals[offset],
           ny = chunk.normals[offset + 1],
           nz = chunk.normals[offset + 2];
-        if (![x, y, z, nx, ny, nz].every(Number.isFinite))
+        if (
+          !Number.isFinite(x) ||
+          !Number.isFinite(y) ||
+          !Number.isFinite(z) ||
+          !Number.isFinite(nx) ||
+          !Number.isFinite(ny) ||
+          !Number.isFinite(nz)
+        )
           throw new Error("Export source contains non-finite positions or normals.");
-        const rgb = chunk.colours
-          ? Array.from(chunk.colours.subarray(offset, offset + 3))
-          : [1, 1, 1];
-        if (!rgb.every((v) => Number.isFinite(v) && v >= 0 && v <= 1))
+        const rgb = painted
+          ? chunk.colours
+            ? Array.from(chunk.colours.subarray(offset, offset + 3))
+            : [1, 1, 1]
+          : undefined;
+        if (rgb && !rgb.every((v) => Number.isFinite(v) && v >= 0 && v <= 1))
           throw new Error("Invalid export colour.");
-        const key = `${x},${y},${z},${rgb.join(",")}`;
+        const positionKey = `${x},${y},${z}`;
+        const key = rgb ? `${positionKey},${rgb.join(",")}` : positionKey;
         let id = weld.get(key);
         if (id === undefined) {
           id = positions.length / 3;
           positions.push(x, y, z);
           normals.push(nx, ny, nz);
-          colours.push(...rgb);
+          if (rgb) colours.push(...rgb);
           weld.set(key, id);
         } else {
           normals[id * 3] += nx;
           normals[id * 3 + 1] += ny;
           normals[id * 3 + 2] += nz;
         }
-        ids.push(id);
+        ids[k] = id;
       }
       const [a, b, c] = ids,
         n = cross(positions, a, b, c),
         area = Math.hypot(...n);
-      if (new Set(ids).size !== 3 || area <= source.step * source.step * 1e-12) {
+      if (a === b || b === c || c === a || area <= source.step * source.step * 1e-12) {
         stats.removedDegenerate++;
         continue;
       }
-      const key = [...ids].sort((a, b) => a - b).join(",");
+      const lo = Math.min(a, b, c),
+        hi = Math.max(a, b, c);
+      const key = `${lo},${a + b + c - lo - hi},${hi}`;
       if (faces.has(key)) {
         stats.removedDuplicate++;
         continue;

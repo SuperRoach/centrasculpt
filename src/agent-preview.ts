@@ -215,7 +215,7 @@ export async function captureScenePreview(
           layers,
           new SculptProject(new LayerStack(inputs), layers.project.settings),
           signal,
-          false,
+          "geometry-only",
         );
       }
       guard();

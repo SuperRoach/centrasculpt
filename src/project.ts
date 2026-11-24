@@ -138,6 +138,12 @@ const POPCOUNT = Array.from(
   { length: 256 },
   (_, value) => value.toString(2).replaceAll("0", "").length,
 );
+const CELL_TRIANGLES = POPCOUNT.map((_, mask) =>
+  TET_MASKS.reduce((count, tet) => {
+    const inside = POPCOUNT[mask & tet];
+    return count + (inside === 2 ? 2 : inside === 1 || inside === 3 ? 1 : 0);
+  }, 0),
+);
 function validateVoxels(
   values: Float32Array,
   resolution: number | [number, number, number],
@@ -157,6 +163,10 @@ function validateVoxels(
         )
           throw new Error("The SDF volume boundary must remain positive.");
       }
+  return countProjectVolumeTriangles(values, [nx, ny, nz]);
+}
+
+function countProjectVolumeTriangles(values: Float32Array, [nx, ny, nz]: [number, number, number]) {
   // Reject pathological checkerboard fields before they can allocate enormous meshes.
   let triangles = 0;
   const offsets = [0, 1, 1 + nx, nx, nx * ny, 1 + nx * ny, 1 + nx + nx * ny, nx + nx * ny];
@@ -166,11 +176,7 @@ function validateVoxels(
         const index = x + nx * (y + ny * z);
         let mask = 0;
         for (let i = 0; i < 8; i++) if (values[index + offsets[i]] < 0) mask |= 1 << i;
-        if (mask === 0 || mask === 255) continue;
-        for (const tet of TET_MASKS) {
-          const inside = POPCOUNT[mask & tet];
-          triangles += inside === 2 ? 2 : inside === 1 || inside === 3 ? 1 : 0;
-        }
+        triangles += CELL_TRIANGLES[mask];
         if (triangles > MAX_PROJECT_TRIANGLES)
           throw new Error(
             `Project surface exceeds the ${MAX_PROJECT_TRIANGLES.toLocaleString()} triangle import limit.`,
@@ -178,6 +184,39 @@ function validateVoxels(
       }
   return triangles;
 }
+function projectTriangleBudgetError(triangles: number, name: string): Error {
+  return new Error(
+    "Native project triangle budget exceeded at " +
+      name +
+      " (" +
+      triangles.toLocaleString() +
+      " counted; limit " +
+      MAX_PROJECT_TRIANGLES.toLocaleString() +
+      "). Undo the last change or split printable parts across projects.",
+  );
+}
+
+/** Count stored source fields with the same rule as the native reader and writer. */
+export function assertProjectTriangleBudget(
+  layers: readonly SdfLayer[],
+  candidate?: SdfLayer,
+): void {
+  let triangles = 0;
+  for (const layer of candidate
+    ? [...layers.filter((l) => l.id !== candidate.id), candidate]
+    : layers) {
+    const volume = layer.volume;
+    const values =
+      volume.getDenseView() ??
+      volume.readRegion({
+        min: [0, 0, 0],
+        max: volume.dimensions.map((v) => v - 1) as [number, number, number],
+      }).values;
+    triangles += countProjectVolumeTriangles(values, volume.dimensions);
+    if (triangles > MAX_PROJECT_TRIANGLES) throw projectTriangleBudgetError(triangles, layer.name);
+  }
+}
+
 /** Native .form v2 (v1 remains readable): 8-byte magic, uint32 LE version + metadata byte count,
  * UTF-8 JSON metadata, then exactly resolution³ Float32 LE samples (x fastest).
  */
@@ -302,7 +341,7 @@ export function saveSculptProject(
       }).values;
     totalTriangles += validateVoxels(data, volume.dimensions, volume.extent);
     if (totalTriangles > MAX_PROJECT_TRIANGLES)
-      throw new Error("Aggregate project triangle budget exceeded.");
+      throw projectTriangleBudgetError(totalTriangles, layer.name);
     const mask = maskPayloads[layers.indexOf(layer)],
       maskDescriptor = hasMasks
         ? { encoding: "sparse-f32-le", base: mask.base, count: mask.count, byteOffset: maskBytes }

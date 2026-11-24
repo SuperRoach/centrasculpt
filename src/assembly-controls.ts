@@ -19,6 +19,7 @@ import {
   type ConnectorOptions,
   exportPartSTL,
   inspectLayers,
+  type PartExportOptions,
   partBounds,
   previewAssembly,
   validateConnectorSizes,
@@ -70,6 +71,7 @@ export class AssemblyControls {
   private field = "";
   private entry = "";
   private resultRevision = "";
+  exportOptions?: PartExportOptions;
   onExport?: (result: Awaited<ReturnType<typeof exportPartSTL>>) => void;
   constructor(
     readonly layers: () => IndependentLayers,
@@ -664,6 +666,7 @@ export class AssemblyControls {
                 this.exportMemoryLimit,
                 this.exportSummary,
                 this.exportResolution,
+                this.exportOptions,
               );
               new ExportWork(exportSignal, () => job === this.job && l === this.layers()).check();
               if (result.report.blocking.length)

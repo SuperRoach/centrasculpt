@@ -1,5 +1,16 @@
 # Centra Sculpt roadmap
 
+## Phase 8.8f — Native save admission and export scheduling
+
+- The native triangle count now gates parametric changes and assembly batches.
+  Keep the 1,000,000-triangle archive limit and previous .form compatibility.
+- The four bounded-fixture STL parts download in Chromium and match the
+  previous native artifacts byte-for-byte.
+- Design a versioned analytic-source format and load-time cache budgets if
+  all 20 sources must fit in one file from default resolution. Keep recovery
+  compatibility and verify exact reconstruction before changing serialization.
+- Measure physical fit using the five retained 1:1 coupons.
+
 ## Phase 8.8e — Electronics enclosure MCP and physical fit
 
 - Use the local MCP browser review flow for measured connector openings, posts

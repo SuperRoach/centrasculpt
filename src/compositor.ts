@@ -2,6 +2,7 @@ import type { Material } from "three";
 import { BufferAttribute, Color, Group, MeshStandardMaterial, Vector3 } from "three";
 import { agentPerformanceEnabled, recordAgentPerformance } from "./agent-performance";
 import type { ExportSource } from "./export-mesh";
+import { yieldExportTask } from "./export-mesh";
 import type { LayerOperation, SculptProject, SdfLayer } from "./layers";
 import { booleanRoots, validateBooleanGraph } from "./live-boolean";
 import { IncrementalMesher } from "./mesh";
@@ -956,6 +957,7 @@ export class BooleanComposite {
       regions = full
         ? [{ min: [0, 0, 0], max: [n - 1, n - 1, n - 1] } as Bounds]
         : this.regions.map((r) => ({ min: [...r.min], max: [...r.max] }) as Bounds);
+    const yieldBuild = this.options.stagedEvaluation ? yieldExportTask : yieldUI;
     let maxSamplingSliceMs = 0,
       maxMeshingSliceMs = 0;
     let samplingMs = 0,
@@ -974,7 +976,7 @@ export class BooleanComposite {
               const duration = performance.now() - batch;
               samplingMs += duration;
               maxSamplingSliceMs = Math.max(maxSamplingSliceMs, duration);
-              await yieldUI();
+              await yieldBuild();
               this.syncMetadata();
               if (!this.buildCurrent(version)) {
                 this.full = true;
@@ -1002,7 +1004,7 @@ export class BooleanComposite {
             stageIndex + 1,
             stages?.length ?? 1,
           );
-          await yieldUI();
+          await yieldBuild();
           this.syncMetadata();
           if (!this.buildCurrent(version)) {
             this.full = true;
@@ -1058,7 +1060,7 @@ export class BooleanComposite {
           `Boolean evaluation exceeds ${MAX_INTERMEDIATE_TRIANGLES.toLocaleString()} intermediate triangles (${triangles.toLocaleString()} reached). Reduce source complexity or export fewer parts.`,
         );
       }
-      await yieldUI();
+      await yieldBuild();
       this.syncMetadata();
       if (!this.buildCurrent(version)) {
         this.full = true;

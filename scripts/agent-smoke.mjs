@@ -14,7 +14,7 @@ const machineLocalHostname = hostnameValue.endsWith(".local")
   ? hostnameValue
   : `${hostnameValue}.local`;
 const origin = `http://${process.env.AGENT_SMOKE_HOST ?? machineLocalHostname}:${port}`;
-const output = "work/phase-7-3";
+const output = process.env.AGENT_SMOKE_REPORT ?? "work/phase-7-3";
 await mkdir(output, { recursive: true });
 const waitUntil = async (check, message) => {
   const deadline = Date.now() + 30000;

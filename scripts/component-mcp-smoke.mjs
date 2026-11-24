@@ -17,6 +17,8 @@ const discovery = join(isolation, "session.json");
 const port = process.env.CENTRA_COMPONENT_MCP_PORT ?? "5282";
 const exportOnly = process.argv.includes("--export-only");
 const modelOnly = process.argv.includes("--model-only");
+const defaultResolution = process.argv.includes("--default-resolution");
+const cancelFirst = process.argv.includes("--cancel-first");
 const origin = `http://127.0.0.1:${port}`;
 const env = {
   ...process.env,
@@ -40,6 +42,8 @@ const report = {
   scenarios: [],
   calls: [],
   exports: [],
+  sourceFixture: defaultResolution ? "app default" : "bounded seed",
+  exportStatus: [],
   browserProfile: [],
   rendererHeapPeakBytes: 0,
 };
@@ -191,7 +195,26 @@ async function verifyBrowserExports() {
     await page.locator("#export-quality").selectOption("high");
     await page.locator("#export-advanced > summary").click();
     await page.locator("#export-memory").selectOption("512");
+    if (cancelFirst) {
+      await page.locator("#export-marked-parts").click();
+      await page.getByText(/Evaluating Boolean · stage/).waitFor();
+      const start = performance.now();
+      await page.locator("#cancel-export").click();
+      await page
+        .locator("#export-result")
+        .getByText("Cancelled. The model is unchanged.", { exact: true })
+        .waitFor();
+      assert.equal(await page.locator("#export-part-downloads a").count(), 0);
+      report.cancelMs = performance.now() - start;
+    }
     const start = performance.now();
+    await page.evaluate(() => {
+      window.__centraExportLongTasks = [];
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries())
+          window.__centraExportLongTasks.push({ start: entry.startTime, duration: entry.duration });
+      }).observe({ type: "longtask" });
+    });
     await page.locator("#export-marked-parts").click();
     const names = [
       "Electronics validation Base",
@@ -199,19 +222,30 @@ async function verifyBrowserExports() {
       "Button plunger",
       "Button retainer",
     ];
-    for (const name of names) {
+    for (const name of defaultResolution ? names.slice(0, 2) : names) {
       const link = page.getByRole("link", { name: `Download ${name} STL`, exact: true });
       await until(
         async () => {
           if (await link.isVisible()) return true;
-          const status = await page.locator("#export-result").innerText();
+          const failure = page.locator("#export-result [role=alert]");
+          if (await failure.count())
+            assert.fail((await failure.first().textContent()) ?? "Export failed");
+          const status = await page
+            .locator("#export-result [role=status], #export-result [role=alert]")
+            .first()
+            .textContent();
+          if (report.exportStatus.at(-1)?.status !== status) {
+            if (report.exportStatus.at(-1)?.status?.split(" · ")[0] !== status?.split(" · ")[0])
+              console.log(status);
+            report.exportStatus.push({ ms: performance.now() - start, status });
+          }
           assert(
             !/STL blocked|exceeds? .*budget|export requires|unable to export/i.test(status),
             status,
           );
           return false;
         },
-        `Timed out preparing ${name} STL`,
+        `Timed out preparing ${name} STL (see exportStatus in browser-export.json)`,
         300000,
       );
       const row = page.locator(".export-part").filter({ has: link });
@@ -275,33 +309,40 @@ try {
     if (entry.type() === "error") console.error(entry.text());
   });
   await page.goto(origin);
+  cdp = await page.context().newCDPSession(page);
+  heapTimer = setInterval(() => {
+    void cdp
+      .send("Runtime.getHeapUsage")
+      .then(({ usedSize, backingStorageSize }) => {
+        report.rendererHeapPeakBytes = Math.max(report.rendererHeapPeakBytes, usedSize);
+        report.rendererBackingStoragePeakBytes = Math.max(
+          report.rendererBackingStoragePeakBytes ?? 0,
+          backingStorageSize ?? 0,
+        );
+      })
+      .catch(() => {});
+  }, 500);
   if (exportOnly) {
     await openNative(join(output, "electronics-enclosure.form"));
     await verifyBrowserExports();
   } else {
-    // Parametric source caches inherit the selected layer resolution. Use a 17³
-    // empty seed so this 20-source fixture stays within the native triangle budget.
-    const seed = createHeadlessEditor();
-    const blank = join(isolation, "blank.form");
-    try {
-      await writeFile(blank, new Uint8Array(saveSculptProject(seed.layers.project)));
-    } finally {
-      seed.layers.dispose();
+    if (!defaultResolution) {
+      // Parametric source caches inherit the selected layer resolution. Use a 17³
+      // empty seed so this 20-source fixture stays within the native triangle budget.
+      const seed = createHeadlessEditor();
+      const blank = join(isolation, "blank.form");
+      try {
+        await writeFile(blank, new Uint8Array(saveSculptProject(seed.layers.project)));
+      } finally {
+        seed.layers.dispose();
+      }
+      await openNative(blank);
     }
-    await openNative(blank);
     await page.evaluate(() => {
       window.__centraAgentProfileEnabled = true;
       window.__centraAgentProfile = [];
     });
-    cdp = await page.context().newCDPSession(page);
-    heapTimer = setInterval(() => {
-      void cdp
-        .send("Runtime.getHeapUsage")
-        .then(({ usedSize }) => {
-          report.rendererHeapPeakBytes = Math.max(report.rendererHeapPeakBytes, usedSize);
-        })
-        .catch(() => {});
-    }, 500);
+
     client = new Client({ name: "centra-component-integration", version: "1" });
     const transport = new StdioClientTransport({
       command: process.execPath,
@@ -454,7 +495,10 @@ try {
       },
     );
 
-    await scenario("Captured tactile button, clearance and safe refit", async () => {
+    const tactileScenario = defaultResolution
+      ? "Default cache budget refusal preserves revision and attachments"
+      : "Captured tactile button, clearance and safe refit";
+    await scenario(tactileScenario, async () => {
       tactile = await place("tactile", pair.baseId, [0, -2, 23.5], [90, 0, 0]);
       buttonRecipe = opening(pair, tactile, "actuator", {
         shape: "round",
@@ -477,7 +521,16 @@ try {
       assert.equal(impossible.ok, false);
       assert.match(impossible.error.message, /usable inward depth/);
       assert.equal((await scene()).revision, before.revision);
-      const proposal = ok(await stage(buttonRecipe)).value;
+      const staged = await stage(buttonRecipe);
+      if (defaultResolution) {
+        assert.equal(staged.ok, false, JSON.stringify(staged));
+        assert.match(staged.error.message, /Native project triangle budget exceeded.*1,000,000/);
+        assert.equal((await scene()).revision, before.revision);
+        assert.deepEqual((await inspect(tactile)).value.openings, []);
+        report.defaultBudgetRefusal = staged.error.message;
+        return;
+      }
+      const proposal = ok(staged).value;
       const fit = proposal.preview.value.fit;
       assert.equal(fit.opening.widthMm, 4.6);
       assert.equal(fit.travel, 0.5);
@@ -551,7 +604,7 @@ try {
       report.parametricSources = objects.filter(({ geometry }) => geometry?.parametric).length;
     });
 
-    if (!modelOnly) await verifyBrowserExports();
+    if (!modelOnly && !defaultResolution) await verifyBrowserExports();
   }
   assert.deepEqual(errors, []);
 } catch (error) {
@@ -567,6 +620,16 @@ try {
   report.elapsedMs = performance.now() - started;
   report.browserProfile =
     (await page?.evaluate(() => window.__centraAgentProfile ?? []).catch(() => [])) ?? [];
+  if (exportOnly) {
+    report.exportProfile = await page
+      ?.locator("#export-result pre")
+      .first()
+      .textContent()
+      .catch(() => "");
+    report.longTasks = await page
+      ?.evaluate(() => window.__centraExportLongTasks ?? [])
+      .catch(() => []);
+  }
   report.bridgeProfile = serverLog
     .split("\n")
     .filter((line) => line.startsWith("[centra-agent-profile] "))

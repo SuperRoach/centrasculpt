@@ -64,7 +64,12 @@ import { type PersonalStamp, personalStampSource } from "./personal-stamp";
 import { snapValue } from "./physical-units";
 import { type CutPlane, splitSdfByPlane } from "./plane-cut";
 import { evaluateTube, type TubeSource, validateTube } from "./procedural-tube";
-import { MAX_PROJECT_LAYERS, MAX_PROJECT_TRIANGLES, MAX_PROJECT_VOXELS } from "./project";
+import {
+  assertProjectTriangleBudget,
+  MAX_PROJECT_LAYERS,
+  MAX_PROJECT_TRIANGLES,
+  MAX_PROJECT_VOXELS,
+} from "./project";
 import { applyRenderStyle } from "./render-style";
 import { resampleVolume } from "./resolution";
 import {
@@ -826,8 +831,13 @@ export class IndependentLayers {
   private readonly commandScope = newId();
   private commandKey = "";
   private commandRevision = 0;
+  private commandSerial = 0;
   /** Compact editor-lifetime token observing the same identity as recovery, including UI edits. */
   get modellingRevision(): string {
+    this.updateCommandRevision();
+    return `${this.commandScope}:${this.commandRevision}`;
+  }
+  private updateCommandRevision(): void {
     const key = JSON.stringify([
       this.recoveryKey(),
       this.selectedGroupId,
@@ -839,9 +849,8 @@ export class IndependentLayers {
     ]);
     if (key !== this.commandKey) {
       this.commandKey = key;
-      this.commandRevision++;
+      this.commandRevision = ++this.commandSerial;
     }
-    return `${this.commandScope}:${this.commandRevision}`;
   }
   /** Derived views depend on source edits, not which layer the UI has selected. */
   get sourceRevision(): string {
@@ -2920,6 +2929,8 @@ export class IndependentLayers {
     active: string;
     group: string | null;
     revision: number;
+    commandKey: string;
+    commandRevision: number;
     view: "separate" | "boolean";
   } | null = null;
   assemblyCheckpoint(): number {
@@ -2927,15 +2938,19 @@ export class IndependentLayers {
     this.assemblyTransaction = true;
     this.assemblyRedo = this.future;
     this.future = [];
+    this.updateCommandRevision();
     this.assemblyBefore = {
       active: this.project.activeLayerId,
       group: this.selectedGroupId,
       revision: this.committedRevision,
+      commandKey: this.commandKey,
+      commandRevision: this.commandRevision,
       view: this.viewMode,
     };
     return this.past.length;
   }
   finishAssemblyTransaction(start: number): void {
+    if (this.past.length > start) assertProjectTriangleBudget(this.project.layerStack.layers);
     this.assemblyTransaction = false;
     const entries = this.past.splice(start);
     this.future = this.assemblyRedo;
@@ -2976,6 +2991,10 @@ export class IndependentLayers {
       this.committedRevision = before.revision;
       this.viewMode = before.view;
       this.syncPresentation();
+      this.updateCommandRevision();
+      // Restore the published token only if all inputs match. Never reissue
+      // revision numbers observed during the failed transaction.
+      if (this.commandKey === before.commandKey) this.commandRevision = before.commandRevision;
     }
   }
   setLayerColour(id: string, colour: string): void {
@@ -3822,6 +3841,8 @@ export class IndependentLayers {
               primitive: source.kind !== "tube" ? source : undefined,
             },
       );
+      if (!this.assemblyTransaction)
+        assertProjectTriangleBudget(this.project.layerStack.layers, layer);
       candidate = new LayerRuntime(
         old?.layer ?? layer,
         this.neutral,

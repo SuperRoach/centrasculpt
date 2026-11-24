@@ -311,13 +311,17 @@ if (args.includes("--enclosure-parts")) {
   try {
     for (const part of input.layerStack.layers.filter(({ assemblyPart }) => assemblyPart)) {
       const start = performance.now();
-      const { data, report } = await exportPartSTL(
+      let rssPeakBytes = process.memoryUsage.rss();
+      const sample = setInterval(() => {
+        rssPeakBytes = Math.max(rssPeakBytes, process.memoryUsage.rss());
+      }, 250);
+      const { data, report, profile, timings } = await exportPartSTL(
         editor,
         part.id,
         undefined,
         "high",
         512 * 1024 ** 2,
-      );
+      ).finally(() => clearInterval(sample));
       assert.equal(report.components, 1, part.name);
       for (const key of [
         "boundaryEdges",
@@ -329,7 +333,14 @@ if (args.includes("--enclosure-parts")) {
         assert.equal(report[key], 0, `${part.name}: ${key}`);
       const slug = part.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
       await writeFile(join(destination, `${slug}.stl`), new Uint8Array(data));
-      evaluated.push({ name: part.name, ms: performance.now() - start, ...report });
+      evaluated.push({
+        name: part.name,
+        ms: performance.now() - start,
+        rssPeakBytes,
+        profile,
+        timings,
+        ...report,
+      });
       await writeFile(join(destination, "report.json"), JSON.stringify(evaluated, null, 2));
       console.log(
         `PASS ${part.name}: ${report.dimensions.map((size) => size.toFixed(2)).join(" × ")} mm`,

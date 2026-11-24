@@ -18,6 +18,7 @@ import { mountExportDialog } from "./export-dialog";
 import { exportCountEstimate } from "./export-estimate";
 import { createExportFeedback } from "./export-feedback";
 import { exportFilename } from "./export-filename";
+import { ExportWork } from "./export-mesh";
 import { exportFailure, exportInterruption } from "./export-outcome";
 import { questCapture } from "./performance-capture";
 import { installPersonalShapes } from "./personal-shape-ui";
@@ -236,6 +237,7 @@ syncView();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
 camera.position.set(2.4, 1.7, 3.3);
 let renderAgentFeedback: (() => boolean) | undefined;
+let agentEvaluatingMesh = false;
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1787,12 +1789,14 @@ async function exportSculpt(scope: "visible" | "selected" | "composite") {
     ui.projectBusy(true, true);
     exportFeedback.start();
     exportMessage("Preparing STL export…");
+    const signal = exportAbort.signal;
     try {
       recovery?.cancelJob();
       await recovery?.settle();
       await paint();
+      if (signal.aborted) throw new Error("Export cancelled.");
       await assembly.run(scope === "selected" ? "export" : "export-all");
-      exportMessage(assembly.status);
+      exportMessage(assembly.status, !signal.aborted && !/STLs? ready\./.test(assembly.status));
     } catch (error) {
       exportMessage(message(error), true);
     } finally {
@@ -2851,12 +2855,36 @@ primitivesUI = primitiveUI(
     source: () => transformTools?.primitivePreview,
   },
 );
+precision.primitives.assembly.exportOptions = {
+  encode: async (sources, quality, maxBytes, stlMM, work = new ExportWork()) => {
+    const result = await exportGlbAsync(sources, quality, {
+      maxBytes,
+      stlMM,
+      signal: work.signal,
+      progress: work.progress,
+    });
+    work.check();
+    if (!result.report) throw new Error("Export worker did not return an STL print report.");
+    return { ...result, report: result.report };
+  },
+  progress: (p) => {
+    if (!exportAbort) return;
+    exportFeedback.progress(p);
+    exportMessage(
+      p.stage +
+        " · " +
+        Math.round((100 * p.completed) / Math.max(1, p.total)) +
+        "% · Cancel available",
+    );
+  },
+};
 precision.primitives.assembly.exportSummary = async (dimensions) => {
   const bounds = dimensions.map((n) => n.toFixed(3)).join(" × ");
   exportSummary.textContent = `Printable part · Actual size (1:1) · Actual ${bounds} mm → Export ${bounds} mm · 1.000000× · ${precision!.primitives.assembly.exportQuality} · max ${precision!.primitives.assembly.exportResolution}³`;
   await paint();
 };
 precision.primitives.assembly.onExport = (result) => {
+  const preparationStart = performance.now();
   const name = result.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   if (document.querySelector<HTMLDialogElement>("#export-dialog")!.open) {
     if (
@@ -2915,6 +2943,18 @@ precision.primitives.assembly.onExport = (result) => {
     }
     partDownloadBytes += result.data.byteLength;
     printableDownloads.append(row);
+    exportProfile.textContent +=
+      JSON.stringify(
+        {
+          part: result.name,
+          backend: result.backend,
+          ...result.profile,
+          encoding: result.timings,
+          downloadPreparationMs: performance.now() - preparationStart,
+        },
+        null,
+        2,
+      ) + "\n";
     return;
   }
   download(new Blob([result.data], { type: "model/stl" }), `${name}.stl`);
@@ -2963,6 +3003,9 @@ if (__AGENT_ENABLED__) {
         camera,
         installFeedbackRenderer: (render) => {
           renderAgentFeedback = render;
+        },
+        onMeshEvaluation: (active) => {
+          agentEvaluatingMesh = active;
         },
         blocked: () =>
           renderer.xr.isPresenting || xrBlocked() || desktopStroke.active || !input.cameraEnabled,
@@ -3928,6 +3971,10 @@ const undoXRReplay =
     : undefined;
 let lastAssemblyUISync = 0;
 renderer.setAnimationLoop((now, frame) => {
+  // The modal owns input during export. Retain the last viewport frame and
+  // leave the renderer's task time available to evaluation and download UI.
+  if (exportAbort && !frame && document.querySelector<HTMLDialogElement>("#export-dialog")!.open)
+    return;
   precision?.sync();
   primitivePreview?.sync();
   if (primitivePreview?.active) transformTools?.sync();
@@ -4133,7 +4180,9 @@ renderer.setAnimationLoop((now, frame) => {
   syncViewportTools();
   transformPreview.sync(layers, !xrBlocked());
   layers.updateMaskOverlays();
-  if (!renderAgentFeedback?.()) renderer.render(scene, camera);
+  // Scoped MCP inspection uses the renderer offscreen and checks the source revision.
+  // Input and state sync continue while the last desktop frame stays on screen.
+  if (!agentEvaluatingMesh && !renderAgentFeedback?.()) renderer.render(scene, camera);
   if (questCapture.active) {
     const time = performance.now();
     questCapture.tick(time, time - cpuStart, NaN, layers.pendingChunks);

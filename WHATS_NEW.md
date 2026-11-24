@@ -1,3 +1,12 @@
+### Keep enclosure edits saveable and prepare STL faster — Phase 8.8f
+
+- Parametric and assembly edits check the native triangle budget before
+  committing. A refused edit leaves the last saveable result available.
+- **Marked printable parts** shows progress during Boolean evaluation,
+  mesh preparation and STL encoding. Cancel from the export dialog.
+- The four electronics validation parts now download from Chromium at
+  actual size using the same High-quality mesh settings.
+
 ### Prefill connector openings and capture buttons — Phase 8.8d
 
 - Select a Pi 4 or ESP32-DevKitC V4 connector to fill its documented dimensions

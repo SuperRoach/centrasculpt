@@ -393,7 +393,8 @@ export function primitiveDimensions(source: PrimitiveSource): Vec3 {
 }
 /** Exact Euclidean signed distance; negative inside. */
 export function primitiveDistance(s: PrimitiveSource, x: number, y: number, z: number): number {
-  if (![x, y, z].every(Number.isFinite)) throw new Error("Primitive query must be finite.");
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
+    throw new Error("Primitive query must be finite.");
   if (s.kind === "text") return textDistance(s, x, y, z);
   if (s.kind === "capsule")
     return (

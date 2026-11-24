@@ -21,9 +21,15 @@ import {
 import { prepareComposite } from "../work/test-build/compositor.mjs";
 import { ExportWork } from "../work/test-build/export-mesh.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
-import { createBaseProject } from "../work/test-build/layers.mjs";
+import {
+  createBaseProject,
+  LayerStack,
+  SculptProject,
+  SdfLayer,
+} from "../work/test-build/layers.mjs";
 import { renameNative } from "../work/test-build/library-codec.mjs";
 import { ModellingAPI } from "../work/test-build/modelling-api.mjs";
+import { evaluatePrimitive } from "../work/test-build/parametric-primitive.mjs";
 import { PrimitiveTools } from "../work/test-build/primitive-tools.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { encodeRecovery } from "../work/test-build/recovery-client.mjs";
@@ -56,6 +62,55 @@ async function setup(distance = 0.3, resolution = 17) {
   l.setAssemblyPart(b.id, { clearanceMM: 0.3 });
   return { l, a, b };
 }
+test("native budget counts hidden primitive caches and rejects a batch before commit", async () => {
+  const primitive = { kind: "cylinder", height: 0.06, diameter: 0.06 };
+  const evaluate = evaluatePrimitive(primitive, 64, 64 ** 3);
+  let step = evaluate.next();
+  while (!step.done) step = evaluate.next();
+  const template = step.value;
+  const sources = Array.from({ length: 9 }, (_, order) => {
+    const cache = new SDFVolume(template.resolution, template.extent, false);
+    cache.values.set(template.values);
+    return new SdfLayer(cache, {
+      order,
+      name: "Post " + (order + 1),
+      visible: order === 0,
+      primitive,
+    });
+  });
+  const project = new SculptProject(new LayerStack(sources), structuredClone(settings));
+  const editor = new IndependentLayers(project);
+  try {
+    editor.renameNode(sources[0].id, "Rename kept in Redo");
+    editor.undo();
+    const before = saveSculptProject(project);
+    assert.equal(openSculptProject(before).layerStack.layers.length, 9);
+    const api = new ModellingAPI(editor);
+    const revision = api.revision;
+    const sizeMM = primitive.diameter * editor.display.precision.millimetresPerUnit;
+    const result = await api.batch(
+      [
+        {
+          command: {
+            type: "primitive.create",
+            unit: "mm",
+            source: { ...primitive, height: sizeMM, diameter: sizeMM },
+          },
+        },
+      ],
+      { expectedRevision: revision },
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.error.message, /Native project triangle budget exceeded/);
+    assert.equal(api.revision, revision);
+    assert.deepEqual(saveSculptProject(project), before);
+    assert(editor.undo(true));
+    assert.equal(sources[0].name, "Rename kept in Redo");
+  } finally {
+    editor.dispose();
+  }
+});
+
 const connector = (a, b) => ({
   pegPart: a.id,
   socketPart: b.id,
