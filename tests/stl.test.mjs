@@ -119,7 +119,7 @@ const settings = {
   hardness: 0,
   camera: { position: [2, 2, 3], target: [0, 0, 0] },
 };
-test("mesh references native v9, legacy and recovery keep bytes/transforms without SDF mutation", async () => {
+test("mesh references in native v24 and recovery keep bytes/transforms without SDF mutation", async () => {
   const l = new IndependentLayers(createBaseProject(new SDFVolume(17), settings)),
     prior = globalThis.Worker;
   try {
@@ -137,7 +137,7 @@ test("mesh references native v9, legacy and recovery keep bytes/transforms witho
     ];
     const display = l.display.snapshot(l.project.id, l.project.layerStack.layers),
       data = saveSculptProject(l.project, display);
-    assert.equal(new DataView(data).getUint32(8, true), 9);
+    assert.equal(new DataView(data).getUint32(8, true), 24);
     assert.deepEqual(openSculptProject(data).displayPreferences.references, l.display.references);
     assert(openSculptProject(old));
     globalThis.Worker = RecoveryBrowserWorker;

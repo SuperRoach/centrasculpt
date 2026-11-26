@@ -118,7 +118,7 @@ for (const steady of [0, 50, 100])
       assert.equal(l.undoCount, 1);
       const v = l.active.volume,
         bytes = saveSculptProject(l.project);
-      assert.equal(new DataView(bytes).getUint32(8, true), 4);
+      assert.equal(new DataView(bytes).getUint32(8, true), 24);
       const loaded = new IndependentLayers(openSculptProject(bytes));
       try {
         assert.deepEqual(loaded.active.volume.values, v.values);

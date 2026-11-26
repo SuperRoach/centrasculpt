@@ -58,14 +58,16 @@ try {
     .waitFor();
   const history = await page.locator("#history-info").textContent();
   async function nativeSnapshot(label) {
-    await page.getByRole("button", { name: "Project Library", exact: true }).click();
-    const pending = page.waitForEvent("download");
-    await page.locator('[data-library-action="library:download-current"]').click();
-    const file = await pending;
+    await page.getByRole("button", { name: "Centra Sculpt project menu" }).click();
+    const [file] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Download .form", exact: true }).click(),
+    ]);
     const path = `${output}/${label}.form`;
     await file.saveAs(path);
-    await page.getByRole("button", { name: "Close library", exact: true }).click();
-    return readFile(path);
+    const bytes = await readFile(path);
+    assert.equal(bytes.readUInt32LE(8), 24);
+    return bytes;
   }
   const before = await nativeSnapshot("before");
   console.log("Native copy opened and preservation snapshot downloaded.");

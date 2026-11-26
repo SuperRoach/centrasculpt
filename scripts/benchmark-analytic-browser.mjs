@@ -12,7 +12,7 @@ const origin = `http://127.0.0.1:${port}`;
 const server = spawn(
   process.execPath,
   ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", port, "--strictPort"],
-  { stdio: "inherit", env: { ...process.env, VITE_CENTRA_ANALYTIC_PROJECTS: "1" } },
+  { stdio: "inherit" },
 );
 let browser;
 try {

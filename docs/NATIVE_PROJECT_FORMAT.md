@@ -6,16 +6,11 @@ features. Version 9 introduced STL reference assets. Version 10 introduced
 layer parenting. The Phase 8.8e electronics enclosure uses version 19 for
 associative attachments.
 
-## Version 24 analytic storage
+## Version 24 native storage
 
-The writer selects version 24 when at least one cache qualifies and analytic
-writes are enabled. Set `VITE_CENTRA_ANALYTIC_PROJECTS=1` before starting Vite
-or building the editor to enable this experimental mode for downloads,
-Library saves and recovery checkpoints. The default builds continue to
-write the older formats. Both modes read v24. Importing an existing v24
-file into the Library preserves its encoding. An older application cannot
-open v24. A project that exceeds the legacy voxel triangle limit needs an
-analytic-enabled build to save edits again.
+Centra Sculpt writes version 24 for every native project, including sculpt-only
+files, mixed projects, Library downloads and recovery checkpoints. Older
+builds need an update to open v24.
 
 The header is unchanged. It contains the eight-byte `FORMSDF\0` magic and
 little-endian uint32 format version and UTF-8 JSON length. The JSON is at most
@@ -51,7 +46,7 @@ returns the reconstructed project. The fingerprint is an unkeyed integrity check
 
 Sculpts, tubes, text, ellipsoids, pyramids and tapered boxes keep voxel
 data in this release. The eligible set bounds both samples and per-sample
-CPU work. Sources failing the exact check use the legacy voxel path where
+CPU work. Sources failing the exact check use the v24 voxel payload when
 their metadata and field pass existing validation. An inconsistent live
 primitive definition and edited field is refused with the existing
 cache-mismatch error. Clay edits made to a sculpt or baked field stay
@@ -87,13 +82,31 @@ interoperability with older builds or an untested platform is required.
   the candidate. A recoverable assembly-preview failure is reported and the
   scene can open with its editable source geometry as in older formats.
 
-Legacy files load through the same version-aware reader with their full
-voxel payload. Saving in an analytic-enabled build upgrades eligible records
-while ordinary sculpt-only saves keep their existing compatible version.
-Importing a legacy file into an analytic-enabled Library can store a compact
-canonical copy. Library rename and duplication rewrite metadata without
-materialising fields.
-Duplication remaps project and linked object IDs. Recovery retains its
-transactional checkpoint store, checksum and existing snapshot memory cap.
-Restoring a valid checkpoint preserves the native identity and starts fresh
-history.
+### Migrating versions 1–23
+
+Update Centra Sculpt and open the old file normally. The importer validates
+its full voxel payload and metadata. A regular save writes v24. Library file
+import validates and verifies the conversion before creating an independent
+Library entry. Existing legacy Library projects remain readable. The first
+save from a legacy record creates a v24 record and retains the original.
+Duplicating or downloading a legacy record verifies the conversion first.
+Recovery retains the existing transactional checkpoint format and checksum.
+Restoring a valid recovery checkpoint preserves its project identity and
+starts fresh Undo history.
+
+For a verified, identity-preserving conversion on disk, run from the
+repository with dependencies installed.
+
+```sh
+node scripts/migrate-project.mjs original.form converted.form
+```
+
+The command validates the source, creates and verifies an independent
+`original.form.bak`, encodes v24, reopens the result, and compares all editable
+state including exact Float32 samples. It publishes the output only after
+those checks and a read-back of the staged bytes. Supply a new output path.
+The original and any existing destination are preserved. The source and
+destination filesystems must support hard links for atomic publication.
+Versions 1–2 had no project ID, so the conversion assigns one and retains it
+on subsequent saves. A project beyond v24 resource admission remains
+available to the legacy reader, and conversion reports the refusal.

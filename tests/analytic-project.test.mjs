@@ -1,21 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import {
-  createBaseProject,
-  LayerStack,
-  SculptProject,
-  SdfLayer,
-} from "../work/test-build/layers.mjs";
+import { LayerStack, SculptProject, SdfLayer } from "../work/test-build/layers.mjs";
 import { importNative, renameNative } from "../work/test-build/library-codec.mjs";
 import { evaluatePrimitive } from "../work/test-build/parametric-primitive.mjs";
 import {
   ANALYTIC_PROJECT_VERSION,
   assertProjectTriangleBudget,
   openSculptProject,
-  saveProject,
   saveSculptProject,
 } from "../work/test-build/project.mjs";
-import { createMeshReference } from "../work/test-build/reference-images.mjs";
 import { sculptMask } from "../work/test-build/sculpt-mask.mjs";
 import { sculptPaint } from "../work/test-build/sculpt-paint.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
@@ -70,9 +64,6 @@ function mutate(data, edit) {
   out.set(payload, 16 + json.length);
   return out.buffer;
 }
-function compact(project) {
-  return saveSculptProject(project, project.displayPreferences, true);
-}
 function compare(expected, actual) {
   for (const [i, layer] of expected.layerStack.layers.entries()) {
     const loaded = actual.layerStack.layers[i];
@@ -95,15 +86,12 @@ test("mixed native storage reconstructs exact caches and preserves paint, masks,
     sculptPaint(volume).channels[0].write(200, 0.2);
     sculptPaint(volume).channels[3].write(200, 0.4);
   }
-  const legacy = saveSculptProject(project, undefined, false);
-  const data = compact(project);
-  assert.equal(header(legacy).version, 16);
+  const data = saveSculptProject(project);
   const { version, meta } = header(data);
   assert.equal(version, ANALYTIC_PROJECT_VERSION);
   assert.equal(meta.layers[0].voxelCount, 17 ** 3);
   assert.equal(meta.layers[1].voxelCount, 0);
   assert.equal(meta.layers[1].source.encoding, "primitive-sdf-v1");
-  assert(legacy.byteLength - data.byteLength > 140_000);
   const progress = [];
   compare(
     project,
@@ -116,14 +104,15 @@ test("mixed native storage reconstructs exact caches and preserves paint, masks,
 });
 
 test("v2 sculpt remains lossless when saved alongside an analytic source", () => {
-  const sculpt = createBaseProject(new SDFVolume(33), settings);
-  const original = saveProject(sculpt.activeLayer.volume, settings);
+  const original = Uint8Array.from(
+    readFileSync(new URL("./fixtures/legacy-v2.form", import.meta.url)),
+  ).buffer;
   const reopened = openSculptProject(original);
-  const voxelOnly = compact(reopened);
-  assert.equal(header(voxelOnly).version, 3);
+  const voxelOnly = saveSculptProject(reopened);
+  assert.equal(header(voxelOnly).version, 24);
   compare(reopened, openSculptProject(voxelOnly));
   const project = mixed(reopened.activeLayer);
-  const compacted = compact(openSculptProject(saveSculptProject(project, undefined, false)));
+  const compacted = saveSculptProject(project);
   compare(project, openSculptProject(compacted));
 });
 
@@ -139,15 +128,15 @@ test("signed-zero mismatches fall back to exact voxel persistence and edited cla
   const index = volume.values.findIndex((v) => Object.is(v, 0));
   assert(index >= 0);
   volume.values[index] = -0;
-  const reopened = openSculptProject(compact(project));
-  assert.equal(header(compact(project)).meta.layers[1].source, undefined);
+  const reopened = openSculptProject(saveSculptProject(project));
+  assert.equal(header(saveSculptProject(project)).meta.layers[1].source, undefined);
   compare(project, reopened);
   volume.values[index] = -0.001;
-  assert.throws(() => compact(project), /does not match/);
+  assert.throws(() => saveSculptProject(project), /does not match/);
 });
 
 test("validated compact files can be renamed, duplicated and imported without touching the cache definition", () => {
-  const data = compact(mixed());
+  const data = saveSculptProject(mixed());
   const imported = importNative(data, "Imported").data;
   const copy = openSculptProject(renameNative(imported, "Duplicate", true));
   const original = openSculptProject(data);
@@ -162,7 +151,7 @@ test("validated compact files can be renamed, duplicated and imported without to
 });
 
 test("corrupt analytic records fail before cache reconstruction and inconsistent fields fail closed", () => {
-  const data = compact(mixed());
+  const data = saveSculptProject(mixed());
   const cases = [
     [
       (l) => {
@@ -229,23 +218,14 @@ test("corrupt analytic records fail before cache reconstruction and inconsistent
 });
 
 test("a v9 STL reference survives legacy open and mixed analytic migration", () => {
-  const project = createBaseProject(new SDFVolume(17), settings);
-  const stl = new Uint8Array(134);
-  const writer = new DataView(stl.buffer);
-  writer.setUint32(80, 1, true);
-  writer.setFloat32(108, 1, true);
-  writer.setFloat32(124, 1, true);
-  project.displayPreferences = {
-    mode: "clay",
-    colours: {},
-    references: [createMeshReference(stl, "Guide.stl", "reference-stl")],
-  };
-  const legacy = saveSculptProject(project, project.displayPreferences, false);
+  const legacy = Uint8Array.from(
+    readFileSync(new URL("./fixtures/legacy-v9.form", import.meta.url)),
+  ).buffer;
   assert.equal(header(legacy).version, 9);
   const reopened = openSculptProject(legacy);
   const migration = mixed(reopened.activeLayer);
   migration.displayPreferences = reopened.displayPreferences;
-  const compacted = openSculptProject(compact(migration));
+  const compacted = openSculptProject(saveSculptProject(migration));
   compare(migration, compacted);
   assert.deepEqual(compacted.displayPreferences, reopened.displayPreferences);
 });
@@ -259,10 +239,10 @@ test("native accounting keeps the voxel triangle cap and admits twenty exact 63Â
     return new SdfLayer(volume, { primitive, order, name: "Post " + order });
   });
   const project = new SculptProject(new LayerStack(layers), settings);
-  assert.throws(() => assertProjectTriangleBudget(layers, undefined, false), /triangle budget/);
-  assert.doesNotThrow(() => assertProjectTriangleBudget(layers, undefined, true));
-  assert.throws(() => saveSculptProject(project, undefined, false), /triangle budget/);
-  const data = compact(project);
+  const stored = layers.map((layer) => new SdfLayer(layer.volume));
+  assert.throws(() => assertProjectTriangleBudget(stored), /triangle budget/);
+  assert.doesNotThrow(() => assertProjectTriangleBudget(layers));
+  const data = saveSculptProject(project);
   const { meta, payload } = header(data);
   assert.equal(payload.byteLength, 0);
   assert(meta.layers.every((layer) => layer.grid.initialResolution === 63));

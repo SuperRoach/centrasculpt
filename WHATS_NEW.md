@@ -1,10 +1,12 @@
-### Save smaller analytic projects — Phase 8.9 preview
+### Native projects save as v24 — Phase 8.9a
 
-- The opt-in native format stores matching primitive definitions and rebuilds
-  their exact fields on open. Sculpted clay, paint and masks travel with the file.
-- The default-resolution 20-source electronics enclosure can save and reopen
-  in an analytic-enabled build. Project open shows layer progress and offers
-  cancellation while the current project stays available.
+- All new project saves use v24. Matching primitive definitions rebuild their
+  exact fields on open. Sculpted clay, paint and masks travel with the file.
+- Older projects still open. The first save from an older Library entry
+  creates a v24 entry and keeps the original. The command-line migration
+  tool verifies a backup and the reopened project before publishing.
+- The 20-source electronics enclosure can save and reopen at its default
+  resolution. Project open shows layer progress and offers cancellation.
 
 ### Keep enclosure edits saveable and prepare STL faster — Phase 8.8f
 

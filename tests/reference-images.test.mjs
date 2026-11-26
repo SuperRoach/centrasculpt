@@ -125,7 +125,7 @@ test("count, aggregate source quota, identity, dimensions, transforms and enums 
     /budget/,
   );
 });
-test("native v5 embeds exact compressed bytes, all reference properties; legacy remains readable", () => {
+test("native v24 embeds exact compressed bytes and all reference properties", () => {
   const l = fixture();
   try {
     const old = saveSculptProject(l.project),
@@ -138,7 +138,7 @@ test("native v5 embeds exact compressed bytes, all reference properties; legacy 
       l.project,
       l.display.snapshot(l.project.id, l.project.layerStack.layers),
     );
-    assert.equal(new DataView(data).getUint32(8, true), 5);
+    assert.equal(new DataView(data).getUint32(8, true), 24);
     const reopened = openSculptProject(data);
     assert.deepEqual(reopened.displayPreferences.references, l.display.references);
     assert.deepEqual(l.active.volume.values, values);

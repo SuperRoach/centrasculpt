@@ -96,7 +96,7 @@ test("recipe dry-run/commit use five independent sources, ordered live CSG, mark
     assert(d(12, 6, 0) > 0, "clearance gap outside lip");
     const reopened = openSculptProject(saveSculptProject(l.project));
     assert.equal(reopened.layerStack.get(base).assemblyPart.enclosure.role, "base");
-    assert.equal(new DataView(saveSculptProject(l.project)).getUint32(8, true), 16);
+    assert.equal(new DataView(saveSculptProject(l.project)).getUint32(8, true), 24);
     l.undo();
     assert.deepEqual(bytes(l), before);
     l.undo(true);
@@ -303,7 +303,7 @@ test("sampled actual SDF sections explain wall, floor, ring and plate thickness 
   }
 });
 
-test("native v16, real worker recovery, Save As and Project Library duplication retain editable recipe and remapped independent parts", async () => {
+test("native v24, real worker recovery, Save As and Project Library duplication retain editable recipe and remapped independent parts", async () => {
   const { layers: l, api } = createHeadlessEditor();
   try {
     const {
@@ -364,7 +364,7 @@ test("native v16, real worker recovery, Save As and Project Library duplication 
     const legacy = createHeadlessEditor();
     try {
       const data = saveSculptProject(legacy.layers.project);
-      assert(new DataView(data).getUint32(8, true) < 16);
+      assert.equal(new DataView(data).getUint32(8, true), 24);
       assert(openSculptProject(data));
     } finally {
       legacy.layers.dispose();

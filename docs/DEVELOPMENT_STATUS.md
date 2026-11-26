@@ -1,10 +1,66 @@
+# Phase 8.9a — Canonical native projects
+
+Every native save now writes v24. Editable clay stays in exact Float32
+storage. Eligible primitive fields rebuild with fingerprint verification.
+The codec modules separate archive limits and settings, v24 encoding,
+version-aware decoding, analytic cache handling and legacy migration.
+The v1–v23 importer remains available. The migration command verifies an
+independent backup and compares the reopened v24 project before publishing.
+Legacy Library and recovery records remain readable.
+[Native format and migration instructions](NATIVE_PROJECT_FORMAT.md)
+
+## Phase 8.9a benchmarks
+
+Node 26.8.1 on macOS arm64 ran one warmup and five timed trials per workload.
+Times show median and p95 in milliseconds. Library and recovery timings use
+disposable fake IndexedDB in Node.
+
+| Workload | Archive bytes | Stored / rebuilt samples | Save ms | Open ms |
+| --- | ---: | ---: | ---: | ---: |
+| 20-source enclosure, 63³ | 29,888 | 0 / 5,000,940 | 202.8 / 212.8 | 212.3 / 216.1 |
+| 20-source enclosure, 33³ | 29,290 | 0 / 718,740 | 31.6 / 33.7 | 34.6 / 39.9 |
+| Mixed clay and two boxes | 1,050,376 | 262,144 / 500,094 | 31.9 / 37.4 | 25.7 / 26.1 |
+| Sculpt-only, 128³ | 8,389,210 | 2,097,152 / 0 | 121.5 / 341.8 | 67.7 / 89.1 |
+
+Chromium worker decode and hydration for the 63³ enclosure took 386.4 ms
+median and 406.0 ms p95. Library duplication took 2.6 ms median and recovery
+read plus reopen took 394.7 ms median. A separate full editor recovery restored
+and resaved the same project, all 20 layers and all three component references.
+
+The 63³ enclosure's Node median Library duplication and recovery read plus reopen
+took 1.0 ms and 214.6 ms respectively. The archived v19 enclosure at 33³
+migrated from 2,902,312 to 29,290 bytes with exact editable-state verification.
+The Node benchmark compared export SHA-256 hashes before and after conversion.
+GLB and STL matched for the small box, mixed clay, and evaluated Boolean
+fixture. The four bounded enclosure part GLBs matched. Three bounded
+part Fast STLs matched, and the base hit the same Fast STL admission limit
+before and after conversion. The default-resolution Chromium MCP run
+exported all four actual-size High-quality STLs successfully. All four
+default-resolution part GLBs also matched the previous accepted enclosure
+at Fast quality with the existing 512 MiB export option.
+The four Chromium enclosure STL downloads also matched the earlier accepted
+STLs byte-for-byte. Fingerprint checks reopened and byte-identically resaved
+both the 20-source enclosure and six representative primitives in Node 26.8.1,
+Chromium 158.0.8127.18, WebKit 27.2 and Quest 3 browser 157.0.0.22.15.
+Playwright Firefox failed to create its profile on this host and remains
+unverified. The Quest check exercised the codec in the headset browser.
+Full headset editor staging remains a separate acceptance task.
+`npm run check` passed formatting, lint, strict TypeScript, production build
+and 1,812 tests across 132 files. The quick suite passed 21 tests. The Chromium
+MCP enclosure run passed all nine scenarios. The component-reference browser,
+standalone MCP browser and native export browser smokes passed. The native
+export smoke reopened the archived v11 lens fixture, confirmed v24 save
+bytes stayed identical around exports, and checked the 192³, 256³, Boolean
+and 200 mm STL cases.
+
+Reports are in `work/phase-8-9a/`.
+
 # Phase 8.9 — Analytic source persistence
 
-Version 24 adds mixed native storage for exact rebuildable primitive SDF fields
-and complete voxel fields. Versions 1–23 remain readable. Version 10 was
-already assigned to hierarchy parenting and the Phase 8.8 enclosure uses
-version 19. The existing native writer stays the default. Use
-`VITE_CENTRA_ANALYTIC_PROJECTS=1` at Vite startup or build time to opt in.
+Phase 8.9 introduced optional mixed native storage for exact rebuildable
+primitive SDF fields and complete voxel fields. Phase 8.9a made it canonical.
+Version 10 added hierarchy parenting and the Phase 8.8 enclosure used
+version 19 for associative attachments.
 [Format, eligibility, resource limits and compatibility](NATIVE_PROJECT_FORMAT.md)
 
 ## Enclosure capacity and geometry
@@ -122,18 +178,20 @@ The checkout includes its existing Biome warnings and Vite bundle advisory.
 
 ## Reproduce
 
-Run from the repository root. Use the Phase 8.8f archive in the codec
-command. If it is unavailable, run the component MCP fixture command without
-the feature flag or `--default-resolution`, and supply that bounded archive
-instead. All browser runs use disposable contexts.
+Run from the repository root. The codec benchmark takes the archived v19
+bounded fixture and the v24 default-resolution enclosure. The commands
+below write fresh Phase 8.9a results. Browser runs use disposable contexts.
 
 ```sh
 npm run test:quick
 npm test -- analytic-project component-references enclosure recovery project export agent-access
 npm run check
-VITE_CENTRA_ANALYTIC_PROJECTS=1 CENTRA_COMPONENT_REPORT=work/phase-8-9/browser-verified CENTRA_COMPONENT_MCP_PORT=5285 node scripts/component-mcp-smoke.mjs --default-resolution --cancel-first
-node --expose-gc scripts/benchmark-analytic-project.mjs work/phase-8-8f/electronics-enclosure.form work/phase-8-9/browser-verified/electronics-enclosure.form
-node scripts/benchmark-analytic-browser.mjs
+CENTRA_COMPONENT_REPORT=work/phase-8-9a/mcp CENTRA_COMPONENT_MCP_PORT=5285 node scripts/component-mcp-smoke.mjs --default-resolution --cancel-first
+node scripts/benchmark-analytic-project.mjs work/phase-8-9/electronics-bounded-legacy.form work/phase-8-9a/mcp/electronics-enclosure.form work/phase-8-9a
+node scripts/benchmark-analytic-browser.mjs work/phase-8-9a
+node scripts/verify-project-fingerprints.mjs --prepare
+# With Vite running at http://127.0.0.1:5289
+node scripts/verify-project-fingerprints.mjs
 node scripts/component-references-browser-smoke.mjs
 AGENT_SMOKE_HOST=127.0.0.1 AGENT_SMOKE_REPORT=work/phase-8-9/agent AGENT_SMOKE_PORT=5289 npm run test:agent:browser
 ```
@@ -142,7 +200,7 @@ Compare the four downloads by SHA-256 with their Phase 8.8f counterparts.
 
 ```sh
 shasum -a 256 work/phase-8-8f/{electronics-validation-base,electronics-validation-lid,button-plunger,button-retainer}.stl
-shasum -a 256 work/phase-8-9/browser-verified/*.stl
+shasum -a 256 work/phase-8-9a/mcp/*.stl
 ```
 
 Artifacts are in `work/phase-8-9/`. `codec-benchmark.json` and
@@ -152,8 +210,9 @@ with both native archives and the four STLs beside it.
 
 ## Remaining validation
 
-Version 24 writes stay opt-in pending validation on additional JavaScript
-engines and physical Quest hardware. The first version keeps the
+The initial rollout deferred default writes pending validation on additional
+JavaScript engines and Quest hardware. Phase 8.9a records that validation
+above. The format keeps the
 reconstructed cache resident. A browser or evaluator that changes Float32
 results can fail the fingerprint check. Large current scenes with retained
 history can exhaust staging memory and refuse a replacement until opened

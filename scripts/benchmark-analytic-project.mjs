@@ -19,10 +19,10 @@ import { ProjectLibrary } from "../work/test-build/project-library.mjs";
 import { checksum } from "../work/test-build/project-snapshot.mjs";
 import { IndexedRecoveryStore } from "../work/test-build/recovery-store.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { encodeSTL } from "../work/test-build/stl-export.mjs";
 import { installFileReader } from "./fixtures/export-node.mjs";
 
-const [boundedFile, fullFile, output = "work/phase-8-9", workloadName, encoding] =
-  process.argv.slice(2);
+const [boundedFile, fullFile, output = "work/phase-8-9", workloadName] = process.argv.slice(2);
 if (!boundedFile || !fullFile)
   throw new Error(
     "Pass the Phase 8.8f bounded archive and the default-resolution browser archive.",
@@ -130,29 +130,36 @@ function assertSame(a, b) {
 function hash(buffer) {
   return createHash("sha256").update(new Uint8Array(buffer)).digest("hex");
 }
-async function verifyGLB(project, workload) {
+async function verifyGeometry(project, workload) {
   const booleanFixture = workload === "complex-live-boolean" || workload === "electronics-bounded";
   if (!booleanFixture && workload !== "small-box" && workload !== "mixed-clay-and-boxes")
     return undefined;
   const editor = new IndependentLayers(project);
   const memoryLimit = workload === "electronics-bounded" ? EXPORT_MEMORY_MAX : 256 * 1024 ** 2;
-  const makeGLB = async (scope) => {
+  const makeExports = async (scope) => {
     const evaluated = booleanFixture
       ? await prepareBooleanExport(editor, scope, undefined, false)
       : undefined;
     try {
       const sources = evaluated?.sources ?? editor.exportSources();
       const glb = await encodeExport(sources, "fast", memoryLimit);
-      return { glbSHA256: hash(glb.data) };
+      const glbSHA256 = hash(glb.data);
+      try {
+        const stl = await encodeSTL(sources, "fast", memoryLimit, 100);
+        return { glbSHA256, stlSHA256: hash(stl.data) };
+      } catch (error) {
+        if (!error.message.startsWith("STL topology validation exceeds")) throw error;
+        return { glbSHA256, stlRefusal: error.message };
+      }
     } finally {
       evaluated?.dispose();
     }
   };
   try {
-    if (workload !== "electronics-bounded") return await makeGLB(project);
+    if (workload !== "electronics-bounded") return await makeExports(project);
     const scopes = {};
     try {
-      scopes.visibleAssembly = await makeGLB(project);
+      scopes.visibleAssembly = await makeExports(project);
     } catch (error) {
       if (!error.message.startsWith("Too many triangles for fast export")) throw error;
       scopes.visibleAssembly = { refusal: error.message };
@@ -164,16 +171,15 @@ async function verifyGLB(project, workload) {
         project.name,
         project.id,
       );
-      scopes[part.name] = await makeGLB(scope);
+      scopes[part.name] = await makeExports(scope);
     }
     return scopes;
   } finally {
     editor.dispose();
   }
 }
-async function runTrial(workload, compact) {
+async function runTrial(workload) {
   const project = workloads[workload]();
-  const reference = openSculptProject(saveSculptProject(project, project.displayPreferences, true));
   installFileReader();
   const library = new ProjectLibrary(new IDBFactory(), "phase-8-9-library");
   const recovery = new IndexedRecoveryStore(new IDBFactory(), "phase-8-9-recovery");
@@ -181,20 +187,12 @@ async function runTrial(workload, compact) {
   const signal = new AbortController().signal;
   const trials = [];
   let geometry;
-  let refusal;
   let last;
   for (let i = -1; i < 5; i++) {
     global.gc?.();
     const initialRSS = process.memoryUsage.rss();
     const start = performance.now();
-    let data;
-    try {
-      data = saveSculptProject(project, project.displayPreferences, compact);
-    } catch (error) {
-      if (workload !== "electronics-default-20" || compact) throw error;
-      refusal = error.message;
-      break;
-    }
+    const data = saveSculptProject(project);
     const saveMs = performance.now() - start;
     const afterSaveRSS = process.memoryUsage.rss();
     const openStart = performance.now();
@@ -204,7 +202,7 @@ async function runTrial(workload, compact) {
     });
     const openMs = performance.now() - openStart;
     const afterOpenRSS = process.memoryUsage.rss();
-    assertSame(reference, rebuilt);
+    assertSame(project, rebuilt);
     const record = describeNative(data, workload);
     let phaseStart = performance.now();
     const copy = renameNative(data, "Copy", true);
@@ -242,17 +240,13 @@ async function runTrial(workload, compact) {
   }
   const processPeakRSSKiB = process.resourceUsage().maxRSS;
   if (last) {
-    writeFileSync(
-      join(output, workload + (compact ? "-compact.form" : "-legacy.form")),
-      new Uint8Array(last),
-    );
-    geometry = await verifyGLB(openSculptProject(last), workload);
+    writeFileSync(join(output, `${workload}-compact.form`), new Uint8Array(last));
+    geometry = await verifyGeometry(openSculptProject(last), workload);
+    assert.deepEqual(geometry, await verifyGeometry(project, workload));
   }
   const row = {
     workload,
-    compact,
     layers: project.layerStack.layers.length,
-    refusal,
     bytes: last?.byteLength,
     ...(last ? gridCounts(last) : {}),
     geometry,
@@ -265,30 +259,26 @@ async function runTrial(workload, compact) {
   return row;
 }
 if (workloadName) {
-  console.log(JSON.stringify(await runTrial(workloadName, encoding === "compact")));
+  console.log(JSON.stringify(await runTrial(workloadName)));
 } else {
   const rows = [];
   for (const workload of Object.keys(workloads)) {
-    for (const variant of ["legacy", "compact"]) {
-      const child = spawnSync(
-        process.execPath,
-        ["--expose-gc", process.argv[1], boundedFile, fullFile, output, workload, variant],
-        { encoding: "utf8" },
-      );
-      if (child.status !== 0) throw new Error(child.stderr || child.stdout || String(child.error));
-      const row = JSON.parse(child.stdout.trim());
-      console.log(JSON.stringify({ ...row, trials: undefined }));
-      if (variant === "compact" && row.geometry && rows.at(-1).geometry)
-        assert.deepEqual(row.geometry, rows.at(-1).geometry);
-      rows.push(row);
-    }
+    const child = spawnSync(
+      process.execPath,
+      ["--expose-gc", process.argv[1], boundedFile, fullFile, output, workload],
+      { encoding: "utf8" },
+    );
+    if (child.status !== 0) throw new Error(child.stderr || child.stdout || String(child.error));
+    const row = JSON.parse(child.stdout.trim());
+    console.log(JSON.stringify({ ...row, trials: undefined }));
+    rows.push(row);
   }
   writeFileSync(
     join(output, "codec-benchmark.json"),
     JSON.stringify(
       {
         methodology:
-          "One warmup and five trials per encoding. A fresh process per workload and encoding isolates phase-sampled RSS, including the native reference retained for verification. A separate process high-water mark through the last codec trial includes setup and verification, and excludes export. Recovery and Library use disposable fake IndexedDB.",
+          "One warmup and five trials of the v24 codec. A fresh process per workload isolates phase-sampled RSS, including the source project retained for verification. A separate process high-water mark through the last codec trial includes setup and verification, and excludes export. Recovery and Library use disposable fake IndexedDB.",
         runtime: process.version,
         platform: process.platform,
         architecture: process.arch,

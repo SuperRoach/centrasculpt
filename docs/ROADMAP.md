@@ -1,13 +1,13 @@
 # Centra Sculpt roadmap
 
-## Phase 8.9 — Analytic source persistence
+## Phase 8.9a — Canonical native projects
 
-Version 24 can omit exact rebuildable primitive caches in an opt-in build.
-The full 20-source electronics enclosure fits with 63³ source grids under
-the existing project caps. The reader also accepts versions 1–23 and keeps
-dense sculpt data lossless. Before enabling v24 writes by default, validate
-the reconstruction fingerprint and editor staging on Quest and additional
-browser engines. See [Native project format](NATIVE_PROJECT_FORMAT.md).
+Every native save writes v24. The 20-source electronics enclosure fits with
+63³ source grids under the existing project caps. The v1–v23 migration
+reader remains available for old files, Library entries and recovery
+checkpoints. Retain the importer through further cross-platform and archive
+validation. Confirm full editor staging on Quest before retiring it.
+See [Native project format](NATIVE_PROJECT_FORMAT.md).
 
 ## Phase 8.8f — Native save admission and export scheduling
 

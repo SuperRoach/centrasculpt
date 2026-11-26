@@ -12,7 +12,7 @@ export function prepareLibrary(
   data: ArrayBuffer;
   record?: ProjectRecord;
   snapshot?: ProjectSnapshot;
-  analytic?: boolean;
+  nativeBudget?: boolean;
 }> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {

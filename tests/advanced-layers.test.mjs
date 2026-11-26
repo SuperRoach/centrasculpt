@@ -521,7 +521,7 @@ test("procedural tube duplication retains editable independent spline definition
     l.dispose();
   }
 });
-test("native v7 and actual recovery worker preserve nested groups, masks, local flags and Boolean order", async () => {
+test("native v24 and actual recovery worker preserve nested groups, masks, local flags and Boolean order", async () => {
   const l = make(),
     previous = globalThis.Worker;
   globalThis.Worker = RecoveryBrowserWorker;
@@ -538,7 +538,7 @@ test("native v7 and actual recovery worker preserve nested groups, masks, local 
     l.setFlag(a.id, "visible", false);
     const before = h.snapshot(),
       raw = saveSculptProject(l.project);
-    assert.equal(new DataView(raw).getUint32(8, true), 7);
+    assert.equal(new DataView(raw).getUint32(8, true), 24);
     const loaded = openSculptProject(raw);
     assert.deepEqual(loaded.layerStack.hierarchy.snapshot(), before);
     matrixNear(
@@ -564,12 +564,12 @@ test("native v7 and actual recovery worker preserve nested groups, masks, local 
     globalThis.Worker = previous;
   }
 });
-test("flat legacy projects load without groups or parent transforms", () => {
+test("flat projects load without groups or parent transforms", () => {
   const l = make();
   try {
     const before = saveSculptProject(l.project),
       loaded = openSculptProject(before);
-    assert(new DataView(before).getUint32(8, true) < 7);
+    assert.equal(new DataView(before).getUint32(8, true), 24);
     assert.equal(loaded.layerStack.hierarchy.groups.length, 0);
     assert.deepEqual(loaded.activeLayer.transform, l.active.layer.transform);
   } finally {
@@ -1154,7 +1154,7 @@ test("parent deletion retains children in place; recovery preserves layer parent
         () => true,
       ),
       opened = openSculptProject(result.data);
-    assert.equal(new DataView(result.data).getUint32(8, true), 10);
+    assert.equal(new DataView(result.data).getUint32(8, true), 24);
     assert.equal(opened.layerStack.hierarchy.parent(b.id), a.id);
     l.remove(a.id);
     assert.equal(l.project.layerStack.hierarchy.parent(b.id), null);

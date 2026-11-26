@@ -1,5 +1,6 @@
 import { newId } from "./layers";
 import { describeNative, renameNative } from "./library-codec";
+import { PROJECT_VERSION } from "./project";
 import {
   libraryModifiedLabel,
   libraryName,
@@ -87,7 +88,8 @@ export class ProjectBrowser {
     if (this.port.key() !== key || !this.port.ready())
       throw new Error("Save cancelled: current work changed. Previous save kept.");
     const record = describeNative(data, name);
-    record.id = asNew || !this.current ? newId() : this.current.id;
+    const legacy = Boolean(this.current && this.current.version < PROJECT_VERSION);
+    record.id = asNew || legacy || !this.current ? newId() : this.current.id;
     record.opened = Date.now();
     record.sourceVersion =
       this.current && !asNew ? this.current.sourceVersion : record.sourceVersion;
@@ -96,12 +98,15 @@ export class ProjectBrowser {
     const stored = await this.store.put(
       record,
       data,
-      asNew ? null : (this.current?.revision ?? null),
+      asNew || legacy ? null : (this.current?.revision ?? null),
     );
     this.current = stored;
     this.name = name;
     this.savedKey = key;
-    this.status = "Saved in this browser. Download a portable backup from project details.";
+    this.status =
+      legacy && !asNew
+        ? "Saved as a v24 Library entry. The legacy entry remains available."
+        : "Saved in this browser. Download a portable backup from project details.";
     await this.refresh();
   }
   private async replace(action: () => Promise<void>) {
@@ -119,7 +124,7 @@ export class ProjectBrowser {
       throw new Error("Open cancelled: current work changed.");
     if (latest.revision !== record.revision)
       throw new Error("Project changed in another tab. Refresh before opening.");
-    if (await this.port.open(renameNative(data, latest.name), latest.name)) {
+    if (await this.port.open(data, latest.name)) {
       this.adopted(latest, latest.name, true);
       this.status = "Opened saved project · fresh Undo history.";
       try {

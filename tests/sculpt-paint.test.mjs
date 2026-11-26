@@ -61,7 +61,7 @@ function fixture() {
   return { l, tools };
 }
 for (const n of [64, 128, 192])
-  test(`${n} paint locality, sparse storage, continuous remesh colours and native v8`, () => {
+  test(`${n} paint locality, sparse storage, continuous remesh colours and native v24`, () => {
     const l = make(n);
     try {
       const v = l.active.volume,
@@ -87,7 +87,7 @@ for (const n of [64, 128, 192])
         ),
       );
       const data = saveSculptProject(l.project);
-      assert.equal(new DataView(data).getUint32(8, true), 8);
+      assert.equal(new DataView(data).getUint32(8, true), 24);
       assert.deepEqual(
         entries(sculptPaint(openSculptProject(data).activeLayer.volume)),
         entries(p),
@@ -538,7 +538,7 @@ test("paint transformed/grouped world mapping, reparent and asynchronous copy in
     sculptPaint(b.volume).clear();
     assert.deepEqual(entries(sculptPaint(a.volume)), saved);
     const raw = saveSculptProject(l.project);
-    assert.equal(new DataView(raw).getUint32(8, true), 8);
+    assert.equal(new DataView(raw).getUint32(8, true), 24);
     const loaded = openSculptProject(raw);
     assert.deepEqual(
       loaded.layerStack.hierarchy.snapshot(),

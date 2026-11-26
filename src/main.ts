@@ -1626,9 +1626,9 @@ async function openProjectFile(
       throw new Error("Recovery project identity does not match its record.");
     // The existing Boolean display mesh is rebuildable. Stop its background work and
     // reclaim its allocation while keeping the old project, sources and Undo intact.
-    if (prepared.analytic) releaseDisplayCache = await layers.composite.releaseForExport();
+    if (prepared.nativeBudget) releaseDisplayCache = await layers.composite.releaseForExport();
     if (signal.aborted) throw new Error("Project open cancelled.");
-    const stagingBudget = prepared.analytic
+    const stagingBudget = prepared.nativeBudget
       ? 256 * 1024 ** 2 - layers.trackedBytes - layers.composite.trackedBytes
       : undefined;
     const assertStagingBytes = (bytes: number) => {
@@ -1642,6 +1642,7 @@ async function openProjectFile(
         snapshot.layers.reduce((sum, layer) => sum + 2 * layer.values.byteLength, 0),
       );
     const project = hydrateProject(snapshot);
+    if (libraryOpen) project.name = file.name.replace(/\.form$/i, "");
     candidate = new IndependentLayers(project, new LayerDisplayPreferences(), true);
     const checkStaging = () => {
       if (signal.aborted) throw new Error("Project open cancelled.");

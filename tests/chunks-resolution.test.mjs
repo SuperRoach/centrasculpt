@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { MeshStandardMaterial } from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
@@ -196,7 +197,9 @@ test("resampling preserves world bounds, affine fields and positive boundaries; 
   for (const size of [0, 193, NaN, 2.5]) assert.throws(() => resampleVolume(source, size));
 });
 test("v1 projects migrate to zero hardness and v2 validates hardness", () => {
-  const data = saveProject(new SDFVolume(17), settings),
+  const data = Uint8Array.from(
+      readFileSync(new URL("./fixtures/legacy-v2.form", import.meta.url)),
+    ).buffer,
     view = new DataView(data),
     length = view.getUint32(12, true);
   const metadata = JSON.parse(new TextDecoder().decode(new Uint8Array(data, 16, length)));

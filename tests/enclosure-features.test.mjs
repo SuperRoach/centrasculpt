@@ -90,7 +90,7 @@ for (const anchor of WALL_ANCHORS)
             expected = new Vector3(...plan.positionMm).multiplyScalar(1 / mm).applyMatrix4(root);
           assert(expected.distanceTo(new Vector3(...node.transform.position)) < 1e-6);
         }
-        assert.equal(new DataView(saveSculptProject(l.project)).getUint32(8, true), 19);
+        assert.equal(new DataView(saveSculptProject(l.project)).getUint32(8, true), 24);
         const opened = openSculptProject(saveSculptProject(l.project));
         assert.deepEqual(opened.layerStack.get(base).assemblyPart.enclosure.features[0], feature);
         const duplicated = openSculptProject(

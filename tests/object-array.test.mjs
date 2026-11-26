@@ -127,7 +127,7 @@ test("radial and linear samplers preserve one authoritative primitive source and
   await l.dispose();
 });
 
-test("array commands are revision guarded, history atomic, and keep stable IDs through native v13", async () => {
+test("array commands are revision guarded, history atomic, and keep stable IDs through native v24", async () => {
   const l = make(),
     shape = await l.regeneratePrimitive({ kind: "box", width: 0.2, height: 0.2, depth: 0.2 }),
     api = new ModellingAPI(l),
@@ -169,7 +169,7 @@ test("array commands are revision guarded, history atomic, and keep stable IDs t
   assert.equal(l.project.layerStack.get(shape.id).array.count, 8);
   const native = saveSculptProject(l.project),
     restored = openSculptProject(native);
-  assert.equal(new DataView(native).getUint32(8, true), 13);
+  assert.equal(new DataView(native).getUint32(8, true), 24);
   assert.deepEqual(
     restored.layerStack.get(shape.id).array,
     l.project.layerStack.get(shape.id).array,
@@ -188,7 +188,7 @@ test("array commands are revision guarded, history atomic, and keep stable IDs t
   await l.dispose();
 });
 
-test("actual recovery worker preserves arrays and legacy native projects remain readable", async () => {
+test("actual recovery worker preserves arrays and array-free native projects remain readable", async () => {
   const l = make(),
     shape = await l.regeneratePrimitive({ kind: "sphere", diameter: 0.2 });
   l.setArrayDefinition(shape.id, radial("recovery-array", 6));
@@ -423,7 +423,7 @@ test("per-item scale compounds at copy centres for linear and both radial orient
   }
 });
 
-test("scaled arrays validate, Undo/Redo and persist through native v15 and recovery", async () => {
+test("scaled arrays validate, Undo/Redo and persist through native v24 and recovery", async () => {
   const l = make();
   try {
     const shape = await l.regeneratePrimitive({ kind: "box", width: 0.1, height: 0.1, depth: 0.1 });
@@ -443,7 +443,7 @@ test("scaled arrays validate, Undo/Redo and persist through native v15 and recov
     l.undo(true);
     assert.equal(shape.array.scalePerItem, 0.9);
     const data = saveSculptProject(l.project);
-    assert.equal(new DataView(data).getUint32(8, true), 15);
+    assert.equal(new DataView(data).getUint32(8, true), 24);
     assert.equal(openSculptProject(data).layerStack.get(shape.id).array.scalePerItem, 0.9);
     const outdated = data.slice(0);
     new DataView(outdated).setUint32(8, 14, true);

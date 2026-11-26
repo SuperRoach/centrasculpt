@@ -106,7 +106,7 @@ test("a coloured, named and joined batch measures its final mesh and records a r
     assert.equal(api.objectMetadata(aliases.transition).colour, "#2288ff");
 
     const native = saveSculptProject(layers.project);
-    assert.equal(new DataView(native).getUint32(8, true), 22);
+    assert.equal(new DataView(native).getUint32(8, true), 24);
     assert.equal(
       openSculptProject(native).layerStack.get(aliases.transition).primitive.kind,
       "tapered-box",

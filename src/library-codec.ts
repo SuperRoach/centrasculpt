@@ -1,8 +1,11 @@
 import { newId } from "./layers";
-import { ANALYTIC_PROJECT_VERSION, openSculptProject, saveSculptProject } from "./project";
+import { openSculptProject, PROJECT_VERSION } from "./project";
 import { libraryName, type ProjectRecord } from "./project-library";
+import { verifyCanonicalProject } from "./project-migration";
 /** Called on validated native bytes. Only metadata is rewritten; binary asset offsets are payload-relative. */
 export function renameNative(data: ArrayBuffer, name: string, duplicate = false): ArrayBuffer {
+  if (new DataView(data).getUint32(8, true) !== PROJECT_VERSION)
+    data = verifyCanonicalProject(openSculptProject(data));
   const view = new DataView(data),
     length = view.getUint32(12, true),
     metadata = JSON.parse(new TextDecoder().decode(new Uint8Array(data, 16, length)));
@@ -101,13 +104,10 @@ export function importNative(
   name: string,
   onProgress?: (completed: number, total: number) => void,
 ): { data: ArrayBuffer; record: ProjectRecord } {
-  const source = new DataView(data).getUint32(8, true),
-    project = openSculptProject(data, onProgress);
-  project.name = libraryName(name);
+  const project = openSculptProject(data, onProgress),
+    source = new DataView(data).getUint32(8, true);
   const canonical = renameNative(
-    source === ANALYTIC_PROJECT_VERSION
-      ? data
-      : saveSculptProject(project, project.displayPreferences),
+    source === PROJECT_VERSION ? data : verifyCanonicalProject(project),
     name,
     true,
   );

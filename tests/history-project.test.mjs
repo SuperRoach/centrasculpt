@@ -204,10 +204,10 @@ test("malformed, truncated, oversized and future-version project files are rejec
 test("invalid dimensions, extents, encodings and sculpting/camera settings are rejected", () => {
   const valid = saveProject(new SDFVolume(17), settings);
   for (const change of [
-    (m) => (m.grid.dimensions = [17, 18, 17]),
-    (m) => (m.grid.dimensions = [10000, 10000, 10000]),
-    (m) => (m.grid.extent = 0),
-    (m) => (m.grid.extent = 11),
+    (m) => (m.layers[0].grid.dimensions = [17, 18, 17]),
+    (m) => (m.layers[0].grid.dimensions = [10000, 10000, 10000]),
+    (m) => (m.layers[0].grid.extent = 0),
+    (m) => (m.layers[0].grid.extent = 11),
     (m) => (m.voxelEncoding = "float64"),
     (m) => (m.settings.mode = "invalid"),
     (m) => (m.settings.radius = 5),

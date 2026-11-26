@@ -380,7 +380,7 @@ test("foundation export includes newly occupied geometry beyond original bounds 
     material.dispose();
   }
 });
-test("expanded v4 native/history/CSG/Bake/stamp support works; legacy v2 and implicit cubic resample reject cropping", () => {
+test("expanded v24 native/history/CSG/Bake/stamp support works; cubic APIs reject cropping", () => {
   const original = new SDFVolume(33),
     v = prepareDenseGrowth(original, box(2.5)).volume,
     project = createBaseProject(v, settings),
@@ -390,7 +390,7 @@ test("expanded v4 native/history/CSG/Bake/stamp support works; legacy v2 and imp
   const live = new IndependentLayers(project);
   try {
     const bytes = saveSculptProject(project);
-    assert.equal(new DataView(bytes).getUint32(8, true), 4);
+    assert.equal(new DataView(bytes).getUint32(8, true), 24);
     const loaded = openSculptProject(bytes);
     assert.deepEqual(loaded.activeLayer.volume.dimensions, v.dimensions);
     assert.deepEqual(loaded.activeLayer.volume.latticeMin, v.latticeMin);

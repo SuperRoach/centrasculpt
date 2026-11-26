@@ -1,5 +1,5 @@
 import { importNative } from "./library-codec";
-import { ANALYTIC_PROJECT_VERSION, openSculptProject } from "./project";
+import { openSculptProject, PROJECT_VERSION } from "./project";
 import { projectTransfer } from "./project-transfer";
 import { newProjectData } from "./project-workflow";
 
@@ -9,10 +9,10 @@ self.onmessage = ({ data: request }) => {
       self.postMessage({ progress: { completed, total } });
     if (request.kind === "decode") {
       const project = openSculptProject(request.data, progress);
-      const analytic = new DataView(request.data).getUint32(8, true) === ANALYTIC_PROJECT_VERSION;
+      const nativeBudget = new DataView(request.data).getUint32(8, true) === PROJECT_VERSION;
       const snapshot = projectTransfer(project);
       self.postMessage(
-        { result: { snapshot, analytic } },
+        { result: { snapshot, nativeBudget } },
         {
           transfer: [
             ...new Set([

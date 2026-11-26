@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { IDBObjectStore, indexedDB } from "fake-indexeddb";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { createBaseProject } from "../work/test-build/layers.mjs";
 import { describeNative, importNative, renameNative } from "../work/test-build/library-codec.mjs";
 import { defaultLighting } from "../work/test-build/lighting.mjs";
-import { openSculptProject, saveProject, saveSculptProject } from "../work/test-build/project.mjs";
+import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { ProjectBrowser } from "../work/test-build/project-browser.mjs";
 import {
   libraryModifiedLabel,
   libraryName,
   ProjectLibrary,
 } from "../work/test-build/project-library.mjs";
+import { checksum } from "../work/test-build/project-snapshot.mjs";
 import { hydrateProject, projectTransfer } from "../work/test-build/project-transfer.mjs";
 import { newProjectData } from "../work/test-build/project-workflow.mjs";
 import { IndexedRecoveryStore } from "../work/test-build/recovery-store.mjs";
@@ -286,18 +288,69 @@ test("native duplicate remaps rich hierarchy/assets and retains paint, masks, li
   }
 });
 for (const version of [1, 2, 3])
-  test(`legacy/current v${version} import migrates independently and records source version`, () => {
-    const data = version < 3 ? saveProject(new SDFVolume(17), settings) : raw();
+  test(`legacy v${version} import migrates independently and records source version`, () => {
+    const data = Uint8Array.from(
+      readFileSync(new URL(`./fixtures/legacy-v${Math.max(version, 2)}.form`, import.meta.url)),
+    ).buffer;
     if (version === 1) new DataView(data).setUint32(8, 1, true);
     const imported = importNative(data, "Imported");
     assert.equal(imported.record.sourceVersion, version);
     assert.equal(openSculptProject(imported.data).name, "Imported");
-    assert(imported.record.version >= 3);
+    assert.equal(imported.record.version, 24);
     assert.deepEqual(
       openSculptProject(imported.data).activeLayer.volume.values,
       openSculptProject(data).activeLayer.volume.values,
     );
   });
+test("legacy Library and recovery records reopen while the first v24 save retains the original", async () => {
+  const { s, b, edit } = fixture();
+  const recovery = new IndexedRecoveryStore(indexedDB, `legacy-recovery-${Math.random()}`);
+  try {
+    const data = Uint8Array.from(
+      readFileSync(new URL("./fixtures/legacy-v9.form", import.meta.url)),
+    ).buffer;
+    const legacy = await put(s, "Legacy sculpture", data);
+    const original = openSculptProject(data);
+    await recovery.setEnabled(true);
+    await recovery.write(
+      {
+        id: "legacy-checkpoint",
+        format: 1,
+        projectId: original.id,
+        projectName: original.name,
+        revision: "fixture",
+        createdAt: Date.now(),
+        bytes: data.byteLength,
+        checksum: checksum(data),
+      },
+      data,
+      new AbortController().signal,
+    );
+    const checkpoint = await recovery.read("legacy-checkpoint");
+    assert.equal(checkpoint.record.checksum, checksum(checkpoint.data));
+    assert.equal(openSculptProject(checkpoint.data).id, original.id);
+
+    await b.refresh();
+    b.selected = legacy.id;
+    await b.activate("library:open");
+    await b.activate("library:discard-replace");
+    assert.equal(b.current.id, legacy.id);
+    edit();
+    await b.activate("library:save");
+    assert.equal(b.error, false, b.status);
+    assert.notEqual(b.current.id, legacy.id);
+    assert.equal(b.current.version, 24);
+    assert.equal(b.current.sourceVersion, 9);
+    const converted = openSculptProject((await s.read(b.current.id)).data);
+    assert.equal(converted.id, original.id);
+    assert.deepEqual(converted.displayPreferences, original.displayPreferences);
+    assert.deepEqual(converted.activeLayer.volume.values, original.activeLayer.volume.values);
+    assert.deepEqual((await s.read(legacy.id)).data, data);
+  } finally {
+    s.close();
+    recovery.close();
+  }
+});
 for (const damage of ["short", "magic", "version", "truncated", "nan"])
   test(`malformed ${damage} import rejects without creating library entry`, () => {
     let data = raw();

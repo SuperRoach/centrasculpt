@@ -186,11 +186,11 @@ test("disjoint intersection is empty; no phantom cutter output", async () => {
     l.dispose();
   }
 });
-test("v12 native, Save As and ID-remapped library duplication preserve graph and editable parameters", async () => {
+test("v24 native, Save As and ID-remapped library duplication preserve graph and editable parameters", async () => {
   const { l, box, cutter } = await fixture();
   try {
     const data = saveSculptProject(l.project);
-    assert.equal(new DataView(data).getUint32(8, true), 12);
+    assert.equal(new DataView(data).getUint32(8, true), 24);
     const opened = openSculptProject(data);
     assert.deepEqual(opened.layerStack.get(box.id).booleanModifiers, box.booleanModifiers);
     assert(prepareComposite(opened.layerStack.compositionLayers)(0, 0, 0) > 0);

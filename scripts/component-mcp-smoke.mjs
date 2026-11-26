@@ -18,8 +18,6 @@ const port = process.env.CENTRA_COMPONENT_MCP_PORT ?? "5282";
 const exportOnly = process.argv.includes("--export-only");
 const modelOnly = process.argv.includes("--model-only");
 const defaultResolution = process.argv.includes("--default-resolution");
-const analyticSources = process.env.VITE_CENTRA_ANALYTIC_PROJECTS === "1";
-const expectBudgetRefusal = defaultResolution && !analyticSources;
 const cancelFirst = process.argv.includes("--cancel-first");
 const origin = `http://127.0.0.1:${port}`;
 const env = {
@@ -258,7 +256,7 @@ async function verifyBrowserExports() {
       "Button plunger",
       "Button retainer",
     ];
-    for (const name of expectBudgetRefusal ? names.slice(0, 2) : names) {
+    for (const name of names) {
       const link = page.getByRole("link", { name: `Download ${name} STL`, exact: true });
       await until(
         async () => {
@@ -531,10 +529,7 @@ try {
       },
     );
 
-    const tactileScenario = expectBudgetRefusal
-      ? "Default cache budget refusal preserves revision and attachments"
-      : "Captured tactile button, clearance and safe refit";
-    await scenario(tactileScenario, async () => {
+    await scenario("Captured tactile button, clearance and safe refit", async () => {
       tactile = await place("tactile", pair.baseId, [0, -2, 23.5], [90, 0, 0]);
       buttonRecipe = opening(pair, tactile, "actuator", {
         shape: "round",
@@ -558,14 +553,6 @@ try {
       assert.match(impossible.error.message, /usable inward depth/);
       assert.equal((await scene()).revision, before.revision);
       const staged = await stage(buttonRecipe);
-      if (expectBudgetRefusal) {
-        assert.equal(staged.ok, false, JSON.stringify(staged));
-        assert.match(staged.error.message, /Native project triangle budget exceeded.*1,000,000/);
-        assert.equal((await scene()).revision, before.revision);
-        assert.deepEqual((await inspect(tactile)).value.openings, []);
-        report.defaultBudgetRefusal = staged.error.message;
-        return;
-      }
       const proposal = ok(staged).value;
       const fit = proposal.preview.value.fit;
       assert.equal(fit.opening.widthMm, 4.6);
@@ -640,109 +627,107 @@ try {
       report.parametricSources = objects.filter(({ geometry }) => geometry?.parametric).length;
     });
 
-    if (analyticSources) {
-      await scenario(
-        "Compact import refuses corrupt source and interrupted open preserves the scene",
-        async () => {
-          await closeAgent();
-          const path = join(output, "electronics-enclosure.form");
-          const bytes = await readFile(path);
-          assert.equal(bytes.readUInt32LE(8), 24);
-          const corrupt = Buffer.from(bytes);
-          const encoding = corrupt.indexOf("primitive-sdf-v1", 16);
-          assert(encoding >= 16);
-          corrupt.write("primitive-sdf-v9", encoding);
-          await page.locator("#project-file").setInputFiles({
-            name: "corrupt-analytic.form",
-            mimeType: "application/octet-stream",
-            buffer: corrupt,
+    await scenario(
+      "Compact import refuses corrupt source and interrupted open preserves the scene",
+      async () => {
+        await closeAgent();
+        const path = join(output, "electronics-enclosure.form");
+        const bytes = await readFile(path);
+        assert.equal(bytes.readUInt32LE(8), 24);
+        const corrupt = Buffer.from(bytes);
+        const encoding = corrupt.indexOf("primitive-sdf-v1", 16);
+        assert(encoding >= 16);
+        corrupt.write("primitive-sdf-v9", encoding);
+        await page.locator("#project-file").setInputFiles({
+          name: "corrupt-analytic.form",
+          mimeType: "application/octet-stream",
+          buffer: corrupt,
+        });
+        await page
+          .locator("#project-message")
+          .filter({ hasText: "Unsupported native source encoding" })
+          .waitFor();
+        await page.locator("#project-file").setInputFiles(path);
+        const library = page.getByRole("dialog", { name: "Project library" });
+        await page.evaluate(() => {
+          const observer = new MutationObserver(() => {
+            const cancel = Array.from(document.querySelectorAll("button")).find(
+              (button) => button.textContent === "Cancel project open",
+            );
+            const decoding = Array.from(document.querySelectorAll("[role=status]")).some((status) =>
+              status.textContent?.includes("Preparing project layers"),
+            );
+            if (cancel && decoding) {
+              observer.disconnect();
+              cancel.click();
+            }
           });
-          await page
-            .locator("#project-message")
-            .filter({ hasText: "Unsupported native source encoding" })
-            .waitFor();
-          await page.locator("#project-file").setInputFiles(path);
-          const library = page.getByRole("dialog", { name: "Project library" });
-          await page.evaluate(() => {
-            const observer = new MutationObserver(() => {
-              const cancel = Array.from(document.querySelectorAll("button")).find(
-                (button) => button.textContent === "Cancel project open",
-              );
-              const decoding = Array.from(document.querySelectorAll("[role=status]")).some(
-                (status) => status.textContent?.includes("Preparing project layers"),
-              );
-              if (cancel && decoding) {
-                observer.disconnect();
-                cancel.click();
-              }
-            });
-            observer.observe(document.body, {
-              subtree: true,
-              childList: true,
-              characterData: true,
-            });
+          observer.observe(document.body, {
+            subtree: true,
+            childList: true,
+            characterData: true,
           });
-          await library.getByRole("button", { name: "Open project", exact: true }).click();
-          await library.getByText(/Project operation cancelled|Project open cancelled/).waitFor();
-          await library.getByRole("button", { name: "Close library" }).click();
-          await showAgent();
-          assert.deepEqual(await inspect(), settled);
-        },
-      );
+        });
+        await library.getByRole("button", { name: "Open project", exact: true }).click();
+        await library.getByText(/Project operation cancelled|Project open cancelled/).waitFor();
+        await library.getByRole("button", { name: "Close library" }).click();
+        await showAgent();
+        assert.deepEqual(await inspect(), settled);
+      },
+    );
 
-      await scenario(
-        "Reopened component refit retains cutter identity through Undo, Redo and resave",
-        async () => {
-          const reference = settled.value.references.find((entry) => entry.preset === "devkit");
-          assert(reference);
-          const componentId = reference.id;
-          const initial = await inspect(componentId);
-          const prior = initial.value.openings[0];
-          assert(prior);
-          const baseId = prior.definition.association.partId;
-          const objects = ok(await call("list_objects")).value;
-          const lidId = objects.find(({ name }) => name === "Electronics validation Lid")?.id;
-          assert(lidId);
-          const positionMm = [...reference.positionMm];
-          positionMm[2] += 1;
-          ok(
-            await change({
-              type: "place",
-              componentId,
-              hostId: baseId,
-              positionMm,
-              rotation: reference.rotation,
-            }),
-          );
-          const stale = await inspect(componentId);
-          assert.equal(stale.value.openings[0].stale, true);
-          const refit = ok(
-            await stage({
-              type: "component-update",
-              baseId,
-              lidId,
-              componentId,
-              attachmentId: prior.attachmentId,
-            }),
-          );
-          await apply(refit.value);
-          const applied = await inspect(componentId);
-          assert.equal(applied.value.openings[0].attachmentId, prior.attachmentId);
-          assert.notEqual(applied.value.openings[0].definition.uMm, prior.definition.uMm);
-          const undone = ok(await call("undo", { expectedRevision: applied.revision }));
-          assert.deepEqual((await inspect(componentId)).value.openings, stale.value.openings);
-          ok(await call("redo", { expectedRevision: undone.revision }));
-          assert.deepEqual((await inspect(componentId)).value.openings, applied.value.openings);
-          await nativeRoundTrip("electronics-enclosure-resaved.form", false);
-          await showAgent();
-          const reverted = ok(await call("undo", { expectedRevision: (await scene()).revision }));
-          ok(await call("undo", { expectedRevision: reverted.revision }));
-          assert.deepEqual((await inspect(componentId)).value.openings, initial.value.openings);
-        },
-      );
-    }
+    await scenario(
+      "Reopened component refit retains cutter identity through Undo, Redo and resave",
+      async () => {
+        const reference = settled.value.references.find((entry) => entry.preset === "devkit");
+        assert(reference);
+        const componentId = reference.id;
+        const initial = await inspect(componentId);
+        const prior = initial.value.openings[0];
+        assert(prior);
+        const baseId = prior.definition.association.partId;
+        const objects = ok(await call("list_objects")).value;
+        const lidId = objects.find(({ name }) => name === "Electronics validation Lid")?.id;
+        assert(lidId);
+        const positionMm = [...reference.positionMm];
+        positionMm[2] += 1;
+        ok(
+          await change({
+            type: "place",
+            componentId,
+            hostId: baseId,
+            positionMm,
+            rotation: reference.rotation,
+          }),
+        );
+        const stale = await inspect(componentId);
+        assert.equal(stale.value.openings[0].stale, true);
+        const refit = ok(
+          await stage({
+            type: "component-update",
+            baseId,
+            lidId,
+            componentId,
+            attachmentId: prior.attachmentId,
+          }),
+        );
+        await apply(refit.value);
+        const applied = await inspect(componentId);
+        assert.equal(applied.value.openings[0].attachmentId, prior.attachmentId);
+        assert.notEqual(applied.value.openings[0].definition.uMm, prior.definition.uMm);
+        const undone = ok(await call("undo", { expectedRevision: applied.revision }));
+        assert.deepEqual((await inspect(componentId)).value.openings, stale.value.openings);
+        ok(await call("redo", { expectedRevision: undone.revision }));
+        assert.deepEqual((await inspect(componentId)).value.openings, applied.value.openings);
+        await nativeRoundTrip("electronics-enclosure-resaved.form", false);
+        await showAgent();
+        const reverted = ok(await call("undo", { expectedRevision: (await scene()).revision }));
+        ok(await call("undo", { expectedRevision: reverted.revision }));
+        assert.deepEqual((await inspect(componentId)).value.openings, initial.value.openings);
+      },
+    );
 
-    if (!modelOnly && !expectBudgetRefusal) await verifyBrowserExports();
+    if (!modelOnly) await verifyBrowserExports();
   }
   assert.deepEqual(errors, []);
 } catch (error) {

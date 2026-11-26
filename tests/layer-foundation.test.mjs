@@ -11,7 +11,7 @@ import {
   SdfLayer,
 } from "../work/test-build/layers.mjs";
 import { IncrementalMesher } from "../work/test-build/mesh.mjs";
-import { openSculptProject, saveProject, saveSculptProject } from "../work/test-build/project.mjs";
+import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { resampleVolume } from "../work/test-build/resolution.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import {
@@ -213,9 +213,11 @@ test("history transactions retain target layer IDs and kinds independently of ac
   assert.equal(history.lastApplied.kind, "reset");
 });
 test("v1/v2 projects migrate losslessly into one Base layer and retain migrated IDs once saved", () => {
-  const volume = new SDFVolume(25);
+  const volume = new SDFVolume(17);
   volume.brush(center, 0.3, "subtract", 0.02);
-  const v2 = saveProject(volume, settings);
+  const v2 = Uint8Array.from(
+    readFileSync(new URL("./fixtures/legacy-v2.form", import.meta.url)),
+  ).buffer;
   for (const version of [1, 2]) {
     const binary = changeMetadata(v2, (m) => {
       if (version === 1) delete m.settings.hardness;
@@ -232,7 +234,7 @@ test("v1/v2 projects migrate losslessly into one Base layer and retain migrated 
     assert.deepEqual(loaded.activeLayer.volume.values, volume.values);
   }
 });
-test("v3 round trips preserve project/layer IDs, transforms, ordering, flags, Boolean metadata, grids and voxels", () => {
+test("v24 round trips preserve project/layer IDs, transforms, ordering, flags, Boolean metadata, grids and voxels", () => {
   const a = new SdfLayer(new SDFVolume(17), {
     name: "Base data",
     operation: "difference",
@@ -253,7 +255,7 @@ test("v3 round trips preserve project/layer IDs, transforms, ordering, flags, Bo
   );
   const binary = saveSculptProject(project),
     loaded = openSculptProject(binary);
-  assert.equal(new DataView(binary).getUint32(8, true), 3);
+  assert.equal(new DataView(binary).getUint32(8, true), 24);
   assert.equal(loaded.id, project.id);
   assert.equal(loaded.name, project.name);
   assert.equal(loaded.activeLayerId, b.id);

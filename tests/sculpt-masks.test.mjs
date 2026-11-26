@@ -362,7 +362,7 @@ test("new mask revision cancels stale asynchronous reconstruction before publica
   }
 });
 for (const n of [64, 128, 192])
-  test(`${n}³ native v6 masks round trip; old project remains unmasked`, () => {
+  test(`${n}³ native v24 masks round trip; old project remains unmasked`, () => {
     const l = make(n);
     try {
       const old = saveSculptProject(l.project);
@@ -370,7 +370,7 @@ for (const n of [64, 128, 192])
       paint(l);
       const m = sculptMask(l.active.volume),
         raw = saveSculptProject(l.project);
-      assert.equal(new DataView(raw).getUint32(8, true), 6);
+      assert.equal(new DataView(raw).getUint32(8, true), 24);
       assert(raw.byteLength - old.byteLength < n ** 3 * 0.1);
       assert.deepEqual(entries(sculptMask(openSculptProject(raw).activeLayer.volume)), entries(m));
       l.maskOperation("all");

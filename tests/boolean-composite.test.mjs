@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { Vector3 } from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
@@ -12,7 +13,7 @@ import {
 } from "../work/test-build/compositor.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { createBaseProject, SdfLayer } from "../work/test-build/layers.mjs";
-import { openSculptProject, saveProject, saveSculptProject } from "../work/test-build/project.mjs";
+import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { identityTransform, transformMatrix } from "../work/test-build/transform.mjs";
 
@@ -242,7 +243,7 @@ test("metadata no-ops preserve redo, new operations clear it, deletion and resam
   assert.equal(c.active.layer.id, b.id);
   c.dispose();
 });
-test("native v3 round trip preserves Boolean metadata order transforms and exact separate source payloads", () => {
+test("native v24 round trip preserves Boolean metadata order transforms and exact separate source payloads", () => {
   const c = create(),
     a = c.active.layer,
     b = c.create(64);
@@ -276,7 +277,10 @@ test("native v3 round trip preserves Boolean metadata order transforms and exact
 });
 test("legacy single-volume files migrate to an initial union source without changing voxels", () => {
   const source = new SDFVolume(17),
-    loaded = openSculptProject(saveProject(source, settings));
+    loaded = openSculptProject(
+      Uint8Array.from(readFileSync(new URL("./fixtures/legacy-v2.form", import.meta.url))).buffer,
+    );
+  source.brush({ x: 0.12, y: -0.08, z: 0.8 }, 0.3, "subtract", 0.02);
   assert.equal(loaded.layerStack.layers.length, 1);
   assert.equal(loaded.activeLayer.operation, "union");
   assert.deepEqual(loaded.activeLayer.volume.values, source.values);

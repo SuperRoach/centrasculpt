@@ -62,13 +62,13 @@ async function setup(distance = 0.3, resolution = 17) {
   l.setAssemblyPart(b.id, { clearanceMM: 0.3 });
   return { l, a, b };
 }
-test("native budget counts hidden primitive caches and rejects a batch before commit", async () => {
-  const primitive = { kind: "cylinder", height: 0.06, diameter: 0.06 };
+test("native budget counts hidden voxel-backed primitive caches and rejects a batch before commit", async () => {
+  const primitive = { kind: "sphere", diameter: 0.06, width: 0.06, height: 0.06, depth: 0.059 };
   const evaluate = evaluatePrimitive(primitive, 64, 64 ** 3);
   let step = evaluate.next();
   while (!step.done) step = evaluate.next();
   const template = step.value;
-  const sources = Array.from({ length: 9 }, (_, order) => {
+  const sources = Array.from({ length: 13 }, (_, order) => {
     const cache = new SDFVolume(template.resolution, template.extent, false);
     cache.values.set(template.values);
     return new SdfLayer(cache, {
@@ -84,7 +84,7 @@ test("native budget counts hidden primitive caches and rejects a batch before co
     editor.renameNode(sources[0].id, "Rename kept in Redo");
     editor.undo();
     const before = saveSculptProject(project);
-    assert.equal(openSculptProject(before).layerStack.layers.length, 9);
+    assert.equal(openSculptProject(before).layerStack.layers.length, 13);
     const api = new ModellingAPI(editor);
     const revision = api.revision;
     const sizeMM = primitive.diameter * editor.display.precision.millimetresPerUnit;
@@ -94,7 +94,13 @@ test("native budget counts hidden primitive caches and rejects a batch before co
           command: {
             type: "primitive.create",
             unit: "mm",
-            source: { ...primitive, height: sizeMM, diameter: sizeMM },
+            source: {
+              kind: "sphere",
+              diameter: sizeMM,
+              width: sizeMM,
+              height: sizeMM,
+              depth: sizeMM * (0.059 / 0.06),
+            },
           },
         },
       ],
@@ -347,12 +353,12 @@ test("matching connector radial arrays evaluate independently and duplicate sour
     l.dispose();
   }
 });
-test("native v14, Save As duplication and worker recovery preserve parts and connector membership", async () => {
+test("native v24, Save As duplication and worker recovery preserve parts and connector membership", async () => {
   const { l, a, b } = await setup(0.2);
   try {
     await generateConnector(l, connector(a, b));
     const native = saveSculptProject(l.project);
-    assert.equal(new DataView(native).getUint32(8, true), 14);
+    assert.equal(new DataView(native).getUint32(8, true), 24);
     const reopened = openSculptProject(native);
     assert.equal(partMembers(reopened.layerStack, a.id).length, 2);
     const copied = openSculptProject(renameNative(native, "Portable assembly", true));
@@ -382,7 +388,7 @@ test("native v14, Save As duplication and worker recovery preserve parts and con
     l.dispose();
   }
 });
-test("legacy projects remain readable and part metadata Undo/Redo roundtrips", async () => {
+test("native projects without parts remain readable after part metadata Undo", async () => {
   const { l, a } = await setup();
   try {
     l.setAssemblyPart(a.id, undefined);
@@ -392,7 +398,7 @@ test("legacy projects remain readable and part metadata Undo/Redo roundtrips", a
     assert.equal(a.assemblyPart, undefined);
     for (const p of l.project.layerStack.layers) p.assemblyPart = undefined;
     const data = saveSculptProject(l.project);
-    assert(new DataView(data).getUint32(8, true) < 14);
+    assert.equal(new DataView(data).getUint32(8, true), 24);
     assert(openSculptProject(data).layerStack.layers.every((s) => !s.assemblyPart));
   } finally {
     l.dispose();

@@ -195,14 +195,14 @@ test("explicit Bake preserves source and world pose as one undoable action; scul
     l.dispose();
   }
 });
-test("native v11, worker recovery and legacy projects retain independent primitive definitions", async () => {
+test("native v24 and worker recovery retain independent primitive definitions", async () => {
   const l = make();
   try {
     const legacy = openSculptProject(saveSculptProject(l.project));
     assert.equal(legacy.activeLayer.primitive, undefined);
     await l.regeneratePrimitive(sphere);
     const bytes = saveSculptProject(l.project);
-    assert.equal(new DataView(bytes).getUint32(8, true), 11);
+    assert.equal(new DataView(bytes).getUint32(8, true), 24);
     const opened = openSculptProject(bytes);
     assert.deepEqual(opened.activeLayer.primitive, sphere);
     const { snapshot } = await captureProject(
@@ -339,7 +339,7 @@ test("source/cache mismatch and unsupported native parameter payloads are reject
     const changed = text.replaceAll('"diameter":0.5', '"diameter":0.8');
     assert.notEqual(text, changed);
     new Uint8Array(tampered, 16, length).set(new TextEncoder().encode(changed));
-    assert.throws(() => openSculptProject(tampered), /cache/);
+    assert.throws(() => openSculptProject(tampered), /cache|reconstruction grid/);
   } finally {
     l.dispose();
   }
@@ -822,7 +822,7 @@ test("switching projects during a draft drag clears ownership and never publishe
   }
 });
 
-test("tapered cylinder has exact cap/side distances, reversible taper and bounded native v17 persistence", async () => {
+test("tapered cylinder has exact cap/side distances, reversible taper and bounded native v24 persistence", async () => {
   const s = { kind: "cylinder", diameter: 0.6, topDiameter: 0.3, bottomDiameter: 0.6, height: 0.6 };
   assert.deepEqual(primitiveDimensions(s), [0.6, 0.6, 0.6]);
   near(primitiveDistance(s, 0.225, 0, 0), 0);
@@ -844,7 +844,7 @@ test("tapered cylinder has exact cap/side distances, reversible taper and bounde
   try {
     await l.regeneratePrimitive(s);
     const bytes = saveSculptProject(l.project);
-    assert.equal(new DataView(bytes).getUint32(8, true), 17);
+    assert.equal(new DataView(bytes).getUint32(8, true), 24);
     const opened = openSculptProject(bytes);
     assert.deepEqual(opened.layerStack.active.primitive, s);
     const wrongVersion = bytes.slice(0);
@@ -909,13 +909,13 @@ test("ellipsoid distances match surface normals, medial axes, symmetry and legac
   assert.throws(() => validatePrimitive({ ...s, depth: 0.001 }));
 });
 
-test("ellipsoid geometry and native v18 preserve distinct axes through save, Undo and Redo", async () => {
+test("ellipsoid geometry and native v24 preserve distinct axes through save, Undo and Redo", async () => {
   const l = make(),
     s = { kind: "sphere", diameter: 0.8, width: 0.8, height: 0.4, depth: 0.2 };
   try {
     await l.regeneratePrimitive(s);
     const bytes = saveSculptProject(l.project);
-    assert.equal(new DataView(bytes).getUint32(8, true), 18);
+    assert.equal(new DataView(bytes).getUint32(8, true), 24);
     assert.deepEqual(openSculptProject(bytes).layerStack.active.primitive, s);
     const old = bytes.slice(0);
     new DataView(old).setUint32(8, 17, true);

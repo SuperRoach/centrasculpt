@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Native project fingerprint validation</title>
+<pre id="report">Checking native projects…</pre>
+<script type="module">
+  import { openSculptProject, saveSculptProject, PROJECT_VERSION } from "/src/project.ts";
+
+  const report = document.querySelector("#report");
+  try {
+    const fixtures = [];
+    for (const file of new URLSearchParams(location.search).getAll("file")) {
+      const response = await fetch(file);
+      if (!response.ok) throw new Error(`Could not fetch ${file}`);
+      const input = new Uint8Array(await response.arrayBuffer());
+      const view = new DataView(input.buffer);
+      if (view.getUint32(8, true) !== PROJECT_VERSION) throw new Error("Expected canonical v24");
+      const metadata = JSON.parse(
+        new TextDecoder().decode(input.subarray(16, 16 + view.getUint32(12, true))),
+      );
+      const project = openSculptProject(input.buffer);
+      const output = new Uint8Array(saveSculptProject(project));
+      if (input.length !== output.length || !input.every((value, i) => value === output[i]))
+        throw new Error(`Re-encoding changed canonical bytes for ${file}`);
+      fixtures.push({
+        file,
+        bytes: input.length,
+        layers: project.layerStack.layers.length,
+        fingerprintedLayers: metadata.layers.filter(({ source }) => source).length,
+        samples: project.layerStack.layers.reduce((sum, layer) => sum + layer.volume.values.length, 0),
+      });
+    }
+    if (!fixtures.length || !fixtures.every((fixture) => fixture.fingerprintedLayers > 0))
+      throw new Error("No analytic sources were tested");
+    globalThis.fingerprintReport = { userAgent: navigator.userAgent, fixtures };
+  } catch (error) {
+    globalThis.fingerprintReport = { error: error.message };
+  }
+  report.textContent = JSON.stringify(globalThis.fingerprintReport, null, 2);
+</script>

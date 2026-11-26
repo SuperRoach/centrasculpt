@@ -157,13 +157,13 @@ for (const s of shapes) {
       layers.dispose();
     }
   });
-  test(`${s.kind} v20 native/source cache, lower-version refusal, duplication and editable one Undo`, async () => {
+  test(`${s.kind} v24 native/source cache, lower-version refusal, duplication and editable one Undo`, async () => {
     const { layers } = createHeadlessEditor();
     try {
       const p = await layers.regeneratePrimitive(s),
         id = p.id;
       const bytes = saveSculptProject(layers.project);
-      assert.equal(new DataView(bytes).getUint32(8, true), 20);
+      assert.equal(new DataView(bytes).getUint32(8, true), 24);
       assert.deepEqual(openSculptProject(bytes).layerStack.active.primitive, s);
       for (const version of [11, 16, 17, 18, 19]) {
         const bad = bytes.slice(0);
@@ -235,7 +235,7 @@ test("editable LUCAS text keeps font contours, counters, one-step edits, native 
     assert.deepEqual(layers.active.layer.primitive, changed);
 
     const native = saveSculptProject(layers.project);
-    assert.equal(new DataView(native).getUint32(8, true), 23);
+    assert.equal(new DataView(native).getUint32(8, true), 24);
     assert.deepEqual(openSculptProject(native).layerStack.active.primitive, changed);
     const { renameNative } = await import("../work/test-build/library-codec.mjs");
     assert.deepEqual(
@@ -636,7 +636,7 @@ test("tyre shape retains dimensions, changes shoulders, matches SDF and exports 
     assert.throws(() => validatePrimitive({ ...torus, tyre }));
 });
 
-test("tyre percent survives units, source scaling, native v21 and Undo; old tags refuse it", async () => {
+test("tyre percent survives units, source scaling, native v24 and Undo; old tags refuse it", async () => {
   const { layers, api } = createHeadlessEditor();
   const tools = new PrimitiveTools(() => layers);
   try {
@@ -653,7 +653,7 @@ test("tyre percent survives units, source scaling, native v21 and Undo; old tags
     assert.equal(layers.active.layer.primitive.tyre, 75);
     assert.equal(api.objectMetadata(id).primitive.tyre, 75);
     const bytes = saveSculptProject(layers.project);
-    assert.equal(new DataView(bytes).getUint32(8, true), 21);
+    assert.equal(new DataView(bytes).getUint32(8, true), 24);
     assert.equal(openSculptProject(bytes).activeLayer.primitive.tyre, 75);
     const old = bytes.slice(0);
     new DataView(old).setUint32(8, 20, true);
