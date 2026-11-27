@@ -53,6 +53,7 @@ test("capture schema is strict, bounded, read-only and excludes UI/reference/tar
   assert.equal(isWrite("capture_scene_preview"), false);
   for (const args of [
     { width: 513 },
+    { allowDraft: "yes" },
     { height: 0 },
     { width: 64.1 },
     { width: NaN },
@@ -222,8 +223,105 @@ test("capture refuses busy, stale, XR, context loss, pending/unevaluated and res
     ];
     assert.equal((await capture()).error.code, "not_evaluated");
     layers.viewMode = "boolean";
-    assert.equal((await capture()).error.code, "render_pending");
+    const queued = await capture();
+    assert.equal(queued.error.code, "render_pending");
+    assert.match(queued.error.message, /queued/);
+    assert.equal(queued.error.progress, undefined);
+    const evaluation = layers.composite.rebuild(true);
+    try {
+      const running = await capture();
+      assert.equal(running.error.code, "render_pending");
+      assert.match(running.error.message, /running/);
+      assert.equal(running.error.progress.phase, "sampling");
+      assert(running.error.progress.completed <= running.error.progress.total);
+      assert(running.error.progress.total > 0);
+    } finally {
+      await evaluation;
+    }
+    assert.equal(layers.composite.progress, null);
+    assert.equal(layers.composite.draftReady, false);
     assert.equal(r.reads, 0);
+    assert.equal((await capture()).ok, true);
+    Object.defineProperty(layers.composite, "failed", { value: true, configurable: true });
+    assert.equal((await capture()).error.code, "render_failed");
+    delete layers.composite.failed;
+    layers.composite.stats = null;
+    assert.equal((await capture()).error.code, "render_unavailable");
+    assert.equal(r.reads, 1);
+  } finally {
+    layers.dispose();
+    delete globalThis.document;
+  }
+});
+
+test("expensive previews publish a current draft and retain it while refining", async () => {
+  const { layers, api } = await fixture();
+  const renderer = rendererMock();
+  canvasMock();
+  const capture = (args = {}) =>
+    captureScenePreview(
+      renderer,
+      () => layers,
+      () => false,
+      job(args),
+      signal(),
+    );
+  try {
+    const box = layers.project.layerStack.layers[1];
+    const result = await api.execute(
+      {
+        type: "array.create",
+        id: box.id,
+        unit: "mm",
+        definition: {
+          kind: "linear",
+          enabled: true,
+          count: 8,
+          axis: [1, 0, 0],
+          spacingModelUnits: 25,
+          centered: false,
+        },
+      },
+      { expectedRevision: api.revision },
+    );
+    assert(result.ok, JSON.stringify(result));
+    const composite = layers.composite;
+    layers.viewMode = "boolean";
+    composite.group.visible = true;
+    composite.setQuality(128);
+    composite.syncMetadata();
+    await new Promise((resolve) => setTimeout(resolve, 130));
+    const draft = composite.tick();
+    assert.equal(composite.progress?.pass, "draft");
+    assert.equal(await draft, true);
+    assert(composite.draftReady);
+    assert(composite.pending);
+    assert.equal((await capture()).error.code, "render_pending");
+    const args = { allowDraft: true, expectedRevision: layers.modellingRevision };
+    const coarse = await capture(args);
+    assert(coarse.ok, JSON.stringify(coarse));
+    assert.equal(coarse.value.renderState, "draft");
+    assert(coarse.value.sampling.resolution <= 64);
+
+    const refinement = composite.tick();
+    try {
+      assert.equal(composite.progress?.pass, "refinement");
+      const retained = await capture(args);
+      assert(retained.ok, JSON.stringify(retained));
+      assert.equal(retained.value.renderState, "draft");
+      assert.deepEqual(retained.value.bounds, coarse.value.bounds);
+      assert.equal(retained.value.sampling.resolution, coarse.value.sampling.resolution);
+      composite.invalidate();
+      assert.equal((await capture(args)).error.code, "render_pending");
+    } finally {
+      assert.equal(await refinement, false);
+    }
+    await composite.flush();
+    const current = await capture();
+    assert(current.ok, JSON.stringify(current));
+    assert.equal(current.value.renderState, "current");
+    assert.equal(current.value.sampling.resolution, 128);
+    assert.equal(composite.draftReady, false);
   } finally {
     layers.dispose();
     delete globalThis.document;

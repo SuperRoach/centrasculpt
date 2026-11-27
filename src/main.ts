@@ -220,6 +220,7 @@ const shapeLibraryUI = createShapeLibraryUI(
 );
 const transformPreview = new TransformPreview();
 const previewPerformance = new DesktopPreviewPerformance();
+const booleanPreviewReady = "✓ Preview ready";
 let booleanPreview = false,
   lastCompositePoll = 0;
 function syncView() {
@@ -1310,7 +1311,13 @@ document.getElementById("composition-mode")!.addEventListener("click", (event) =
   layers.composite.syncMetadata();
   const s = layers.composite.stats;
   ui.compositeInfo(
-    booleanPreview ? (s && !layers.composite.pending ? "Preview ready" : "Updating preview…") : "",
+    booleanPreview
+      ? layers.composite.failed
+        ? "Preview unavailable"
+        : s && !layers.composite.pending && !layers.composite.busy
+          ? booleanPreviewReady
+          : "Updating preview…"
+      : "",
     s
       ? `Boolean preview · ${s.resolution}³${s.capped ? " · Reduced detail" : ""}`
       : "Updating preview…",
@@ -4001,10 +4008,19 @@ function pollComposite(now: number): void {
   ) {
     lastCompositePoll = now;
     const job = layers.composite.tick();
-    if (job)
+    if (layers.composite.busy && !layers.composite.failed) {
+      const progress = layers.composite.progress;
+      const label =
+        layers.composite.interactionActive || progress?.pass === "draft"
+          ? "Draft pass"
+          : "Final pass";
+      const phase = progress?.phase === "sampling" ? "Sampling" : "Meshing";
       ui.compositeInfo(
-        layers.composite.interactionActive ? "Updating (fast)" : "Updating preview…",
+        progress && progress.total > 0
+          ? `${label} · ${phase} ${Math.floor((100 * progress.completed) / progress.total)}%`
+          : label,
       );
+    }
     if (job)
       void job
         .then((changed) => {
@@ -4017,10 +4033,10 @@ function pollComposite(now: number): void {
           if (changed && s)
             ui.compositeInfo(
               layers.composite.interactionActive
-                ? "Updating (fast)"
-                : layers.composite.pending
-                  ? "Updating preview…"
-                  : "Preview ready",
+                ? "Draft pass"
+                : layers.composite.draftReady
+                  ? "Draft ready · final pass queued"
+                  : booleanPreviewReady,
               `Boolean preview · ${s.resolution}³${s.capped ? " · Reduced detail" : ""}`,
             );
         })

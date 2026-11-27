@@ -91,6 +91,29 @@ smoke: try {
     403,
     "cross-origin discovery refused",
   );
+  const discovery = await fetch(`${origin}/__centra_agent_session`, {
+    headers: { "X-Centra-Agent-Discovery": "1" },
+  });
+  assert.equal(discovery.status, 200);
+  const browserSession = await discovery.json();
+  assert.deepEqual(Object.keys(browserSession), ["token"]);
+  assert.equal(new URL(session.url).hostname, "127.0.0.1");
+  for (const [path, token, requestOrigin] of [
+    ["/approve", browserSession.token, "https://untrusted.example"],
+    ["/approve", session.token, origin],
+    ["/call", browserSession.token, origin],
+  ]) {
+    assert.equal(
+      (
+        await fetch(`${origin}/__centra_agent${path}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, Origin: requestOrigin },
+        })
+      ).status,
+      403,
+      "The editor forwards only same-origin, browser-token requests to browser routes",
+    );
+  }
   await page.goto(origin);
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByRole("button", { name: "Approve connection", exact: true }).waitFor();

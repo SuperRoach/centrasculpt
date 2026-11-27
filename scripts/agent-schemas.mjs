@@ -249,6 +249,7 @@ export const tools = {
         expectedRevision: z.string().min(1).max(128).optional(),
         objectId: id.optional(),
         partId: id.optional(),
+        allowDraft: z.boolean().optional(),
         viewpoint: z
           .enum([
             "front",
@@ -267,7 +268,7 @@ export const tools = {
       })
       .strict(),
     description:
-      "Read-only PNG at one revision. Omit scope IDs for the visible scene; set exactly one objectId or partId for an independently evaluated hierarchy/printable part, including Booleans and arrays. Viewpoints: front, back, left/left-side, right/right-side, top, isometric or underside; left-side and right-side are aliases for left and right. Choose front/isometric to inspect layout. Compare returned bounds/revision with get_bounds and get_geometry_diagnostics; images do not prove dimensions, topology or fit. Requires ready evaluated display for Boolean/array scenes.",
+      "Read-only PNG at one revision. Omit scope IDs for the visible scene; set exactly one objectId or partId for an independently evaluated hierarchy/printable part, including Booleans and arrays. Viewpoints: front, back, left/left-side, right/right-side, top, isometric or underside; left-side and right-side are aliases for left and right. Choose front/isometric to inspect layout. Compare returned bounds/revision with get_bounds and get_geometry_diagnostics; images do not prove dimensions, topology or fit. Whole-scene Boolean captures wait for the selected display quality by default. Set allowDraft:true to accept an available coarse mesh for the current revision, marked renderState:draft with its sampling resolution. While running, render_pending includes progress for the current sampling or meshing phase. Retry after evaluation finishes; render_failed and render_unavailable require investigation.",
   },
   inspect_print_mesh: {
     schema: z

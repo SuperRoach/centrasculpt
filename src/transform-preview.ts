@@ -36,7 +36,10 @@ export class TransformPreview {
       if (!layers.composite.pending && !layers.composite.busy && !layers.composite.failed)
         this.separate = false;
     }
-    const boolean = layers.viewMode === "boolean" && !this.separate;
+    const boolean =
+      layers.viewMode === "boolean" &&
+      (!this.separate ||
+        (layers.composite.draftReady && !layers.transforming && !layers.generatingTube));
     layers.group.visible = !boolean;
     layers.composite.group.visible = boolean && !layers.composite.failed;
     layers.syncAssemblyPreview();

@@ -21,6 +21,7 @@ import {
 import type { AgentJob } from "./agent-access";
 import { layerSources, partSources } from "./assembly";
 import { prepareBooleanExport } from "./boolean-export";
+import type { BooleanPreviewProgress } from "./compositor";
 import { ExportWork } from "./export-mesh";
 import type { IndependentLayers } from "./independent-layers";
 import { LayerStack, SculptProject } from "./layers";
@@ -82,10 +83,10 @@ export async function captureScenePreview(
 ) {
   const layers = editor(),
     revision = layers.modellingRevision;
-  const fail = (code: string, message: string) => ({
+  const fail = (code: string, message: string, progress?: BooleanPreviewProgress | null) => ({
     ok: false as const,
     revision,
-    error: { code, message },
+    error: { code, message, ...(progress ? { progress } : {}) },
   });
   const guard = () => {
     if (signal.aborted || Date.now() >= job.deadline)
@@ -137,7 +138,15 @@ export async function captureScenePreview(
       !(typeof viewpoint === "string" && Object.hasOwn(previewDirections, viewpoint)) ||
       Object.keys(job.args).some(
         (k) =>
-          !["width", "height", "viewpoint", "expectedRevision", "objectId", "partId"].includes(k) &&
+          ![
+            "width",
+            "height",
+            "viewpoint",
+            "expectedRevision",
+            "objectId",
+            "partId",
+            "allowDraft",
+          ].includes(k) &&
           !(
             print &&
             ["direction", "sectionOffsetMM", "sectionNormal", "overhangAngleDegrees"].includes(k)
@@ -155,7 +164,12 @@ export async function captureScenePreview(
         "render_pending",
         "Source meshing or assembly preview is active; no capture returned.",
       );
-    const { objectId, partId } = job.args;
+    const { objectId, partId, allowDraft } = job.args;
+    if (
+      allowDraft !== undefined &&
+      (typeof allowDraft !== "boolean" || print || objectId !== undefined || partId !== undefined)
+    )
+      return fail("invalid_input", "allowDraft is a Boolean option for whole-scene previews.");
     if (
       (objectId !== undefined && partId !== undefined) ||
       (objectId !== undefined && typeof objectId !== "string") ||
@@ -182,17 +196,28 @@ export async function captureScenePreview(
         "not_evaluated",
         "Switch the editor to Boolean preview and wait for evaluation. Separate source surfaces would misrepresent live operations.",
       );
-    if (
-      composite &&
-      (layers.composite.pending ||
-        layers.composite.busy ||
-        layers.composite.failed ||
-        !layers.composite.stats)
-    )
-      return fail(
-        "render_pending",
-        "Evaluated display is pending, failed or unavailable; no stale image returned.",
-      );
+    if (composite) layers.composite.syncMetadata();
+    const draft = composite && allowDraft === true && layers.composite.draftReady;
+    if (composite && !draft) {
+      if (layers.composite.failed)
+        return fail(
+          "render_failed",
+          "Boolean preview evaluation failed. Check the editor for details.",
+        );
+      if (layers.composite.busy)
+        return fail(
+          "render_pending",
+          "Boolean preview evaluation is running. Retry after it finishes.",
+          layers.composite.progress,
+        );
+      if (layers.composite.pending || layers.composite.interactionActive)
+        return fail(
+          "render_pending",
+          "Boolean preview evaluation is queued. Retry after it finishes.",
+        );
+      if (!layers.composite.stats)
+        return fail("render_unavailable", "No evaluated Boolean preview is available.");
+    }
     const isolatedGroup = new Group();
     if (evaluated) {
       const inputs =
@@ -252,6 +277,7 @@ export async function captureScenePreview(
           isolatedGroup.add(mesh);
         }
     }
+    const displaySampling = composite ? layers.composite.stats : null;
     const sources = evaluated
       ? [isolatedGroup]
       : composite
@@ -375,7 +401,7 @@ export async function captureScenePreview(
               : composite
                 ? "evaluated-live-display"
                 : "committed-source-surfaces",
-          renderState: "current",
+          renderState: draft ? "draft" : "current",
           scope:
             partId !== undefined
               ? "isolated-printable-part"
@@ -407,7 +433,7 @@ export async function captureScenePreview(
                   layers.display.precision.millimetresPerUnit,
               }
             : composite
-              ? { ...layers.composite.stats }
+              ? { ...displaySampling }
               : null,
           ...(inspection
             ? {

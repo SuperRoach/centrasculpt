@@ -1,6 +1,5 @@
 import { newId } from "./layers";
 import "./agent-access.css";
-import initialCredentials from "virtual:centra-agent";
 import type { Box3, Object3D, WebGLRenderer } from "three";
 import { AgentActivityHistory } from "./agent-activity";
 import { AgentFeedback } from "./agent-feedback";
@@ -29,7 +28,7 @@ export function mountAgentAccess(
     blocked: () => boolean;
   },
 ) {
-  let credentials = initialCredentials;
+  let browserToken: string | undefined;
   const panel = document.createElement("section");
   panel.className = "agent-access";
   panel.setAttribute("aria-label", "Local agent access (development)");
@@ -305,9 +304,9 @@ export function mountAgentAccess(
     },
   );
   const post = async (path: string, data: object = {}) => {
-    const response = await fetch(`${credentials.url}${path}`, {
+    const response = await fetch(`/__centra_agent${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${credentials.token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${browserToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, client }),
       signal: AbortSignal.timeout(1500),
     });
@@ -355,25 +354,17 @@ export function mountAgentAccess(
       throw new Error(
         "Agent server unavailable. Start dev:agent and try Approve connection again.",
       );
-    const session = await discovery.json();
-    const address = new URL(session.url);
-    if (
-      address.protocol !== "http:" ||
-      address.hostname !== location.hostname ||
-      address.pathname !== "/" ||
-      typeof session.token !== "string" ||
-      !/^[a-f0-9]{64}$/.test(session.token)
-    )
+    const { token } = await discovery.json();
+    if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token))
       throw new Error("Invalid local agent session.");
-    return session;
+    return token;
   };
   reset("Not connected");
   connect.onclick = async () => {
     connect.disabled = true;
     setStatus("Connecting…");
     try {
-      const session = await discoverSession();
-      credentials = session;
+      browserToken = await discoverSession();
       const editing = remember.checked && remembered === true;
       await post("/approve", { editing });
       edit.checked = editing;
@@ -398,11 +389,9 @@ export function mountAgentAccess(
       reset("Connection needs attention");
       panel.dataset.state = "error";
       help.textContent =
-        location.hostname !== "127.0.0.1" && location.hostname !== "localhost"
-          ? `Open the printed dev:agent address (${location.hostname}) to approve this local session.`
-          : error instanceof Error && error.message !== "Failed to fetch"
-            ? error.message
-            : "Cannot reach the local bridge. Start dev:agent, then click Approve connection again. Your scene stays open.";
+        error instanceof Error && error.message !== "Failed to fetch"
+          ? error.message
+          : "Cannot reach the local bridge. Start dev:agent, then click Approve connection again. Your scene stays open.";
     }
   };
   edit.onchange = async () => {
@@ -450,10 +439,9 @@ export function mountAgentAccess(
       nextDiscovery = Date.now() + discoveryDelay;
       discoveryDelay = Math.min(15000, discoveryDelay * 2);
       void discoverSession()
-        .then((session) => {
-          if (disposed || approved || !reconnectWanted || session.token === credentials.token)
-            return;
-          credentials = session;
+        .then((token) => {
+          if (disposed || approved || !reconnectWanted || token === browserToken) return;
+          browserToken = token;
           discoveryDelay = 1000;
           setStatus("Agent server is back · approve connection to reconnect");
           help.textContent =
@@ -510,11 +498,11 @@ export function mountAgentAccess(
           const { blob, ...metadata } = result;
           if (!approved || controller.signal.aborted) throw new Error("Capture cancelled.");
           const response = await fetch(
-            `${credentials.url}/preview-image?id=${encodeURIComponent(job.id)}&client=${encodeURIComponent(client)}`,
+            `/__centra_agent/preview-image?id=${encodeURIComponent(job.id)}&client=${encodeURIComponent(client)}`,
             {
               method: "POST",
               headers: {
-                Authorization: `Bearer ${credentials.token}`,
+                Authorization: `Bearer ${browserToken}`,
                 "Content-Type": "image/png",
               },
               body: blob,

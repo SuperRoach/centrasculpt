@@ -10,12 +10,10 @@ patterns and named frames; see [feature tools and limits](PHASE_7_2_FEATURES.md)
 1. Run `npm install` in the repository (Node 22+ recommended).
 2. Normal editing: `npm run dev`. No bridge or MCP process starts.
 3. Agent editing: `npm run dev:agent`. This starts Vite on **0.0.0.0:5173** and a
-   second bridge on an OS-assigned port, reachable through the machine's `.local`
-   hostname or its private LAN IP; `localhost` and `127.0.0.1` also work on the Mac itself.
-   Both LAN addresses are available to devices on your local network. If 5173 is already occupied,
-   stop that server yourself or use `npm run dev:agent -- --port 5197`. The exact
-   matching browser origin is printed. If using the LAN IP, use the same IP for the
-   editor page; HTTPS and other machines' addresses do not match the agent origin.
+   loopback-only bridge for the MCP client. Open the editor via the machine's
+   `.local` hostname or private LAN IP. On the host Mac, `localhost` and
+   `127.0.0.1` also work. Browser agent traffic uses the editor's existing HTTP
+   port. If 5173 is occupied, use `npm run dev:agent -- --port 5197`.
 4. Configure the MCP client once with the adapter script path below. The server discovers
    the current session automatically through ignored `work/agent-session.json`.
    Credentials still rotate on every startup; no session path needs copying.
@@ -179,11 +177,11 @@ batch operation.
 
 ## Boundaries and errors
 
-- The HTTP bridge verifies a current machine hostname or private LAN IP and the matching
-  configured
-  browser Origin. It requires distinct random 256-bit browser and MCP bearer tokens.
-  The browser token is delivered by a dev-only virtual module; MCP credentials are
-  written only to a private temporary directory with a mode-0600 session file.
+- The editor server checks the request host and browser origin before forwarding
+  browser requests to the loopback bridge. The bridge requires distinct random
+  256-bit browser and MCP bearer tokens. The browser token is delivered by
+  same-origin discovery. MCP credentials are stored in a private temporary
+  directory in a mode-0600 session file.
 - Browser approval and write grants live in memory. No credentials, permissions or
   agent-specific data go into native projects, recovery metadata or production assets.
 - 64 KiB request bodies; 64-command batches; one in-flight request; 10-second browser
@@ -408,8 +406,8 @@ Full guide: [Phase 7.4.1 feedback](PHASE_7_4_1_AGENT_FEEDBACK.md).
 Read-only `enclosure_anchors`, `list_enclosure_features`, `get_enclosure_feature`
 and standalone `set_enclosure_feature` / `remove_enclosure_feature` use the shared
 typed recipe. `propose_enclosure` accepts `feature-set` / `feature-remove` recipes
-with separate browser consent. Strict schemas and grants remain; the local bridge is
-available through the machine's `.local` hostname on the LAN.
+with separate browser consent. The editor is available on the LAN through the
+machine's `.local` hostname or private IP.
 Recipes stay outside mixed command batches. [Exact contracts](PHASE_7_2_FEATURES.md).
 
 ## Phase 7.4.2 visual inspection — 2026-11-07

@@ -513,6 +513,17 @@ export type CompositeStats = {
   full: boolean;
 };
 const yieldUI = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+// Estimated source samples. Give the draft a separate, smaller work budget.
+const PROGRESSIVE_PREVIEW_WORK = 8_000_000;
+const DRAFT_PREVIEW_WORK = 2_000_000;
+
+export type BooleanPreviewProgress = {
+  phase: "sampling" | "meshing";
+  pass?: "draft" | "refinement";
+  completed: number;
+  total: number;
+};
+
 /** Disposable rendering cache, never part of native serialization or source history. */
 export class BooleanComposite {
   readonly group = new Group();
@@ -612,6 +623,14 @@ export class BooleanComposite {
   private interactive = false;
   private adaptive = false;
   private buildingDraft = false;
+  private draftVersion: number | null = null;
+  get draftReady(): boolean {
+    return this.draftVersion === this.version && !this.failed && !!this.stats;
+  }
+  private buildProgress: BooleanPreviewProgress | null = null;
+  get progress(): BooleanPreviewProgress | null {
+    return this.buildProgress;
+  }
   private retained: {
     surface: ChunkSurface;
     mesher: IncrementalMesher;
@@ -836,16 +855,16 @@ export class BooleanComposite {
       (!this.interactive && performance.now() - this.lastEdit < 120)
     )
       return null;
-    return this.rebuild();
+    return this.rebuild(true);
   }
-  rebuild(): Promise<boolean> {
+  rebuild(progressive = false): Promise<boolean> {
     if (this.disposed || this.paused) return Promise.resolve(false);
     this.syncMetadata();
     if (this.running) return this.running;
     this.buildingDraft = this.interactive;
     const profile = agentPerformanceEnabled();
     const started = profile ? performance.now() : 0;
-    const build = this.build();
+    const build = this.build(progressive);
     this.running = (
       profile
         ? build.then((finished) => {
@@ -878,6 +897,7 @@ export class BooleanComposite {
       })
       .finally(() => {
         this.running = null;
+        this.buildProgress = null;
       });
     return this.running;
   }
@@ -893,30 +913,61 @@ export class BooleanComposite {
       this.syncMetadata();
     }
   }
-  private async build(): Promise<boolean> {
+  private async build(progressive: boolean): Promise<boolean> {
     if (!this.pending) return false;
     const version = this.version,
       start = performance.now(),
-      layout = compositeLayout(
-        this.previewLayers,
-        this.interactive ? Math.min(this.interactiveCap, this.cap) : this.cap,
+      layers = this.previewLayers;
+    const layoutAt = (cap: number) =>
+      compositeLayout(
+        layers,
+        cap,
         this.interactive || this.options.analyticPrimitives,
         this.options.stagedEvaluation,
         this.options.boundedPreview,
         this.interactive,
-      ),
-      key = JSON.stringify(layout),
-      layoutChanged = key !== JSON.stringify(this.layout);
-    const full = this.adaptive || this.full || layoutChanged || !this.volume;
+      );
+    let layout = layoutAt(this.interactive ? Math.min(this.interactiveCap, this.cap) : this.cap);
+    const refining = this.draftReady;
+    if (this.draftVersion !== null && !refining) {
+      this.clearRetained();
+      this.draftVersion = null;
+      this.stats = null;
+    }
+    let draft = false;
     if (
-      layout.resolution ** 3 * 8 +
-        (this.retained?.bytes ?? (this.adaptive ? this.trackedBytes : 0)) >
+      progressive &&
+      this.options.boundedPreview &&
+      !this.interactive &&
+      !refining &&
+      this.full &&
+      layout.resolution > 64
+    ) {
+      const sourcesPerPoint = previewSourceWork(layers);
+      if (sourcesPerPoint * layout.resolution ** 3 >= PROGRESSIVE_PREVIEW_WORK) {
+        layout = layoutAt(
+          Math.max(8, Math.min(64, Math.floor(Math.cbrt(DRAFT_PREVIEW_WORK / sourcesPerPoint)))),
+        );
+        draft = true;
+      }
+    }
+    const layoutChanged = JSON.stringify(layout) !== JSON.stringify(this.layout);
+    const full = draft || this.adaptive || this.full || layoutChanged || !this.volume;
+    const gridBytes = layout.resolution ** 3 * 8;
+    const keepDraft = refining && gridBytes + this.trackedBytes <= this.availableBytes();
+    if (refining && !keepDraft) {
+      this.draftVersion = null;
+      this.stats = null;
+    }
+    const keepSurface = keepDraft || this.adaptive;
+    if (
+      gridBytes + (this.retained?.bytes ?? (keepSurface ? this.trackedBytes : 0)) >
       this.availableBytes()
     )
       throw new Error("Boolean evaluation exceeds the available memory budget.");
     if (layoutChanged || !this.volume || this.adaptive) {
       if (
-        this.adaptive &&
+        keepSurface &&
         !this.retained &&
         this.surface &&
         this.mesher &&
@@ -957,6 +1008,19 @@ export class BooleanComposite {
       regions = full
         ? [{ min: [0, 0, 0], max: [n - 1, n - 1, n - 1] } as Bounds]
         : this.regions.map((r) => ({ min: [...r.min], max: [...r.max] }) as Bounds);
+    const totalSamples = regions.reduce(
+      (total, region) =>
+        total + region.max.reduce((count, max, axis) => count * (max - region.min[axis] + 1), 1),
+      0,
+    );
+    const pass = draft ? "draft" : refining ? "refinement" : undefined;
+    const samplingProgress: BooleanPreviewProgress = {
+      phase: "sampling",
+      pass,
+      completed: 0,
+      total: totalSamples,
+    };
+    this.buildProgress = samplingProgress;
     const yieldBuild = this.options.stagedEvaluation ? yieldExportTask : yieldUI;
     let maxSamplingSliceMs = 0,
       maxMeshingSliceMs = 0;
@@ -976,6 +1040,7 @@ export class BooleanComposite {
               const duration = performance.now() - batch;
               samplingMs += duration;
               maxSamplingSliceMs = Math.max(maxSamplingSliceMs, duration);
+              samplingProgress.completed = samples;
               await yieldBuild();
               this.syncMetadata();
               if (!this.buildCurrent(version)) {
@@ -1004,6 +1069,7 @@ export class BooleanComposite {
             stageIndex + 1,
             stages?.length ?? 1,
           );
+          samplingProgress.completed = samples;
           await yieldBuild();
           this.syncMetadata();
           if (!this.buildCurrent(version)) {
@@ -1017,6 +1083,13 @@ export class BooleanComposite {
       regions.forEach((r) => {
         this.mesher!.invalidate(r);
       });
+    const meshingProgress: BooleanPreviewProgress = {
+      phase: "meshing",
+      pass,
+      completed: 0,
+      total: this.mesher!.pendingChunks,
+    };
+    this.buildProgress = meshingProgress;
     let meshingMs = 0,
       chunks = 0,
       totalChunks = 0,
@@ -1049,9 +1122,16 @@ export class BooleanComposite {
       this.surface!.update(update.updates);
       meshingMs += update.stats.milliseconds;
       chunks += update.stats.chunks;
+      meshingProgress.completed = chunks;
       totalChunks = update.stats.totalChunks;
       triangles = update.triangles;
       this.options.meshingProgress?.(chunks, totalChunks);
+      if (this.trackedBytes > this.availableBytes() && refining && this.retained) {
+        this.clearRetained();
+        this.draftVersion = null;
+        this.stats = null;
+        this.group.add(this.surface!.group);
+      }
       if (this.trackedBytes > this.availableBytes())
         throw new Error("Boolean evaluation exceeds the available memory budget.");
       if (triangles > MAX_INTERMEDIATE_TRIANGLES) {
@@ -1069,7 +1149,8 @@ export class BooleanComposite {
     }
     this.clearRetained();
     this.group.add(this.surface!.group);
-    this.full = version !== this.version;
+    this.draftVersion = draft ? version : null;
+    this.full = draft || version !== this.version;
     if (!this.full) this.regions = [];
     this.group.updateWorldMatrix(true, true);
     this.stats = {
