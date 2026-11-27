@@ -18,6 +18,7 @@ import {
 import { sculptPaint } from "./sculpt-paint";
 import type { Bounds, Point3 } from "./sdf";
 import { SDFVolume } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { buildExportMesh, ChunkSurface } from "./surface";
 import { copyTransform, transformMatrix, uniformScale, type VolumeTransform } from "./transform";
 
@@ -132,8 +133,11 @@ function prepareSingleLayerSampler(layer: SdfLayer): (x: number, y: number, z: n
     bounds = v.bounds,
     h = v.step,
     data = v.getDenseView();
-  const at = (x: number, y: number, z: number) =>
-    data ? data[x + nx * (y + ny * z)] : v.readVoxel(v.index(x, y, z));
+  const at = data
+    ? (x: number, y: number, z: number) => data[x + nx * (y + ny * z)]
+    : v instanceof SparseSDFVolume
+      ? v.prepareSampleReader()
+      : (x: number, y: number, z: number) => v.readVoxel(v.index(x, y, z));
   return (wx, wy, wz) => {
     const x = m[0] * wx + m[4] * wy + m[8] * wz + m[12],
       y = m[1] * wx + m[5] * wy + m[9] * wz + m[13],
@@ -408,20 +412,13 @@ export function compositeLayout(
       }
   };
   if (live) booleanRoots(layers).forEach(visit);
-  const visible = layers.filter((l) =>
-      live
-        ? reachable.has(l.id) &&
-          (l.primitive ||
-            l.procedural ||
-            !l.volume.getDenseView() ||
-            l.volume.getDenseView()!.some((v) => v < 0))
-        : l.visible &&
-          (!exportLayout ||
-            l.primitive ||
-            l.procedural ||
-            !l.volume.getDenseView() ||
-            l.volume.getDenseView()!.some((v) => v < 0)),
-    ),
+  const visible = layers.filter((l) => {
+      if (!(live ? reachable.has(l.id) : l.visible)) return false;
+      if ((!live && !exportLayout) || l.primitive || l.procedural) return true;
+      return l.volume instanceof SparseSDFVolume
+        ? l.volume.hasInterior()
+        : (l.volume.getDenseView()?.some((v) => v < 0) ?? true);
+    }),
     min = [Infinity, Infinity, Infinity],
     max = [-Infinity, -Infinity, -Infinity];
   let desiredStep = Infinity;

@@ -39,7 +39,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { AppLifecycle } from "./app-lifecycle";
-import type { BakePlan } from "./bake";
+import { type BakePlan, yieldBake } from "./bake";
 import { ClayStrokeSession } from "./clay-stroke-session";
 import { installDesktopColourPicker } from "./desktop-colour-picker";
 import { DesktopTubeTool } from "./desktop-tube-tool";
@@ -641,7 +641,8 @@ function toggleGhostRotation(mode: "rotate" | "translate" = "rotate"): void {
     ui.status(message(error));
   }
 }
-function applyShapeStamp(definition?: ShapeDefinition): void {
+let stampAbort: AbortController | null = null;
+async function applyShapeStamp(definition?: ShapeDefinition): Promise<void> {
   if (
     input.referenceEditing ||
     loadingProject ||
@@ -655,18 +656,48 @@ function applyShapeStamp(definition?: ShapeDefinition): void {
   )
     return;
   stop();
+  const sparse = layers.active.volume instanceof SparseSDFVolume;
   try {
-    const changed = layers.stampShape(
-        definition ?? shapeGhost.model.futureStampIntent(layers.project.layerStack).definition,
-      ),
-      s = layers.lastStampStats!;
+    const intent =
+      definition ?? shapeGhost.model.futureStampIntent(layers.project.layerStack).definition;
+    let changed: boolean;
+    if (sparse) {
+      loadingProject = true;
+      stampAbort = new AbortController();
+      const signal = stampAbort.signal,
+        work = layers.stampShapeSteps(intent, false, false, signal);
+      ui.status("Preparing sparse stamp · Escape to cancel");
+      try {
+        let step = work.next();
+        while (!step.done) {
+          const start = performance.now();
+          do step = work.next();
+          while (!step.done && performance.now() - start < 4);
+          if (!step.done) await yieldBake();
+        }
+        changed = step.value;
+      } finally {
+        work.return(false);
+      }
+      if (signal.aborted) {
+        ui.status("Stamp cancelled");
+        return;
+      }
+    } else changed = layers.stampShape(intent);
+    const s = layers.lastStampStats;
+    if (!s) return;
     ui.projectMessage(
       `Stamp ${changed ? "applied" : "unchanged"} · ${s.changedVoxels.toLocaleString()} voxels · evaluate ${s.evaluationMs.toFixed(1)} ms · mesh ${s.meshingMs.toFixed(1)} ms · total ${s.totalMs.toFixed(1)} ms · ${s.chunks}/${s.totalChunks} chunks`,
     );
     ui.status(changed ? "Shape stamped · one undo action" : "No voxel changes · history kept");
-    refresh();
   } catch (error) {
     ui.projectMessage(`Stamp failed: ${message(error)}`, true);
+  } finally {
+    if (sparse) {
+      stampAbort = null;
+      loadingProject = false;
+    }
+    refresh();
   }
 }
 function placePointerShape(): boolean {
@@ -942,6 +973,11 @@ function changeHistory(redo: boolean) {
 document.getElementById("undo")!.addEventListener("click", () => changeHistory(false));
 document.getElementById("redo")!.addEventListener("click", () => changeHistory(true));
 window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && stampAbort) {
+    event.preventDefault();
+    stampAbort.abort();
+    return;
+  }
   if (ui.modalOpen || xrBlocked()) return;
   if (
     (event.ctrlKey || event.metaKey) &&
@@ -3948,6 +3984,7 @@ function interruptSession(reason: string): void {
   recovery?.cancelJob();
   const interruption = exportInterruption(reason);
   if (interruption) exportAbort?.abort(interruption);
+  stampAbort?.abort();
   bakeAbort?.abort();
   xrExperience?.controllers.suspend();
   desktopStroke.cancel();
@@ -4006,6 +4043,7 @@ import.meta.hot?.dispose(() => {
   recovery?.dispose();
   projectBrowser.store.close();
   exportAbort?.abort(new Error("The editor was updated or disposed."));
+  stampAbort?.abort();
   bakeAbort?.abort();
   xrExperience?.controllers.suspend();
 });

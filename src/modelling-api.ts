@@ -60,7 +60,7 @@ export type ModellingCommand =
     }
   | { type: "boolean.update"; id: string; modifiers: BooleanModifier[] }
   | { type: "boolean.remove"; id: string; modifierId: string }
-  | { type: "boolean.bake"; id: string }
+  | { type: "boolean.bake"; id: string; storage?: "dense" | "sparse" }
   | { type: "primitive.create"; unit: PhysicalUnit; source: PrimitiveInput }
   | { type: "primitive.update"; id: string; unit: PhysicalUnit; source: PrimitiveInput }
   | { type: "object.transform"; id: string; unit: PhysicalUnit; transform: VolumeTransform }
@@ -995,7 +995,13 @@ export class ModellingAPI {
           if (!this.layers.project.layerStack.get(id).booleanModifiers?.length)
             this.fail("unsupported", "Object has no live Boolean modifiers.");
           await this.layers.bake(
-            { name: "Boolean baked", resolution: 128, hideSources: true, sourceIds: [id] },
+            {
+              name: "Boolean baked",
+              resolution: 128,
+              hideSources: true,
+              sourceIds: [id],
+              storage: command.storage,
+            },
             options.signal,
           );
           id = this.layers.project.activeLayerId;

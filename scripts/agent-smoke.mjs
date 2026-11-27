@@ -557,7 +557,18 @@ smoke: try {
   assert(diagnostics.ok, JSON.stringify(diagnostics));
   assert.equal(diagnostics.value.topologyAccuracy, "exact_on_exported_mesh");
   assert((await call("get_hierarchy")).ok);
-  assert((await call("undo", { expectedRevision: batch.revision })).ok);
+  const sparseBake = await call("boolean_bake", {
+    id: body,
+    storage: "sparse",
+    expectedRevision: batch.revision,
+  });
+  assert(sparseBake.ok, JSON.stringify(sparseBake));
+  await page.locator('[data-surface-view="separate"]').click();
+  await page.locator("#mesh-info").filter({ hasText: "Sparse trial" }).waitFor();
+  const undoBake = await call("undo", { expectedRevision: (await call("scene_summary")).revision });
+  assert(undoBake.ok, JSON.stringify(undoBake));
+  assert.equal((await call("get_booleans", { id: body })).value[0].operation, "difference");
+  assert((await call("undo", { expectedRevision: undoBake.revision })).ok);
   assert.equal((await call("scene_summary")).value.objects, before.value.objects);
   // Phase 7.5.1: actual holder challenge through published tools/list and browser consent.
   const holderRevision = (await call("scene_summary")).revision;

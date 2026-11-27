@@ -2,6 +2,7 @@ import { compositeLayout, prepareComposite } from "./compositor";
 import { type SculptProject, SdfLayer, validateName } from "./layers";
 import { MAX_PROJECT_LAYERS, MAX_PROJECT_VOXELS } from "./project";
 import { SDFVolume } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import type { Vec3 } from "./transform";
 import { volumeSampleCount } from "./volume-store";
 export type SurfaceView = "separate" | "boolean";
@@ -10,6 +11,7 @@ export type BakeOptions = {
   resolution: number;
   hideSources: boolean;
   sourceIds?: string[];
+  storage?: "dense" | "sparse";
 };
 export type BakePlan = {
   resolution: number;
@@ -25,6 +27,7 @@ export type BakePlan = {
   detailLimited: boolean;
   merge?: boolean;
   requestedSourceIds?: string[];
+  storage?: BakeOptions["storage"];
 };
 export type BakeProgress = { stage: "sampling" | "meshing"; completed: number; total: number };
 export type BakeStats = {
@@ -132,11 +135,14 @@ export function planBake(
 export function validateBakeOptions(options: BakeOptions): BakeOptions {
   if (typeof options.hideSources !== "boolean")
     throw new Error("Choose whether to hide the sources.");
+  if (options.storage !== undefined && options.storage !== "dense" && options.storage !== "sparse")
+    throw new Error("Unknown Bake storage backend.");
   return {
     ...(options.sourceIds ? { sourceIds: [...options.sourceIds] } : {}),
     name: validateName(options.name).trim(),
     resolution: options.resolution,
     hideSources: options.hideSources,
+    storage: options.storage,
   };
 }
 export const yieldBake = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -151,16 +157,20 @@ export async function sampleBake(
   plan: BakePlan,
   signal?: AbortSignal,
   progress?: (p: BakeProgress) => void,
-): Promise<{ volume: SDFVolume; samplingMs: number }> {
+): Promise<{ volume: SDFVolume | SparseSDFVolume; samplingMs: number }> {
   checkBakeCancelled(signal);
-  const volume = new SDFVolume(plan.resolution, 1.6, false),
+  const volume =
+      plan.storage === "sparse"
+        ? new SparseSDFVolume(plan.resolution)
+        : new SDFVolume(plan.resolution, 1.6, false),
+    dense = volume.getDenseView(),
     sample = prepareComposite(bakeSources(project, plan.requestedSourceIds)),
     n = plan.resolution;
   let samplingMs = 0,
+    start = performance.now(),
     negative = false;
   for (let z = 0; z < n; z++) {
-    const start = performance.now(),
-      wz = volume.coordinate(z) * plan.scale + plan.center[2];
+    const wz = volume.coordinate(z) * plan.scale + plan.center[2];
     for (let y = 0; y < n; y++) {
       const wy = volume.coordinate(y) * plan.scale + plan.center[1];
       for (let x = 0; x < n; x++) {
@@ -175,15 +185,19 @@ export async function sampleBake(
           next <= 0
         )
           throw new Error("Bake boundary would clip the result. Source layers were kept.");
-        volume.values[volume.index(x, y, z)] = next;
+        const index = volume.index(x, y, z);
+        if (dense) dense[index] = next;
+        else volume.writeVoxel(index, next);
         if (next < 0) negative = true;
       }
-    }
-    samplingMs += performance.now() - start;
-    if (z % 4 === 3 || z === n - 1) {
-      progress?.({ stage: "sampling", completed: z + 1, total: n });
-      await yieldBake();
-      checkBakeCancelled(signal);
+      const elapsed = performance.now() - start;
+      if (elapsed >= 3 || (y === n - 1 && (z % 4 === 3 || z === n - 1))) {
+        samplingMs += elapsed;
+        progress?.({ stage: "sampling", completed: z + Number(y === n - 1), total: n });
+        await yieldBake();
+        checkBakeCancelled(signal);
+        start = performance.now();
+      }
     }
   }
   if (!negative)

@@ -190,12 +190,15 @@ export class SculptHistory {
       void _;
     }
   }
-  *recordStampPatchSteps(patch: {
-    indices: Uint32Array;
-    before: Float32Array;
-    after: Float32Array;
-    bounds: Bounds | null;
-  }): Generator<void> {
+  *recordStampPatchSteps(
+    patch: {
+      indices: Uint32Array;
+      before: Float32Array;
+      after: Float32Array;
+      bounds: Bounds | null;
+    },
+    maxNewBytes = Infinity,
+  ): Generator<void> {
     if (!this.pending || this.pending.size) throw new Error("Stamp transaction unavailable.");
     if (!patch.indices.length || !patch.bounds) return;
     const old = this.packed;
@@ -210,7 +213,10 @@ export class SculptHistory {
       count++;
       if (count % 8192 === 0) yield;
     }
-    if (count * 12 + this.pendingMemoryEstimate > this.pendingBudgetBytes)
+    if (
+      count * 12 > maxNewBytes ||
+      count * 12 + this.pendingMemoryEstimate > this.pendingBudgetBytes
+    )
       throw new Error("Stamp history memory safety limit reached.");
     const indices = new Uint32Array(count),
       before = new Float32Array(count),

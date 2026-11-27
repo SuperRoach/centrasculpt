@@ -8,6 +8,7 @@ import { SDFVolume } from "./sdf";
 import { prepareShape } from "./shape-library";
 import { ShapeGhost } from "./shape-preview";
 import type { ShapeDefinition } from "./shapes";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { transformMatrix } from "./transform";
 import { stableSculptMatrix } from "./turntable";
 import type { XRStrokeInteraction } from "./xr-clay-stroke";
@@ -385,6 +386,9 @@ export class XRShapeStamp implements XRStrokeInteraction {
       // Cheap storage admission check before the trigger. A preview may
       // otherwise advertise growth that the fixed-detail dense limits cannot fit.
       let growthError = "";
+      const sparse = volume instanceof SparseSDFVolume;
+      if (outside && definition.operation === "add" && sparse)
+        growthError = "Add shape extends beyond the sparse layer’s safe volume bounds.";
       if (outside && definition.operation === "add" && volume instanceof SDFVolume)
         try {
           planDenseGrowth(volume, box, layers.growthLimits);
@@ -455,11 +459,12 @@ export class XRShapeStamp implements XRStrokeInteraction {
       this.held = true;
       if (!apply) return;
       if (growthError) throw new Error(growthError);
-      if (this.tools.stampAttachment.mode === "continuous") {
+      const continuous = this.tools.stampAttachment.mode === "continuous";
+      if (continuous || sparse) {
         this.pendingPreview.clear();
         this.trail.length = 0;
         layers.beginStroke();
-        this.released = false;
+        this.released = !continuous;
         this.commitMeshChunks = 0;
         this.strokeSettings = structuredClone({
           definition,
@@ -476,7 +481,9 @@ export class XRShapeStamp implements XRStrokeInteraction {
         this.strokeAnchor.copy(surface.matrixWorld);
         this.stableAnchor.copy(stableSculptMatrix(surface));
         this.queue = [pose.clone()];
-        this.message = "Continuous Stamp · preview now, final surface staged";
+        this.message = continuous
+          ? "Continuous Stamp · preview now, final surface staged"
+          : "Preparing sparse stamp";
         this.paintPending(surface.matrixWorld);
         return;
       }
@@ -516,6 +523,8 @@ export class XRShapeStamp implements XRStrokeInteraction {
     workStart: number,
     rearm = false,
   ): void {
+    const label =
+      this.strokeSettings?.attachment.mode === "continuous" ? "Continuous Stamp" : "Stamp";
     if (
       stableSculptMatrix(layers.active.surface.group).elements.some(
         (v, i) => Math.abs(v - this.stableAnchor.elements[i]) > 1e-9,
@@ -563,15 +572,15 @@ export class XRShapeStamp implements XRStrokeInteraction {
     }
     this.paintPending(surface);
     if (!this.continuous) {
-      this.message = "Continuous Stamp finished";
+      this.message = `${label} finished`;
       return;
     }
     this.message =
       this.queue.length || this.pending
-        ? `Continuous Stamp · ${this.queue.length + Number(!!this.pending)} samples pending · ${this.released ? "finishing captured poses" : "preview tracks hand"}`
+        ? `${label} · ${this.queue.length + Number(!!this.pending)} samples pending · ${this.released ? "finishing captured poses" : "preview tracks hand"}`
         : layers.active.mesher.pendingChunks
-          ? `Continuous Stamp · ${layers.active.mesher.pendingChunks} chunks finishing`
-          : "Continuous Stamp · release for one Undo action";
+          ? `${label} · ${layers.active.mesher.pendingChunks} chunks finishing`
+          : `${label} · release for one Undo action`;
     return;
   }
   dispose(): void {

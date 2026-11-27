@@ -30,7 +30,7 @@ function extractRegion(
   volume: VolumeStore,
   bounds: Bounds,
   scratch?: Float32Array,
-): { positions: number[]; normals: number[] } {
+): { positions: number[]; normals: number[]; mixedSigns: boolean } {
   const positions: number[] = [],
     normals: number[] = [];
   const dense = volume.getDenseView(),
@@ -67,7 +67,7 @@ function extractRegion(
         else exterior = true;
         if (negative && exterior) break occupancy;
       }
-  if (!negative || !exterior) return { positions, normals };
+  if (!negative || !exterior) return { positions, normals, mixedSigns: false };
   const values = new Array<number>(8);
   const inside = new Array<number>(4),
     outside = new Array<number>(4);
@@ -179,7 +179,7 @@ function extractRegion(
           }
         }
       }
-  return { positions, normals };
+  return { positions, normals, mixedSigns: true };
 }
 function geometryFromRegions(
   regions: Iterable<{ positions: number[]; normals: number[] }>,
@@ -216,7 +216,12 @@ export type ChunkUpdate = { id: number; bounds: Bounds; geometry: BufferGeometry
 /** Chunks own disjoint cells and read one global grid, including their gradient halo.
  * Geometry belongs to the mesher; consumers retain unchanged geometry by identity.
  */
-type MeshChunk = { key: string; bounds: Bounds; geometry: BufferGeometry | null };
+type MeshChunk = {
+  key: string;
+  bounds: Bounds;
+  geometry: BufferGeometry | null;
+  mixedSigns: boolean;
+};
 type ChunkLayout = {
   chunks: MeshChunk[];
   lookup: Int32Array;
@@ -305,7 +310,7 @@ export class IncrementalMesher {
           if (id === undefined) {
             id = chunks.length;
             ids.set(key, id);
-            chunks.push({ key, bounds, geometry: null });
+            chunks.push({ key, bounds, geometry: null, mixedSigns: false });
           } else chunks[id].bounds = bounds;
           lookup[x - min[0] + size[0] * (y - min[1] + size[1] * (z - min[2]))] = id;
         }
@@ -454,8 +459,7 @@ export class IncrementalMesher {
     const [nx, ny] = this.layout.dimensions,
       p = [index % nx, Math.floor(index / nx) % ny, Math.floor(index / (nx * ny))] as Point;
     this.visitAffected({ min: p, max: p }, (id) => {
-      if (signChanged || (this.chunks[id].geometry?.getAttribute("position").count ?? 0) > 0)
-        this.enqueue(id);
+      if (signChanged || this.chunks[id].mixedSigns) this.enqueue(id);
     });
   }
   /** Coalesce identical chunk/gradient-halo coverage during a staged stamp patch.
@@ -495,11 +499,7 @@ export class IncrementalMesher {
           for (let y = ly; y <= hy; y++)
             for (let x = lx; x <= hx; x++) {
               const id = this.idAt(x, y, z);
-              if (
-                signChanged ||
-                (this.chunks[id].geometry?.getAttribute("position").count ?? 0) > 0
-              )
-                this.enqueue(id);
+              if (signChanged || this.chunks[id].mixedSigns) this.enqueue(id);
             }
         visited.add(key);
       }
@@ -527,6 +527,8 @@ export class IncrementalMesher {
         break;
       const chunk = this.chunks[id],
         previous = cached?.get(id);
+      const region = cached ? undefined : extractRegion(this.volume, chunk.bounds, this.halo);
+      chunk.mixedSigns = region?.mixedSigns ?? !!previous;
       let geometry: BufferGeometry;
       if (previous) {
         geometry = new BufferGeometry();
@@ -535,11 +537,7 @@ export class IncrementalMesher {
           geometry.setAttribute(name, new BufferAttribute(previous.getAttribute(name).array, 3));
         geometry.boundingSphere = previous.boundingSphere?.clone() ?? null;
         geometry.boundingBox = previous.boundingBox?.clone() ?? null;
-      } else {
-        geometry = geometryFromRegions(
-          cached ? [] : [extractRegion(this.volume, chunk.bounds, this.halo)],
-        );
-      }
+      } else geometry = geometryFromRegions(region ? [region] : []);
       this.triangleCount +=
         (geometry.getAttribute("position").count -
           (chunk.geometry?.getAttribute("position").count ?? 0)) /
@@ -603,9 +601,9 @@ export class IncrementalMesher {
     }
     return fork;
   }
-  snapshotUpdates(): ChunkUpdate[] {
+  snapshotUpdates(): (ChunkUpdate & { mixedSigns: boolean })[] {
     return this.chunks.flatMap((c, id) =>
-      c.geometry ? [{ id, bounds: c.bounds, geometry: c.geometry }] : [],
+      c.geometry ? [{ id, bounds: c.bounds, geometry: c.geometry, mixedSigns: c.mixedSigns }] : [],
     );
   }
   get triangles(): number {

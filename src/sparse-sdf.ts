@@ -8,6 +8,7 @@ export class SparseSDFVolume extends LatticeVolume {
   protected override readonly yieldDuringBrushPublication = false;
   private scratch = new Float32Array(0);
   private readonly pages = new Map<number, Float32Array>();
+  private pageRevision = 0;
   private readonly axisPages: number;
   private readonly exterior: number;
   constructor(
@@ -30,6 +31,10 @@ export class SparseSDFVolume extends LatticeVolume {
   get scratchBytes(): number {
     return this.scratch.byteLength;
   }
+  hasInterior(): boolean {
+    for (const page of this.pages.values()) if (page.some((value) => value < 0)) return true;
+    return false;
+  }
   private key(x: number, y: number, z: number): number {
     return (x >> 3) + this.axisPages * ((y >> 3) + this.axisPages * (z >> 3));
   }
@@ -38,6 +43,22 @@ export class SparseSDFVolume extends LatticeVolume {
   }
   readSample(x: number, y: number, z: number): number {
     return this.pages.get(this.key(x, y, z))?.[this.offset(x, y, z)] ?? this.exterior;
+  }
+  /** Interpolation usually visits several samples in the same page. An empty
+   * cached page must be looked up again if an edit made new pages resident. */
+  prepareSampleReader(): (x: number, y: number, z: number) => number {
+    let key = -1,
+      page: Float32Array | undefined,
+      revision = this.pageRevision;
+    return (x, y, z) => {
+      const next = this.key(x, y, z);
+      if (key !== next || revision !== this.pageRevision) {
+        key = next;
+        revision = this.pageRevision;
+        page = this.pages.get(key);
+      }
+      return page?.[this.offset(x, y, z)] ?? this.exterior;
+    };
   }
   readVoxel(index: number): number {
     const n = this.resolution;
@@ -62,7 +83,32 @@ export class SparseSDFVolume extends LatticeVolume {
   captureSamples(): (x: number, y: number, z: number) => number {
     const snapshot = new SparseSDFVolume(this.resolution, this.extent, this.maxPages);
     for (const [key, page] of this.pages) snapshot.pages.set(key, page.slice());
-    return snapshot.readSample.bind(snapshot);
+    return snapshot.prepareSampleReader();
+  }
+  /** Reserve only pages that receive changed Float32 samples. Keep them detached
+   * until history admission succeeds, so refusal/cancellation leaves residency intact. */
+  *preparePatchPages(indices: Uint32Array): Generator<void, (() => void) | undefined> {
+    if (this.pages.size === this.axisPages ** 3) return;
+    const n = this.resolution,
+      keys = new Set<number>();
+    for (let i = 0; i < indices.length; i++) {
+      if (i && i % 8192 === 0) yield;
+      const index = indices[i],
+        key = this.key(index % n, Math.floor(index / n) % n, Math.floor(index / (n * n)));
+      if (!this.pages.has(key)) keys.add(key);
+    }
+    if (this.pages.size + keys.size > this.maxPages)
+      throw new Error("Sparse sculpt page budget reached.");
+    if (!keys.size) return;
+    const staged = new Map<number, Float32Array>();
+    for (const key of keys) {
+      if (staged.size && staged.size % 128 === 0) yield;
+      staged.set(key, new Float32Array(PAGE_SAMPLES).fill(this.exterior));
+    }
+    return () => {
+      for (const [key, page] of staged) this.pages.set(key, page);
+      this.pageRevision++;
+    };
   }
   getDenseView(): undefined {
     return undefined;
@@ -109,6 +155,7 @@ export class SparseSDFVolume extends LatticeVolume {
       (key) => [key, new Float32Array(PAGE_SAMPLES).fill(this.exterior)] as const,
     );
     for (const [key, page] of staged) this.pages.set(key, page);
+    if (staged.length) this.pageRevision++;
   }
   /** Gather one page intersection at a time, keeping the output X-major. */
   gather(bounds: Bounds, target: Float32Array): void {

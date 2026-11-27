@@ -195,7 +195,7 @@ export const commandFields = {
   "part.clearance": { partId: id, clearanceMM: number.nonnegative().max(1000) },
   "part.mate": { options: mate },
   "primitive.bake": { id },
-  "boolean.bake": { id },
+  "boolean.bake": { id, storage: z.enum(["dense", "sparse"]).optional() },
   "array.bake": { id },
 };
 const command = z.discriminatedUnion(

@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { compositeLayout, prepareLayerSampler } from "../work/test-build/compositor.mjs";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
-import { createBaseProject } from "../work/test-build/layers.mjs";
+import { createBaseProject, SdfLayer } from "../work/test-build/layers.mjs";
 import { IncrementalMesher } from "../work/test-build/mesh.mjs";
+import { createPersonalStamp } from "../work/test-build/personal-stamp.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { captureProject } from "../work/test-build/project-snapshot.mjs";
 import { hydrateProject, projectTransfer } from "../work/test-build/project-transfer.mjs";
 import { newProjectData } from "../work/test-build/project-workflow.mjs";
 import { sculptMask } from "../work/test-build/sculpt-mask.mjs";
 import { sculptPaint } from "../work/test-build/sculpt-paint.mjs";
-import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { reflectPoint, SDFVolume } from "../work/test-build/sdf.mjs";
+import { prepareShape } from "../work/test-build/shape-library.mjs";
 import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 
 const settings = {
@@ -353,5 +356,288 @@ test("sparse resampling evaluates read-only and publishes one complete dab", () 
     assert.deepEqual(bits(editor.active.volume), before);
   } finally {
     editor.dispose();
+  }
+});
+
+function sculptField(sparse, radius) {
+  const n = 33,
+    volume = sparse ? new SparseSDFVolume(n, 1) : new SDFVolume(n, 1, false);
+  volume.getDenseView()?.fill(4);
+  for (let z = 0; z < n; z++)
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const a = volume.coordinate(x),
+          b = volume.coordinate(y),
+          c = volume.coordinate(z);
+        if (Math.max(Math.abs(a), Math.abs(b), Math.abs(c)) >= 0.875) continue;
+        volume.writeVoxel(
+          volume.index(x, y, z),
+          Math.hypot(a, b, c) - radius + 0.045 * Math.sin(13 * a) * Math.cos(11 * c),
+        );
+      }
+  return volume;
+}
+
+const cutterPose = {
+  position: [0.37, -0.08, 0.01],
+  rotation: [0.3, -0.4, 0.51],
+  scale: [0.9, 0.9, 0.9],
+};
+
+test("transformed sparse sampling matches dense at page seams, boundaries and in the exterior", () => {
+  const dense = new SdfLayer(sculptField(false, 0.48), { transform: cutterPose }),
+    sparse = new SdfLayer(sculptField(true, 0.48), { transform: cutterPose }),
+    a = prepareLayerSampler(dense),
+    b = prepareLayerSampler(sparse);
+  for (let z = -22; z <= 22; z++)
+    for (let y = -22; y <= 22; y++)
+      for (let x = -22; x <= 22; x++)
+        assert.equal(b(x / 16, y / 16, z / 16), a(x / 16, y / 16, z / 16));
+
+  const empty = new SdfLayer(new SparseSDFVolume(33, 1), { transform: cutterPose, visible: false }),
+    emptyDense = new SdfLayer(new SDFVolume(33, 1, false), empty.metadata()),
+    read = prepareLayerSampler(empty);
+  emptyDense.volume.values.fill(4);
+  const reference = prepareLayerSampler(emptyDense);
+  assert.equal(read(...cutterPose.position), reference(...cutterPose.position));
+  const i = empty.volume.index(16, 16, 16);
+  empty.volume.writeVoxel(i, 1.5);
+  emptyDense.volume.writeVoxel(i, 1.5);
+  assert(read(...cutterPose.position) < 2);
+  assert.equal(read(...cutterPose.position), reference(...cutterPose.position));
+  for (const l of [empty, emptyDense]) l.visible = true;
+  dense.booleanModifiers = [
+    { id: "cut", sourceId: empty.id, enabled: true, operation: "difference" },
+  ];
+  assert.deepEqual(compositeLayout([dense, empty]), compositeLayout([dense, emptyDense]));
+});
+
+test("all Boolean folds bake the same field and mesh across sparse sources and destinations", async () => {
+  for (const operation of ["union", "difference", "intersect"]) {
+    let expected;
+    for (const [sparseSources, sparseResult] of [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ]) {
+      const editor = new IndependentLayers(
+        createBaseProject(sculptField(sparseSources, 0.62), settings),
+      );
+      try {
+        const target = editor.active.layer;
+        const cutter = editor.create(64, true);
+        editor.replaceVolume(editor.active, sculptField(sparseSources, 0.45));
+        editor.setActiveTransform(cutterPose);
+        editor.setBooleanModifiers(target.id, [
+          { id: "cut1", sourceId: cutter.id, operation, enabled: true },
+          { id: "cut2", sourceId: cutter.id, operation, enabled: true },
+        ]);
+        const options = {
+          name: "Result",
+          resolution: 64,
+          hideSources: true,
+          sourceIds: [target.id],
+          storage: sparseResult ? "sparse" : "dense",
+        };
+        const before = Buffer.from(saveSculptProject(editor.project));
+        if (sparseSources && sparseResult) {
+          const abort = new AbortController();
+          await assert.rejects(
+            editor.bake(options, abort.signal, (p) => {
+              if (p.stage === "meshing") abort.abort();
+            }),
+            /cancelled/,
+          );
+          assert.deepEqual(Buffer.from(saveSculptProject(editor.project)), before);
+        }
+        const baked = await editor.bake(options);
+        assert.equal(baked.volume instanceof SparseSDFVolume, sparseResult);
+        const result = checkpoint(editor);
+        expected ??= result;
+        assert.deepEqual(result, expected);
+        assert.equal(editor.undo(), cutter.id);
+        assert.deepEqual(Buffer.from(saveSculptProject(editor.project)), before);
+        assert.equal(editor.undo(true), baked.id);
+        assert.deepEqual(checkpoint(editor), result);
+        const reopened = openSculptProject(saveSculptProject(editor.project));
+        assert.deepEqual(bits(reopened.activeLayer.volume), result.field);
+      } finally {
+        editor.dispose();
+      }
+    }
+  }
+});
+
+function stampDefinition(editor, operation, personal) {
+  return {
+    id: "test-stamp",
+    kind: personal ? "box" : "triangular-prism",
+    targetLayerId: editor.project.activeLayerId,
+    operation,
+    dimensions: personal ? [0.48, 0.48, 0.48] : [0.51, 0.47, 0.39],
+    transform: { ...cutterPose, position: [0.22, 0.16, -0.06] },
+    ...(personal ? { personal } : {}),
+  };
+}
+
+test("analytic and personal sparse stamps preserve exact masked, mirrored and positive far-field changes", () => {
+  let expected;
+  for (const storage of ["dense", "sparse"]) {
+    const editor = new IndependentLayers(createBaseProject(new SDFVolume(33), settings));
+    try {
+      const target = editor.create(64, true, storage);
+      editor.symmetry = { enabled: true, axis: "x", offset: -0.18 };
+      sculptMask(target.volume).write(target.volume.index(32, 32, 32), 0.25);
+      const personal = createPersonalStamp(
+        new SdfLayer(sculptField(storage === "sparse", 0.45), { transform: cutterPose }),
+        0.75,
+      );
+      const states = [];
+      for (const [operation, source] of [
+        ["add", undefined],
+        ["add", personal],
+        ["subtract", personal],
+        ["subtract", undefined],
+      ]) {
+        const definition = stampDefinition(editor, operation, source),
+          shape = prepareShape(definition),
+          volume = target.volume,
+          before = checkpoint(editor),
+          old = new Float32Array(before.field.buffer),
+          reference = new Float32Array(old.length);
+        for (let z = 0; z < 64; z++)
+          for (let y = 0; y < 64; y++)
+            for (let x = 0; x < 64; x++) {
+              const i = volume.index(x, y, z),
+                p = { x: volume.coordinate(x), y: volume.coordinate(y), z: volume.coordinate(z) },
+                distance = Math.min(
+                  shape.sampleWorld(p),
+                  shape.sampleWorld(reflectPoint(p, editor.symmetry)),
+                );
+              reference[i] = sculptMask(volume).blend(
+                i,
+                old[i],
+                operation === "add" ? Math.min(old[i], distance) : Math.max(old[i], -distance),
+              );
+            }
+        assert(editor.stampShape(definition));
+        drain(editor);
+        const result = checkpoint(editor);
+        assert.deepEqual(result.field, new Uint32Array(reference.buffer));
+        if (!states.length) {
+          assert(old[0] > reference[0] && reference[0] > 0);
+          assert(reference.at(-1) > 0);
+        }
+        assert.equal(editor.undo(), target.id);
+        drain(editor);
+        assert.deepEqual(checkpoint(editor), before);
+        assert.equal(editor.undo(true), target.id);
+        drain(editor);
+        assert.deepEqual(checkpoint(editor), result);
+        states.push(result);
+      }
+      expected ??= states;
+      assert.deepEqual(states, expected);
+    } finally {
+      editor.dispose();
+    }
+  }
+});
+
+test("sparse stamp cancellation, page refusal and history refusal keep fields and redo", () => {
+  const editor = new IndependentLayers(
+    createBaseProject(new SparseSDFVolume(64, 1.6, 32), settings),
+  );
+  try {
+    const volume = editor.active.volume;
+    const definition = stampDefinition(editor, "add");
+    const initial = checkpoint(editor);
+    const abort = new AbortController(),
+      pending = editor.stampShapeSteps(definition, false, true, abort.signal);
+    assert.equal(pending.next().done, false);
+    assert.equal(editor.recoveryReady, false);
+    abort.abort();
+    assert.deepEqual(pending.next(), { done: true, value: false });
+    assert.throws(() => editor.stampShape(definition), /page budget/);
+    assert.throws(
+      () =>
+        editor.stampShape({
+          ...definition,
+          transform: { ...definition.transform, position: [1.55, 0, 0] },
+        }),
+      /safe volume bounds/,
+    );
+    assert.equal(volume.allocatedPages, 0);
+    assert.deepEqual(checkpoint(editor), initial);
+
+    const target = editor.create(64, true, "sparse"),
+      next = stampDefinition(editor, "add");
+    editor.beginStroke();
+    assert(editor.stampShape(next, true));
+    const stale = editor.stampShapeSteps(stampDefinition(editor, "subtract"), true, true);
+    assert.equal(stale.next().done, false);
+    editor.cancelStroke();
+    drain(editor);
+    editor.beginStroke();
+    assert.deepEqual(stale.next(), { done: true, value: false });
+    editor.finishStroke();
+    assert.deepEqual(bits(target.volume), initial.field);
+
+    assert(editor.stampShape(next));
+    drain(editor);
+    const result = checkpoint(editor);
+    assert.equal(editor.undo(), target.id);
+    drain(editor);
+    editor.beginStroke();
+    editor.active.history.pendingBudgetBytes = 1024;
+    assert.throws(() => editor.stampShape(next, true), /history memory safety limit/);
+    editor.cancelStroke();
+    assert.deepEqual(bits(target.volume), initial.field);
+    assert.equal(editor.undo(true), target.id);
+    drain(editor);
+    assert.deepEqual(checkpoint(editor), result);
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("idle pointer resets do not interrupt a standalone sparse stamp", () => {
+  const editor = new IndependentLayers(createBaseProject(new SparseSDFVolume(64), settings));
+  try {
+    const work = editor.stampShapeSteps(stampDefinition(editor, "add"));
+    let step = work.next();
+    assert.equal(step.done, false);
+    while (!step.done) {
+      editor.breakStrokePath();
+      step = work.next();
+    }
+    assert.equal(step.value, true);
+    assert.equal(editor.undoCount, 1);
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("same-sign edits can recover triangles from an entirely degenerate chunk", () => {
+  const volume = new SparseSDFVolume(64);
+  for (let z = 16; z <= 32; z++)
+    for (let y = 16; y <= 32; y++)
+      for (let x = 16; x <= 32; x++) volume.writeVoxel(volume.index(x, y, z), -1);
+  const index = volume.index(24, 24, 24);
+  volume.writeVoxel(index, 0);
+  const mesher = new IncrementalMesher(volume);
+  try {
+    const result = mesher.rebuildChunks();
+    const chunk = result.updates.find(({ bounds }) => bounds.min.every((v) => v === 16));
+    assert.equal(chunk.geometry.getAttribute("position").count, 0);
+    volume.writeVoxel(index, 0.2);
+    mesher.stampInvalidator()(index, false);
+    const update = mesher.rebuildChunks();
+    assert.equal(update.updates.length, 1);
+    assert.equal(update.updates[0].id, chunk.id);
+    assert(update.updates[0].geometry.getAttribute("position").count > 0);
+  } finally {
+    mesher.dispose();
   }
 });

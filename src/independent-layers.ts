@@ -438,9 +438,10 @@ export class IndependentLayers {
     );
     const chunks = new Map<number, BufferGeometry>();
     let bytes = 0;
-    for (const { id, geometry } of runtime.mesher.snapshotUpdates()) {
+    for (const { id, geometry, mixedSigns } of runtime.mesher.snapshotUpdates()) {
       const position = geometry.getAttribute("position").array;
-      if (!position.length) continue;
+      // A zero-area chunk can still have mixed signs and gain triangles on the next edit.
+      if (!mixedSigns) continue;
       bytes += position.byteLength + geometry.getAttribute("normal").array.byteLength;
       if (bytes > limit) return;
       chunks.set(id, geometry);
@@ -786,6 +787,7 @@ export class IndependentLayers {
   private readonly stroke = new ClayStroke();
   private strokeGeneration = 0;
   private resamplingGeneration?: number;
+  private preparingStandaloneStamp = false;
   constructor(
     readonly project: SculptProject,
     readonly display = new LayerDisplayPreferences(),
@@ -826,6 +828,8 @@ export class IndependentLayers {
       !this.tubePending &&
       !this.cutPending &&
       !this.disposed &&
+      !this.preparingStandaloneStamp &&
+      this.resamplingGeneration === undefined &&
       !this.drawing &&
       !this.transforming &&
       !this.previewing &&
@@ -1316,6 +1320,7 @@ export class IndependentLayers {
   }
   beginStroke(mask: boolean | "paint" = false): void {
     validateMirrorPlane(this.symmetry);
+    if (this.preparingStandaloneStamp) throw new Error("Finish or cancel the pending stamp.");
     if (mask === "paint" && this.viewMode !== "separate")
       throw new Error("Choose Separate Layers to paint an editable source.");
     if (this.transformSession) throw new Error("Finish the transform before sculpting.");
@@ -2147,7 +2152,14 @@ export class IndependentLayers {
     while (!step.done) step = work.next();
     return step.value;
   }
-  *stampShapeSteps(value: unknown, inStroke = false, deferMesh = false): Generator<void, boolean> {
+  *stampShapeSteps(
+    value: unknown,
+    inStroke = false,
+    deferMesh = false,
+    signal?: AbortSignal,
+  ): Generator<void, boolean> {
+    if (signal?.aborted) return false;
+    if (this.preparingStandaloneStamp) throw new Error("Finish or cancel the pending stamp.");
     validateMirrorPlane(this.symmetry);
     this.assertAvailable();
     if (!inStroke) this.finishStroke();
@@ -2156,8 +2168,7 @@ export class IndependentLayers {
       throw new Error("Stamp stroke target changed.");
     const runtime = this.editableRuntime(this.project.activeLayerId);
     this.assertSculptable(runtime.layer);
-    if (runtime.volume instanceof SparseSDFVolume)
-      throw new Error("Shape Stamp requires a dense sculpt layer.");
+    if (inStroke && !runtime.history.active) throw new Error("Stamp stroke target changed.");
     const start = performance.now(),
       definition = validateShapeDefinition(value);
     if (definition.targetLayerId !== runtime.layer.id)
@@ -2171,7 +2182,7 @@ export class IndependentLayers {
       (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes)
     )
       throw new Error("Personal stamp exceeds the memory safety limit.");
-    if (definition.operation === "add") {
+    if (definition.operation === "add" && runtime.volume instanceof SDFVolume) {
       const box = prepareShape(definition).worldBounds;
       if (this.symmetry.enabled) {
         const a = "xyz".indexOf(this.symmetry.axis),
@@ -2182,6 +2193,55 @@ export class IndependentLayers {
       }
       this.growRuntime(runtime, box, sourceBytes);
     }
+    const generation = this.strokeGeneration,
+      revision = this.committedRevision,
+      volume = runtime.volume,
+      sparse = volume instanceof SparseSDFVolume;
+    const work = this.stageAndApplyStamp(
+      runtime,
+      definition,
+      sourceBytes,
+      inStroke,
+      deferMesh,
+      start,
+    );
+    if (!sparse) return yield* work;
+    if (this.resamplingGeneration === generation)
+      throw new Error("Finish the pending brush or stamp sample first.");
+    if (inStroke) this.resamplingGeneration = generation;
+    else this.preparingStandaloneStamp = true;
+    try {
+      let step = work.next();
+      while (!step.done) {
+        yield;
+        if (
+          signal?.aborted ||
+          this.disposed ||
+          (inStroke ? this.strokeGeneration !== generation : this.transforming || this.drawing) ||
+          this.committedRevision !== revision ||
+          this.project.activeLayerId !== runtime.layer.id ||
+          runtime.volume !== volume ||
+          !runtime.layer.editable
+        )
+          return false;
+        this.assertAvailable();
+        step = work.next();
+      }
+      return step.value;
+    } finally {
+      work.return(false);
+      if (!inStroke) this.preparingStandaloneStamp = false;
+      else if (this.resamplingGeneration === generation) this.resamplingGeneration = undefined;
+    }
+  }
+  private *stageAndApplyStamp(
+    runtime: LayerRuntime,
+    definition: ReturnType<typeof validateShapeDefinition>,
+    sourceBytes: number,
+    inStroke: boolean,
+    deferMesh: boolean,
+    start: number,
+  ): Generator<void, boolean> {
     const remaining =
       (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes) -
       this.trackedBytes -
@@ -2210,24 +2270,27 @@ export class IndependentLayers {
       };
       return false;
     }
+    const volume = runtime.volume,
+      sparse = volume instanceof SparseSDFVolume,
+      publishPages = sparse ? yield* volume.preparePatchPages(patch.indices) : undefined;
     // Allocate the exact history snapshots before source mutation; preparation owns
     // the patch, so no Map-based stroke recorder is needed for these unique indices.
-    const committed = inStroke ? false : runtime.history.commitPatch("shape-stamp", patch),
-      hadSurface = runtime.triangles > 0;
-    if (inStroke) yield* runtime.history.recordStampPatchSteps(patch);
-    const invalidate = runtime.mesher.stampInvalidator();
+    const committed = inStroke ? false : runtime.history.commitPatch("shape-stamp", patch);
+    if (inStroke)
+      yield* runtime.history.recordStampPatchSteps(patch, remaining - patch.retainedStagingBytes);
+    publishPages?.();
+    const invalidate = this.replayInvalidator(runtime);
     for (let i = 0; i < patch.indices.length; i++) {
-      if (inStroke && i && i % 4096 === 0) yield;
+      if (!sparse && inStroke && i && i % 4096 === 0) yield;
       runtime.volume.writeVoxel(patch.indices[i], patch.after[i]);
-      const signChanged = patch.before[i] < 0 !== patch.after[i] < 0;
-      if (hadSurface || signChanged) invalidate(patch.indices[i], signChanged);
+      invalidate(patch.indices[i], patch.before[i], patch.after[i]);
     }
     if (committed) this.recordCommit(runtime.layer.id);
     this.composite.invalidateLayer(runtime.layer, patch.bounds);
     const meshStart = performance.now();
     let rebuilt = false,
       chunks = 0;
-    if (inStroke && !deferMesh) {
+    if (!sparse && inStroke && !deferMesh) {
       while (runtime.rebuild(1, 3)) {
         rebuilt = true;
         chunks += runtime.lastChanged;
@@ -3417,11 +3480,15 @@ export class IndependentLayers {
       !this.project.layerStack.get(options.sourceIds[0]).array?.enabled &&
       (this.project.layerStack.get(options.sourceIds[0]).procedural ||
         this.project.layerStack.get(options.sourceIds[0]).primitive)
-    )
+    ) {
+      if (options.storage === "sparse")
+        throw new Error("Sparse output is available for evaluated Boolean Bake.");
       return this.bakeTube(options, signal);
+    }
     this.assertAvailable();
     const validated = validateBakeOptions(options),
       plan = this.bakePlan(validated.resolution, validated.sourceIds);
+    plan.storage = validated.storage;
     if (
       this.project.layerStack.layers.some((l) => l.booleanModifiers?.length || l.array?.enabled) &&
       plan.detailLimited

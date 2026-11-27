@@ -4,6 +4,7 @@ import type { Bounds, MirrorPlane } from "./sdf";
 import { reflectPoint } from "./sdf";
 import { prepareShape } from "./shape-library";
 import { validateShapeDefinition } from "./shapes";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { uniformScale, validateTransform } from "./transform";
 
 export type StampPatch = {
@@ -50,7 +51,9 @@ export function* prepareStampSteps(
   uniformScale(layer.transform);
   const volume = layer.volume,
     dims = volume.dimensions,
-    origin = volume.bounds.min,
+    { min: origin, max: end } = volume.bounds,
+    mask = sculptMask(volume),
+    readSparse = volume instanceof SparseSDFVolume ? volume.prepareSampleReader() : undefined,
     n = volume.dimensions.reduce((a, b) => a * b, 1),
     shape = prepareShape(d),
     box = shape.worldBounds;
@@ -63,10 +66,7 @@ export function* prepareStampSteps(
   }
   if (
     d.operation === "add" &&
-    box.min.some(
-      (v, i) =>
-        v <= volume.bounds.min[i] + volume.step || box.max[i] >= volume.bounds.max[i] - volume.step,
-    )
+    box.min.some((v, i) => v <= origin[i] + volume.step || box.max[i] >= end[i] - volume.step)
   )
     throw new Error(
       "Add shape extends beyond the layer’s safe volume bounds. Move or shrink it; resolution and bounds are never changed automatically.",
@@ -98,33 +98,37 @@ export function* prepareStampSteps(
     peakStagingBytes = initial * 12,
     stagingAllocations = 3;
   const bounds: Bounds = { min: [...dims], max: [0, 0, 0] },
-    p = { x: 0, y: 0, z: 0 };
+    p = { x: 0, y: 0, z: 0 },
+    margin =
+      16 *
+      Number.EPSILON *
+      [...box.min, ...box.max, ...origin, ...end].reduce((sum, v) => sum + Math.abs(v), 0);
   for (let z = lo[2]; z <= hi[2]; z++)
     for (let y = lo[1]; y <= hi[1]; y++)
       for (let x = lo[0]; x <= hi[0]; x++) {
         if (scanned && scanned % 2048 === 0) yield;
         scanned++;
         const index = volume.index(x, y, z),
-          old = volume.readVoxel(index);
+          old = readSparse ? readSparse(x, y, z) : volume.readVoxel(index);
         p.x = volume.coordinate(x, 0);
         p.y = volume.coordinate(y, 1);
         p.z = volume.coordinate(z, 2);
         if (!Number.isFinite(old) || Math.abs(old) > limit)
           throw new Error("Target contains invalid SDF values.");
-        const dx = Math.max(box.min[0] - p.x, 0, p.x - box.max[0]),
-          dy = Math.max(box.min[1] - p.y, 0, p.y - box.max[1]),
-          dz = Math.max(box.min[2] - p.z, 0, p.z - box.max[2]);
-        const outside = dx > 0 || dy > 0 || dz > 0;
-        if (outside && !d.personal) {
-          const lower = Math.hypot(dx, dy, dz);
-          if (d.operation === "add" ? old <= lower : old >= -lower) continue;
+        if (!d.personal) {
+          const dx = Math.max(box.min[0] - p.x, 0, p.x - box.max[0]),
+            dy = Math.max(box.min[1] - p.y, 0, p.y - box.max[1]),
+            dz = Math.max(box.min[2] - p.z, 0, p.z - box.max[2]),
+            threshold = Math.max(0, d.operation === "add" ? old : -old) + margin;
+          // Largest slab is a lower bound on the full AABB distance.
+          if (Math.max(dx, dy, dz) > threshold || Math.hypot(dx, dy, dz) > threshold) continue;
         }
         evaluated++;
         const distance = Math.min(
             shape.sampleWorld(p),
             mirror?.enabled ? shape.sampleWorld(reflectPoint(p, mirror)) : Infinity,
           ),
-          next = sculptMask(volume).blend(
+          next = mask.blend(
             index,
             old,
             d.operation === "add" ? Math.min(old, distance) : Math.max(old, -distance),
@@ -143,7 +147,7 @@ export function* prepareStampSteps(
           throw new Error(
             "Stamp exceeds the supported SDF distance or positive-boundary limits. Reduce its dimensions.",
           );
-        if (next === old) continue;
+        if (Object.is(next, old)) continue;
         if ((indices.length + count + 1) * 12 > maxStagingBytes)
           throw new Error(
             "Stamp exceeds the staging/history memory safety limit. Source voxels and redo were kept.",
@@ -169,10 +173,12 @@ export function* prepareStampSteps(
         before[count] = old;
         after[count] = next;
         count++;
-        [x, y, z].forEach((v, axis) => {
-          bounds.min[axis] = Math.min(bounds.min[axis], v);
-          bounds.max[axis] = Math.max(bounds.max[axis], v);
-        });
+        bounds.min[0] = Math.min(bounds.min[0], x);
+        bounds.min[1] = Math.min(bounds.min[1], y);
+        bounds.min[2] = Math.min(bounds.min[2], z);
+        bounds.max[0] = Math.max(bounds.max[0], x);
+        bounds.max[1] = Math.max(bounds.max[1], y);
+        bounds.max[2] = Math.max(bounds.max[2], z);
       }
   return {
     indices: indices.subarray(0, count),

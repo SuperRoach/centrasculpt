@@ -9,6 +9,7 @@ import { openSculptProject, saveSculptProject } from "../work/test-build/project
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { ShapePreviewModel, shapeDimensionsForKind } from "../work/test-build/shape-preview.mjs";
 import { SHAPE_KINDS } from "../work/test-build/shapes.mjs";
+import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 import { XRBrushSizing } from "../work/test-build/xr-brush-sizing.mjs";
 import { XRClayStroke } from "../work/test-build/xr-clay-stroke.mjs";
 import { XRControllerRoles } from "../work/test-build/xr-controller-roles.mjs";
@@ -25,9 +26,9 @@ const settings = {
 };
 const near = (a, b, e = 1e-7) => assert(Math.abs(a - b) < e, `${a} != ${b}`);
 const poseAt = (x = 0, y = 0, z = 0) => new Matrix4().makeTranslation(x, y, z + 0.12);
-function fixture(resolution = 33) {
-  const volume = new SDFVolume(resolution, 1.6, false);
-  volume.values.fill(6.4);
+function fixture(resolution = 33, sparse = false) {
+  const volume = sparse ? new SparseSDFVolume(resolution) : new SDFVolume(resolution, 1.6, false);
+  volume.getDenseView()?.fill(6.4);
   const layers = new IndependentLayers(createBaseProject(volume, settings)),
     shape = new ShapePreviewModel(layers.project.activeLayerId),
     root = new Group();
@@ -1305,3 +1306,35 @@ test("personal master uses XR single/continuous pose, preview, symmetry and pack
     f.dispose();
   }
 });
+
+for (const mode of ["single", "continuous"])
+  test(`sparse XR ${mode} stamp stages and restores one exact history action`, () => {
+    const dense = fixture(64),
+      sparse = fixture(64, true);
+    try {
+      const field = (f) => f.volume.readRegion({ min: [0, 0, 0], max: [63, 63, 63] }).values;
+      const before = field(sparse);
+      for (const f of [dense, sparse]) {
+        f.tools.stampAttachment.mode = mode;
+        f.release();
+        f.press();
+        if (f === sparse) {
+          assert.equal(f.layers.undoCount, 0);
+          assert.equal(f.volume.allocatedPages, 0);
+        }
+        f.release();
+        for (let i = 0; f.stamp.draining && i < 100; i++) f.release();
+        assert.equal(f.stamp.draining, false);
+        assert.equal(f.layers.undoCount, 1);
+      }
+      const after = field(dense);
+      assert.deepEqual(field(sparse), after);
+      sparse.layers.undo();
+      assert.deepEqual(field(sparse), before);
+      sparse.layers.undo(true);
+      assert.deepEqual(field(sparse), after);
+    } finally {
+      dense.dispose();
+      sparse.dispose();
+    }
+  });
