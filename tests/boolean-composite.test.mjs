@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { Vector3 } from "three";
+import { MeshBasicMaterial, Vector3 } from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import {
   BooleanComposite,
@@ -518,4 +518,160 @@ test("small uniform scales retain relative composite detail and quality controls
   assert(c.composite.failed);
   assert.deepEqual(c.active.layer.volume.values, source);
   c.dispose();
+});
+
+test("leaf slab culling matches the full signed field at faces, ties and transformed points", () => {
+  for (const primitive of [
+    { kind: "box", width: 0.27, height: 0.4, depth: 0.32, cornerRadius: 0.08 },
+    { kind: "box", width: 0.27, height: 0.4, depth: 0.32 },
+    { kind: "cylinder", diameter: 0.27, height: 0.4 },
+    { kind: "cylinder", diameter: 0.27, height: 0.4, topDiameter: 0.19 },
+  ]) {
+    const body = new SdfLayer(new SDFVolume(17), {
+      primitive: { kind: "box", width: 0.8, height: 0.61, depth: 0.65 },
+    });
+    const cutter = new SdfLayer(new SDFVolume(17), {
+      primitive,
+      transform: { position: [0.2, -0.11, 0.07], rotation: [0.3, 0.6, -0.2], scale: [2, 2, 2] },
+    });
+    body.booleanModifiers = Array.from({ length: 2 }, (_, i) => ({
+      id: `hole-${i}`,
+      sourceId: cutter.id,
+      operation: "difference",
+      enabled: true,
+    }));
+    const sample = prepareComposite([body, cutter]);
+    const a = prepareLayerSampler(body),
+      b = prepareLayerSampler(cutter);
+    for (let z = -13; z <= 13; z++)
+      for (let y = -13; y <= 13; y++)
+        for (let x = -13; x <= 13; x++) {
+          const point = [x / 17, y / 19, z / 23];
+          assert.equal(sample(...point), Math.max(a(...point), -b(...point)));
+        }
+    for (const epsilon of [-1e-15, -0, 0, 1e-15]) {
+      const point = new Vector3(0, primitive.height / 2 + epsilon, 0)
+        .applyMatrix4(transformMatrix(cutter.transform))
+        .toArray();
+      assert.equal(sample(...point), Math.max(a(...point), -b(...point)));
+    }
+  }
+});
+
+test("settled cutter moves sample both poses and match a full rebuild byte for byte", async () => {
+  const layers = create(17),
+    { composite, project } = layers;
+  try {
+    layers.active.layer.visible = false;
+    const body = await layers.regeneratePrimitive({
+      kind: "box",
+      width: 0.6,
+      height: 0.4,
+      depth: 0.08,
+    });
+    const cutter = await layers.regeneratePrimitive({
+      kind: "cylinder",
+      diameter: 0.035,
+      height: 0.16,
+    });
+    const cutterPose = pose(-0.13);
+    cutterPose.rotation[0] = Math.PI / 2;
+    layers.setActiveTransform(cutterPose);
+    layers.setBooleanModifiers(body.id, [
+      { id: "hole", sourceId: cutter.id, operation: "difference", enabled: true },
+    ]);
+    composite.setQuality(64);
+    await composite.flush();
+    for (const x of [0, 0.13]) {
+      cutterPose.position[0] = x;
+      layers.setActiveTransform(cutterPose);
+    }
+    const save = saveSculptProject(project);
+    await composite.flush();
+    assert.equal(composite.stats.full, false);
+    assert(composite.stats.samples < 64 ** 3 / 2);
+    const field = composite.volume.values.slice();
+    const mesh = () =>
+      composite.mesher
+        .snapshotUpdates()
+        .map(({ id, geometry }) => [
+          id,
+          ...["position", "normal", "color"].map((name) =>
+            geometry.getAttribute(name)?.array.slice(),
+          ),
+        ]);
+    const regional = mesh();
+    const bytes = composite.mesher
+      .snapshotUpdates()
+      .reduce(
+        (sum, { geometry }) =>
+          sum +
+          Object.values(geometry.attributes).reduce(
+            (n, attribute) => n + attribute.array.byteLength,
+            0,
+          ),
+        0,
+      );
+    assert.equal(composite.mesher.ownedGeometryBytes, bytes);
+    composite.invalidate();
+    await composite.flush();
+    assert.deepEqual(composite.volume.values, field);
+    assert.deepEqual(mesh(), regional);
+    assert.deepEqual(saveSculptProject(project), save);
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("interactive pose churn can finish its snapshot while source invalidation cancels it", async () => {
+  const layers = create(17),
+    { composite } = layers;
+  try {
+    const cutter = await layers.regeneratePrimitive({
+      kind: "cylinder",
+      diameter: 0.04,
+      height: 0.2,
+    });
+    composite.setInteractive(true);
+    composite.setInteractiveQuality(18);
+    composite.setPrimitivePreview(cutter.id, cutter.primitive, pose(0));
+    const first = composite.rebuild();
+    composite.setPrimitivePreview(cutter.id, cutter.primitive, pose(0.05));
+    assert.equal(await first, true);
+    assert(composite.pending);
+    const next = composite.rebuild();
+    composite.invalidate();
+    assert.equal(await next, false);
+    assert(composite.pending);
+    await composite.flush();
+    assert.equal(composite.pending, false);
+  } finally {
+    layers.dispose();
+  }
+});
+
+test("an empty preview checks cancellation after its final meshing progress notification", async () => {
+  const volume = new SDFVolume(48, 1.6, false);
+  volume.values.fill(1);
+  const project = createBaseProject(volume, settings);
+  let cancel = true;
+  const material = new MeshBasicMaterial();
+  const composite = new BooleanComposite(project, material, 64, material, () => true, {
+    boundedPreview: true,
+    meshingProgress(completed, total) {
+      if (cancel && completed === total) composite.invalidate();
+    },
+  });
+  try {
+    assert.equal(await composite.rebuild(), false);
+    assert.equal(composite.stats, null);
+    assert.equal(composite.pending, true);
+    cancel = false;
+    await composite.flush();
+    assert.equal(composite.stats.triangles, 0);
+    assert.equal(composite.pending, false);
+  } finally {
+    composite.dispose();
+    material.dispose();
+  }
 });

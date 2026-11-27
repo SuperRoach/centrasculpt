@@ -1,3 +1,14 @@
+# Phase 8.9c — Boolean rendering performance
+
+Boolean builds share colour evaluator preparation across chunks, skip
+provably losing analytic cutter samples and update eligible settled moves
+from the old and new influence bounds. Meshing reuses tetrahedron scratch,
+and the preview budget includes attached colour buffers. See the
+[Phase 8.9c measurements and verification](PHASE_8_9C_BOOLEAN_RENDERING.md).
+
+The [meshing scheduling follow-up](PHASE_8_9C_BOOLEAN_RENDERING.md#meshing-scheduling-follow-up)
+records the effect of coalescing empty preview batches.
+
 # Phase 8.9a — Canonical native projects
 
 Every native save now writes v24. Editable clay stays in exact Float32

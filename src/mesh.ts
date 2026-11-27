@@ -48,23 +48,40 @@ function extractRegion(
       }
   if (!negative || !exterior) return { positions, normals };
   const values = new Array<number>(8);
-  function triangle(a: Point, b: Point, c: Point, outward: Point): void {
-    const ab = b.map((v, i) => v - a[i]);
-    const ac = c.map((v, i) => v - a[i]);
-    const normal = [
-      ab[1] * ac[2] - ab[2] * ac[1],
-      ab[2] * ac[0] - ab[0] * ac[2],
-      ab[0] * ac[1] - ab[1] * ac[0],
-    ];
+  const inside = new Array<number>(4),
+    outside = new Array<number>(4);
+  function pushVertex(vertex: Point): void {
+    positions.push(...vertex);
+    // biome-ignore lint/suspicious/noAssignInExpressions: Lazy normal caching avoids repeating the volume sample.
+    normals.push(...(vertex.normal ??= volume.normalAt(vertex)));
+  }
+  function triangle(
+    a: Point,
+    b: Point,
+    c: Point,
+    exteriorPoint: Point,
+    interiorPoint: Point,
+  ): void {
+    const abx = b[0] - a[0],
+      aby = b[1] - a[1],
+      abz = b[2] - a[2],
+      acx = c[0] - a[0],
+      acy = c[1] - a[1],
+      acz = c[2] - a[2],
+      nx = aby * acz - abz * acy,
+      ny = abz * acx - abx * acz,
+      nz = abx * acy - aby * acx;
     // Exact-zero lattice intersections can collapse a tetrahedron to a line or
     // point. Do not publish zero-area primitives (picking/export/reconstruction).
-    if (Math.hypot(...normal) <= volume.step * volume.step * 1e-12) return;
-    const vertices = normal.reduce((s, v, i) => s + v * outward[i], 0) < 0 ? [a, c, b] : [a, b, c];
-    for (const vertex of vertices) {
-      positions.push(...vertex);
-      // biome-ignore lint/suspicious/noAssignInExpressions: Lazy normal caching avoids repeating the volume sample.
-      normals.push(...(vertex.normal ??= volume.normalAt(vertex)));
-    }
+    if (Math.hypot(nx, ny, nz) <= volume.step * volume.step * 1e-12) return;
+    const reverse =
+      nx * (exteriorPoint[0] - interiorPoint[0]) +
+        ny * (exteriorPoint[1] - interiorPoint[1]) +
+        nz * (exteriorPoint[2] - interiorPoint[2]) <
+      0;
+    pushVertex(a);
+    pushVertex(reverse ? c : b);
+    pushVertex(reverse ? b : c);
   }
   for (let z = bounds.min[2]; z < bounds.max[2]; z++)
     for (let y = bounds.min[1]; y < bounds.max[1]; y++)
@@ -104,31 +121,41 @@ function extractRegion(
                 : (points[a].map((v, i) => v + t * (points[b][i] - v)) as Point));
         };
         for (const tet of tetrahedra) {
-          const inside = tet.filter((i) => values[i] < 0),
-            outside = tet.filter((i) => values[i] >= 0);
-          if (!inside.length || !outside.length) continue;
-          const direction = points[outside[0]].map((v, i) => v - points[inside[0]][i]) as Point;
-          if (inside.length === 1)
+          let insideCount = 0,
+            outsideCount = 0;
+          for (const i of tet) {
+            const value = values[i];
+            if (value < 0) inside[insideCount++] = i;
+            else if (value >= 0) outside[outsideCount++] = i;
+          }
+          if (!insideCount || !outsideCount) continue;
+          outside.length = outsideCount;
+          inside.length = insideCount;
+          const exteriorPoint = points[outside[0]],
+            interiorPoint = points[inside[0]];
+          if (insideCount === 1)
             triangle(
               edge(inside[0], outside[0]),
               edge(inside[0], outside[1]),
               edge(inside[0], outside[2]),
-              direction,
+              exteriorPoint,
+              interiorPoint,
             );
-          else if (outside.length === 1)
+          else if (outsideCount === 1)
             triangle(
               edge(outside[0], inside[0]),
               edge(outside[0], inside[1]),
               edge(outside[0], inside[2]),
-              direction,
+              exteriorPoint,
+              interiorPoint,
             );
           else {
             const a = edge(inside[0], outside[0]),
               b = edge(inside[0], outside[1]),
               c = edge(inside[1], outside[0]),
               d = edge(inside[1], outside[1]);
-            triangle(a, b, c, direction);
-            triangle(b, d, c, direction);
+            triangle(a, b, c, exteriorPoint, interiorPoint);
+            triangle(b, d, c, exteriorPoint, interiorPoint);
           }
         }
       }
@@ -186,6 +213,14 @@ export class IncrementalMesher {
   private ownedBytes = 0;
   get ownedGeometryBytes(): number {
     return this.ownedBytes;
+  }
+  /** Register colour arrays attached to owned chunks after extraction. */
+  setChunkColours(update: ChunkUpdate, colours: Float32Array): void {
+    const { geometry } = update;
+    if (this.chunks[update.id]?.geometry !== geometry || this.borrowed.has(geometry))
+      throw new Error("Chunk colours require a current owned geometry.");
+    this.ownedBytes += colours.byteLength - (geometry.getAttribute("color")?.array.byteLength ?? 0);
+    geometry.setAttribute("color", new BufferAttribute(colours, 3));
   }
   private bytes(g: BufferGeometry): number {
     let n = 0;

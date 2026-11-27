@@ -1,5 +1,12 @@
 # Centra Sculpt roadmap
 
+## Phase 8.9c — Boolean rendering performance
+
+The dense Boolean preview uses conservative cutter culling and regional
+updates for eligible moves. Native projects continue to use v24. See
+[Phase 8.9c results](PHASE_8_9C_BOOLEAN_RENDERING.md) for timing, memory and
+device coverage before moving on to Phase 9.
+
 ## Phase 8.9a — Canonical native projects
 
 Every native save writes v24. The 20-source electronics enclosure fits with

@@ -19,7 +19,7 @@ import { sculptPaint } from "./sculpt-paint";
 import type { Bounds, Point3 } from "./sdf";
 import { SDFVolume } from "./sdf";
 import { buildExportMesh, ChunkSurface } from "./surface";
-import { transformMatrix, uniformScale, type VolumeTransform } from "./transform";
+import { copyTransform, transformMatrix, uniformScale, type VolumeTransform } from "./transform";
 
 // The 512 MiB export budget remains the hard admission limit. Two million
 // intermediate triangles use about 144 MiB for positions and normals.
@@ -162,44 +162,95 @@ function prepareSingleLayerSampler(layer: SdfLayer): (x: number, y: number, z: n
     return (outside > 0 ? Math.max(h * 1e-6, value) + outside : value) * scale;
   };
 }
-export function prepareComposite(
-  layers: readonly SdfLayer[],
-): (x: number, y: number, z: number) => number {
+type FieldSampler = (x: number, y: number, z: number) => number;
+type FieldFold = (left: number, x: number, y: number, z: number) => number;
+
+function leafSlabPrimitive(layer: SdfLayer): PrimitiveSource | undefined {
+  const source = layer.primitive;
+  if (layer.array?.enabled || layer.booleanModifiers?.some((m) => m.enabled)) return;
+  if (
+    source?.kind === "box" ||
+    (source?.kind === "cylinder" &&
+      (source.topDiameter ?? source.diameter) === (source.bottomDiameter ?? source.diameter))
+  )
+    return source;
+}
+
+/** A leaf cutter can be skipped when its local slab distance already loses to
+ * the accumulated field. Use the same inverse and scale as the real sampler.
+ * The strict comparison protects signed zero, ties and interpolation values. */
+function prepareLeafDifference(layer: SdfLayer): FieldFold | undefined {
+  const leaf = leafSlabPrimitive(layer);
+  if (!leaf) return;
+  const source = validatePrimitive(leaf);
+  const [width, height, depth] = primitiveDimensions(source);
+  const hx = width / 2,
+    hy = height / 2,
+    hz = depth / 2;
+  const m = transformMatrix(layer.transform).invert().elements,
+    scale = uniformScale(layer.transform);
+  return (left, wx, wy, wz) => {
+    const x = m[0] * wx + m[4] * wy + m[8] * wz + m[12],
+      y = m[1] * wx + m[5] * wy + m[9] * wz + m[13],
+      z = m[2] * wx + m[6] * wy + m[10] * wz + m[14];
+    // Outside the enclosing slabs the formula's positive hypot branch is at
+    // least the largest slab distance. Leave room for rounding, including the
+    // rounded box's add/subtract of its corner radius.
+    const slab = Math.max(Math.abs(x) - hx, Math.abs(y) - hy, Math.abs(z) - hz);
+    const margin = 16 * Number.EPSILON * (Math.abs(x) + Math.abs(y) + Math.abs(z) + hx + hy + hz);
+    if (slab > margin && (slab - margin) * scale > -left) return left;
+    return Math.max(left, -primitiveDistance(source, x, y, z) * scale);
+  };
+}
+
+export function prepareComposite(layers: readonly SdfLayer[]): FieldSampler {
   const ordering = layers[0]?.hierarchy?.compositionOrder;
   const ordered = ordering
     ? [...layers].sort((a, b) => ordering.indexOf(a.id) - ordering.indexOf(b.id))
     : layers;
   validateBooleanGraph(layers);
-  const all = layers;
-  const samplers = new Map<string, (x: number, y: number, z: number) => number>();
-  const prepare = (layer: SdfLayer): ((x: number, y: number, z: number) => number) => {
+  const byId = new Map(layers.map((layer) => [layer.id, layer]));
+  const samplers = new Map<string, FieldSampler>();
+  const fold = (layer: SdfLayer, operation: LayerOperation): FieldFold => {
+    const culled = operation === "difference" ? prepareLeafDifference(layer) : undefined;
+    if (culled) return culled;
+    const sample = prepare(layer);
+    return (left, x, y, z) => combineSdf(left, sample(x, y, z), operation);
+  };
+  function prepare(layer: SdfLayer): FieldSampler {
     const cached = samplers.get(layer.id);
     if (cached) return cached;
     const own = prepareLayerSampler(layer);
-    const modifiers = (layer.booleanModifiers ?? [])
-      .filter((m) => m.enabled)
-      .map((m) => {
-        const source = all.find((l) => l.id === m.sourceId);
-        if (!source) throw new Error("Boolean source does not exist.");
-        return { sample: prepare(source), operation: m.operation };
-      });
-    const sample = (x: number, y: number, z: number) => {
-      let d = own(x, y, z);
-      for (const m of modifiers) d = combineSdf(d, m.sample(x, y, z), m.operation);
-      return d;
-    };
+    const modifiers: FieldFold[] = [];
+    let previous: { sourceId: string; operation: LayerOperation } | undefined;
+    for (const modifier of layer.booleanModifiers ?? []) {
+      if (!modifier.enabled) continue;
+      // Consecutive identical min/max folds are idempotent.
+      if (previous?.sourceId === modifier.sourceId && previous.operation === modifier.operation)
+        continue;
+      const source = byId.get(modifier.sourceId);
+      if (!source) throw new Error("Boolean source does not exist.");
+      modifiers.push(fold(source, modifier.operation));
+      previous = modifier;
+    }
+    const sample = modifiers.length
+      ? (x: number, y: number, z: number) => {
+          let distance = own(x, y, z);
+          for (const apply of modifiers) distance = apply(distance, x, y, z);
+          return distance;
+        }
+      : own;
     samplers.set(layer.id, sample);
     return sample;
-  };
-  const sources = booleanRoots(ordered).map((layer) => ({
-    sample: prepare(layer),
-    operation: layer.operation,
-  }));
+  }
+  const roots = booleanRoots(ordered);
+  if (!roots.length) return () => 1;
+  const first = prepare(roots[0]);
+  const rest = roots.slice(1).map((layer) => fold(layer, layer.operation));
+  if (!rest.length) return first;
   return (x, y, z) => {
-    if (!sources.length) return 1;
-    let result = sources[0].sample(x, y, z);
-    for (let i = 1; i < sources.length; i++)
-      result = combineSdf(result, sources[i].sample(x, y, z), sources[i].operation);
+    let result = first(x, y, z);
+    for (const apply of rest) result = apply(result, x, y, z);
     return result;
   };
 }
@@ -209,43 +260,73 @@ export function prepareCompositeColour(
   base: (l: SdfLayer) => Color = () => new Color("#afbd94"),
 ): (p: Vector3, out: Color) => Color {
   validateBooleanGraph(layers);
-  const source = new Map(
-    layers.map((l) => [
-      l.id,
-      {
-        layer: l,
-        sample: prepareLayerSampler(l),
-        inverse: transformMatrix(l.transform).invert(),
-        base: base(l).clone(),
-      },
-    ]),
-  );
-  type Owner = NonNullable<ReturnType<typeof source.get>>;
-  const evaluate = (layer: SdfLayer, p: Vector3): { owner: Owner; distance: number } => {
-    const own = source.get(layer.id)!;
-    let result = { owner: own, distance: own.sample(p.x, p.y, p.z) };
-    for (const m of layer.booleanModifiers ?? []) {
-      if (!m.enabled) continue;
-      const next = evaluate(source.get(m.sourceId)!.layer, p),
-        d = m.operation === "difference" ? -next.distance : next.distance;
-      if (m.operation === "union" ? d < result.distance : d > result.distance)
-        result = { owner: next.owner, distance: d };
-    }
-    return result;
+  const byId = new Map(layers.map((l) => [l.id, l]));
+  const roots = booleanRoots(layers);
+  if (!roots.length) return (_p, out) => out.set("#afbd94");
+
+  type ReadColour = (p: Vector3, out: Color) => Color;
+  type ColourNode = {
+    evaluate: (p: Vector3) => { distance: number; readColour: ReadColour };
+    colour: Color;
+    unpainted: boolean;
   };
-  const roots = booleanRoots(layers),
-    local = new Vector3();
+  const prepared = new Map<string, ColourNode>();
+  function prepare(layer: SdfLayer): ColourNode {
+    const cached = prepared.get(layer.id);
+    if (cached) return cached;
+    const paint = sculptPaint(layer.volume),
+      unpainted = paint.empty,
+      colour = base(layer).clone(),
+      inverse = transformMatrix(layer.transform).invert(),
+      sample = prepareLayerSampler(layer);
+    const readColour = (p: Vector3, out: Color) =>
+      unpainted ? out.copy(colour) : paint.sample(local.copy(p).applyMatrix4(inverse), colour, out);
+    const modifiers = (layer.booleanModifiers ?? [])
+      .filter((m) => m.enabled)
+      .map((m) => {
+        const operand = byId.get(m.sourceId);
+        if (!operand) throw new Error("Boolean source does not exist.");
+        return { operation: m.operation, source: prepare(operand) };
+      });
+    // One mutable result per graph node. Copy the winner before evaluating another edge:
+    // the same node can be visited again through a shared modifier.
+    const result = { distance: 0, readColour };
+    const evaluate = (p: Vector3) => {
+      result.distance = sample(p.x, p.y, p.z);
+      result.readColour = readColour;
+      for (const { operation, source } of modifiers) {
+        const next = source.evaluate(p);
+        const d = operation === "difference" ? -next.distance : next.distance;
+        if (operation === "union" ? d < result.distance : d > result.distance) {
+          result.distance = d;
+          result.readColour = next.readColour;
+        }
+      }
+      return result;
+    };
+    const node = { evaluate, colour, unpainted };
+    prepared.set(layer.id, node);
+    return node;
+  }
+  const local = new Vector3();
+  const sources = roots.map((layer) => ({ operation: layer.operation, node: prepare(layer) }));
+  const first = sources[0].node;
+  if ([...prepared.values()].every((node) => node.unpainted && node.colour.equals(first.colour)))
+    return (_p, out) => out.copy(first.colour);
   return (p, out) => {
-    if (!roots.length) return out.set("#afbd94");
-    let result = evaluate(roots[0], p);
-    for (const layer of roots.slice(1)) {
-      const next = evaluate(layer, p),
-        d = layer.operation === "difference" ? -next.distance : next.distance;
-      if (layer.operation === "union" ? d < result.distance : d > result.distance)
-        result = { owner: next.owner, distance: d };
+    const initial = first.evaluate(p);
+    let distance = initial.distance,
+      readColour = initial.readColour;
+    for (let i = 1; i < sources.length; i++) {
+      const { operation, node } = sources[i];
+      const next = node.evaluate(p);
+      const d = operation === "difference" ? -next.distance : next.distance;
+      if (operation === "union" ? d < distance : d > distance) {
+        distance = d;
+        readColour = next.readColour;
+      }
     }
-    local.copy(p).applyMatrix4(result.owner.inverse);
-    return sculptPaint(result.owner.layer.volume).sample(local, result.owner.base, out);
+    return readColour(p, out);
   };
 }
 export function evaluateComposite(layers: readonly SdfLayer[], point: Point3): number {
@@ -560,20 +641,11 @@ export class BooleanComposite {
   private async cooperativeColours(
     geometry: import("three").BufferGeometry,
     version: number,
+    sample: ReturnType<typeof prepareCompositeColour>,
   ): Promise<{ colours?: Float32Array; maxSliceMs: number } | null> {
-    if (this.options.colours === false) return { maxSliceMs: 0 };
-    if (
-      !this.project.layerStack.layers.some(
-        (l) => l.booleanModifiers?.length || l.array?.enabled || !sculptPaint(l.volume).empty,
-      )
-    )
-      return { maxSliceMs: 0 };
-    const sample = prepareCompositeColour(
-        this.project.layerStack.compositionLayers,
-        this.paintBase,
-      ),
-      p = geometry.getAttribute("position"),
-      colours = new Float32Array(p.count * 3),
+    const p = geometry.getAttribute("position");
+    if (!p.count) return { maxSliceMs: 0 };
+    const colours = new Float32Array(p.count * 3),
       point = new Vector3(),
       colour = new Color();
     let batch = performance.now(),
@@ -595,8 +667,12 @@ export class BooleanComposite {
     null;
   setPrimitivePreview(id: string, source: PrimitiveSource | null, pose?: VolumeTransform): void {
     if (source === null && this.primitivePreview?.id !== id) return;
-    this.primitivePreview = source ? { id, source: validatePrimitive(source), pose } : null;
-    this.invalidate();
+    const next = source
+      ? { id, source: validatePrimitive(source), pose: pose && copyTransform(pose) }
+      : null;
+    if (JSON.stringify(next) === JSON.stringify(this.primitivePreview)) return;
+    this.primitivePreview = next;
+    this.invalidatePose();
   }
   private get previewLayers(): readonly SdfLayer[] {
     const layers = this.project.layerStack.compositionLayers;
@@ -623,6 +699,8 @@ export class BooleanComposite {
   private interactive = false;
   private adaptive = false;
   private buildingDraft = false;
+  private contentVersion = 0;
+  private buildContentVersion = -1;
   private draftVersion: number | null = null;
   get draftReady(): boolean {
     return this.draftVersion === this.version && !this.failed && !!this.stats;
@@ -652,7 +730,10 @@ export class BooleanComposite {
     return (
       !this.disposed &&
       !this.paused &&
-      (version === this.version || (this.buildingDraft && this.interactive))
+      (version === this.version ||
+        (this.buildingDraft &&
+          this.interactive &&
+          this.buildContentVersion === this.contentVersion))
     );
   }
   private clearRetained(): void {
@@ -666,7 +747,9 @@ export class BooleanComposite {
   private mesher: IncrementalMesher | null = null;
   private volume: SDFVolume | null = null;
   private layout: CompositeLayout | null = null;
+  private metadata: ReturnType<BooleanComposite["sourceMetadata"]> = [];
   private fingerprint = "";
+  private sourceVolumes: SdfLayer["volume"][] = [];
   private full = true;
   private regions: Bounds[] = [];
   private version = 0;
@@ -737,14 +820,19 @@ export class BooleanComposite {
       this.invalidate();
     }
   }
-  private metadataKey(): string {
-    return JSON.stringify(
-      this.previewLayers.map((l) => [
+  private sourceMetadata(layers = this.project.layerStack.compositionLayers) {
+    const colours =
+      this.options.colours !== false &&
+      layers.some(
+        (l) => l.booleanModifiers?.length || l.array?.enabled || !sculptPaint(l.volume).empty,
+      );
+    return layers.map((l) => ({
+      pose: l.transform,
+      source: [
         l.id,
         l.visible,
         l.operation,
         l.order,
-        l.transform,
         l.primitive,
         l.booleanModifiers,
         l.array,
@@ -753,16 +841,86 @@ export class BooleanComposite {
         l.volume.dimensions,
         l.volume.bounds,
         sculptPaint(l.volume).revision,
-      ]),
-    );
+        ...(colours ? this.paintBase(l).toArray() : []),
+      ],
+    }));
   }
   syncMetadata(): void {
+    if (this.disposed) return;
     if (!this.sourceCurrent()) throw new Error("Evaluation cancelled: source changed.");
-    const key = this.metadataKey();
-    if (key !== this.fingerprint) {
-      this.fingerprint = key;
-      this.invalidate();
+    const layers = this.project.layerStack.compositionLayers;
+    const next = this.sourceMetadata(layers);
+    const key = JSON.stringify(next);
+    const sameVolumes =
+      layers.length === this.sourceVolumes.length &&
+      layers.every((layer, i) => layer.volume === this.sourceVolumes[i]);
+    if (key === this.fingerprint && sameVolumes) return;
+    this.fingerprint = key;
+    this.sourceVolumes = layers.map((layer) => layer.volume);
+    const previous = this.metadata;
+    this.metadata = next.map(({ pose, source }) => ({
+      pose: copyTransform(pose),
+      // Detach primitive/modifier data, which callers can edit in place.
+      source: JSON.parse(JSON.stringify(source)),
+    }));
+    if (
+      sameVolumes &&
+      previous.every((entry, i) => JSON.stringify(entry.source) === JSON.stringify(next[i].source))
+    ) {
+      const moved = next.flatMap(({ pose }, i) =>
+        JSON.stringify(pose) === JSON.stringify(previous[i].pose) ? [] : [i],
+      );
+      if (
+        moved.length === 1 &&
+        !this.full &&
+        !this.running &&
+        !this.adaptive &&
+        !this.interactive &&
+        this.invalidateCutterPose(layers, layers[moved[0]], previous[moved[0]].pose)
+      )
+        return;
+      this.invalidatePose();
+    } else this.invalidate();
+  }
+  /** Only a leaf cutter used once as the first fold of a plain box is eligible.
+   * The left field is bounded below by minus the box's smallest half-width.
+   * Beyond that distance from both cutter poses, neither can win the fold. */
+  private invalidateCutterPose(
+    layers: readonly SdfLayer[],
+    cutter: SdfLayer,
+    previous: VolumeTransform,
+  ): boolean {
+    const primitive = leafSlabPrimitive(cutter);
+    if (!this.layout || !primitive || !this.options.boundedPreview) return false;
+    let target: SdfLayer | undefined;
+    for (const layer of layers) {
+      const active = layer.booleanModifiers?.filter((m) => m.enabled) ?? [];
+      const uses = active.filter((m) => m.sourceId === cutter.id);
+      if (!uses.length) continue;
+      if (
+        target ||
+        uses.length !== 1 ||
+        uses[0] !== active[0] ||
+        uses[0].operation !== "difference"
+      )
+        return false;
+      target = layer;
     }
+    if (!target || target.primitive?.kind !== "box" || target.array?.enabled) return false;
+    const depth =
+      Math.min(...primitiveDimensions(target.primitive)) * uniformScale(target.transform);
+    for (const pose of [previous, cutter.transform]) {
+      const bounds = primitiveWorldBounds(primitive, pose);
+      // Use a full width of padding, leaving slack beyond the half-width bound.
+      // Keep another lattice step for interpolated vertices and paint ownership.
+      const padding = depth + (2 * this.layout.extent) / (this.layout.resolution - 1);
+      for (let i = 0; i < 3; i++) {
+        bounds.min[i] -= padding;
+        bounds.max[i] += padding;
+      }
+      this.invalidateWorldRegion(bounds);
+    }
+    return true;
   }
   /** Allocate cache invalidation before an atomic source publication. */
   prepareInvalidation(): () => void {
@@ -770,25 +928,44 @@ export class BooleanComposite {
     return () => {
       this.full = true;
       this.regions = regions;
+      this.contentVersion++;
       this.version++;
       this.lastEdit = performance.now();
     };
   }
   invalidate(): void {
+    this.contentVersion++;
+    this.invalidatePose();
+  }
+  private invalidatePose(): void {
     this.full = true;
     this.regions = [];
     this.version++;
     this.lastEdit = performance.now();
   }
   invalidateLayer(layer: SdfLayer, bounds?: Bounds | null): void {
-    if (bounds === null || !layer.visible) return;
-    if (!bounds || !this.layout) {
+    if (bounds === null || (bounds && layer.primitive)) return;
+    const layers = this.project.layerStack.compositionLayers;
+    if (
+      !layer.visible &&
+      !layers.some((candidate) =>
+        candidate.booleanModifiers?.some((m) => m.enabled && m.sourceId === layer.id),
+      )
+    )
+      return;
+    if (
+      !bounds ||
+      !this.layout ||
+      layer.array?.enabled ||
+      bounds.min.some((v, i) => v <= 0 || bounds.max[i] >= layer.volume.dimensions[i] - 1)
+    ) {
+      // A boundary edit can change the clamped exterior throughout the lattice.
       this.invalidate();
       return;
     }
     const matrix = transformMatrix(layer.transform),
-      lo = [Infinity, Infinity, Infinity],
-      hi = [-Infinity, -Infinity, -Infinity],
+      lo: Bounds["min"] = [Infinity, Infinity, Infinity],
+      hi: Bounds["max"] = [-Infinity, -Infinity, -Infinity],
       point = new Vector3();
     for (const x of [bounds.min[0] - 1, bounds.max[0] + 1])
       for (const y of [bounds.min[1] - 1, bounds.max[1] + 1])
@@ -805,6 +982,11 @@ export class BooleanComposite {
             hi[i] = Math.max(hi[i], v);
           });
         }
+    this.contentVersion++;
+    this.invalidateWorldRegion({ min: lo, max: hi });
+  }
+  private invalidateWorldRegion({ min: lo, max: hi }: Bounds): void {
+    if (!this.layout) return;
     const { center, extent, resolution: n } = this.layout,
       h = (2 * extent) / (n - 1);
     const region = {
@@ -813,6 +995,7 @@ export class BooleanComposite {
         Math.min(n - 1, Math.ceil((v - center[i] + extent) / h)),
       ) as Bounds["max"],
     };
+    if (region.min.some((v, i) => v > region.max[i])) return;
     // Coalesce overlapping edits to keep long strokes bounded, preserving distant regions.
     const overlap = this.regions.find((r) =>
       r.min.every((v, i) => v <= region.max[i] + 1 && r.max[i] >= region.min[i] - 1),
@@ -862,6 +1045,7 @@ export class BooleanComposite {
     this.syncMetadata();
     if (this.running) return this.running;
     this.buildingDraft = this.interactive;
+    this.buildContentVersion = this.contentVersion;
     const profile = agentPerformanceEnabled();
     const started = profile ? performance.now() : 0;
     const build = this.build(progressive);
@@ -1002,12 +1186,19 @@ export class BooleanComposite {
         this.retained.surface.group.position.copy(this.retained.center).sub(this.group.position);
       this.layout = layout;
     }
-    const volume = this.volume!,
-      n = volume.resolution,
-      evaluate = prepareComposite(this.previewLayers),
+    const { volume, mesher, surface } = this;
+    if (!volume || !mesher || !surface) throw new Error("Boolean render cache is unavailable.");
+    const n = volume.resolution,
+      evaluate = prepareComposite(layers),
       regions = full
         ? [{ min: [0, 0, 0], max: [n - 1, n - 1, n - 1] } as Bounds]
         : this.regions.map((r) => ({ min: [...r.min], max: [...r.max] }) as Bounds);
+    const needsColours =
+      this.options.colours !== false &&
+      layers.some(
+        (l) => l.booleanModifiers?.length || l.array?.enabled || !sculptPaint(l.volume).empty,
+      );
+    const colour = needsColours ? prepareCompositeColour(layers, this.paintBase) : undefined;
     const totalSamples = regions.reduce(
       (total, region) =>
         total + region.max.reduce((count, max, axis) => count * (max - region.min[axis] + 1), 1),
@@ -1078,48 +1269,51 @@ export class BooleanComposite {
           }
         }
       }
-    if (full) this.mesher!.invalidate();
+    if (full) mesher.invalidate();
     else
       regions.forEach((r) => {
-        this.mesher!.invalidate(r);
+        mesher.invalidate(r);
       });
     const meshingProgress: BooleanPreviewProgress = {
       phase: "meshing",
       pass,
       completed: 0,
-      total: this.mesher!.pendingChunks,
+      total: mesher.pendingChunks,
     };
     this.buildProgress = meshingProgress;
     let meshingMs = 0,
       chunks = 0,
       totalChunks = 0,
       triangles = 0;
+    const meshBudgetMs = 3;
+    const maxChunksPerYield = 32;
+    let yieldStart = performance.now(),
+      chunksSinceYield = 0;
     for (;;) {
       const sliceStart = performance.now();
-      const update = this.mesher!.rebuildChunks(2, 3);
+      const update = mesher.rebuildChunks(2, Math.max(0, meshBudgetMs - (sliceStart - yieldStart)));
       if (!update) break;
       maxMeshingSliceMs = Math.max(maxMeshingSliceMs, performance.now() - sliceStart);
-      for (const u of update.updates) {
-        const result = await this.cooperativeColours(u.geometry, version);
-        if (!result || !this.buildCurrent(version)) {
-          this.full = true;
-          return false;
+      const hasSurface = update.updates.some((u) => u.geometry.getAttribute("position").count > 0);
+      if (colour && hasSurface) {
+        for (const u of update.updates) {
+          const result = await this.cooperativeColours(u.geometry, version, colour);
+          if (!result || !this.buildCurrent(version)) {
+            this.full = true;
+            return false;
+          }
+          if (result.colours) mesher.setChunkColours(u, result.colours);
+          maxMeshingSliceMs = Math.max(maxMeshingSliceMs, result.maxSliceMs);
         }
-        maxMeshingSliceMs = Math.max(maxMeshingSliceMs, result.maxSliceMs);
-        if (result.colours)
-          u.geometry.setAttribute("color", new BufferAttribute(result.colours, 3));
       }
       if (this.material instanceof MeshStandardMaterial) {
-        const enabled = this.project.layerStack.layers.some(
-          (l) => !!l.booleanModifiers?.length || !!l.array?.enabled || !sculptPaint(l.volume).empty,
-        );
-        if (enabled !== this.material.vertexColors) {
-          this.material.vertexColors = enabled;
+        if (needsColours !== this.material.vertexColors) {
+          this.material.vertexColors = needsColours;
           this.material.needsUpdate = true;
         }
-        if (enabled) this.material.color.set(0xffffff);
+        if (needsColours) this.material.color.set(0xffffff);
       }
-      this.surface!.update(update.updates);
+      surface.update(update.updates);
       meshingMs += update.stats.milliseconds;
       chunks += update.stats.chunks;
       meshingProgress.completed = chunks;
@@ -1130,7 +1324,7 @@ export class BooleanComposite {
         this.clearRetained();
         this.draftVersion = null;
         this.stats = null;
-        this.group.add(this.surface!.group);
+        this.group.add(surface.group);
       }
       if (this.trackedBytes > this.availableBytes())
         throw new Error("Boolean evaluation exceeds the available memory budget.");
@@ -1140,7 +1334,27 @@ export class BooleanComposite {
           `Boolean evaluation exceeds ${MAX_INTERMEDIATE_TRIANGLES.toLocaleString()} intermediate triangles (${triangles.toLocaleString()} reached). Reduce source complexity or export fewer parts.`,
         );
       }
+      chunksSinceYield += update.stats.chunks;
+      // Empty batches still publish removals and check admission. Let adjacent
+      // cheap batches share the deadline; retain a task boundary for surface
+      // work and for the final progress notification.
+      if (!hasSurface) {
+        const elapsed = performance.now() - yieldStart;
+        maxMeshingSliceMs = Math.max(maxMeshingSliceMs, elapsed);
+        if (
+          this.options.boundedPreview &&
+          elapsed < meshBudgetMs &&
+          chunksSinceYield < maxChunksPerYield &&
+          mesher.pendingChunks > 0 &&
+          version === this.version &&
+          !this.paused &&
+          !this.disposed
+        )
+          continue;
+      }
       await yieldBuild();
+      yieldStart = performance.now();
+      chunksSinceYield = 0;
       this.syncMetadata();
       if (!this.buildCurrent(version)) {
         this.full = true;
@@ -1148,10 +1362,13 @@ export class BooleanComposite {
       }
     }
     this.clearRetained();
-    this.group.add(this.surface!.group);
+    this.group.add(surface.group);
     this.draftVersion = draft ? version : null;
     this.full = draft || version !== this.version;
-    if (!this.full) this.regions = [];
+    if (!this.full) {
+      this.regions = [];
+      if (!this.interactive) this.adaptive = false;
+    }
     this.group.updateWorldMatrix(true, true);
     this.stats = {
       samplingMs,
@@ -1189,7 +1406,8 @@ export class BooleanComposite {
     const mesher = this.mesher,
       version = this.version,
       volume = this.volume,
-      metadata = this.metadataKey();
+      sources = this.sourceVolumes,
+      metadata = this.fingerprint;
     return [
       {
         name: "Boolean Result",
@@ -1205,15 +1423,25 @@ export class BooleanComposite {
           .map((u) => ({
             positions: u.geometry.getAttribute("position").array as Float32Array,
             normals: u.geometry.getAttribute("normal").array as Float32Array,
-            colours: this.options.colours === false ? undefined : this.paintAttributes(u.geometry),
+            colours: u.geometry.getAttribute("color")?.array as Float32Array | undefined,
           })),
-        current: () =>
-          this.metadataKey() === metadata &&
-          !this.disposed &&
-          !this.pending &&
-          !this.running &&
-          this.version === version &&
-          this.volume === volume,
+        current: () => {
+          if (
+            this.disposed ||
+            this.pending ||
+            this.running ||
+            this.version !== version ||
+            this.volume !== volume ||
+            !this.sourceCurrent()
+          )
+            return false;
+          const layers = this.project.layerStack.compositionLayers;
+          return (
+            layers.length === sources.length &&
+            layers.every((layer, i) => layer.volume === sources[i]) &&
+            JSON.stringify(this.sourceMetadata(layers)) === metadata
+          );
+        },
       },
     ];
   }
@@ -1250,5 +1478,7 @@ export class BooleanComposite {
     this.volume = null;
     this.layout = null;
     this.regions = [];
+    this.sourceVolumes = [];
+    this.metadata = [];
   }
 }
