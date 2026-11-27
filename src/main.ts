@@ -82,6 +82,7 @@ import { ShapeGhost } from "./shape-preview";
 import { ShapeRotationTool } from "./shape-rotation";
 import { createShapeLibraryUI } from "./shape-ui";
 import type { ShapeDefinition } from "./shapes";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { StabilityMetrics } from "./stability-metrics";
 import {
   hitInParentSpace,
@@ -401,7 +402,11 @@ function syncStats() {
         : "COMPOSITE PENDING",
     );
   } else {
-    ui.meshInfo(triangles, volumeLabel(runtime.layer.volume));
+    const volume = runtime.layer.volume;
+    ui.meshInfo(
+      triangles,
+      volumeLabel(volume) + (volume instanceof SparseSDFVolume ? " · Sparse trial" : ""),
+    );
     ui.performance(
       `BRUSH ${runtime.brushMs.toFixed(1)} ms (AVG ${(runtime.brushTotal / Math.max(1, runtime.brushFrames)).toFixed(1)}) · MESH ${runtime.lastMeshMs.toFixed(1)} ms · ${runtime.lastChanged}/${runtime.totalChunks} CHUNKS`,
     );
@@ -1257,9 +1262,13 @@ ui.onLayerAction(async (action, id, value) => {
   componentsUI?.deselect();
   stop();
   try {
-    if (action === "new" || action === "new-empty")
+    if (action === "new" || action === "new-empty" || action === "new-sparse")
       return await heavy("Creating independent layer…", () => {
-        layers.create(Number(value), action === "new-empty");
+        layers.create(
+          Number(value),
+          action !== "new",
+          action === "new-sparse" ? "sparse" : "dense",
+        );
         ui.projectMessage("Independent layer created. Overlapping volumes remain separate.");
       });
     if (action === "duplicate") {
@@ -1595,6 +1604,7 @@ async function openProjectFile(
   expectedProjectId?: string,
   libraryOpen = false,
   replacementConfirmed = false,
+  newSparse = false,
 ): Promise<boolean> {
   if (loadingProject || projectLoadAbort || (!libraryOpen && xrBlocked()) || !layers.recoveryReady)
     return false;
@@ -1648,7 +1658,7 @@ async function openProjectFile(
       assertStagingBytes(
         snapshot.layers.reduce((sum, layer) => sum + 2 * layer.values.byteLength, 0),
       );
-    const project = hydrateProject(snapshot);
+    const project = hydrateProject(snapshot, newSparse);
     if (libraryOpen) project.name = file.name.replace(/\.form$/i, "");
     candidate = new IndependentLayers(project, new LayerDisplayPreferences(), true);
     const checkStaging = () => {
@@ -3316,8 +3326,15 @@ const projectBrowser = new ProjectBrowser(
       }
       return captureProjectThumbnail(renderer, layers.group);
     },
-    open: async (data, name) => {
-      const opened = await openProjectFile(new File([], `${name}.form`), data, undefined, true);
+    open: async (data, name, newSparse) => {
+      const opened = await openProjectFile(
+        new File([], `${name}.form`),
+        data,
+        undefined,
+        true,
+        false,
+        newSparse,
+      );
       if (opened) libraryDialog.close();
       return opened;
     },
@@ -4068,6 +4085,7 @@ renderer.setAnimationLoop((now, frame) => {
     lastAssemblyUISync = now;
   }
   const cpuStart = performance.now();
+  if (!loadingProject && layers.drainSparseMeshes() && !frame) syncStats();
   grid.position.y =
     enclosureViewportGuide.sync(
       enclosureControlsUI?.viewportTarget(),

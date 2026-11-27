@@ -156,6 +156,7 @@ for (const name of [
   "clay-stroke-session",
   "xr-clay-stroke",
   "sdf",
+  "sparse-sdf",
   "stroke",
   "mesh",
   "history",

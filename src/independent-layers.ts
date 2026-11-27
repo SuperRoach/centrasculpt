@@ -92,6 +92,7 @@ import { reflectPoint, SDFVolume, validateMirrorPlane } from "./sdf";
 import { prepareShape } from "./shape-library";
 import { prepareStampSteps } from "./shape-stamp";
 import { validateShapeDefinition } from "./shapes";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { ClayStroke } from "./stroke";
 import { buildExportMesh, ChunkSurface } from "./surface";
 import type { VolumeTransform } from "./transform";
@@ -140,7 +141,7 @@ export class LayerRuntime {
     this.mesher = new IncrementalMesher(volume);
     this.history = new SculptHistory(volume, 32 * 1024 * 1024, 100, layer.id, () => layer.editable);
     try {
-      if (!deferMesh) this.rebuild();
+      if (!deferMesh) this.rebuild(Infinity, Infinity);
     } catch (error) {
       this.primitiveGeometry?.dispose();
       this.mesher.dispose();
@@ -149,8 +150,8 @@ export class LayerRuntime {
     }
   }
   rebuild(
-    maxChunks = Infinity,
-    maxMilliseconds = Infinity,
+    maxChunks = this.volume instanceof SparseSDFVolume ? 4 : Infinity,
+    maxMilliseconds = this.volume instanceof SparseSDFVolume ? 2 : Infinity,
     cached?: ReadonlyMap<number, BufferGeometry>,
   ): boolean {
     const measured = !!this.metrics?.enabled,
@@ -423,7 +424,10 @@ export class IndependentLayers {
   }
   setUndoMeshCacheEnabled(enabled: boolean): void {
     this.undoMeshEnabled = enabled;
-    if (!enabled) this.undoMesh = undefined;
+    if (!enabled) {
+      this.undoMesh = undefined;
+      for (const runtime of this.runtimes.values()) runtime.mesher.clearUndoRestore();
+    }
   }
   private captureUndoMesh(runtime: LayerRuntime): void {
     if (!this.undoMeshEnabled || runtime.mesher.pendingChunks || runtime.primitiveSource) return;
@@ -895,7 +899,10 @@ export class IndependentLayers {
           held.add(cut.positive);
         }
     for (const r of held) {
-      voxelBytes += volumeSampleCount(r.volume) * 8;
+      voxelBytes +=
+        r.volume instanceof SparseSDFVolume
+          ? r.volume.residentBytes + r.volume.scratchBytes + r.mesher.haloBytes
+          : volumeSampleCount(r.volume) * 8;
       historyBytes += r.history.memoryBytes;
       pendingHistoryBytes += r.history.pendingMemoryEstimate;
       geometryBytes += r.mesher.ownedGeometryBytes;
@@ -962,6 +969,7 @@ export class IndependentLayers {
       bytes +=
         volumeSampleCount(r.volume) * 8 +
         (r.primitiveSource ? r.mesher.ownedGeometryBytes : 0) +
+        r.mesher.undoRestoreBytes +
         r.history.memoryBytes +
         sculptMask(r.volume).memoryBytes +
         sculptPaint(r.volume).memoryBytes;
@@ -1002,6 +1010,15 @@ export class IndependentLayers {
       this.backgroundBytes +
       this.undoMeshCacheBytes
     );
+  }
+  /** Drain released sparse work in bounded FIFO slices, including inactive layers. */
+  drainSparseMeshes(): boolean {
+    for (const runtime of this.runtimes.values()) {
+      if (runtime.layer.id === this.strokeLayer || !(runtime.volume instanceof SparseSDFVolume))
+        continue;
+      if (runtime.rebuild()) return true;
+    }
+    return false;
   }
   get pendingChunks(): number {
     let count = 0;
@@ -1352,11 +1369,23 @@ export class IndependentLayers {
         now[a] = Math.max(...points.map((p) => [p.x, p.y, p.z][a]));
         before[a] = Math.min(...points.map((p) => [p.x, p.y, p.z][a]));
       }
-      this.growRuntime(runtime, {
+      const footprint = {
         min: now.map((v, a) => Math.min(v, before[a]) - radius) as [number, number, number],
         max: now.map((v, a) => Math.max(v, before[a]) + radius) as [number, number, number],
-      });
+      };
+      if (runtime.volume instanceof SparseSDFVolume) {
+        const limits = runtime.volume.bounds,
+          margin = runtime.volume.step * (freeSpace ? 3 : 1);
+        if (
+          footprint.min.some(
+            (v, a) => v < limits.min[a] + margin || footprint.max[a] > limits.max[a] - margin,
+          )
+        )
+          throw new Error("Clay would reach the experimental sparse layer boundary.");
+      } else this.growRuntime(runtime, footprint);
     }
+    const sparse = runtime.volume instanceof SparseSDFVolume;
+    const record = sparse ? this.sparseStrokeRecorder(runtime) : runtime.history.record;
     const dirty = this.stroke.apply(
       runtime.layer.volume,
       point,
@@ -1364,10 +1393,10 @@ export class IndependentLayers {
       mode,
       strength,
       dt,
-      runtime.history.record,
+      record,
       hardness,
       (bounds) => {
-        if (!this.maskBefore && !this.paintBefore) runtime.mesher.invalidate(bounds);
+        if (!sparse && !this.maskBefore && !this.paintBefore) runtime.mesher.invalidate(bounds);
       },
       freeSpace,
       this.strokeMirror,
@@ -1379,6 +1408,14 @@ export class IndependentLayers {
     runtime.brushFrames++;
     this.metrics.record("brush", runtime.brushMs);
     return dirty;
+  }
+  private sparseStrokeRecorder(runtime: LayerRuntime) {
+    const invalidate = runtime.mesher.stampInvalidator(),
+      tolerance = -runtime.volume.step * Number.EPSILON * 32;
+    return (index: number, before: number, after: number) => {
+      runtime.history.record(index, before, after);
+      invalidate(index, before < tolerance !== after < tolerance);
+    };
   }
   /** Preserve the Pinch entry point for existing clients/tests. */
   *applyPinchSteps(
@@ -1405,6 +1442,7 @@ export class IndependentLayers {
       throw new Error("Stroke kind changed; cancel before switching paint tools.");
     if ((mode === "mask" || mode === "mask-erase") !== !!this.maskBefore)
       throw new Error("Stroke kind changed; cancel before switching mask/sculpt tools.");
+    const sparse = runtime.volume instanceof SparseSDFVolume;
     const work = this.stroke.applySteps(
       runtime.volume,
       point,
@@ -1412,10 +1450,10 @@ export class IndependentLayers {
       mode,
       strength,
       dt,
-      runtime.history.record,
+      sparse ? this.sparseStrokeRecorder(runtime) : runtime.history.record,
       hardness,
       (b) => {
-        if (!this.maskBefore && !this.paintBefore) runtime.mesher.invalidate(b);
+        if (!sparse && !this.maskBefore && !this.paintBefore) runtime.mesher.invalidate(b);
       },
       false,
       this.strokeMirror,
@@ -1550,7 +1588,11 @@ export class IndependentLayers {
       return;
     }
     const dirty = runtime.history.cancel((index, before, after) =>
-      runtime.mesher.invalidateSample(index, before < 0 !== after < 0),
+      runtime.mesher.invalidateSample(
+        index,
+        before < -runtime.volume.step * Number.EPSILON * 32 !==
+          after < -runtime.volume.step * Number.EPSILON * 32,
+      ),
     );
     this.composite.invalidateLayer(runtime.layer, dirty);
     const overhead = this.metrics.enabled ? performance.now() - started : 0;
@@ -1984,7 +2026,11 @@ export class IndependentLayers {
           if (paint) sculptPaint(runtime.volume).restore(paint);
         }
         const record = (index: number, before: number, after: number) =>
-          runtime.mesher.invalidateSample(index, before < 0 !== after < 0);
+          runtime.mesher.invalidateSample(
+            index,
+            before < -runtime.volume.step * Number.EPSILON * 32 !==
+              after < -runtime.volume.step * Number.EPSILON * 32,
+          );
         const dirty = redo ? runtime.history.redo(record) : runtime.history.undo(record);
         if (!dirty) throw new Error("History payload unavailable.");
         const snapshot = this.undoMesh;
@@ -1997,7 +2043,11 @@ export class IndependentLayers {
           snapshot.mesher === runtime.mesher
             ? snapshot.chunks
             : undefined;
-        runtime.rebuild(Infinity, Infinity, cached);
+        if (cached && snapshot && runtime.volume instanceof SparseSDFVolume) {
+          runtime.mesher.queueUndoRestore(cached, snapshot.bytes);
+          runtime.rebuild();
+        } else if (cached) runtime.rebuild(Infinity, Infinity, cached);
+        else runtime.rebuild();
         this.composite.invalidateLayer(layer, dirty);
       }
     }
@@ -2058,6 +2108,8 @@ export class IndependentLayers {
       throw new Error("Stamp stroke target changed.");
     const runtime = this.editableRuntime(this.project.activeLayerId);
     this.assertSculptable(runtime.layer);
+    if (runtime.volume instanceof SparseSDFVolume)
+      throw new Error("Shape Stamp requires a dense sculpt layer.");
     const start = performance.now(),
       definition = validateShapeDefinition(value);
     if (definition.targetLayerId !== runtime.layer.id)
@@ -2187,14 +2239,19 @@ export class IndependentLayers {
     }
     return result;
   }
-  create(resolution = 64, empty = false): SdfLayer {
+  create(resolution = 64, empty = false, backend: "dense" | "sparse" = "dense"): SdfLayer {
     this.assertAvailable();
     this.finishStroke();
     this.finishTransform();
     if (![64, 128, 192].includes(resolution)) throw new Error("Choose 64³, 128³ or 192³.");
     this.assertCapacity(resolution ** 3, undefined, 1);
-    const volume = new SDFVolume(resolution, 1.6, !empty);
-    if (empty) volume.values.fill(volume.extent * 4);
+    if (backend === "sparse" && !empty)
+      throw new Error("Sparse sculpting requires a new empty layer.");
+    const volume =
+      backend === "sparse"
+        ? new SparseSDFVolume(resolution)
+        : new SDFVolume(resolution, 1.6, !empty);
+    if (empty && volume instanceof SDFVolume) volume.values.fill(volume.extent * 4);
     const layer = new SdfLayer(volume, {
       name: this.uniqueName(`Layer ${this.project.layerStack.layers.length + 1}`),
       order: this.project.layerStack.layers.length,

@@ -31,6 +31,7 @@ export type TransformUIAction =
 export type LayerAction =
   | "new"
   | "new-empty"
+  | "new-sparse"
   | "select"
   | "rename"
   | "duplicate"
@@ -61,7 +62,7 @@ export function createUI() {
     <button id="export">Export all layers</button><button id="export-boolean">Export unified boolean</button><button id="reset">↺ &nbsp; Reset sphere</button><p>All layers exports visible sculpt layers as separate parts. Hidden layers and references are excluded. Unified boolean exports the composed result.</p></div><div id="xr-diagnostics-slot"></div></aside>
     <div id="viewport"><button type="button" id="cycle-render-style" class="render-style-toggle" aria-label="Cycle rendering style" title="Cycle Normal, Matte and Glossy (I)"><span id="cycle-render-style-icon" aria-hidden="true">${renderStyleIcons.normal}</span><span id="cycle-render-style-name">Normal</span></button><button type="button" id="cycle-camera-view" class="viewport-label" title="Cycle Perspective, Top, Side and Bottom views" aria-label="Camera view: Perspective. Switch to Top"><span class="dot" aria-hidden="true"></span> <span id="camera-view-label">Perspective</span></button><button type="button" id="frame-selected" class="frame-selected" title="Center and fit the selected layer or group (.) · Right drag to orbit · Shift + right drag to pan" aria-keyshortcuts="." aria-label="Frame selected layer or group">Frame selected <kbd>.</kbd></button><div id="status" role="status">Ready to sculpt</div><div id="viewport-toast" class="viewport-toast" role="status" aria-live="polite" hidden></div><div class="bottom-label"><span id="mesh-info"></span><span id="rebuild-info">Measuring mesh…</span></div></div><aside class="layers-panel"><h2>Layers</h2>
     <label id="surface-view-label">SURFACE VIEW</label><div id="composition-mode" class="surface-view-toggle" role="group" aria-labelledby="surface-view-label"><button type="button" data-surface-view="separate" aria-pressed="true" title="Show separate layers">Layers</button><button type="button" data-surface-view="boolean" aria-pressed="false" title="Show Boolean preview. Desktop editing adapts detail to frame rate, then refines after release.">Boolean</button></div><p id="composite-info" class="layers-hint composite-activity" role="status" aria-busy="false" data-busy="false" hidden><span class="composite-activity-logo" aria-hidden="true">${activityLogo}</span><span class="composite-activity-text"></span></p><label id="render-style-label">RENDERING STYLE</label><div id="render-style" class="render-style-options" role="group" aria-labelledby="render-style-label" aria-describedby="render-style-help"><button type="button" data-render-style="normal" aria-label="Normal · Clay" aria-pressed="true" title="Normal · Clay">${renderStyleIcons.normal}</button><button type="button" data-render-style="matte" aria-label="Matte · Soft reflections" aria-pressed="false" title="Matte · Soft reflections">${renderStyleIcons.matte}</button><button type="button" data-render-style="glossy" aria-label="Glossy · Surface inspection" aria-pressed="false" title="Glossy · Surface inspection">${renderStyleIcons.glossy}</button></div><span id="render-style-help" class="sr-only">Lighting style changes the viewport only; painted colours are exported. Press I to cycle.</span><label id="viewport-mode-label">LAYER DISPLAY COLOURS</label><div id="viewport-mode" class="viewport-mode-toggle" role="group" aria-labelledby="viewport-mode-label"><button type="button" data-viewport-mode="clay" aria-pressed="false" title="Use a single clay colour">Clay</button><button type="button" data-viewport-mode="layer-colours" aria-pressed="true" title="Colour each layer">Layer Colours</button></div>
-    <div class="new-layer-controls"><select id="new-layer-resolution" aria-label="New layer resolution"><option value="64">64³</option><option value="128">128³</option><option value="192">192³</option></select><select id="new-layer-contents" aria-label="New layer contents"><option value="empty">Empty clay volume</option><option value="sphere">Starter sphere</option></select><button id="new-layer">＋ New layer</button></div>
+    <div class="new-layer-controls"><select id="new-layer-resolution" aria-label="New layer resolution"><option value="64">64³</option><option value="128">128³</option><option value="192">192³</option></select><select id="new-layer-contents" aria-label="New layer contents"><option value="empty">Empty clay volume</option><option value="sphere">Starter sphere</option><option value="sparse">Empty clay volume (experimental sparse)</option></select><button id="new-layer">＋ New layer</button></div>
     <div class="layer-geometry-actions"><button id="cut-plane" title="Split layers with a plane">Plane Cut…</button><button id="bake-layers">Bake / Merge…</button></div><div id="bake-running" hidden><p id="bake-progress" role="status"></p><button id="cancel-bake">Cancel Bake</button></div>
     <section class="transform-panel active-layer-tools"><label>ACTIVE LAYER TOOLS</label><div class="transform-modes"><button data-tool="sculpt" aria-pressed="true" title="Sculpt (B)"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19c2-4 4-5 8-5s6 2 8 5M4 21h16M14 4l6 6-6 6-4 1 1-4zM13 6l6 6"/></svg>Sculpt (B)</button><button data-tool="translate" aria-pressed="false" title="Move (W): drag a layer surface to move it freely; hold E/D/C to constrain to X/Y/Z"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"/></svg>Move (W)</button><button data-tool="rotate" aria-pressed="false" title="Rotate (E): drag a layer surface for free rotation; hold R/F/V to constrain to X/Y/Z"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7A9 9 0 1 0 21 15M20 2v6h-6"/></svg>Rotate (E)</button><button data-tool="scale" aria-pressed="false" title="Resize primitive dimensions with local axes: Box/Tapered box/Pyramid width/height/depth; Cylinder/Cone diameter/height; Sphere/ellipsoid axes; Capsule diameter/overall height; Torus ring radius/tube diameter. Other layers scale uniformly."><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6M15 21h6v-6M3 3l7 7M21 21l-7-7"/></svg>Scale (R)</button></div>
 
@@ -181,17 +182,14 @@ export function createUI() {
     if (row && input.dataset.action === "colour")
       layerAction("colour", row.dataset.layerId!, input.value);
   });
-  document
-    .getElementById("new-layer")!
-    .addEventListener("click", () =>
-      layerAction(
-        document.querySelector<HTMLSelectElement>("#new-layer-contents")!.value === "empty"
-          ? "new-empty"
-          : "new",
-        "",
-        document.querySelector<HTMLSelectElement>("#new-layer-resolution")!.value,
-      ),
+  document.getElementById("new-layer")!.addEventListener("click", () => {
+    const contents = document.querySelector<HTMLSelectElement>("#new-layer-contents")!.value;
+    layerAction(
+      contents === "sparse" ? "new-sparse" : contents === "empty" ? "new-empty" : "new",
+      "",
+      document.querySelector<HTMLSelectElement>("#new-layer-resolution")!.value,
     );
+  });
   document.getElementById("viewport-mode")!.addEventListener("click", (event) => {
     const button = (event.target as Element).closest<HTMLButtonElement>("[data-viewport-mode]");
     if (button) layerAction("mode", "", button.dataset.viewportMode!);

@@ -137,6 +137,7 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
             ? [
                 ["sphere", "Starter sphere"],
                 ["empty", "Empty scene"],
+                ["sparse", "Empty scene (experimental sparse)"],
               ]
             : [
                 ["64", "64³ · Default"],
@@ -146,8 +147,10 @@ export function renderProjectLibrary(dialog: HTMLDialogElement, browser: Project
         for (const [value, text] of choices) select.add(new Option(text, value));
         select.value = String(browser[kind]);
         select.onchange = () => {
-          if (kind === "contents") browser.contents = select.value;
-          else browser.resolution = Number(select.value);
+          const value = select.value;
+          if (kind === "resolution") browser.resolution = Number(value);
+          else if (value === "sphere" || value === "empty" || value === "sparse")
+            browser.contents = value;
         };
         label.append(select);
         options.append(label);

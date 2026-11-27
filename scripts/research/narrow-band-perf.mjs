@@ -126,14 +126,15 @@ export function createHalo(cache, lo, hi, maxCells, step = 1, extent = 0) {
     const origin = lo.map((n, i) => n - start[i]);
     const [ox, oy, oz] = origin;
     const index = (x, y, z) => x + ox + nx * (y + oy + ny * (z + oz));
-    const normalVolume = { values, shape: fullShape, minimum: lo, step, extent, index };
+    const normalVolume = { shape: fullShape, minimum: lo, step, extent };
+    const sample = (x, y, z) => values[index(x, y, z)];
     return {
       step,
       dimensions: max.map((n, i) => n - min[i] + 1),
       getDenseView: () => values,
       index: (x, y, z) => index(x + min[0], y + min[1], z + min[2]),
       coordinate: (i, axis) => fullCoordinate(i + min[axis], axis),
-      normalAt: (point) => SDFVolume.prototype.normalAt.call(normalVolume, point),
+      normalAt: (point) => SDFVolume.prototype.normalAt.call(normalVolume, point, sample),
     };
   }
   return { region, stats, scratchBytes: values.byteLength };

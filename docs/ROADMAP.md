@@ -160,6 +160,13 @@ See [Native project format](NATIVE_PROJECT_FORMAT.md).
 
 ## Phase 9 — Deferred sparse SDF performance and integration
 
+**Phase 9.1** adds an opt-in sparse backend for newly created empty sculpts.
+Dense remains the default. Compact and admitted metre traces match exact
+dense geometry. Compact CPU latency, physical Quest measurements, and
+the 1 mm metre-scale trial remain gating work.
+[Implementation, measurements and reproduction](PHASE_9_1_SPARSE_SDF.md)
+
+
 Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
 and the implemented Undo cache stay in Phase 8. An adaptive brush candidate
 needs to preserve frame pacing before integration. Measure peak memory with

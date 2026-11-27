@@ -14,7 +14,7 @@ export interface BrowserPort {
   /** True only while the initial disposable starter scene is untouched. */
   pristine?(): boolean;
   encode(): Promise<ArrayBuffer>;
-  open(data: ArrayBuffer, name: string): Promise<boolean>;
+  open(data: ArrayBuffer, name: string, newSparse?: boolean): Promise<boolean>;
   thumbnail?(): string | undefined | Promise<string | undefined>;
   create(resolution: number, contents: string): Promise<ArrayBuffer>;
   handoff(action: "import" | "export", data?: ArrayBuffer, name?: string): Promise<void>;
@@ -34,7 +34,7 @@ export class ProjectBrowser {
   form: "new" | "save-as" | "rename" | null = null;
   draft = "";
   resolution = 64;
-  contents = "sphere";
+  contents: "sphere" | "empty" | "sparse" = "sphere";
   private pending: (() => Promise<void>) | null = null;
   confirmation: "replace" | "delete" | null = null;
   private deleteTarget: ProjectRecord | null = null;
@@ -233,7 +233,8 @@ export class ProjectBrowser {
         return;
       }
       if (action === "contents") {
-        this.contents = this.contents === "sphere" ? "empty" : "sphere";
+        this.contents =
+          this.contents === "sphere" ? "empty" : this.contents === "empty" ? "sparse" : "sphere";
         return;
       }
       if (action === "submit") {
@@ -258,10 +259,13 @@ export class ProjectBrowser {
           this.form = null;
           await this.replace(async () => {
             const key = this.port.key(),
-              data = renameNative(await this.port.create(resolution, contents), name);
+              data = renameNative(
+                await this.port.create(resolution, contents === "sparse" ? "empty" : contents),
+                name,
+              );
             if (key !== this.port.key() || !this.port.ready())
               throw new Error("New project cancelled: current work changed.");
-            if (await this.port.open(data, name)) {
+            if (await this.port.open(data, name, contents === "sparse")) {
               this.adopted(null, name);
               this.selected = null;
               this.status = "New project · save to keep it in this browser.";
@@ -377,7 +381,14 @@ export class ProjectBrowser {
       add("clear-name", "Clear name", 310, 805, 250, 80);
       if (this.form === "new") {
         add("resolution", `${this.resolution}³`, 580, 805, 250, 80);
-        add("contents", this.contents, 850, 805, 262, 80);
+        add(
+          "contents",
+          this.contents === "sparse" ? "Empty · sparse trial" : this.contents,
+          850,
+          805,
+          262,
+          80,
+        );
       }
       add("submit", "Confirm", 40, 930);
       add("cancel", "Cancel", 588, 930);

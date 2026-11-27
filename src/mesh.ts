@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry } from "three";
 import { assertExactDenseGrowth } from "./dense-growth";
 import type { Bounds } from "./sdf";
 import { SDFVolume } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import type { VolumeStore } from "./volume-store";
 
 type Point = [number, number, number] & { normal?: [number, number, number] };
@@ -28,11 +29,32 @@ const tetrahedra = [
 function extractRegion(
   volume: VolumeStore,
   bounds: Bounds,
+  scratch?: Float32Array,
 ): { positions: number[]; normals: number[] } {
   const positions: number[] = [],
     normals: number[] = [];
   const dense = volume.getDenseView(),
     zeroTolerance = volume.step * Number.EPSILON * 32;
+  let haloRead: ((x: number, y: number, z: number) => number) | undefined;
+  if (scratch && volume instanceof SparseSDFVolume) {
+    const dimensions = volume.dimensions,
+      min = bounds.min.map((v) => Math.max(0, v - 2)) as Point,
+      max = bounds.max.map((v, a) => Math.min(dimensions[a] - 1, v + 2)) as Point,
+      width = max[0] - min[0] + 1,
+      height = max[1] - min[1] + 1;
+    volume.gather({ min, max }, scratch);
+    haloRead = (x, y, z) => scratch[x - min[0] + width * (y - min[1] + height * (z - min[2]))];
+  }
+  const read =
+    haloRead ??
+    ((x: number, y: number, z: number) => {
+      const index = volume.index(x, y, z);
+      return dense ? dense[index] : volume.readVoxel(index);
+    });
+  const normal =
+    haloRead && volume instanceof SparseSDFVolume
+      ? (point: Point) => volume.normalAt(point, haloRead)
+      : (point: Point) => volume.normalAt(point);
   // Read every inclusive sample once before allocating per-cell intersections.
   // No cached occupancy: trusted replay and direct dense writes remain valid.
   let negative = false,
@@ -40,8 +62,7 @@ function extractRegion(
   occupancy: for (let z = bounds.min[2]; z <= bounds.max[2]; z++)
     for (let y = bounds.min[1]; y <= bounds.max[1]; y++)
       for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
-        const id = volume.index(x, y, z),
-          v = dense ? dense[id] : volume.readVoxel(id);
+        const v = read(x, y, z);
         if (v < -zeroTolerance) negative = true;
         else exterior = true;
         if (negative && exterior) break occupancy;
@@ -53,7 +74,7 @@ function extractRegion(
   function pushVertex(vertex: Point): void {
     positions.push(...vertex);
     // biome-ignore lint/suspicious/noAssignInExpressions: Lazy normal caching avoids repeating the volume sample.
-    normals.push(...(vertex.normal ??= volume.normalAt(vertex)));
+    normals.push(...(vertex.normal ??= normal(vertex)));
   }
   function triangle(
     a: Point,
@@ -89,9 +110,8 @@ function extractRegion(
         // Treat only machine-roundoff distances as zero, consistently in every cell.
         // Analytic planar SDFs can otherwise disagree in sign at an exact face.
         for (let i = 0; i < 8; i++) {
-          const c = corners[i],
-            index = volume.index(x + c[0], y + c[1], z + c[2]);
-          values[i] = dense ? dense[index] : volume.readVoxel(index);
+          const c = corners[i];
+          values[i] = read(x + c[0], y + c[1], z + c[2]);
         }
         // Most cells in a thin sculpt are empty: keep that fast path free of
         // tolerance work and edge/gradient allocations.
@@ -209,8 +229,22 @@ type ChunkLayout = {
 export class IncrementalMesher {
   private chunks: MeshChunk[] = [];
   private dirty = new Set<number>();
+  private readonly halo?: Float32Array;
+  private undoRestore?: { chunks: ReadonlyMap<number, BufferGeometry>; bytes: number };
+  get undoRestoreBytes(): number {
+    return this.undoRestore?.bytes ?? 0;
+  }
+  queueUndoRestore(chunks: ReadonlyMap<number, BufferGeometry>, bytes: number): void {
+    if (this.dirty.size) this.undoRestore = { chunks, bytes };
+  }
+  clearUndoRestore(): void {
+    this.undoRestore = undefined;
+  }
   private borrowed = new Set<BufferGeometry>();
   private ownedBytes = 0;
+  get haloBytes(): number {
+    return this.halo?.byteLength ?? 0;
+  }
   get ownedGeometryBytes(): number {
     return this.ownedBytes;
   }
@@ -240,6 +274,11 @@ export class IncrementalMesher {
     if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new Error("Invalid chunk size");
     this.layout = this.buildLayout(volume);
     this.chunks = this.layout.chunks;
+    if (volume instanceof SparseSDFVolume) {
+      const width = Math.min(chunkSize + 5, volume.resolution);
+      this.halo = new Float32Array(width ** 3);
+      if (!volume.residentBytes) return;
+    }
     this.invalidate();
   }
   private buildLayout(volume: VolumeStore, reuse: MeshChunk[] = []): ChunkLayout {
@@ -382,6 +421,7 @@ export class IncrementalMesher {
   invalidate(bounds?: Bounds | null): void {
     this.editRevision++;
     if (bounds === null) return;
+    this.clearUndoRestore();
     if (!bounds) {
       this.chunks.forEach((_, id) => {
         this.dirty.add(id);
@@ -403,6 +443,7 @@ export class IncrementalMesher {
         for (let x = lo[0]; x <= hi[0]; x++) visit(this.idAt(x, y, z));
   }
   invalidateSample(index: number, signChanged: boolean): void {
+    this.clearUndoRestore();
     this.editRevision++;
     const [nx, ny] = this.layout.dimensions,
       p = [index % nx, Math.floor(index / nx) % ny, Math.floor(index / (nx * ny))] as Point;
@@ -455,6 +496,7 @@ export class IncrementalMesher {
       throw new Error("Invalid meshing batch budget.");
     if (this.disposed) throw new Error("Mesher is disposed.");
     if (!this.dirty.size) return null;
+    cached ??= this.undoRestore?.chunks;
     this.editRevision++;
     const start = performance.now(),
       updates: ChunkUpdate[] = [];
@@ -475,7 +517,9 @@ export class IncrementalMesher {
         geometry.boundingSphere = previous.boundingSphere?.clone() ?? null;
         geometry.boundingBox = previous.boundingBox?.clone() ?? null;
       } else {
-        geometry = geometryFromRegions(cached ? [] : [extractRegion(this.volume, chunk.bounds)]);
+        geometry = geometryFromRegions(
+          cached ? [] : [extractRegion(this.volume, chunk.bounds, this.halo)],
+        );
       }
       this.triangleCount +=
         (geometry.getAttribute("position").count -
@@ -492,6 +536,7 @@ export class IncrementalMesher {
       updates.push({ id, bounds: chunk.bounds, geometry });
       this.dirty.delete(id);
     }
+    if (!this.dirty.size) this.clearUndoRestore();
     const milliseconds = performance.now() - start;
     this.rebuilds++;
     this.totalMilliseconds += milliseconds;
@@ -578,6 +623,7 @@ export class IncrementalMesher {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearUndoRestore();
     for (const c of this.chunks)
       if (c.geometry && !this.borrowed.has(c.geometry)) c.geometry.dispose();
     this.borrowed.clear();

@@ -44,9 +44,9 @@ export function mergeBounds(a: Bounds | null, b: Bounds | null): Bounds | null {
 export type DenseLatticeLayout = { dimensions: Vec3; latticeMin: Vec3 };
 export type DenseAllocator = (samples: number) => Float32Array;
 /** Negative values are inside. Samples on the fixed volume boundary stay positive. */
-export class SDFVolume implements VolumeStore {
-  readonly values: Float32Array;
-  private readonly scratch: Float32Array;
+export abstract class LatticeVolume implements VolumeStore {
+  protected abstract brushScratch(samples: number): Float32Array;
+  protected reserveWrites(_bounds: Bounds, _values?: Float32Array): void {}
   readonly step: number;
   private readonly shape: Vec3;
   private readonly minimum: Vec3;
@@ -56,7 +56,6 @@ export class SDFVolume implements VolumeStore {
     readonly extent = 1.6,
     initializeSphere = true,
     layout?: DenseLatticeLayout,
-    allocate: DenseAllocator = (n) => new Float32Array(n),
     derivedExport = false,
   ) {
     if (
@@ -83,17 +82,6 @@ export class SDFVolume implements VolumeStore {
       throw new Error("Dense lattice allocation exceeds supported limits.");
     if (layout && !this.minimum.every((v, a) => v <= 0 && v + this.shape[a] >= resolution))
       throw new Error("Growth layout must contain the initial lattice.");
-    this.values = allocate(this.shape.reduce((a, b) => a * b, 1));
-    this.scratch = allocate(this.values.length);
-    if (
-      !(this.values instanceof Float32Array) ||
-      !(this.scratch instanceof Float32Array) ||
-      this.values.length !== this.shape.reduce((a, b) => a * b, 1) ||
-      this.scratch.length !== this.values.length ||
-      this.values.buffer === this.scratch.buffer
-    )
-      throw new Error("Invalid independent dense storage allocation.");
-    if (initializeSphere) this.reset();
   }
   index(x: number, y: number, z: number): number {
     return x + this.shape[0] * (y + this.shape[1] * z);
@@ -116,22 +104,14 @@ export class SDFVolume implements VolumeStore {
       max: this.shape.map((n, a) => this.coordinate(n - 1, a)) as Vec3,
     };
   }
-  readVoxel(index: number): number {
-    return this.values[index];
+  abstract readVoxel(index: number): number;
+  abstract writeVoxel(index: number, value: number): void;
+  abstract getDenseView(): Float32Array | undefined;
+  readSample(x: number, y: number, z: number): number {
+    return this.readVoxel(this.index(x, y, z));
   }
-  writeVoxel(index: number, value: number): void {
-    this.values[index] = value;
-  }
-  getDenseView(): Float32Array {
-    return this.values;
-  }
-  sharesStorageWith(other: SDFVolume): boolean {
-    return (
-      this.values.buffer === other.values.buffer ||
-      this.values.buffer === other.scratch.buffer ||
-      this.scratch.buffer === other.values.buffer ||
-      this.scratch.buffer === other.scratch.buffer
-    );
+  protected writeSample(x: number, y: number, z: number, value: number): void {
+    this.writeVoxel(this.index(x, y, z), value);
   }
   private regionDimensions(bounds: Bounds): Vec3 {
     if (
@@ -159,7 +139,7 @@ export class SDFVolume implements VolumeStore {
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++)
       for (let y = bounds.min[1]; y <= bounds.max[1]; y++)
         for (let x = bounds.min[0]; x <= bounds.max[0]; x++)
-          values[offset++] = this.values[this.index(x, y, z)];
+          values[offset++] = this.readSample(x, y, z);
     return { bounds: { min: [...bounds.min], max: [...bounds.max] }, dimensions, values };
   }
   writeRegion(region: VolumeRegion, record?: VoxelChangeListener): Bounds | null {
@@ -188,6 +168,7 @@ export class SDFVolume implements VolumeStore {
           )
             throw new Error("Invalid voxel region values.");
         }
+    this.reserveWrites(region.bounds, region.values);
     offset = 0;
     let changed = false;
     for (let z = min[2]; z <= max[2]; z++)
@@ -195,10 +176,10 @@ export class SDFVolume implements VolumeStore {
         for (let x = min[0]; x <= max[0]; x++) {
           const index = this.index(x, y, z),
             next = region.values[offset++],
-            before = this.values[index];
+            before = this.readVoxel(index);
           if (before !== next) {
             record?.(index, before, next);
-            this.values[index] = next;
+            this.writeVoxel(index, next);
             changed = true;
           }
         }
@@ -218,7 +199,7 @@ export class SDFVolume implements VolumeStore {
       for (let y = 0; y < 2; y++)
         for (let x = 0; x < 2; x++)
           value +=
-            this.values[this.index(base[0] + x, base[1] + y, base[2] + z)] *
+            this.readSample(base[0] + x, base[1] + y, base[2] + z) *
             (x ? t[0] : 1 - t[0]) *
             (y ? t[1] : 1 - t[1]) *
             (z ? t[2] : 1 - t[2]);
@@ -246,7 +227,7 @@ export class SDFVolume implements VolumeStore {
       for (let j = 0; j < 2; j++)
         for (let i = 0; i < 2; i++)
           value +=
-            this.values[this.index(x + i, y + j, z + k)] *
+            this.readSample(x + i, y + j, z + k) *
             (i ? tx : 1 - tx) *
             (j ? ty : 1 - ty) *
             (k ? tz : 1 - tz);
@@ -273,6 +254,7 @@ export class SDFVolume implements VolumeStore {
   }
   reset(record?: VoxelChangeListener): void {
     const [nx, ny, nz] = this.shape;
+    this.reserveWrites({ min: [0, 0, 0], max: [nx - 1, ny - 1, nz - 1] });
     for (let z = 0; z < nz; z++)
       for (let y = 0; y < ny; y++)
         for (let x = 0; x < nx; x++) {
@@ -284,12 +266,14 @@ export class SDFVolume implements VolumeStore {
                 Math.min(0.85, this.extent * 0.55),
             ),
           );
-          if (next !== this.values[i]) record?.(i, this.values[i], next);
-          this.values[i] = next;
+          if (next !== this.readVoxel(i)) record?.(i, this.readVoxel(i), next);
+          this.writeVoxel(i, next);
         }
   }
+  private readonly sampleAtIndex = (x: number, y: number, z: number) => this.readSample(x, y, z);
   /** Trilinear interpolation of central-difference grid gradients; shared positions have shared normals. */
-  normalAt(point: readonly number[]): [number, number, number] {
+  normalAt(point: readonly number[], read?: (x: number, y: number, z: number) => number): Vec3 {
+    const sample = read ?? this.sampleAtIndex;
     const [nx, ny, nz] = this.shape,
       gradient = [0, 0, 0];
     const grid = point.map((v, a) =>
@@ -316,15 +300,9 @@ export class SDFVolume implements VolumeStore {
             yp = Math.min(ny - 1, y + 1);
           const zm = Math.max(0, z - 1),
             zp = Math.min(nz - 1, z + 1);
-          gradient[0] +=
-            (weight * (this.values[this.index(xp, y, z)] - this.values[this.index(xm, y, z)])) /
-            (xp - xm);
-          gradient[1] +=
-            (weight * (this.values[this.index(x, yp, z)] - this.values[this.index(x, ym, z)])) /
-            (yp - ym);
-          gradient[2] +=
-            (weight * (this.values[this.index(x, y, zp)] - this.values[this.index(x, y, zm)])) /
-            (zp - zm);
+          gradient[0] += (weight * (sample(xp, y, z) - sample(xm, y, z))) / (xp - xm);
+          gradient[1] += (weight * (sample(x, yp, z) - sample(x, ym, z))) / (yp - ym);
+          gradient[2] += (weight * (sample(x, y, zp) - sample(x, y, zm))) / (zp - zm);
         }
     const length = Math.hypot(...gradient);
     return length > 1e-12
@@ -508,7 +486,7 @@ export class SDFVolume implements VolumeStore {
             x <= Math.min(nx - 1, bounds.max[0] + halo);
             x++
           )
-            if (this.values[this.index(x, y, z)] <= 0) {
+            if (this.readSample(x, y, z) <= 0) {
               material = true;
               break;
             }
@@ -530,7 +508,11 @@ export class SDFVolume implements VolumeStore {
     )
       return null;
     const pinchPlanes = advanced ? [primary!, ...(secondary ? [secondary] : [])] : [];
+    if (bounds.min.some((v, a) => v > bounds.max[a])) return null;
+    const [sx, sy, sz] = bounds.max.map((v, a) => v - bounds.min[a] + 1);
+    const scratch = this.brushScratch(sx * sy * sz);
     let changed = false,
+      offset = 0,
       processed = 0;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++)
       for (let y = bounds.min[1]; y <= bounds.max[1]; y++)
@@ -545,7 +527,8 @@ export class SDFVolume implements VolumeStore {
               distance(px, py, pz, start, center),
               mirror?.enabled ? distance(px, py, pz, reflectedStart, reflected) : Infinity,
             ) / radius;
-          let next = this.values[i];
+          const before = this.readSample(x, y, z);
+          let next = before;
           if (d < 1 || (freeSpace && mode !== "smooth")) {
             // Smooth always retains its original gentle diffusion kernel.
             const inner = mode === "smooth" ? 0 : Math.max(0, Math.min(1, hardness)) * 0.9;
@@ -605,12 +588,12 @@ export class SDFVolume implements VolumeStore {
               }
             } else if (mode === "smooth") {
               const average =
-                (this.values[i - 1] +
-                  this.values[i + 1] +
-                  this.values[i - nx] +
-                  this.values[i + nx] +
-                  this.values[i - nx * ny] +
-                  this.values[i + nx * ny]) /
+                (this.readSample(x - 1, y, z) +
+                  this.readSample(x + 1, y, z) +
+                  this.readSample(x, y - 1, z) +
+                  this.readSample(x, y + 1, z) +
+                  this.readSample(x, y, z - 1) +
+                  this.readSample(x, y, z + 1)) /
                 6;
               next += (average - next) * amount * falloff;
             } else if (freeSpace) {
@@ -630,19 +613,72 @@ export class SDFVolume implements VolumeStore {
             } else next += (mode === "add" ? -1 : 1) * amount * falloff;
           }
           // Bounded fields remain finite even through prolonged repeated strokes.
-          next = protection.blend(i, this.values[i], next);
-          this.scratch[i] = Math.max(-this.extent * 4, Math.min(this.extent * 4, next));
-          changed ||= this.scratch[i] !== this.values[i];
+          next = protection.blend(i, before, next);
+          scratch[offset] = Math.max(-this.extent * 4, Math.min(this.extent * 4, next));
+          changed ||= scratch[offset] !== before;
+          offset++;
         }
     if (!changed) return null;
+    this.reserveWrites(bounds, scratch);
+    offset = 0;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++)
       for (let y = bounds.min[1]; y <= bounds.max[1]; y++)
         for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
           if (resampling && processed++ % 128 === 127) yield;
           const i = this.index(x, y, z);
-          if (this.values[i] !== this.scratch[i]) record?.(i, this.values[i], this.scratch[i]);
-          this.values[i] = this.scratch[i];
+          const next = scratch[offset++],
+            before = this.readSample(x, y, z);
+          if (before !== next) {
+            record?.(i, before, next);
+            this.writeSample(x, y, z, next);
+          }
         }
     return bounds;
+  }
+}
+
+export class SDFVolume extends LatticeVolume {
+  readonly values: Float32Array;
+  private readonly scratch: Float32Array;
+  constructor(
+    resolution = 64,
+    extent = 1.6,
+    initializeSphere = true,
+    layout?: DenseLatticeLayout,
+    allocate: DenseAllocator = (n) => new Float32Array(n),
+    derivedExport = false,
+  ) {
+    super(resolution, extent, initializeSphere, layout, derivedExport);
+    this.values = allocate(this.dimensions.reduce((a, b) => a * b, 1));
+    this.scratch = allocate(this.values.length);
+    if (
+      !(this.values instanceof Float32Array) ||
+      !(this.scratch instanceof Float32Array) ||
+      this.values.length !== this.dimensions.reduce((a, b) => a * b, 1) ||
+      this.scratch.length !== this.values.length ||
+      this.values.buffer === this.scratch.buffer
+    )
+      throw new Error("Invalid independent dense storage allocation.");
+    if (initializeSphere) this.reset();
+  }
+  protected brushScratch(): Float32Array {
+    return this.scratch;
+  }
+  readVoxel(index: number): number {
+    return this.values[index];
+  }
+  writeVoxel(index: number, value: number): void {
+    this.values[index] = value;
+  }
+  getDenseView(): Float32Array {
+    return this.values;
+  }
+  sharesStorageWith(other: SDFVolume): boolean {
+    return (
+      this.values.buffer === other.values.buffer ||
+      this.values.buffer === other.scratch.buffer ||
+      this.scratch.buffer === other.values.buffer ||
+      this.scratch.buffer === other.scratch.buffer
+    );
   }
 }
