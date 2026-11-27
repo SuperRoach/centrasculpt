@@ -7,6 +7,8 @@ import { openSculptProject, saveSculptProject } from "../work/test-build/project
 import { captureProject } from "../work/test-build/project-snapshot.mjs";
 import { hydrateProject, projectTransfer } from "../work/test-build/project-transfer.mjs";
 import { newProjectData } from "../work/test-build/project-workflow.mjs";
+import { sculptMask } from "../work/test-build/sculpt-mask.mjs";
+import { sculptPaint } from "../work/test-build/sculpt-paint.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 
@@ -179,5 +181,177 @@ test("coalesced exact dirty work keeps FIFO age and requeues a chunk after publi
     assert.equal(mesher.oldestPendingAt, undefined);
   } finally {
     mesher.dispose();
+  }
+});
+
+function checkpoint(editor) {
+  const volume = editor.active.volume;
+  return {
+    field: bits(volume),
+    mesh: mesh(editor.active),
+    mask: sculptMask(volume).snapshot(),
+    paint: sculptPaint(volume).snapshot(),
+  };
+}
+
+for (const mode of [
+  "inflate",
+  "flatten",
+  "scrape",
+  "pinch",
+  "crease",
+  "mask",
+  "mask-erase",
+  "paint",
+  "paint-erase",
+]) {
+  test(`sparse ${mode} matches dense across a negative page seam with offset mirroring`, () => {
+    const results = [];
+    const point = { x: -0.38, y: 0.38, z: -0.19 };
+    for (const backend of ["dense", "sparse"]) {
+      const editor = new IndependentLayers(createBaseProject(new SDFVolume(33), settings));
+      try {
+        const layer = editor.create(64, true, backend);
+        editor.setUndoMeshCacheEnabled(true);
+        Object.assign(editor.symmetry, { enabled: true, axis: "x", offset: -0.1 });
+        const draw = (tool) => {
+          editor.beginStroke(tool.startsWith("paint") ? "paint" : tool.startsWith("mask"));
+          if (["inflate", "flatten", "scrape"].includes(tool)) assert(sample(editor, tool, point));
+          else {
+            const work = editor.applyResamplingSteps(tool, point, 0.48, 0.8, 1 / 60, 0.6);
+            let step = work.next();
+            while (!step.done) step = work.next();
+            assert(step.value);
+          }
+          editor.finishStroke();
+          drain(editor);
+        };
+        editor.beginStroke();
+        assert(sample(editor, "add", { x: point.x, y: 0, z: point.z }));
+        editor.finishStroke();
+        drain(editor);
+        if (mode === "mask-erase") draw("mask");
+        if (mode === "paint-erase") draw("paint");
+        const before = checkpoint(editor);
+
+        draw(mode);
+        const after = checkpoint(editor);
+        assert.notDeepEqual(after, before);
+        if (mode.startsWith("paint") || mode.startsWith("mask")) {
+          assert.deepEqual(after.field, before.field);
+          assert.deepEqual(after.mesh, before.mesh);
+        } else {
+          assert.notDeepEqual(after.field, before.field);
+          assert.notDeepEqual(after.mesh, before.mesh);
+        }
+
+        assert.equal(editor.undo(), layer.id);
+        drain(editor);
+        assert.deepEqual(checkpoint(editor), before);
+        assert.equal(editor.undo(true), layer.id);
+        drain(editor);
+        assert.deepEqual(checkpoint(editor), after);
+        const reopened = openSculptProject(saveSculptProject(editor.project)).layerStack.get(
+          layer.id,
+        );
+        assert.deepEqual(bits(reopened.volume), after.field);
+        assert.deepEqual(sculptMask(reopened.volume).snapshot(), after.mask);
+        assert.deepEqual(sculptPaint(reopened.volume).snapshot(), after.paint);
+        results.push(after);
+      } finally {
+        editor.dispose();
+      }
+    }
+    assert.deepEqual(results[1], results[0]);
+  });
+}
+
+for (const mode of ["pinch", "crease", "mask", "paint"]) {
+  test(`cancelled sparse ${mode} cannot resume into a new stroke`, () => {
+    const editor = new IndependentLayers(createBaseProject(new SDFVolume(33), settings));
+    try {
+      editor.create(64, true, "sparse");
+      editor.beginStroke();
+      assert(sample(editor, "add"));
+      editor.finishStroke();
+      drain(editor);
+      const before = checkpoint(editor);
+      const kind = mode === "paint" ? "paint" : mode === "mask";
+      editor.beginStroke(kind);
+      const work = editor.applyResamplingSteps(
+        mode,
+        { x: 0, y: 0.36, z: 0 },
+        0.48,
+        0.8,
+        1 / 60,
+        0.6,
+      );
+      let step = work.next();
+      assert.equal(step.done, false);
+      const volume = editor.active.volume;
+      const channel =
+        mode === "paint" ? sculptPaint(volume) : mode === "mask" ? sculptMask(volume) : null;
+      if (channel) {
+        while (!step.done && !channel.memoryBytes) step = work.next();
+        assert(channel.memoryBytes > 0);
+        assert.equal(step.done, false);
+      }
+      editor.cancelStroke();
+      drain(editor);
+      editor.beginStroke(kind);
+      assert.deepEqual(work.next(), { done: true, value: null });
+      editor.finishStroke();
+      drain(editor);
+      assert.deepEqual(checkpoint(editor), before);
+    } finally {
+      editor.dispose();
+    }
+  });
+}
+
+test("sparse brush refuses an over-budget dab before fields, pages or the queue change", () => {
+  const editor = new IndependentLayers(createBaseProject(new SDFVolume(33), settings));
+  try {
+    const layer = editor.create(64, true, "sparse");
+    editor.beginStroke();
+    editor.active.history.pendingBudgetBytes = 160;
+    assert.throws(() => sample(editor, "add"), /history memory safety limit/);
+    assert.equal(layer.volume.allocatedPages, 0);
+    assert.equal(editor.pendingChunks, 0);
+    assert.equal(editor.active.history.pendingMemoryEstimate, 0);
+    editor.cancelStroke();
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("sparse resampling evaluates read-only and publishes one complete dab", () => {
+  const editor = new IndependentLayers(createBaseProject(new SDFVolume(33), settings));
+  try {
+    editor.create(64, true, "sparse");
+    editor.beginStroke();
+    assert(sample(editor, "add"));
+    editor.finishStroke();
+    drain(editor);
+    const before = bits(editor.active.volume);
+    const point = { x: -0.02, y: 0.41, z: 0.02 };
+    editor.beginStroke();
+    const work = editor.applyResamplingSteps("crease", point, 0.24, 0.8, 1 / 120, 0.6);
+    let step = work.next();
+    assert.equal(step.done, false);
+    assert.throws(() => sample(editor, "crease", point), /pending brush sample/);
+    while (!step.done) {
+      assert.equal(editor.pendingChunks, 0);
+      assert.equal(editor.active.history.pendingMemoryEstimate, 0);
+      step = work.next();
+    }
+    assert(step.value);
+    assert(editor.pendingChunks > 0);
+    assert.notDeepEqual(bits(editor.active.volume), before);
+    editor.cancelStroke();
+    drain(editor);
+    assert.deepEqual(bits(editor.active.volume), before);
+  } finally {
+    editor.dispose();
   }
 });

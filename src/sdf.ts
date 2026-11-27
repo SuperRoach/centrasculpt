@@ -3,7 +3,10 @@ import { sculptMask } from "./sculpt-mask";
 import type { Vec3, VolumeTransform } from "./transform";
 import { identityTransform, toLocal, transformMatrix } from "./transform";
 import type { VolumeBounds, VolumeRegion, VolumeStore } from "./volume-store";
-export type VoxelChangeListener = (index: number, before: number, after: number) => void;
+export type VoxelChangeListener = ((index: number, before: number, after: number) => void) & {
+  hasPendingSample?: (index: number) => boolean;
+  reservePendingSamples?: (additional: number) => void;
+};
 export type BrushMode =
   | "paint"
   | "paint-erase"
@@ -46,6 +49,7 @@ export type DenseAllocator = (samples: number) => Float32Array;
 /** Negative values are inside. Samples on the fixed volume boundary stay positive. */
 export abstract class LatticeVolume implements VolumeStore {
   protected abstract brushScratch(samples: number): Float32Array;
+  protected readonly yieldDuringBrushPublication: boolean = true;
   protected reserveWrites(_bounds: Bounds, _values?: Float32Array): void {}
   readonly step: number;
   private readonly shape: Vec3;
@@ -342,7 +346,7 @@ export abstract class LatticeVolume implements VolumeStore {
     while (!step.done) step = work.next();
     return step.value;
   }
-  /** Pinch/Crease resampling yields bounded batches before and during history publication.
+  /** Pinch/Crease evaluate in bounded batches. Dense also slices publication.
    * Existing synchronous callers drain the identical generator. */
   *brushSteps(
     center: Point3,
@@ -513,7 +517,8 @@ export abstract class LatticeVolume implements VolumeStore {
     const scratch = this.brushScratch(sx * sy * sz);
     let changed = false,
       offset = 0,
-      processed = 0;
+      processed = 0,
+      additionalHistorySamples = 0;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++)
       for (let y = bounds.min[1]; y <= bounds.max[1]; y++)
         for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
@@ -615,16 +620,20 @@ export abstract class LatticeVolume implements VolumeStore {
           // Bounded fields remain finite even through prolonged repeated strokes.
           next = protection.blend(i, before, next);
           scratch[offset] = Math.max(-this.extent * 4, Math.min(this.extent * 4, next));
-          changed ||= scratch[offset] !== before;
+          if (scratch[offset] !== before) {
+            changed = true;
+            if (record?.hasPendingSample?.(i) === false) additionalHistorySamples++;
+          }
           offset++;
         }
     if (!changed) return null;
+    record?.reservePendingSamples?.(additionalHistorySamples);
     this.reserveWrites(bounds, scratch);
     offset = 0;
     for (let z = bounds.min[2]; z <= bounds.max[2]; z++)
       for (let y = bounds.min[1]; y <= bounds.max[1]; y++)
         for (let x = bounds.min[0]; x <= bounds.max[0]; x++) {
-          if (resampling && processed++ % 128 === 127) yield;
+          if (resampling && this.yieldDuringBrushPublication && processed++ % 128 === 127) yield;
           const i = this.index(x, y, z);
           const next = scratch[offset++],
             before = this.readSample(x, y, z);

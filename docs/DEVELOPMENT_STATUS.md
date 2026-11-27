@@ -1,3 +1,14 @@
+# Phase 9.3 — Experimental sparse tools
+
+Verified exact parity for Inflate, Flatten, Scrape, Pinch, Crease, mask and
+paint with local mirroring. Sparse geometry dabs preflight history and
+page capacity before publication. Suspended edits stop when their owning
+stroke ends. Personal Shape snapshots retain exact resident source pages.
+Sparse Stamp targets and Move-family reconstruction remain pending. Dense
+remains the default while paired Quest parity, peak memory with Undo and
+1 mm metre-scale support remain open.
+[Tool matrix, compact bust and validation](PHASE_9_3_SPARSE_TOOLS.md)
+
 # Phase 8.9c — Boolean rendering performance
 
 Boolean builds share colour evaluator preparation across chunks, skip

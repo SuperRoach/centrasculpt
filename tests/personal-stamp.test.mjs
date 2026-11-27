@@ -17,6 +17,7 @@ import { StampClickGesture } from "../work/test-build/shape-placement.mjs";
 import { ShapeGhost, ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
 import { prepareStamp } from "../work/test-build/shape-stamp.mjs";
 import { defineShape, validateShapeDefinition } from "../work/test-build/shapes.mjs";
+import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 import { identityTransform, transformMatrix } from "../work/test-build/transform.mjs";
 
 const settings = {
@@ -250,4 +251,51 @@ test("expanded rectangular master preserves its lattice, saved orientation and u
   assert.deepEqual(v.values, before);
   assert.deepEqual(v.dimensions, [41, 33, 33]);
   assert.deepEqual(v.latticeMin, [-8, 0, 0]);
+});
+
+test("transformed sparse personal source snapshots exact resident pages and matches dense CSG", () => {
+  const dense = new SDFVolume(64, 1.6, false);
+  dense.values.fill(dense.extent * 4);
+  const sparse = new SparseSDFVolume(64);
+  const tokens = [dense, sparse].map((volume) => {
+    assert(volume.brush({ x: -0.42, y: -0.22, z: 0.12 }, 0.37, "add", 0.01, undefined, 0.6, true));
+    const project = createBaseProject(volume, settings);
+    project.activeLayer.transform = {
+      position: [0.15, -0.03, 0.08],
+      rotation: [0.2, -0.3, 0.5],
+      scale: [0.8, 0.8, 0.8],
+    };
+    return createPersonalStamp(project.activeLayer, 0.75);
+  });
+  const [denseSource, sparseSource] = tokens.map(personalStampSource);
+  assert.deepEqual(sparseSource.bounds, denseSource.bounds);
+  assert.deepEqual(sparseSource.positions, denseSource.positions);
+  assert.equal(
+    denseSource.bytes - sparseSource.bytes,
+    dense.values.byteLength - sparse.residentBytes,
+  );
+  assert(sparseSource.bytes < denseSource.bytes);
+  const center = { x: -0.42, y: -0.22, z: 0.12 };
+  assert(sparse.brush(center, 0.5, "subtract", 0.01, undefined, 1, true));
+
+  const target = new IndependentLayers(createBaseProject(new SDFVolume(33), settings));
+  try {
+    target.symmetry = { enabled: true, axis: "x", offset: -0.1 };
+    for (const operation of ["add", "subtract"]) {
+      const [expected, actual] = tokens.map((token) =>
+        prepareStamp(
+          target.active.layer,
+          definition(target, token, operation),
+          Infinity,
+          target.symmetry,
+        ),
+      );
+      assert(expected.indices.length > 0);
+      assert.deepEqual(actual.indices, expected.indices);
+      assert.deepEqual(actual.before, expected.before);
+      assert.deepEqual(actual.after, expected.after);
+    }
+  } finally {
+    target.dispose();
+  }
 });

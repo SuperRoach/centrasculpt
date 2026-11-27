@@ -169,6 +169,12 @@ the 1 mm metre-scale trial remain gating work.
 **Phase 9.2** adds live sparse diagnostics, age-ordered release service and pagewise halo gathering.
 [Interactive measurements and remaining acceptance gates](PHASE_9_2_SPARSE_PERFORMANCE.md)
 
+**Phase 9.3** verifies exact local brush, mask, paint and local mirror parity
+and hardens sparse dab publication and cancellation. Personal Shape source
+capture copies resident pages. Sparse stamp targets and Move-family
+reconstruction remain pending. Dense remains the default pending paired
+Quest parity, measured peak memory with Undo and 1 mm metre-scale support.
+[Tool matrix and compact bust measurements](PHASE_9_3_SPARSE_TOOLS.md)
 
 Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
 and the implemented Undo cache stay in Phase 8. An adaptive brush candidate

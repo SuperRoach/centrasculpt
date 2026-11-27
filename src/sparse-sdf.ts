@@ -5,6 +5,7 @@ const MAX_BRUSH_SAMPLES = 2 * 1024 ** 2;
 
 /** Pages remain resident for the volume's lifetime so history replay needs no allocation. */
 export class SparseSDFVolume extends LatticeVolume {
+  protected override readonly yieldDuringBrushPublication = false;
   private scratch = new Float32Array(0);
   private readonly pages = new Map<number, Float32Array>();
   private readonly axisPages: number;
@@ -56,6 +57,12 @@ export class SparseSDFVolume extends LatticeVolume {
       page = this.pages.get(key);
     }
     if (page) page[this.offset(x, y, z)] = next;
+  }
+  /** Copy only resident samples for a detached exact source. */
+  captureSamples(): (x: number, y: number, z: number) => number {
+    const snapshot = new SparseSDFVolume(this.resolution, this.extent, this.maxPages);
+    for (const [key, page] of this.pages) snapshot.pages.set(key, page.slice());
+    return snapshot.readSample.bind(snapshot);
   }
   getDenseView(): undefined {
     return undefined;

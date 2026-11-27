@@ -784,6 +784,8 @@ export class IndependentLayers {
   }
 
   private readonly stroke = new ClayStroke();
+  private strokeGeneration = 0;
+  private resamplingGeneration?: number;
   constructor(
     readonly project: SculptProject,
     readonly display = new LayerDisplayPreferences(),
@@ -1335,8 +1337,7 @@ export class IndependentLayers {
     );
     this.strokeLayer = runtime.layer.id;
     this.strokeMirror = { ...this.symmetry };
-    this.stroke.reset();
-    this.strokePoint = null;
+    this.resetStrokePath();
     this.metrics.beginStroke();
   }
   applyStroke(
@@ -1369,6 +1370,8 @@ export class IndependentLayers {
     freeSpace = false,
   ): Bounds | null {
     if (!this.strokeLayer) return null;
+    if (this.resamplingGeneration === this.strokeGeneration)
+      throw new Error("Finish the pending brush sample first.");
     const runtime = this.editableRuntime(this.strokeLayer);
     if ((mode === "paint" || mode === "paint-erase") !== !!this.paintBefore)
       throw new Error("Stroke kind changed; cancel before switching paint tools.");
@@ -1443,10 +1446,17 @@ export class IndependentLayers {
   }
   private sparseStrokeRecorder(runtime: LayerRuntime) {
     const invalidate = this.replayInvalidator(runtime);
-    return (index: number, before: number, after: number) => {
-      runtime.history.record(index, before, after);
-      invalidate(index, before, after);
-    };
+    return Object.assign(
+      (index: number, before: number, after: number) => {
+        runtime.history.record(index, before, after);
+        invalidate(index, before, after);
+      },
+      {
+        hasPendingSample: (index: number) => runtime.history.hasPendingSample(index),
+        reservePendingSamples: (additional: number) =>
+          runtime.history.reservePendingSamples(additional),
+      },
+    );
   }
   private replayInvalidator(runtime: LayerRuntime) {
     const invalidate = runtime.mesher.stampInvalidator(),
@@ -1480,6 +1490,9 @@ export class IndependentLayers {
     if ((mode === "mask" || mode === "mask-erase") !== !!this.maskBefore)
       throw new Error("Stroke kind changed; cancel before switching mask/sculpt tools.");
     const sparse = runtime.volume instanceof SparseSDFVolume;
+    const generation = this.strokeGeneration;
+    if (this.resamplingGeneration === generation)
+      throw new Error("Finish the pending brush sample first.");
     const work = this.stroke.applySteps(
       runtime.volume,
       point,
@@ -1497,12 +1510,21 @@ export class IndependentLayers {
     );
     let step: IteratorResult<void, Bounds | null>,
       cpu = 0;
-    do {
-      const start = performance.now();
-      step = work.next();
-      cpu += performance.now() - start;
-      if (!step.done) yield;
-    } while (!step.done);
+    this.resamplingGeneration = generation;
+    try {
+      do {
+        const start = performance.now();
+        step = work.next();
+        cpu += performance.now() - start;
+        if (!step.done) {
+          yield;
+          if (generation !== this.strokeGeneration) return null;
+        }
+      } while (!step.done);
+    } finally {
+      work.return(null);
+      if (this.resamplingGeneration === generation) this.resamplingGeneration = undefined;
+    }
     if (
       (this.maskBefore || this.paintBefore) &&
       this.trackedBytes >
@@ -1520,6 +1542,10 @@ export class IndependentLayers {
     return dirty;
   }
   breakStrokePath(): void {
+    this.resetStrokePath();
+  }
+  private resetStrokePath(): void {
+    this.strokeGeneration++;
     this.stroke.reset();
     this.strokePoint = null;
   }
@@ -1533,8 +1559,7 @@ export class IndependentLayers {
         after = paint.snapshot();
       this.paintBefore = null;
       this.strokeLayer = null;
-      this.stroke.reset();
-      this.strokePoint = null;
+      this.resetStrokePath();
       if (
         before.some(
           (c, k) =>
@@ -1556,8 +1581,7 @@ export class IndependentLayers {
         before = this.maskBefore;
       this.maskBefore = null;
       this.strokeLayer = null;
-      this.stroke.reset();
-      this.strokePoint = null;
+      this.resetStrokePath();
       const after = mask.snapshot();
       if (
         before.base !== after.base ||
@@ -1582,8 +1606,7 @@ export class IndependentLayers {
       throw error;
     }
     this.strokeLayer = null;
-    this.stroke.reset();
-    this.strokePoint = null;
+    this.resetStrokePath();
     const snapshot = this.undoMesh;
     const priorEntry = this.past.at(-1);
     this.undoMesh = undefined;
@@ -1608,8 +1631,7 @@ export class IndependentLayers {
     const runtime = this.runtime(this.strokeLayer),
       started = this.metrics.enabled ? performance.now() : 0;
     this.strokeLayer = null;
-    this.stroke.reset();
-    this.strokePoint = null;
+    this.resetStrokePath();
     if (this.paintBefore) {
       sculptPaint(runtime.volume).restore(this.paintBefore);
       this.paintBefore = null;

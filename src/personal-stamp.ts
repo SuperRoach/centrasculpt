@@ -1,6 +1,7 @@
 import type { SdfLayer } from "./layers";
 import { IncrementalMesher } from "./mesh";
 import type { Point3 } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import type { Vec3 } from "./transform";
 import { transformMatrix, uniformScale, validateTransform } from "./transform";
 
@@ -44,13 +45,13 @@ export function createPersonalStamp(
     inverse = matrix.clone().invert().elements,
     volume = layer.volume,
     count = volume.dimensions.reduce((a, b) => a * b, 1),
-    dense = volume.getDenseView(),
-    values = (() => {
-      if (count * 4 > maxBytes) throw new Error("Personal stamp exceeds memory safety limits.");
-      return dense
-        ? dense.slice()
-        : Float32Array.from({ length: count }, (_, i) => volume.readVoxel(i));
-    })(),
+    sourceBytes = volume instanceof SparseSDFVolume ? volume.residentBytes : count * 4;
+  if (sourceBytes > maxBytes) throw new Error("Personal stamp exceeds memory safety limits.");
+  const dense = volume.getDenseView(),
+    sparseRead = volume instanceof SparseSDFVolume ? volume.captureSamples() : undefined,
+    values = sparseRead
+      ? undefined
+      : (dense?.slice() ?? Float32Array.from({ length: count }, (_, i) => volume.readVoxel(i))),
     dims = volume.dimensions,
     bounds = volume.bounds,
     step = volume.step,
@@ -71,7 +72,7 @@ export function createPersonalStamp(
         const attribute = chunk.geometry.getAttribute("position"),
           e = matrix.elements;
         positionCount += attribute.count * 3;
-        if (values.byteLength + positionCount * 4 * 12 > maxBytes)
+        if (sourceBytes + positionCount * 4 * 12 > maxBytes)
           throw new Error("Personal stamp preview exceeds memory safety limits; detail was kept.");
         positions.push(Float32Array.from(attribute.array));
         for (let i = 0; i < attribute.count; i++) {
@@ -139,7 +140,9 @@ export function createPersonalStamp(
       for (let j = 0; j < 2; j++)
         for (let i = 0; i < 2; i++)
           value +=
-            values[bx + i + dims[0] * (by + j + dims[1] * (bz + k))] *
+            (values
+              ? values[bx + i + dims[0] * (by + j + dims[1] * (bz + k))]
+              : sparseRead!(bx + i, by + j, bz + k)) *
             (i ? tx : 1 - tx) *
             (j ? ty : 1 - ty) *
             (k ? tz : 1 - tz);
@@ -163,7 +166,7 @@ export function createPersonalStamp(
     positions: geometry,
     // Includes the source positions and conservative capacity for two live ghosts
     // (position, normal and edge buffers); pending trails share those buffers.
-    bytes: values.byteLength + geometry.byteLength * 12,
+    bytes: sourceBytes + geometry.byteLength * 12,
     sample,
   });
   return token;

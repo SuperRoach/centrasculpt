@@ -8,13 +8,22 @@ import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 import { strokeTrace } from "./research/compact-sculpt/trace.mjs";
 
-const [tracePath, outputPath] = process.argv.slice(2);
+const [tracePath, outputPath, option] = process.argv.slice(2);
 assert(tracePath && outputPath, "Pass the existing metre-scale trace JSON and a result path.");
-const metre = JSON.parse(readFileSync(tracePath, "utf8"));
-assert(metre.complete);
+const compactTools = option === "--compact-tools";
+const metre = compactTools ? null : JSON.parse(readFileSync(tracePath, "utf8"));
+assert(compactTools || metre.complete);
+const compact = strokeTrace();
+const toolModes = ["inflate", "flatten", "scrape", "pinch", "crease"];
+if (compactTools) {
+  const features = compact.filter(({ phase }) => phase === "detail");
+  for (const mode of toolModes)
+    for (let pass = 0; pass < 4; pass++)
+      for (const { b, radius } of features) compact.push({ phase: mode, mode, a: b, b, radius });
+}
 const workloads = [
-  { kind: "compact", resolution: 129, extent: 0.064, strokes: strokeTrace() },
-  ...metre.cases.map(({ kind, strokes }) => ({
+  { kind: "compact", resolution: 129, extent: 0.064, strokes: compact },
+  ...(metre?.cases ?? []).map(({ kind, strokes }) => ({
     kind,
     resolution: 192,
     extent: 0.54,
@@ -83,24 +92,53 @@ function replay({ kind, resolution, extent, strokes }, sparse) {
   try {
     while (mesher.rebuildChunks(4, 2)) {}
     checkpoint("empty");
+    const toolCenters = new Map();
     strokes.forEach(({ mode, a, b, radius, phase }, index) => {
+      const local = toolModes.includes(mode);
+      if (local && !toolCenters.has(b)) {
+        const target = point(b);
+        let closest = Infinity,
+          center;
+        for (const { geometry } of mesher.snapshotUpdates()) {
+          const positions = geometry.getAttribute("position").array;
+          for (let i = 0; i < positions.length; i += 3) {
+            const x = positions[i],
+              y = positions[i + 1],
+              z = positions[i + 2];
+            const distance = (x - target.x) ** 2 + (y - target.y) ** 2 + (z - target.z) ** 2;
+            if (distance < closest) {
+              closest = distance;
+              center = { x, y, z };
+            }
+          }
+        }
+        assert(center);
+        toolCenters.set(b, center);
+      }
+      const center = local ? toolCenters.get(b) : point(b);
       action(mode, (invalidate) => {
         history.begin();
         const construct = mode === "construct";
+        const record = (id, before, after) => {
+          history.record(id, before, after);
+          invalidate(id, before, after);
+        };
+        if (sparse && compactTools) {
+          record.hasPendingSample = (id) => history.hasPendingSample(id);
+          record.reservePendingSamples = (count) => history.reservePendingSamples(count);
+        }
         const bounds = volume.brush(
-          point(b),
+          center,
           radius / 1000,
           construct ? "add" : mode,
           mode === "smooth" ? 0.5 : 0.0005,
-          (id, before, after) => {
-            history.record(id, before, after);
-            invalidate(id, before, after);
-          },
+          record,
           construct ? 1 : 0,
           construct,
           1,
-          point(a),
+          local ? center : point(a),
         );
+        if (local) assert(bounds, `Expected a field edit for ${mode}.`);
         history.commit();
         return bounds;
       });

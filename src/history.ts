@@ -117,16 +117,22 @@ export class SculptHistory {
     this.pendingKind = kind;
     this.pending = new Map();
   }
+  hasPendingSample(index: number): boolean {
+    return this.pending?.has(index) ?? true;
+  }
+  reservePendingSamples(additional: number): void {
+    if (this.pending && (this.pending.size + additional) * 160 > this.pendingBudgetBytes)
+      throw new Error(
+        "Edit history memory safety limit reached. The unfinished edit must be cancelled.",
+      );
+  }
   readonly record: VoxelChangeListener = (index, before, after) => {
     if (!this.pending) return;
     this.revision++;
     const existing = this.pending.get(index);
     if (existing) existing.after = after;
     else {
-      if ((this.pending.size + 1) * 160 > this.pendingBudgetBytes)
-        throw new Error(
-          "Edit history memory safety limit reached. The unfinished edit must be cancelled.",
-        );
+      this.reservePendingSamples(1);
       this.pending.set(index, { before, after });
     }
   };
