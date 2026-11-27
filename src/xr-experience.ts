@@ -605,9 +605,11 @@ export class XRExperience {
     ) {
       this.lastPerformance = time;
       const render = this.renderer.info.render,
-        edit = this.editMetrics();
+        edit = this.editMetrics(),
+        sparse = this.hooks.layers?.().sparseDiagnostics();
       questCapture.sample(time, {
         mode: "xr",
+        sparse,
         edit,
         resources: this.hooks.layers?.().resourceStats(),
         renderer: {
@@ -619,6 +621,7 @@ export class XRExperience {
       this.renderMetrics.textContent = `Last frame: ${render.calls} draw calls · ${render.triangles.toLocaleString()} rendered triangles · active ${this.sculpture.activeResolution} · visible meshes ${this.sculpture.layerMeshes} layer / ${this.sculpture.compositeMeshes} composite · peak ${this.stats.maxMs.toFixed(2)} ms · median ${this.stats.medianMs.toFixed(2)} · p99 ${this.stats.p99Ms?.toFixed(2) ?? "n/a"} ms · spikes ${this.stats.recentSpikes} recent / ${this.stats.spikes} session${edit ? ` · ${edit.tool} radius ${edit.radius.toFixed(3)} · brush ${edit.brush.latest.toFixed(2)} ms · remesh ${edit.remesh.latest.toFixed(2)} ms · dirty ${edit.pendingChunks} / replay ${edit.replayRemaining}` : ""}`;
       this.performancePanel.paint(time, {
         edit,
+        sparse,
         medianMs: this.stats.medianMs,
         p99Ms: this.stats.p99Ms,
         sampleCount: this.stats.sampleCount,

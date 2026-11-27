@@ -8,6 +8,7 @@ import {
   SRGBColorSpace,
   Vector3,
 } from "three";
+import type { IndependentLayers } from "./independent-layers";
 import type { TimingSummary } from "./sculpt-metrics";
 import { drawVRText, paintVRPanel, VR_UI } from "./xr-ui-style";
 export type XRSculptureInfo = {
@@ -66,6 +67,7 @@ export type XRPerformanceSnapshot = {
   sampleCount?: number;
   recentSpikes?: number;
   edit?: XREditMetrics;
+  sparse?: ReturnType<IndependentLayers["sparseDiagnostics"]>;
   fps: number;
   averageMs: number;
   latestMs: number;
@@ -200,6 +202,13 @@ export class XRPerformancePanel {
           `Growth ${a.expansions} · last ${ms(a.lastMs)} ms · ${mib(a.storageBytes)} MiB grid`,
         );
       }
+    }
+    if (data.sparse) {
+      const s = data.sparse;
+      lines.push(
+        `Sparse · ${s.pages} pages · Δ ${s.spacing.toPrecision(3)} model units · ${mib(s.trackedBytes)} MiB`,
+        `Queue ${s.pending} / ${ms(s.oldestMs)} ms · brush ${ms(s.brushMs)} · mesh ${ms(s.meshMs)} ms`,
+      );
     }
     if (data.edit?.stability) lines.push(data.edit.stability);
     const spacing = Math.min(44, 700 / Math.max(1, lines.length - 1));

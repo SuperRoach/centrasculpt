@@ -228,7 +228,7 @@ type ChunkLayout = {
 };
 export class IncrementalMesher {
   private chunks: MeshChunk[] = [];
-  private dirty = new Set<number>();
+  private dirty = new Map<number, number>();
   private readonly halo?: Float32Array;
   private undoRestore?: { chunks: ReadonlyMap<number, BufferGeometry>; bytes: number };
   get undoRestoreBytes(): number {
@@ -326,6 +326,12 @@ export class IncrementalMesher {
   get pendingChunks(): number {
     return this.dirty.size;
   }
+  get oldestPendingAt(): number | undefined {
+    return this.dirty.values().next().value;
+  }
+  private enqueue(id: number): void {
+    if (!this.dirty.has(id)) this.dirty.set(id, this.halo ? performance.now() : 0);
+  }
   get allocatedChunks(): number {
     return this.chunks.length;
   }
@@ -360,7 +366,7 @@ export class IncrementalMesher {
       oldBounds = this.volume.bounds,
       newBounds = next.bounds,
       layout = this.buildLayout(next, this.chunks),
-      dirty = new Set(this.dirty);
+      dirty = new Map(this.dirty);
     for (let id = 0; id < layout.chunks.length; id++) {
       const chunk = layout.chunks[id];
       if (id < oldCount) {
@@ -381,7 +387,7 @@ export class IncrementalMesher {
                 break;
               }
             }
-        if (affected) dirty.add(id);
+        if (affected) dirty.set(id, 0);
       } else {
         // New positive capacity has no surface. Avoid extraction and even empty
         // geometry allocation; edits later invalidate these stable chunk IDs.
@@ -394,7 +400,7 @@ export class IncrementalMesher {
                 occupied = true;
                 break;
               }
-        if (occupied) dirty.add(id);
+        if (occupied) dirty.set(id, 0);
       }
     }
     const source = this.volume,
@@ -424,11 +430,11 @@ export class IncrementalMesher {
     this.clearUndoRestore();
     if (!bounds) {
       this.chunks.forEach((_, id) => {
-        this.dirty.add(id);
+        this.enqueue(id);
       });
       return;
     }
-    this.visitAffected(bounds, (id) => this.dirty.add(id));
+    this.visitAffected(bounds, (id) => this.enqueue(id));
   }
   private visitAffected(bounds: Bounds, visit: (id: number) => void): void {
     const origin = this.layout.origin,
@@ -449,13 +455,15 @@ export class IncrementalMesher {
       p = [index % nx, Math.floor(index / nx) % ny, Math.floor(index / (nx * ny))] as Point;
     this.visitAffected({ min: p, max: p }, (id) => {
       if (signChanged || (this.chunks[id].geometry?.getAttribute("position").count ?? 0) > 0)
-        this.dirty.add(id);
+        this.enqueue(id);
     });
   }
   /** Coalesce identical chunk/gradient-halo coverage during a staged stamp patch.
    * A rebuild or any outside invalidation clears the cache, so later writes still
    * dirty geometry extracted between publication slices. Clay keeps its API. */
   stampInvalidator(): (index: number, signChanged: boolean) => void {
+    if (this.chunkSize < 4)
+      return (index, signChanged) => this.invalidateSample(index, signChanged);
     const layout = this.layout,
       visited = new Set<number>();
     let revision = this.editRevision;
@@ -481,7 +489,18 @@ export class IncrementalMesher {
       const key =
         cell * 16 + (hx > lx ? 2 : 0) + (hy > ly ? 4 : 0) + (hz > lz ? 8 : 0) + Number(signChanged);
       if (!visited.has(key)) {
-        this.invalidateSample(index, signChanged);
+        this.clearUndoRestore();
+        this.editRevision++;
+        for (let z = lz; z <= hz; z++)
+          for (let y = ly; y <= hy; y++)
+            for (let x = lx; x <= hx; x++) {
+              const id = this.idAt(x, y, z);
+              if (
+                signChanged ||
+                (this.chunks[id].geometry?.getAttribute("position").count ?? 0) > 0
+              )
+                this.enqueue(id);
+            }
         visited.add(key);
       }
       revision = this.editRevision;
@@ -500,7 +519,7 @@ export class IncrementalMesher {
     this.editRevision++;
     const start = performance.now(),
       updates: ChunkUpdate[] = [];
-    for (const id of this.dirty) {
+    for (const id of this.dirty.keys()) {
       if (
         updates.length >= maxChunks ||
         (updates.length > 0 && performance.now() - start >= maxMilliseconds)
@@ -577,7 +596,7 @@ export class IncrementalMesher {
             box.min.getComponent(a) <= before.min[a] + 2 * next.step) ||
           (after.max[a] > before.max[a] && box.max.getComponent(a) >= before.max[a] - 2 * next.step)
         ) {
-          fork.dirty.add(id);
+          fork.enqueue(id);
           break;
         }
       }

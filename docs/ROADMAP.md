@@ -166,6 +166,9 @@ dense geometry. Compact CPU latency, physical Quest measurements, and
 the 1 mm metre-scale trial remain gating work.
 [Implementation, measurements and reproduction](PHASE_9_1_SPARSE_SDF.md)
 
+**Phase 9.2** adds live sparse diagnostics, age-ordered release service and pagewise halo gathering.
+[Interactive measurements and remaining acceptance gates](PHASE_9_2_SPARSE_PERFORMANCE.md)
+
 
 Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
 and the implemented Undo cache stay in Phase 8. An adaptive brush candidate

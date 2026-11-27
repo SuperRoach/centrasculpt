@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IndependentLayers } from "../work/test-build/independent-layers.mjs";
 import { createBaseProject } from "../work/test-build/layers.mjs";
+import { IncrementalMesher } from "../work/test-build/mesh.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { captureProject } from "../work/test-build/project-snapshot.mjs";
 import { hydrateProject, projectTransfer } from "../work/test-build/project-transfer.mjs";
@@ -94,6 +95,14 @@ test("sparse layers opt in and match the dense editor, cached Undo, Redo and nat
 
     editor.beginStroke();
     assert(sample(editor, "subtract"));
+    const diagnostic = editor.sparseDiagnostics();
+    assert.equal(diagnostic.backend, "sparse");
+    assert.equal(diagnostic.pages, sparse.volume.allocatedPages);
+    assert.equal(diagnostic.spacing, sparse.volume.step);
+    assert.equal(diagnostic.pending, editor.pendingChunks);
+    assert(diagnostic.oldestMs >= 0);
+    assert(diagnostic.trackedBytes >= sparse.volume.residentBytes + editor.undoMeshCacheBytes);
+    assert(!editor.drainSparseMeshes(), "released service does not compete with open strokes");
     editor.active.rebuild(1);
     assert(editor.pendingChunks > 0);
     editor.cancelStroke();
@@ -147,4 +156,28 @@ test("only the explicit new-project trial hydrates an empty snapshot into sparse
   assert.deepEqual(bits(trial), bits(active(project)));
   snapshot.layers[0].values[1000] = 0.5;
   assert.throws(() => hydrateProject(snapshot, true), /requires an empty/);
+});
+
+test("coalesced exact dirty work keeps FIFO age and requeues a chunk after publication", () => {
+  const volume = new SparseSDFVolume(33);
+  const mesher = new IncrementalMesher(volume);
+  try {
+    const invalidate = mesher.stampInvalidator();
+    const sample = volume.index(16, 8, 8);
+    invalidate(sample, true);
+    assert.equal(mesher.pendingChunks, 2);
+    const firstQueued = mesher.oldestPendingAt;
+    invalidate(sample, true);
+    assert.equal(mesher.oldestPendingAt, firstQueued);
+    const first = mesher.rebuildChunks(1).updates[0].id;
+    invalidate(sample, true);
+    assert.equal(mesher.pendingChunks, 2);
+    assert(mesher.oldestPendingAt >= firstQueued);
+    const rest = mesher.rebuildChunks().updates.map(({ id }) => id);
+    assert.notEqual(rest[0], first);
+    assert.equal(rest[1], first);
+    assert.equal(mesher.oldestPendingAt, undefined);
+  } finally {
+    mesher.dispose();
+  }
 });

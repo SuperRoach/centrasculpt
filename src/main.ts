@@ -387,6 +387,15 @@ let previousSnapHit: SurfaceSnapHit | undefined;
 const snapRaycaster = new THREE.Raycaster(),
   snapRay = new THREE.Ray();
 const message = (error: unknown) => (error instanceof Error ? error.message : "Unknown error.");
+let lastSparseStats = -Infinity;
+function syncSparseStats() {
+  const sparse = layers.sparseDiagnostics();
+  if (!sparse) return;
+  lastSparseStats = performance.now();
+  ui.performance(
+    `Sparse · ${sparse.pages} pages · Δ ${sparse.spacing.toPrecision(3)} model units · ${(sparse.trackedBytes / 1024 ** 2).toFixed(1)} MiB tracked · queue ${sparse.pending} / ${sparse.oldestMs.toFixed(0)} ms · brush ${sparse.brushMs.toFixed(1)} ms · mesh ${sparse.meshMs.toFixed(1)} ms`,
+  );
+}
 function syncStats() {
   const runtime = layers.active;
   const triangles = layers.project.layerStack.layers.reduce(
@@ -407,9 +416,14 @@ function syncStats() {
       triangles,
       volumeLabel(volume) + (volume instanceof SparseSDFVolume ? " · Sparse trial" : ""),
     );
-    ui.performance(
-      `BRUSH ${runtime.brushMs.toFixed(1)} ms (AVG ${(runtime.brushTotal / Math.max(1, runtime.brushFrames)).toFixed(1)}) · MESH ${runtime.lastMeshMs.toFixed(1)} ms · ${runtime.lastChanged}/${runtime.totalChunks} CHUNKS`,
-    );
+    if (volume instanceof SparseSDFVolume) {
+      if (performance.now() - lastSparseStats >= 200) syncSparseStats();
+    } else {
+      lastSparseStats = -Infinity;
+      ui.performance(
+        `BRUSH ${runtime.brushMs.toFixed(1)} ms (AVG ${(runtime.brushTotal / Math.max(1, runtime.brushFrames)).toFixed(1)}) · MESH ${runtime.lastMeshMs.toFixed(1)} ms · ${runtime.lastChanged}/${runtime.totalChunks} CHUNKS`,
+      );
+    }
   }
   ui.history(layers.undoCount, layers.redoCount, loadingProject || xrBlocked());
 }
@@ -4075,6 +4089,8 @@ renderer.setAnimationLoop((now, frame) => {
   // leave the renderer's task time available to evaluation and download UI.
   if (exportAbort && !frame && document.querySelector<HTMLDialogElement>("#export-dialog")!.open)
     return;
+  const cpuStart = performance.now();
+  const strokeWasActive = layers.drawing;
   precision?.sync();
   primitivePreview?.sync();
   if (primitivePreview?.active) transformTools?.sync();
@@ -4084,8 +4100,6 @@ renderer.setAnimationLoop((now, frame) => {
     enclosureControlsUI?.sync();
     lastAssemblyUISync = now;
   }
-  const cpuStart = performance.now();
-  if (!loadingProject && layers.drainSparseMeshes() && !frame) syncStats();
   grid.position.y =
     enclosureViewportGuide.sync(
       enclosureControlsUI?.viewportTarget(),
@@ -4130,6 +4144,7 @@ renderer.setAnimationLoop((now, frame) => {
     desktopPaths.visible = false;
     if (desktopStroke.active) desktopStroke.cancel();
     if (frame && renderer.xr.isPresenting) xrExperience!.frame(now, frame);
+    if (!loadingProject && !strokeWasActive) layers.drainSparseMeshes();
     if (!xrExperience!.controllers.grab?.active && !xrExperience!.controllers.layerGrab?.active)
       pollComposite(now);
     transformPreview.sync(layers, !xrBlocked());
@@ -4222,6 +4237,15 @@ renderer.setAnimationLoop((now, frame) => {
     if (desktopStroke.phase === "drawing" && !pointerInside) desktopStroke.pauseSurface(now);
     else layers.breakStrokePath();
   }
+  if (!loadingProject) {
+    if (!strokeWasActive && layers.drainSparseMeshes() && !booleanPreview) syncStats();
+    if (
+      !booleanPreview &&
+      runtime.volume instanceof SparseSDFVolume &&
+      performance.now() - lastSparseStats >= 200
+    )
+      syncSparseStats();
+  }
   desktopTube.update(now);
   syncPrecisionOptions();
   desktopFieldCursor.hide();
@@ -4289,6 +4313,7 @@ renderer.setAnimationLoop((now, frame) => {
     questCapture.tick(time, time - cpuStart, NaN, layers.pendingChunks);
     questCapture.sample(time, () => ({
       mode: "desktop",
+      sparse: layers.sparseDiagnostics(),
       resources: layers.resourceStats(),
       trackedBytes: layers.trackedBytes,
       heapBytes:

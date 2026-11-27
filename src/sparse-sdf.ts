@@ -20,6 +20,9 @@ export class SparseSDFVolume extends LatticeVolume {
     if (!Number.isSafeInteger(maxPages) || maxPages < 0 || maxPages > this.axisPages ** 3)
       throw new Error("Invalid sparse page budget.");
   }
+  get allocatedPages(): number {
+    return this.pages.size;
+  }
   get residentBytes(): number {
     return this.pages.size * PAGE_SAMPLES * Float32Array.BYTES_PER_ELEMENT;
   }
@@ -100,21 +103,27 @@ export class SparseSDFVolume extends LatticeVolume {
     );
     for (const [key, page] of staged) this.pages.set(key, page);
   }
-  /** Gather each contiguous X run with one brick lookup. */
+  /** Gather one page intersection at a time, keeping the output X-major. */
   gather(bounds: Bounds, target: Float32Array): void {
     const { min, max } = bounds;
-    let offset = 0;
-    for (let z = min[2]; z <= max[2]; z++)
-      for (let y = min[1]; y <= max[1]; y++)
-        for (let x = min[0]; x <= max[0]; ) {
-          const length = Math.min(8 - (x & 7), max[0] - x + 1),
-            page = this.pages.get(this.key(x, y, z)),
-            start = this.offset(x, y, z);
-          if (page) {
-            for (let i = 0; i < length; i++) target[offset + i] = page[start + i];
-          } else target.fill(this.exterior, offset, offset + length);
-          offset += length;
-          x += length;
+    const width = max[0] - min[0] + 1,
+      height = max[1] - min[1] + 1,
+      plane = width * height;
+    target.fill(this.exterior, 0, plane * (max[2] - min[2] + 1));
+    for (let z = min[2]; z <= max[2]; z = (z | 7) + 1)
+      for (let y = min[1]; y <= max[1]; y = (y | 7) + 1)
+        for (let x = min[0]; x <= max[0]; x = (x | 7) + 1) {
+          const page = this.pages.get(this.key(x, y, z));
+          if (!page) continue;
+          const endZ = Math.min(z | 7, max[2]),
+            endY = Math.min(y | 7, max[1]),
+            length = Math.min(x | 7, max[0]) - x + 1;
+          for (let pz = z; pz <= endZ; pz++)
+            for (let py = y; py <= endY; py++) {
+              const from = this.offset(x, py, pz),
+                to = x - min[0] + width * (py - min[1]) + plane * (pz - min[2]);
+              for (let i = 0; i < length; i++) target[to + i] = page[from + i];
+            }
         }
   }
 }

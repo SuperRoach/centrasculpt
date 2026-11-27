@@ -948,6 +948,25 @@ export class IndependentLayers {
     };
   }
   get trackedBytes(): number {
+    return this.memoryEstimate(false);
+  }
+  sparseDiagnostics() {
+    const runtime = this.active,
+      volume = runtime.volume;
+    if (!(volume instanceof SparseSDFVolume)) return undefined;
+    const queue = this.sparseQueue();
+    return {
+      backend: "sparse" as const,
+      pages: volume.allocatedPages,
+      spacing: volume.step,
+      trackedBytes: this.memoryEstimate(true),
+      pending: queue.pending,
+      oldestMs: queue.oldest === Infinity ? 0 : performance.now() - queue.oldest,
+      brushMs: runtime.brushMs,
+      meshMs: runtime.lastMeshMs,
+    };
+  }
+  private memoryEstimate(resident: boolean): number {
     let bytes =
       (this.assemblyPreview?.bytes() ?? 0) +
       (this.personalStamp ? personalStampSource(this.personalStamp).bytes : 0);
@@ -967,7 +986,10 @@ export class IndependentLayers {
         }
     for (const r of held) {
       bytes +=
-        volumeSampleCount(r.volume) * 8 +
+        (resident && r.volume instanceof SparseSDFVolume
+          ? r.volume.residentBytes + r.volume.scratchBytes + r.mesher.haloBytes
+          : volumeSampleCount(r.volume) * 8) +
+        (resident ? r.history.pendingMemoryEstimate : 0) +
         (r.primitiveSource ? r.mesher.ownedGeometryBytes : 0) +
         r.mesher.undoRestoreBytes +
         r.history.memoryBytes +
@@ -1011,14 +1033,24 @@ export class IndependentLayers {
       this.undoMeshCacheBytes
     );
   }
-  /** Drain released sparse work in bounded FIFO slices, including inactive layers. */
-  drainSparseMeshes(): boolean {
-    for (const runtime of this.runtimes.values()) {
-      if (runtime.layer.id === this.strokeLayer || !(runtime.volume instanceof SparseSDFVolume))
-        continue;
-      if (runtime.rebuild()) return true;
+  private sparseQueue() {
+    let runtime: LayerRuntime | undefined,
+      oldest = Infinity,
+      pending = 0;
+    for (const candidate of this.runtimes.values()) {
+      if (!(candidate.volume instanceof SparseSDFVolume)) continue;
+      pending += candidate.mesher.pendingChunks;
+      const queuedAt = candidate.mesher.oldestPendingAt;
+      if (queuedAt !== undefined && queuedAt < oldest) {
+        runtime = candidate;
+        oldest = queuedAt;
+      }
     }
-    return false;
+    return { runtime, oldest, pending };
+  }
+  /** Give the oldest released queue one bounded slice when brush work does not own the frame. */
+  drainSparseMeshes(): boolean {
+    return !this.strokeLayer && (this.sparseQueue().runtime?.rebuild() ?? false);
   }
   get pendingChunks(): number {
     let count = 0;
@@ -1410,12 +1442,17 @@ export class IndependentLayers {
     return dirty;
   }
   private sparseStrokeRecorder(runtime: LayerRuntime) {
-    const invalidate = runtime.mesher.stampInvalidator(),
-      tolerance = -runtime.volume.step * Number.EPSILON * 32;
+    const invalidate = this.replayInvalidator(runtime);
     return (index: number, before: number, after: number) => {
       runtime.history.record(index, before, after);
-      invalidate(index, before < tolerance !== after < tolerance);
+      invalidate(index, before, after);
     };
+  }
+  private replayInvalidator(runtime: LayerRuntime) {
+    const invalidate = runtime.mesher.stampInvalidator(),
+      tolerance = -runtime.volume.step * Number.EPSILON * 32;
+    return (index: number, before: number, after: number) =>
+      invalidate(index, before < tolerance !== after < tolerance);
   }
   /** Preserve the Pinch entry point for existing clients/tests. */
   *applyPinchSteps(
@@ -1587,13 +1624,7 @@ export class IndependentLayers {
       this.updateMaskOverlays();
       return;
     }
-    const dirty = runtime.history.cancel((index, before, after) =>
-      runtime.mesher.invalidateSample(
-        index,
-        before < -runtime.volume.step * Number.EPSILON * 32 !==
-          after < -runtime.volume.step * Number.EPSILON * 32,
-      ),
-    );
+    const dirty = runtime.history.cancel(this.replayInvalidator(runtime));
     this.composite.invalidateLayer(runtime.layer, dirty);
     const overhead = this.metrics.enabled ? performance.now() - started : 0;
     runtime.rebuild();
@@ -2025,12 +2056,7 @@ export class IndependentLayers {
           const paint = redo ? entry.paintAfter : entry.paintBefore;
           if (paint) sculptPaint(runtime.volume).restore(paint);
         }
-        const record = (index: number, before: number, after: number) =>
-          runtime.mesher.invalidateSample(
-            index,
-            before < -runtime.volume.step * Number.EPSILON * 32 !==
-              after < -runtime.volume.step * Number.EPSILON * 32,
-          );
+        const record = this.replayInvalidator(runtime);
         const dirty = redo ? runtime.history.redo(record) : runtime.history.undo(record);
         if (!dirty) throw new Error("History payload unavailable.");
         const snapshot = this.undoMesh;
