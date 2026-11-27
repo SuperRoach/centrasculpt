@@ -176,6 +176,23 @@ reconstruction remain pending. Dense remains the default pending paired
 Quest parity, measured peak memory with Undo and 1 mm metre-scale support.
 [Tool matrix and compact bust measurements](PHASE_9_3_SPARSE_TOOLS.md)
 
+**Phase 9.4** integrates sparse Boolean operands, sparse Bake/Merge and
+analytic or Personal Shape stamps into admitted sparse targets.
+[Tool support and measured results](PHASE_9_4_SPARSE_BOOLEAN_STAMPS.md)
+
+**Phase 9.5** preserves the sparse backend through v25 native open, Library
+and recovery. Clay can grow an implicit exterior in either signed direction
+at fixed spacing. The 1 mm tube reaches 1,000 mm. The 1,000 mm diagonal
+branch and islands reach the current chunk-directory limit.
+[Native persistence, growth and replay results](PHASE_9_5_SPARSE_PERSISTENCE_GROWTH.md)
+
+Keep sparse opt-in. The next storage experiment is asynchronous OPFS
+prefetch and clean-page eviction with stable records, explicit residency,
+active and history pins, and transactional checkpoint manifests. Separate
+work will evaluate indexed live geometry. Move-family reconstruction,
+Plane Cut, history-aware reclamation, the full 1 mm fixture set, paired
+physical Quest timing and measured peak process/GPU memory remain gates.
+
 Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
 and the implemented Undo cache stay in Phase 8. An adaptive brush candidate
 needs to preserve frame pacing before integration. Measure peak memory with

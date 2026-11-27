@@ -1,3 +1,15 @@
+# Phase 9.5 — Experimental native sparse persistence and growth
+
+Native v25 files retain exact sparse pages through open, download, Library
+and recovery. Dense and analytic projects still write v24. Clay can grow
+the signed lattice at fixed spacing while carrying forward geometry history,
+mask, paint and unaffected chunk geometry. The 1 mm replay completed the
+1,000 mm tube and the 500 mm branch and islands. The 1,000 mm branch and
+islands reached the logical chunk limit. Sparse is still opt-in. OPFS paging,
+indexed live geometry, physical Quest comparison and actual peak memory
+remain separate work.
+[Phase 9.5 report](PHASE_9_5_SPARSE_PERSISTENCE_GROWTH.md)
+
 # Phase 9.3 — Experimental sparse tools
 
 Verified exact parity for Inflate, Flatten, Scrape, Pinch, Crease, mask and

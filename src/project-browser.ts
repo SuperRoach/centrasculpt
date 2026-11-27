@@ -1,6 +1,6 @@
 import { newId } from "./layers";
 import { describeNative, renameNative } from "./library-codec";
-import { PROJECT_VERSION } from "./project";
+import { isCanonicalProjectVersion } from "./project";
 import {
   libraryModifiedLabel,
   libraryName,
@@ -88,7 +88,7 @@ export class ProjectBrowser {
     if (this.port.key() !== key || !this.port.ready())
       throw new Error("Save cancelled: current work changed. Previous save kept.");
     const record = describeNative(data, name);
-    const legacy = Boolean(this.current && this.current.version < PROJECT_VERSION);
+    const legacy = Boolean(this.current && !isCanonicalProjectVersion(this.current.version));
     record.id = asNew || legacy || !this.current ? newId() : this.current.id;
     record.opened = Date.now();
     record.sourceVersion =
@@ -105,7 +105,7 @@ export class ProjectBrowser {
     this.savedKey = key;
     this.status =
       legacy && !asNew
-        ? "Saved as a v24 Library entry. The legacy entry remains available."
+        ? `Saved as a v${record.version} Library entry. The legacy entry remains available.`
         : "Saved in this browser. Download a portable backup from project details.";
     await this.refresh();
   }

@@ -20,6 +20,7 @@ import { encodeRecovery } from "../work/test-build/recovery-client.mjs";
 import { IndexedRecoveryStore, RECOVERY_BYTES } from "../work/test-build/recovery-store.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { ShapePreviewModel } from "../work/test-build/shape-preview.mjs";
+import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 
 const settings = {
     mode: "add",
@@ -484,4 +485,84 @@ test("snapshot admission rejects excessive temporary allocations before a dense 
   finish(true);
   await init;
   assert.equal(changed, 0);
+});
+
+test("a growing sparse recovery checkpoint carries signed pages through the worker, cancel and quota failure", async () => {
+  const originalWorker = globalThis.Worker;
+  globalThis.Worker = RecoveryBrowserWorker;
+  const editor = new IndependentLayers(createBaseProject(new SparseSDFVolume(65, 0.032), settings));
+  const database = store();
+  try {
+    const apply = (x) => {
+      editor.beginStroke();
+      editor.applyStrokeLocal({ x, y: 0, z: 0 }, 0.006, "add", 0.8, 0.02, 0.5, true);
+      editor.finishStroke();
+      while (editor.pendingChunks) editor.drainSparseMeshes();
+    };
+    apply(-0.45);
+    apply(0.45);
+    const field = editor.active.volume;
+    const result = await encodeRecovery(
+      editor,
+      settings,
+      undefined,
+      undefined,
+      signal(),
+      () => true,
+    );
+    assert(result.temporaryBytes < 1024 ** 2);
+    assert.equal(checksum(result.data), result.checksum);
+    const checkpoint = {
+      ...record("sparse", result.data.byteLength),
+      projectId: editor.project.id,
+      checksum: result.checksum,
+    };
+    await database.write(checkpoint, result.data, signal());
+    apply(0.2);
+    const abort = new AbortController();
+    const interrupted = encodeRecovery(
+      editor,
+      settings,
+      undefined,
+      undefined,
+      abort.signal,
+      () => true,
+    );
+    abort.abort();
+    await assert.rejects(interrupted, /cancelled|interrupted/);
+    assert.equal(editor.backgroundBytes, 0);
+
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args) {
+      if (this.name === "payloads") throw new DOMException("full", "QuotaExceededError");
+      return put.apply(this, args);
+    };
+    try {
+      await assert.rejects(
+        database.write({ ...checkpoint, id: "failed" }, result.data, signal()),
+        /kept/,
+      );
+    } finally {
+      IDBObjectStore.prototype.put = put;
+    }
+    const stored = await database.read(checkpoint.id);
+    const reopened = openSculptProject(stored.data);
+    assert.equal(reopened.id, editor.project.id);
+    assert(reopened.activeLayer.volume instanceof SparseSDFVolume);
+    assert.deepEqual(reopened.activeLayer.volume.latticeMin, field.latticeMin);
+    assert.equal(reopened.activeLayer.volume.readSample(0, 0, 0), field.defaultValue);
+    assert(
+      !new Map(reopened.activeLayer.volume.residentPages()).has(
+        [...field.residentPages()].at(-1)[0],
+      ),
+    );
+    assert.deepEqual(
+      (await database.list()).map((x) => x.id),
+      ["sparse"],
+    );
+  } finally {
+    database.close();
+    editor.dispose();
+    globalThis.Worker = originalWorker;
+  }
 });

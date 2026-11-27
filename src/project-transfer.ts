@@ -3,7 +3,7 @@ import type { ProjectSnapshot } from "./project-snapshot";
 import { sculptMask } from "./sculpt-mask";
 import { sculptPaint } from "./sculpt-paint";
 import { SDFVolume } from "./sdf";
-import { SparseSDFVolume } from "./sparse-sdf";
+import { MAX_SDF_PAGES, SparseSDFVolume } from "./sparse-sdf";
 /** Structured-clone boundary after native validation in a worker. */
 export function projectTransfer(p: SculptProject): ProjectSnapshot {
   return {
@@ -20,7 +20,11 @@ export function projectTransfer(p: SculptProject): ProjectSnapshot {
       extent: l.volume.extent,
       dimensions: l.volume.dimensions,
       latticeMin: l.volume.latticeMin ?? [0, 0, 0],
-      values: l.volume.getDenseView()!,
+      values: l.volume.getDenseView(),
+      sparse:
+        l.volume instanceof SparseSDFVolume
+          ? { defaultValue: l.volume.defaultValue, pages: new Map(l.volume.residentPages()) }
+          : undefined,
       mask: sculptMask(l.volume).snapshot(),
       paint: sculptPaint(l.volume).snapshot(),
     })),
@@ -35,24 +39,33 @@ export function hydrateProject(s: ProjectSnapshot, newSparse = false): SculptPro
       newSparse &&
       (!l.latticeMin.every((value) => value === 0) ||
         !l.dimensions.every((value) => value === l.resolution) ||
-        !l.values.every((value) => value === Math.fround(l.extent * 4)))
+        !l.values?.every((value) => value === Math.fround(l.extent * 4)))
     )
       throw new Error("A new sparse project requires an empty, unexpanded lattice.");
     const v = newSparse
       ? new SparseSDFVolume(l.resolution, l.extent)
-      : new SDFVolume(
-          l.resolution,
-          l.extent,
-          false,
-          { dimensions: l.dimensions, latticeMin: l.latticeMin },
-          (n) => {
-            if (first) {
-              first = false;
-              return l.values;
-            }
-            return new Float32Array(n);
-          },
-        );
+      : l.sparse
+        ? new SparseSDFVolume(
+            l.resolution,
+            l.extent,
+            MAX_SDF_PAGES,
+            { dimensions: l.dimensions, latticeMin: l.latticeMin },
+            l.sparse,
+          )
+        : new SDFVolume(
+            l.resolution,
+            l.extent,
+            false,
+            { dimensions: l.dimensions, latticeMin: l.latticeMin },
+            (n) => {
+              if (first) {
+                first = false;
+                if (!l.values) throw new Error("Missing snapshot voxel values.");
+                return l.values;
+              }
+              return new Float32Array(n);
+            },
+          );
     if (l.mask) sculptMask(v).restore(l.mask);
     if (l.paint) sculptPaint(v).restore(l.paint);
     return new SdfLayer(v, l.metadata);
@@ -62,4 +75,13 @@ export function hydrateProject(s: ProjectSnapshot, newSparse = false): SculptPro
   p.displayPreferences = s.displayPreferences;
   p.toolPreferences = s.toolPreferences;
   return p;
+}
+
+/** Transfer only owned voxel buffers. Recovery captures independent copies first. */
+export function projectFieldBuffers(snapshot: ProjectSnapshot): ArrayBuffer[] {
+  return snapshot.layers.flatMap(({ values, sparse }) =>
+    values
+      ? [values.buffer as ArrayBuffer]
+      : [...(sparse?.pages.values() ?? [])].map((page) => page.buffer as ArrayBuffer),
+  );
 }

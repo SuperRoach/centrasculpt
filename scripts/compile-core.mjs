@@ -165,6 +165,7 @@ for (const name of [
   "project-decoder",
   "project-encoder",
   "project-format",
+  "project-sparse-pages",
   "project-legacy",
   "project-migration",
   "project-validation",

@@ -36,9 +36,9 @@ export class SculptPaint {
   snapshot(): PaintSnapshot {
     return this.channels.map((c) => c.snapshot()) as PaintSnapshot;
   }
-  restore(s: PaintSnapshot) {
+  restore(s: PaintSnapshot, admitPage?: (bytes: number) => void) {
     this.channels.forEach((c, i) => {
-      c.restore(s[i]);
+      c.restore(s[i], admitPage);
     });
   }
   clear() {

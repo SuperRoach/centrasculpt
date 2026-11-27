@@ -3,6 +3,7 @@ import type { IndependentLayers } from "./independent-layers";
 import type { ProjectSettings } from "./project";
 import type { EncodedSnapshot } from "./project-snapshot";
 import { captureProject } from "./project-snapshot";
+import { projectFieldBuffers } from "./project-transfer";
 import type { ToolPreferences } from "./tool-preferences";
 
 let generation = 0;
@@ -53,7 +54,7 @@ export async function encodeRecovery(
         };
         worker!.postMessage({ id, snapshot }, [
           ...new Set([
-            ...snapshot.layers.map((l) => l.values.buffer),
+            ...projectFieldBuffers(snapshot),
             ...(snapshot.displayPreferences?.references?.map(
               (r) => r.bytes.buffer as ArrayBuffer,
             ) ?? []),

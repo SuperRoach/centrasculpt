@@ -82,7 +82,7 @@ import { ShapeGhost } from "./shape-preview";
 import { ShapeRotationTool } from "./shape-rotation";
 import { createShapeLibraryUI } from "./shape-ui";
 import type { ShapeDefinition } from "./shapes";
-import { SparseSDFVolume } from "./sparse-sdf";
+import { SDF_PAGE_MEMORY, SparseSDFVolume } from "./sparse-sdf";
 import { StabilityMetrics } from "./stability-metrics";
 import {
   hitInParentSpace,
@@ -1706,7 +1706,13 @@ async function openProjectFile(
     };
     if (stagingBudget !== undefined)
       assertStagingBytes(
-        snapshot.layers.reduce((sum, layer) => sum + 2 * layer.values.byteLength, 0),
+        snapshot.layers.reduce(
+          (sum, layer) =>
+            sum +
+            2 * (layer.values?.byteLength ?? 0) +
+            (layer.sparse?.pages.size ?? 0) * SDF_PAGE_MEMORY,
+          0,
+        ),
       );
     const project = hydrateProject(snapshot, newSparse);
     if (libraryOpen) project.name = file.name.replace(/\.form$/i, "");
@@ -4343,8 +4349,7 @@ renderer.setAnimationLoop((now, frame) => {
   syncViewportTools();
   transformPreview.sync(layers, !xrBlocked());
   layers.updateMaskOverlays();
-  // Scoped MCP inspection uses the renderer offscreen and checks the source revision.
-  // Input and state sync continue while the last desktop frame stays on screen.
+  // Mesh-heavy MCP work holds the last desktop frame while input and state sync continue.
   if (!agentEvaluatingMesh && !renderAgentFeedback?.()) renderer.render(scene, camera);
   if (questCapture.active) {
     const time = performance.now();

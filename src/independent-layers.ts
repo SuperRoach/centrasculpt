@@ -25,7 +25,12 @@ import { BooleanComposite, prepareCompositeColour } from "./compositor";
 import type { MoveProgress } from "./deformation-reconstruction";
 import { copyMoveVolume, MoveWork } from "./deformation-reconstruction";
 import type { DenseGrowthLimits } from "./dense-growth";
-import { DENSE_GROWTH_LIMITS, planDenseGrowth, prepareDenseGrowth } from "./dense-growth";
+import {
+  DENSE_GROWTH_LIMITS,
+  growthLayout,
+  planDenseGrowth,
+  prepareDenseGrowth,
+} from "./dense-growth";
 import { LayerDisplayPreferences } from "./display-preferences";
 import {
   enclosureAnchors,
@@ -77,6 +82,7 @@ import {
   type MaskSnapshot,
   maskSnapshotBytes,
   registerMaskSurface,
+  SculptMask,
   sculptMask,
 } from "./sculpt-mask";
 import { SculptMetrics } from "./sculpt-metrics";
@@ -92,7 +98,12 @@ import { reflectPoint, SDFVolume, validateMirrorPlane } from "./sdf";
 import { prepareShape } from "./shape-library";
 import { prepareStampSteps } from "./shape-stamp";
 import { validateShapeDefinition } from "./shapes";
-import { SparseSDFVolume } from "./sparse-sdf";
+import {
+  MAX_SPARSE_AXIS,
+  MAX_SPARSE_CHUNKS,
+  SparseSDFVolume,
+  sparseChunkCount,
+} from "./sparse-sdf";
 import { ClayStroke } from "./stroke";
 import { buildExportMesh, ChunkSurface } from "./surface";
 import type { VolumeTransform } from "./transform";
@@ -106,7 +117,7 @@ import {
   validateTransformEdit,
 } from "./transform";
 import type { VolumeStore } from "./volume-store";
-import { volumeSampleCount } from "./volume-store";
+import { isLegacyCubicGrid, volumeSampleCount } from "./volume-store";
 
 export class LayerRuntime {
   mesher: IncrementalMesher;
@@ -907,7 +918,10 @@ export class IndependentLayers {
     for (const r of held) {
       voxelBytes +=
         r.volume instanceof SparseSDFVolume
-          ? r.volume.residentBytes + r.volume.scratchBytes + r.mesher.haloBytes
+          ? r.volume.pageMemoryBytes +
+            r.volume.scratchBytes +
+            r.mesher.haloBytes +
+            r.mesher.allocatedChunks * 512
           : volumeSampleCount(r.volume) * 8;
       historyBytes += r.history.memoryBytes;
       pendingHistoryBytes += r.history.pendingMemoryEstimate;
@@ -992,8 +1006,11 @@ export class IndependentLayers {
         }
     for (const r of held) {
       bytes +=
-        (resident && r.volume instanceof SparseSDFVolume
-          ? r.volume.residentBytes + r.volume.scratchBytes + r.mesher.haloBytes
+        (r.volume instanceof SparseSDFVolume
+          ? r.volume.pageMemoryBytes +
+            r.volume.scratchBytes +
+            r.mesher.haloBytes +
+            r.mesher.allocatedChunks * 512
           : volumeSampleCount(r.volume) * 8) +
         (resident ? r.history.pendingMemoryEstimate : 0) +
         (r.primitiveSource ? r.mesher.ownedGeometryBytes : 0) +
@@ -1135,8 +1152,137 @@ export class IndependentLayers {
   }
   private install(runtime: LayerRuntime): void {
     runtime.metrics = this.metrics;
+    this.bindSparseBudget(runtime);
     this.runtimes.set(runtime.layer.id, runtime);
     this.group.add(runtime.surface.group);
+  }
+  private bindSparseBudget(runtime: LayerRuntime): void {
+    if (runtime.volume instanceof SparseSDFVolume)
+      runtime.volume.admitAllocation = (bytes) => {
+        if (
+          this.trackedBytes +
+            this.composite.trackedBytes +
+            runtime.history.pendingMemoryEstimate +
+            bytes >
+          (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes)
+        )
+          throw new Error("Sparse edit exceeds the resident and transient memory budget.");
+      };
+  }
+  private growSparseRuntime(
+    runtime: LayerRuntime,
+    source: SparseSDFVolume,
+    footprint: import("./volume-store").VolumeBounds,
+  ): void {
+    const started = performance.now(),
+      options = this.growthLimits;
+    const layout = growthLayout(source, footprint, options);
+    if (!layout) return;
+    const chunks = sparseChunkCount(layout);
+    if (
+      chunks > MAX_SPARSE_CHUNKS ||
+      layout.dimensions.some(
+        (n) => n > Math.min(options.maxAxisSamples ?? MAX_SPARSE_AXIS, MAX_SPARSE_AXIS),
+      ) ||
+      (options.maxSamples !== undefined &&
+        layout.dimensions.reduce((n, d) => n * d, 1) > options.maxSamples)
+    )
+      throw new Error(
+        "Sparse growth exceeds the logical lattice or chunk budget. Existing sculpture kept.",
+      );
+    // A stamp/Boolean can replace even positive face distances. Such faces have
+    // no defined implicit continuation in this growth policy.
+    source.assertGrowthBoundary(layout);
+    // A pending redo could restore a non-default old face after capacity grows.
+    // Reject such history on a moving face, regardless of the live field.
+    runtime.history.assertSparseGrowthBoundary(source, layout);
+    const limit = options.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes;
+    let staged =
+      this.trackedBytes +
+      this.composite.trackedBytes +
+      runtime.history.pendingMemoryEstimate * 2.5 +
+      runtime.history.memoryBytes / 3 +
+      source.pageMemoryBytes +
+      chunks * 512;
+    const check = (bytes: number) => {
+      staged += bytes;
+      if (staged > limit)
+        throw new Error(
+          "Sparse growth exceeds the resident and transient memory budget. Existing sculpture kept.",
+        );
+    };
+    check(0);
+    const next = source.copyForGrowth(layout),
+      snapshot = this.undoMesh;
+    sculptMask(next).restore(sculptMask(source).snapshot(), check);
+    sculptPaint(next).restore(sculptPaint(source).snapshot(), check);
+    const stagedMasks = new Map<MaskSnapshot, MaskSnapshot>();
+    const rebindMask = (before: MaskSnapshot): MaskSnapshot => {
+      const previous = stagedMasks.get(before);
+      if (previous) return previous;
+      const mask = new SculptMask(next);
+      mask.restore(before, check);
+      const result = mask.snapshot();
+      stagedMasks.set(before, result);
+      return result;
+    };
+    const rebindPaint = (before: PaintSnapshot) => before.map(rebindMask) as PaintSnapshot;
+    const rebindChannels: (() => void)[] = [];
+    for (const entry of this.historyEntries()) {
+      if (entry.layerId !== runtime.layer.id) continue;
+      if (entry.kind === "mask") {
+        const before = rebindMask(entry.before),
+          after = rebindMask(entry.after);
+        rebindChannels.push(() => {
+          entry.before = before;
+          entry.after = after;
+        });
+      } else if (entry.kind === "paint") {
+        const before = rebindPaint(entry.before),
+          after = rebindPaint(entry.after);
+        rebindChannels.push(() => {
+          entry.before = before;
+          entry.after = after;
+        });
+      } else if (entry.kind === "voxels" && entry.paintBefore && entry.paintAfter) {
+        const before = rebindPaint(entry.paintBefore),
+          after = rebindPaint(entry.paintAfter);
+        rebindChannels.push(() => {
+          entry.paintBefore = before;
+          entry.paintAfter = after;
+        });
+      }
+    }
+    const cache =
+      snapshot?.runtime === runtime
+        ? new Map(
+            [...snapshot.chunks].filter(([id]) =>
+              runtime.mesher.chunkCanReuseAfterGrowth(id, next),
+            ),
+          )
+        : undefined;
+    const publishHistory = runtime.history.prepareVolumeRebind(next),
+      publishMesh = runtime.mesher.prepareRebindVolume(next);
+    publishMesh();
+    publishHistory();
+    for (const publish of rebindChannels) publish();
+    source.admitAllocation = undefined;
+    runtime.volume = runtime.layer.volume = next;
+    this.bindSparseBudget(runtime);
+    next.finishGrowth();
+    runtime.totalChunks = runtime.mesher.allocatedChunks;
+    if (cache && snapshot) {
+      snapshot.volume = next;
+      snapshot.chunks = cache;
+    }
+    runtime.history.pendingBudgetBytes = Math.min(
+      runtime.history.pendingBudgetBytes,
+      Math.max(0, limit - this.trackedBytes - this.composite.trackedBytes),
+    );
+    runtime.expansions++;
+    runtime.lastExpansionMs = performance.now() - started;
+    this.committedRevision++;
+    this.composite.invalidateLayer(runtime.layer);
   }
   private assertCapacity(
     additional = 0,
@@ -1172,11 +1318,18 @@ export class IndependentLayers {
       throw new Error("Layer allocation exceeds the memory safety budget.");
     const samples =
       layers.reduce(
-        (sum, layer) => sum + (layer.id === replacing ? 0 : volumeSampleCount(layer.volume)),
+        (sum, layer) =>
+          sum +
+          (layer.id === replacing || layer.volume instanceof SparseSDFVolume
+            ? 0
+            : volumeSampleCount(layer.volume)),
         0,
       ) +
       additional +
-      [...held].reduce((sum, r) => sum + volumeSampleCount(r.volume), 0);
+      [...held].reduce(
+        (sum, r) => sum + (r.volume instanceof SparseSDFVolume ? 0 : volumeSampleCount(r.volume)),
+        0,
+      );
     if (layers.length + extraLayers > MAX_PROJECT_LAYERS)
       throw new Error(`Maximum of ${MAX_PROJECT_LAYERS} independent layers reached.`);
     if (samples > MAX_PROJECT_VOXELS)
@@ -1414,14 +1567,12 @@ export class IndependentLayers {
         max: now.map((v, a) => Math.max(v, before[a]) + radius) as [number, number, number],
       };
       if (runtime.volume instanceof SparseSDFVolume) {
-        const limits = runtime.volume.bounds,
-          margin = runtime.volume.step * (freeSpace ? 3 : 1);
-        if (
-          footprint.min.some(
-            (v, a) => v < limits.min[a] + margin || footprint.max[a] > limits.max[a] - margin,
-          )
-        )
-          throw new Error("Clay would reach the experimental sparse layer boundary.");
+        const margin = freeSpace ? runtime.volume.step * 2 : 0;
+        for (let a = 0; a < 3; a++) {
+          footprint.min[a] -= margin;
+          footprint.max[a] += margin;
+        }
+        this.growSparseRuntime(runtime, runtime.volume, footprint);
       } else this.growRuntime(runtime, footprint);
     }
     const sparse = runtime.volume instanceof SparseSDFVolume;
@@ -1991,7 +2142,12 @@ export class IndependentLayers {
         }
       } else
         for (const r of entry.removed) {
-          this.assertCapacity(volumeSampleCount(r.volume), undefined, 1, r.layer.id);
+          this.assertCapacity(
+            r.volume instanceof SparseSDFVolume ? 0 : volumeSampleCount(r.volume),
+            undefined,
+            1,
+            r.layer.id,
+          );
           stack.insert(r.layer);
           this.install(r);
         }
@@ -2272,7 +2428,12 @@ export class IndependentLayers {
     }
     const volume = runtime.volume,
       sparse = volume instanceof SparseSDFVolume,
-      publishPages = sparse ? yield* volume.preparePatchPages(patch.indices) : undefined;
+      publishPages = sparse
+        ? yield* volume.preparePatchPages(
+            patch.indices,
+            Math.max(0, remaining - patch.retainedStagingBytes * 2),
+          )
+        : undefined;
     // Allocate the exact history snapshots before source mutation; preparation owns
     // the patch, so no Map-based stroke recorder is needed for these unique indices.
     const committed = inStroke ? false : runtime.history.commitPatch("shape-stamp", patch);
@@ -2325,6 +2486,8 @@ export class IndependentLayers {
       (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes) -
         this.trackedBytes,
     );
+    if (runtime.volume instanceof SparseSDFVolume && !isLegacyCubicGrid(runtime.volume))
+      throw new Error("Reset is unavailable on an expanded sparse lattice.");
     runtime.history.begin("reset");
     try {
       runtime.layer.volume.reset(runtime.history.record);
@@ -2355,7 +2518,7 @@ export class IndependentLayers {
     this.finishStroke();
     this.finishTransform();
     if (![64, 128, 192].includes(resolution)) throw new Error("Choose 64³, 128³ or 192³.");
-    this.assertCapacity(resolution ** 3, undefined, 1);
+    this.assertCapacity(backend === "dense" ? resolution ** 3 : 0, undefined, 1);
     if (backend === "sparse" && !empty)
       throw new Error("Sparse sculpting requires a new empty layer.");
     const volume =
@@ -2705,6 +2868,10 @@ export class IndependentLayers {
       throw new Error(
         "Duplicate the enclosure project in Project Library to preserve its independent parts and dependencies. Single-root layer duplication is unsupported.",
       );
+    if (source.volume instanceof SparseSDFVolume && !isLegacyCubicGrid(source.volume))
+      throw new Error(
+        "Layer duplication is unavailable on an expanded sparse lattice. Duplicate the project in Project Library.",
+      );
     this.assertCapacity(volumeSampleCount(source.volume), undefined, 1);
     const before = this.bakeState(),
       metadata = source.metadata(),
@@ -2824,6 +2991,10 @@ export class IndependentLayers {
         "Duplicate the enclosure project in Project Library to preserve its independent parts and dependencies. Single-root layer duplication is unsupported.",
       );
     const before = this.bakeState();
+    if (source.volume instanceof SparseSDFVolume && !isLegacyCubicGrid(source.volume))
+      throw new Error(
+        "Layer duplication is unavailable on an expanded sparse lattice. Duplicate the project in Project Library.",
+      );
     this.assertCapacity(volumeSampleCount(source.volume), undefined, 1);
     if (
       this.trackedBytes +
@@ -2884,6 +3055,7 @@ export class IndependentLayers {
   isEmpty(id: string): boolean {
     const runtime = this.runtime(id);
     if (runtime.layer.procedural || runtime.layer.primitive) return false;
+    if (runtime.volume instanceof SparseSDFVolume) return !runtime.volume.hasNonPositiveSample();
     const values = runtime.volume.getDenseView(),
       count = volumeSampleCount(runtime.volume);
     for (let i = 0; i < count; i++)
@@ -3361,7 +3533,14 @@ export class IndependentLayers {
   private replayBake(entry: BakeEntry, redo: boolean): void {
     const stack = this.project.layerStack;
     if (redo) {
-      this.assertCapacity(volumeSampleCount(entry.runtime.volume), undefined, 1, entry.layerId);
+      this.assertCapacity(
+        entry.runtime.volume instanceof SparseSDFVolume
+          ? 0
+          : volumeSampleCount(entry.runtime.volume),
+        undefined,
+        1,
+        entry.layerId,
+      );
       stack.insert(entry.runtime.layer, Math.min(entry.index, stack.layers.length));
       this.install(entry.runtime);
       this.restoreBakeState(entry.after);
@@ -3397,10 +3576,17 @@ export class IndependentLayers {
     this.finishStroke();
     this.finishTransform();
     if (!Number.isFinite(factor) || factor <= 0) throw new Error("Invalid shape calibration.");
+    if (source.volume instanceof SparseSDFVolume && !isLegacyCubicGrid(source.volume))
+      throw new Error(
+        "Expanded sparse masters cannot be inserted as dense Personal Shapes. Open the native project.",
+      );
     const stack = this.project.layerStack;
     if (
       stack.layers.length >= MAX_PROJECT_LAYERS ||
-      stack.layers.reduce((n, l) => n + volumeSampleCount(l.volume), 0) +
+      stack.layers.reduce(
+        (n, l) => n + (l.volume instanceof SparseSDFVolume ? 0 : volumeSampleCount(l.volume)),
+        0,
+      ) +
         volumeSampleCount(source.volume) >
         MAX_PROJECT_VOXELS ||
       this.trackedBytes + this.composite.trackedBytes + volumeSampleCount(source.volume) * 16 >
@@ -3924,7 +4110,9 @@ export class IndependentLayers {
     };
     try {
       const otherSamples = this.project.layerStack.layers.reduce(
-        (sum, l) => sum + (l.id === id ? 0 : volumeSampleCount(l.volume)),
+        (sum, l) =>
+          sum +
+          (l.id === id || l.volume instanceof SparseSDFVolume ? 0 : volumeSampleCount(l.volume)),
         0,
       );
       if (!old && this.project.layerStack.layers.length >= MAX_PROJECT_LAYERS)

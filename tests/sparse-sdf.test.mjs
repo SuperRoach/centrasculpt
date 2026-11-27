@@ -13,7 +13,7 @@ import { sculptMask } from "../work/test-build/sculpt-mask.mjs";
 import { sculptPaint } from "../work/test-build/sculpt-paint.mjs";
 import { reflectPoint, SDFVolume } from "../work/test-build/sdf.mjs";
 import { prepareShape } from "../work/test-build/shape-library.mjs";
-import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
+import { SparseSDFVolume, sparsePageCoordinates } from "../work/test-build/sparse-sdf.mjs";
 
 const settings = {
   mode: "add",
@@ -117,7 +117,8 @@ test("sparse layers opt in and match the dense editor, cached Undo, Redo and nat
 
     const data = saveSculptProject(editor.project);
     const reopened = openSculptProject(data).layerStack.get(sparse.id);
-    assert(reopened.volume instanceof SDFVolume);
+    assert(reopened.volume instanceof SparseSDFVolume);
+    assert.equal(new DataView(data).getUint32(8, true), 25);
     assert.deepEqual(bits(reopened.volume), bits(sparse.volume));
     const { snapshot } = await captureProject(
       editor,
@@ -462,6 +463,7 @@ test("all Boolean folds bake the same field and mesh across sparse sources and d
         assert.deepEqual(checkpoint(editor), result);
         const reopened = openSculptProject(saveSculptProject(editor.project));
         assert.deepEqual(bits(reopened.activeLayer.volume), result.field);
+        assert.equal(reopened.activeLayer.volume instanceof SparseSDFVolume, sparseResult);
       } finally {
         editor.dispose();
       }
@@ -537,6 +539,9 @@ test("analytic and personal sparse stamps preserve exact masked, mirrored and po
         assert.deepEqual(checkpoint(editor), result);
         states.push(result);
       }
+      const reopened = openSculptProject(saveSculptProject(editor.project)).activeLayer.volume;
+      assert.equal(reopened instanceof SparseSDFVolume, storage === "sparse");
+      assert.deepEqual(bits(reopened), states.at(-1).field);
       expected ??= states;
       assert.deepEqual(states, expected);
     } finally {
@@ -639,5 +644,160 @@ test("same-sign edits can recover triangles from an entirely degenerate chunk", 
     assert(update.updates[0].geometry.getAttribute("position").count > 0);
   } finally {
     mesher.dispose();
+  }
+});
+
+function latticeIndex(volume, x, y, z) {
+  const origin = volume.latticeMin;
+  return volume.index(x - origin[0], y - origin[1], z - origin[2]);
+}
+
+test("Clay grows both signed directions at fixed spacing and rebinds field, history and chunk keys", () => {
+  const editor = new IndependentLayers(createBaseProject(new SparseSDFVolume(64), settings));
+  try {
+    const id = editor.active.layer.id,
+      before = editor.active.volume;
+    editor.setUndoMeshCacheEnabled(true);
+    editor.beginStroke();
+    assert(sample(editor, "add"));
+    editor.finishStroke();
+    drain(editor);
+    const originalMesh = mesh(editor.active);
+    const keys = originalMesh.map(([id]) => editor.active.mesher.chunkKey(id));
+    const initial = before.captureSamples();
+    const pageIds = [...before.residentPages()].map(([id]) => id);
+
+    for (const [mode, kind] of [
+      ["mask", true],
+      ["paint", "paint"],
+    ]) {
+      editor.beginStroke(kind);
+      assert(sample(editor, mode, { x: 0.38, y: 0, z: 0 }));
+      editor.finishStroke();
+    }
+    const maskEntries = [...sculptMask(before).entries()];
+    const paintEntries = [...sculptPaint(before).channels[3].entries()];
+    assert(maskEntries.length && paintEntries.length);
+    const remap = (index, to) =>
+      latticeIndex(to, index % 64, Math.floor(index / 64) % 64, Math.floor(index / 4096));
+
+    editor.beginStroke();
+    assert(sample(editor, "add", { x: 1.85, y: 0, z: 0 }));
+    editor.breakStrokePath();
+    assert(sample(editor, "add", { x: -1.85, y: 0, z: 0 }));
+    editor.finishStroke();
+    drain(editor);
+    const grown = editor.active.volume;
+    assert.equal(grown.step, before.step);
+    assert(grown.bounds.min[0] < before.bounds.min[0]);
+    assert(grown.bounds.max[0] > before.bounds.max[0]);
+    assert(keys.every((key, i) => editor.active.mesher.chunkKey(originalMesh[i][0]) === key));
+    const livePages = new Map(grown.residentPages());
+    assert(pageIds.every((id) => livePages.has(id)));
+    assert([...livePages.keys()].some((id) => sparsePageCoordinates(id)[0] < 0));
+    for (const [i, v] of maskEntries) assert.equal(sculptMask(grown).read(remap(i, grown)), v);
+    for (const [i, v] of paintEntries)
+      assert.equal(sculptPaint(grown).channels[3].read(remap(i, grown)), v);
+    const after = mesh(editor.active);
+    assert.equal(editor.undo(), id);
+    drain(editor);
+    assert.deepEqual(mesh(editor.active), originalMesh);
+    for (let z = 0; z < 64; z++)
+      for (let y = 0; y < 64; y++)
+        for (let x = 0; x < 64; x++)
+          assert(Object.is(grown.readVoxel(latticeIndex(grown, x, y, z)), initial(x, y, z)));
+    assert.equal(grown.readSample(0, 0, 0), grown.defaultValue);
+    assert.equal(editor.undo(), id);
+    assert(sculptPaint(grown).empty);
+    assert.equal(editor.undo(), id);
+    assert(sculptMask(grown).empty);
+    assert.equal(editor.undo(true), id);
+    assert.equal(editor.undo(true), id);
+    assert.equal(editor.undo(true), id);
+    drain(editor);
+    assert.deepEqual(mesh(editor.active), after);
+
+    const reopened = openSculptProject(saveSculptProject(editor.project)).activeLayer.volume;
+    assert.deepEqual(new Map(reopened.residentPages()), new Map(grown.residentPages()));
+    assert.deepEqual([...sculptMask(reopened).entries()], [...sculptMask(grown).entries()]);
+    assert.deepEqual(
+      [...sculptPaint(reopened).channels[3].entries()],
+      [...sculptPaint(grown).channels[3].entries()],
+    );
+    assert.equal(reopened.pageState(pageIds[0]), "resident-clean");
+    assert(grown.isPagePinned(pageIds[0]));
+    assert.equal(grown.pageState(pageIds[0]), "resident-dirty");
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("logical and transient growth refusal leave the source, residency, queue and redo intact", () => {
+  const editor = new IndependentLayers(createBaseProject(new SparseSDFVolume(64), settings));
+  try {
+    const before = editor.active.volume;
+    editor.beginStroke();
+    assert(sample(editor, "add"));
+    editor.finishStroke();
+    assert(editor.undo());
+    drain(editor);
+    const pages = new Map([...before.residentPages()].map(([id, a]) => [id, a.slice()]));
+    const revision = editor.committedRevision;
+    for (const [limits, pattern] of [
+      [{ maxAxisSamples: 64 }, /logical lattice or chunk budget/],
+      [{ maxTransientBytes: 65536 }, /resident and transient memory budget/],
+    ]) {
+      editor.growthLimits = limits;
+      editor.beginStroke();
+      assert.throws(() => sample(editor, "add", { x: -2, y: 0, z: 0 }), pattern);
+      editor.cancelStroke();
+      assert.equal(editor.active.volume, before);
+      assert.deepEqual(new Map(before.residentPages()), pages);
+      assert.equal(editor.committedRevision, revision);
+      assert.equal(editor.pendingChunks, 0);
+    }
+    editor.growthLimits = {};
+    assert(editor.undo(true));
+
+    assert(editor.stampShape(stampDefinition(editor, "add")));
+    drain(editor);
+    editor.beginStroke();
+    assert.throws(() => sample(editor, "add", { x: 2, y: 0, z: 0 }), /retain its default distance/);
+    editor.cancelStroke();
+    assert(editor.undo());
+    drain(editor);
+    editor.beginStroke();
+    assert.throws(() => sample(editor, "add", { x: 2, y: 0, z: 0 }), /history can change/);
+    editor.cancelStroke();
+    assert(editor.undo(true));
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("cancelling a growing stroke restores exact values and leaves older redo available", () => {
+  const editor = new IndependentLayers(createBaseProject(new SparseSDFVolume(64), settings));
+  try {
+    editor.beginStroke();
+    assert(sample(editor, "add"));
+    editor.finishStroke();
+    drain(editor);
+    const baked = mesh(editor.active);
+    assert(editor.undo());
+    drain(editor);
+    editor.beginStroke();
+    assert(sample(editor, "add", { x: -2, y: 0, z: 0 }));
+    assert(sample(editor, "add", { x: -2.1, y: 0.05, z: 0 }));
+    editor.cancelStroke();
+    drain(editor);
+    const volume = editor.active.volume;
+    assert(volume.latticeMin[0] < 0);
+    for (const [, page] of volume.residentPages())
+      assert(page.every((sample) => sample === volume.defaultValue));
+    assert(editor.undo(true));
+    drain(editor);
+    assert.deepEqual(mesh(editor.active), baked);
+  } finally {
+    editor.dispose();
   }
 });

@@ -46,10 +46,12 @@ export function mergeBounds(a: Bounds | null, b: Bounds | null): Bounds | null {
 
 export type DenseLatticeLayout = { dimensions: Vec3; latticeMin: Vec3 };
 export type DenseAllocator = (samples: number) => Float32Array;
+const LATTICE_ZERO: Vec3 = [0, 0, 0];
 /** Negative values are inside. Samples on the fixed volume boundary stay positive. */
 export abstract class LatticeVolume implements VolumeStore {
   protected abstract brushScratch(samples: number): Float32Array;
   protected readonly yieldDuringBrushPublication: boolean = true;
+  protected readonly normalsUseAbsoluteLattice: boolean = false;
   protected reserveWrites(_bounds: Bounds, _values?: Float32Array): void {}
   readonly step: number;
   private readonly shape: Vec3;
@@ -61,6 +63,7 @@ export abstract class LatticeVolume implements VolumeStore {
     initializeSphere = true,
     layout?: DenseLatticeLayout,
     derivedExport = false,
+    latticeLimits = { axis: 512, samples: 2 * 192 ** 3 },
   ) {
     if (
       !Number.isInteger(resolution) ||
@@ -76,12 +79,12 @@ export abstract class LatticeVolume implements VolumeStore {
     if (
       this.shape.length !== 3 ||
       this.minimum.length !== 3 ||
-      !this.shape.every((n) => Number.isSafeInteger(n) && n >= 3 && n <= 512) ||
+      !this.shape.every((n) => Number.isSafeInteger(n) && n >= 3 && n <= latticeLimits.axis) ||
       !this.minimum.every((n) => Number.isSafeInteger(n) && Math.abs(n) <= 1000000) ||
       this.shape.reduce((a, b) => a * b, 1) >
         (derivedExport && !initializeSphere && !layout && resolution <= 256
           ? 256 ** 3
-          : 2 * 192 ** 3)
+          : latticeLimits.samples)
     )
       throw new Error("Dense lattice allocation exceeds supported limits.");
     if (layout && !this.minimum.every((v, a) => v <= 0 && v + this.shape[a] >= resolution))
@@ -280,14 +283,19 @@ export abstract class LatticeVolume implements VolumeStore {
     const sample = read ?? this.sampleAtIndex;
     const [nx, ny, nz] = this.shape,
       gradient = [0, 0, 0];
+    const origin = this.normalsUseAbsoluteLattice ? this.minimum : LATTICE_ZERO;
     const grid = point.map((v, a) =>
       Math.max(
-        0,
-        Math.min(this.shape[a] - 1.000001, (v + this.extent) / this.step - this.minimum[a]),
+        origin[a],
+        Math.min(
+          origin[a] + this.shape[a] - 1.000001,
+          (v + this.extent) / this.step - (this.minimum[a] - origin[a]),
+        ),
       ),
     );
     const base = grid.map(Math.floor),
       fraction = grid.map((v, i) => v - base[i]);
+    for (let a = 0; a < 3; a++) base[a] -= origin[a];
     for (let dz = 0; dz <= 1; dz++)
       for (let dy = 0; dy <= 1; dy++)
         for (let dx = 0; dx <= 1; dx++) {

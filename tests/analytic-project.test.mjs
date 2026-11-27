@@ -13,6 +13,7 @@ import {
 import { sculptMask } from "../work/test-build/sculpt-mask.mjs";
 import { sculptPaint } from "../work/test-build/sculpt-paint.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { MAX_SDF_PAGES, SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 
 const settings = {
   mode: "add",
@@ -253,4 +254,64 @@ test("native accounting keeps the voxel triangle cap and admits twenty exact 63Â
     () => openSculptProject(mutate(data, (m) => m.layers.push(m.layers[0]))),
     /layer count/,
   );
+});
+
+test("v25 mixes signed sparse records with v24 analytic and dense layers", () => {
+  const volume = new SparseSDFVolume(33, 1.6, MAX_SDF_PAGES, {
+    latticeMin: [-16, 0, 0],
+    dimensions: [49, 33, 33],
+  });
+  volume.writeVoxel(volume.index(3, 3, 3), -0.045);
+  volume.writeVoxel(volume.index(10, 3, 3), -0);
+  volume.writeVoxel(volume.index(48, 3, 3), 0.004);
+  const project = mixed(new SdfLayer(volume, { name: "Sparse" }));
+  const dense = new SdfLayer(new SDFVolume(17), { name: "Dense", order: 2 });
+  project.layerStack.insert(dense, 2);
+  project.layerStack.select(project.layerStack.layers[0].id);
+  const data = saveSculptProject(project);
+  const { version, meta } = header(data);
+  assert.equal(version, 25);
+  assert.equal(meta.layers[0].sparse.pageCount, 3);
+  assert(meta.layers[1].source);
+  assert.equal(meta.layers[2].voxelCount, 17 ** 3);
+  const opened = openSculptProject(data);
+  assert.deepEqual(
+    new Map(opened.activeLayer.volume.residentPages()),
+    new Map(volume.residentPages()),
+  );
+  assert.equal(opened.activeLayer.volume.getDenseView(), undefined);
+  assert(Object.is(opened.activeLayer.volume.readVoxel(volume.index(10, 3, 3)), -0));
+  assert.deepEqual(opened.layerStack.get(dense.id).volume.values, dense.volume.values);
+  assert.equal(opened.layerStack.hierarchy.parent(meta.layers[1].id), meta.layers[0].id);
+
+  const duplicate = importNative(data, "Signed copy");
+  assert.equal(duplicate.record.version, 25);
+  assert.notEqual(duplicate.record.id, project.id);
+  assert.deepEqual(
+    new Map(openSculptProject(duplicate.data).activeLayer.volume.residentPages()),
+    new Map(volume.residentPages()),
+  );
+
+  assert.throws(() => openSculptProject(data.slice(0, -1)), /offset|length/);
+  for (const [change, pattern] of [
+    [(layer) => (layer.sparse.defaultValue = 1), /descriptor/],
+    [(layer) => (layer.sparse.pageCount = MAX_SDF_PAGES + 1), /page budget/],
+    [(layer) => (layer.sparse.pageCount = 2), /voxel offset/],
+    [(layer) => (layer.grid.dimensions[1] = 2000), /grid dimensions/],
+    [(layer) => (layer.grid.dimensions = [1025, 513, 513]), /logical chunk budget/],
+  ])
+    assert.throws(() => openSculptProject(mutate(data, (m) => change(m.layers[0]))), pattern);
+
+  for (const [change, pattern] of [
+    [(view, i) => view.setInt32(i, -10000, true), /outside/],
+    [(view, i) => view.setInt32(i + 2060, -2, true), /Duplicate or unordered/],
+    [(view, i) => view.setFloat32(i + 12, Infinity, true), /non-finite/],
+    [(view, i) => view.setFloat32(i + 12, -1, true), /boundary/],
+    [(view, i) => view.setFloat32(i + 2 * 2060 + 16, 1, true), /non-default padding/],
+  ]) {
+    const invalid = data.slice(0),
+      view = new DataView(invalid);
+    change(view, 16 + view.getUint32(12, true));
+    assert.throws(() => openSculptProject(invalid), pattern);
+  }
 });

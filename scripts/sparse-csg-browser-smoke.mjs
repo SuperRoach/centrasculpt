@@ -1,6 +1,7 @@
 // Run after npm run build. Use PLAYWRIGHT_CHROMIUM_EXECUTABLE for system Chrome.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
 const port = Number(process.env.SPARSE_SMOKE_PORT ?? 5199);
@@ -73,9 +74,24 @@ try {
   await page.getByLabel("Shape uniform scale", { exact: true }).fill("0.35");
   await page.locator("#stamp-shape-overlay").click();
   await page.getByText("Shape stamped · one undo action", { exact: true }).waitFor();
+  await page.locator("#project-menu-toggle").click();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page
+      .locator("#project-menu")
+      .getByRole("button", { name: "Download .form", exact: true })
+      .click(),
+  ]);
+  const bytes = await readFile(await download.path());
+  assert.equal(bytes.readUInt32LE(8), 25);
+  const size = bytes.readUInt32LE(12);
+  const metadata = JSON.parse(bytes.subarray(16, 16 + size));
+  const active = metadata.layers.find((layer) => layer.id === metadata.activeLayerId);
+  assert.equal(active.sparse.encoding, "sdf-pages-f32-le-v1");
+  assert(active.sparse.pageCount > 0);
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: production sparse analytic and Personal Stamp, Bake opt-in, Undo/Redo and diagnostics",
+    "PASS: production sparse analytic and Personal Stamp, Bake opt-in, Undo/Redo, diagnostics and v25 download",
   );
 } finally {
   await browser?.close();

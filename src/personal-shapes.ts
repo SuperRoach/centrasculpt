@@ -5,8 +5,9 @@ import { openSculptProject, PROJECT_VERSION, saveSculptProject } from "./project
 import { LIBRARY_COUNT, LibraryError, ProjectLibrary, type ProjectRecord } from "./project-library";
 import { SDFVolume } from "./sdf";
 import { type ShapeBackupPreview, shapeMerge } from "./shape-backup";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { copyTransform } from "./transform";
-import { volumeSampleCount } from "./volume-store";
+import { isLegacyCubicGrid, volumeSampleCount } from "./volume-store";
 export type PersonalShapeRecord = ProjectRecord & {
   backupFingerprint?: string;
   shapeVersion: 1;
@@ -147,6 +148,10 @@ export async function capturePersonalShape(
     );
   if (!source.booleanModifiers?.length && !source.array?.enabled) {
     const original = source.volume;
+    if (original instanceof SparseSDFVolume && !isLegacyCubicGrid(original))
+      throw new Error(
+        "Save an expanded sparse sculpt as a native .form project. Personal Shape masters still use a bounded dense lattice.",
+      );
     if (volumeSampleCount(original) * 12 > 128 * 1024 ** 2)
       throw new Error(
         "Shape exceeds the 128 MiB staging limit. Save a .form backup or split the sculpt; detail was not reduced.",

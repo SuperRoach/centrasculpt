@@ -3,8 +3,10 @@ import type { IndependentLayers } from "./independent-layers";
 import type { HierarchyState } from "./layer-hierarchy";
 import { type LayerMetadata, SculptProject } from "./layers";
 import { type ProjectSettings, saveSculptProject } from "./project";
+import { MAX_NATIVE_DECODE_BYTES } from "./project-format";
 import { type MaskSnapshot, sculptMask } from "./sculpt-mask";
 import { type PaintSnapshot, sculptPaint } from "./sculpt-paint";
+import { type SparsePageSnapshot, SparseSDFVolume } from "./sparse-sdf";
 import type { ToolPreferences } from "./tool-preferences";
 import { volumeSampleCount } from "./volume-store";
 export type ProjectSnapshot = {
@@ -21,7 +23,8 @@ export type ProjectSnapshot = {
     extent: number;
     dimensions: [number, number, number];
     latticeMin: [number, number, number];
-    values: Float32Array;
+    values?: Float32Array;
+    sparse?: SparsePageSnapshot;
     paint?: PaintSnapshot;
     mask?: MaskSnapshot;
   }[];
@@ -46,7 +49,11 @@ export function encodeManualProject(
   const { layerStack, name, id } = layers.project;
   const project = new SculptProject(layerStack, settings, name, id);
   project.toolPreferences = tools;
-  return saveSculptProject(project, display);
+  const sparse = layerStack.layers.some(({ volume }) => volume instanceof SparseSDFVolume);
+  const available = sparse
+    ? MAX_NATIVE_DECODE_BYTES - layers.trackedBytes - layers.composite.trackedBytes
+    : undefined;
+  return saveSculptProject(project, display, available);
 }
 
 /** Native codec adapter with independent immutable values; no GPU/undo/preview state. */
@@ -60,12 +67,16 @@ export async function captureProject(
   maxBytes = 256 * 1024 ** 2,
 ): Promise<{ snapshot: ProjectSnapshot; copyMs: number; temporaryBytes: number }> {
   if (!layers.recoveryReady) throw new Error("Recovery waits for completed edits.");
-  const samples = layers.project.layerStack.layers.reduce(
-      (n, l) => n + volumeSampleCount(l.volume),
+  const fields = layers.project.layerStack.layers.reduce(
+      (n, { volume }) =>
+        n +
+        (volume instanceof SparseSDFVolume
+          ? volume.pageMemoryBytes * 4
+          : volumeSampleCount(volume) * 16),
       0,
     ),
     temporaryBytes =
-      samples * 16 +
+      fields +
       layers.project.layerStack.layers.reduce(
         (n, l) => n + (sculptMask(l.volume).memoryBytes + sculptPaint(l.volume).memoryBytes) * 3,
         0,
@@ -104,8 +115,12 @@ export async function captureProject(
     let deadline = performance.now() + 2;
     for (const layer of layers.project.layerStack.layers) {
       const v = layer.volume,
-        values = new Float32Array(volumeSampleCount(v)),
-        dense = v.getDenseView();
+        dense = v.getDenseView(),
+        values = dense && new Float32Array(dense.length),
+        sparse =
+          v instanceof SparseSDFVolume
+            ? { defaultValue: v.defaultValue, pages: new Map<number, Float32Array>() }
+            : undefined;
       snapshot.layers.push({
         metadata: layer.metadata(),
         resolution: v.resolution,
@@ -113,19 +128,28 @@ export async function captureProject(
         dimensions: v.dimensions,
         latticeMin: v.latticeMin ?? [0, 0, 0],
         values,
+        sparse,
         paint: sculptPaint(v).snapshot(),
         mask: sculptMask(v).snapshot(),
       });
-      for (let i = 0; i < values.length; i += 16384) {
+      const pause = async () => {
+        await new Promise<void>((r) => setTimeout(r, 0));
+        deadline = performance.now() + 2;
         check();
-        const end = Math.min(values.length, i + 16384);
-        if (dense) values.set(dense.subarray(i, end), i);
-        else for (let j = i; j < end; j++) values[j] = v.readVoxel(j);
-        if (performance.now() >= deadline) {
-          await new Promise<void>((r) => setTimeout(r, 0));
-          deadline = performance.now() + 2;
+      };
+      if (sparse && v instanceof SparseSDFVolume) {
+        for (const [id, page] of v.residentPages()) {
+          check();
+          sparse.pages.set(id, page.slice());
+          if (performance.now() >= deadline) await pause();
         }
-      }
+      } else if (dense && values) {
+        for (let i = 0; i < values.length; i += 16384) {
+          check();
+          values.set(dense.subarray(i, i + 16384), i);
+          if (performance.now() >= deadline) await pause();
+        }
+      } else throw new Error("Unsupported recovery volume storage.");
     }
     check();
     return { snapshot, copyMs: performance.now() - start, temporaryBytes };

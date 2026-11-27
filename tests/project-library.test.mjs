@@ -21,6 +21,7 @@ import { createReference } from "../work/test-build/reference-images.mjs";
 import { sculptMask } from "../work/test-build/sculpt-mask.mjs";
 import { sculptPaint } from "../work/test-build/sculpt-paint.mjs";
 import { SDFVolume } from "../work/test-build/sdf.mjs";
+import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 
 const settings = {
   mode: "add",
@@ -753,5 +754,39 @@ test("thumbnail open targets its own project and keeps the unsaved changes promp
     assert.equal(f.b.current.id, b.id);
   } finally {
     f.s.close();
+  }
+});
+
+test("v25 Library saves replace the same record and a quota refusal keeps the previous sparse bytes", async () => {
+  const volume = new SparseSDFVolume(33);
+  volume.writeVoxel(volume.index(12, 12, 12), -0.1);
+  const project = createBaseProject(volume, settings);
+  let data = saveSculptProject(project);
+  const s = store(data.byteLength + 1024);
+  const b = new ProjectBrowser(s, {
+    key: () => String(data.byteLength),
+    ready: () => true,
+    encode: async () => data,
+    changed() {},
+  });
+  try {
+    b.name = "Sparse";
+    await b.activate("library:save");
+    const first = b.current;
+    assert.equal(first.version, 25);
+    volume.writeVoxel(volume.index(13, 12, 12), -0.2);
+    data = saveSculptProject(project);
+    await b.activate("library:save");
+    assert.equal(b.current.id, first.id);
+    assert.equal(b.current.revision, first.revision + 1);
+    const good = await s.read(first.id);
+    volume.writeVoxel(volume.index(21, 12, 12), -0.3);
+    data = saveSculptProject(project);
+    await b.activate("library:save");
+    assert.match(b.status, /Library limit reached/i);
+    assert.deepEqual(await s.read(first.id), good);
+    assert(openSculptProject(good.data).activeLayer.volume instanceof SparseSDFVolume);
+  } finally {
+    s.close();
   }
 });

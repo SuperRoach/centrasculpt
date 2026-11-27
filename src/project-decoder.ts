@@ -29,15 +29,26 @@ import {
   type ProjectSettings,
   SPARSE_PAGE_BYTES,
   SPARSE_PAGE_SAMPLES,
+  SPARSE_PROJECT_VERSION,
   validateSettings,
 } from "./project-format";
 import { openLegacyProject, validateLegacyLayerVersion } from "./project-legacy";
-import { validateVoxels } from "./project-validation";
+import { parseSparseDescriptor, readSparsePages, SDF_PAGE_WORDS } from "./project-sparse-pages";
+import { validateSparseVoxels, validateVoxels } from "./project-validation";
 import { REFERENCE_LIMITS } from "./reference-images";
 import { sculptMask } from "./sculpt-mask";
 import { sculptPaint } from "./sculpt-paint";
 import { SDFVolume } from "./sdf";
+import {
+  MAX_SDF_PAGES,
+  MAX_SPARSE_AXIS,
+  MAX_SPARSE_CHUNKS,
+  SDF_PAGE_MEMORY,
+  SparseSDFVolume,
+  sparseChunkCount,
+} from "./sparse-sdf";
 import { validateToolPreferences } from "./tool-preferences";
+import type { Vec3 } from "./transform";
 import type { VolumeStore } from "./volume-store";
 export function openSculptProject(
   buffer: ArrayBuffer,
@@ -54,8 +65,8 @@ export function openSculptProject(
     const legacy = openLegacyProject(buffer);
     return createBaseProject(legacy.volume, legacy.settings, true);
   }
-  if (version < 3 || version > PROJECT_VERSION)
-    throw new Error("Unsupported project version. This app supports versions 1–24.");
+  if (version < 3 || version > SPARSE_PROJECT_VERSION)
+    throw new Error("Unsupported project version. This app supports versions 1–25.");
   const length = view.getUint32(12, true);
   if (length < 2 || length > MAX_METADATA_BYTES || 16 + length > buffer.byteLength)
     throw new Error("Invalid project metadata length.");
@@ -81,7 +92,8 @@ export function openSculptProject(
   let expectedOffset = 0,
     totalSamples = 0,
     analyticSamples = 0,
-    totalTriangles = 0;
+    totalTriangles = 0,
+    sdfPageBytes = 0;
   const records = metadata.layers.map((value) => {
     const record = object(value);
     const layer = validateLayerMetadata(record);
@@ -90,7 +102,13 @@ export function openSculptProject(
   });
   const plans = records.map(({ record, layer }) => {
     const grid = object(record.grid),
-      dimensions = grid.dimensions;
+      dimensions = grid.dimensions,
+      isSparse = record.sparse !== undefined;
+    if (
+      isSparse &&
+      (version !== SPARSE_PROJECT_VERSION || layer.primitive || record.source !== undefined)
+    )
+      throw new Error("Unsupported sparse SDF layer encoding.");
     if (
       !Array.isArray(dimensions) ||
       dimensions.length !== 3 ||
@@ -98,7 +116,7 @@ export function openSculptProject(
         (n) =>
           Number.isInteger(n) &&
           n >= 3 &&
-          n <= (version >= 4 ? 512 : MAX_PROJECT_RESOLUTION) &&
+          n <= (isSparse ? MAX_SPARSE_AXIS : version >= 4 ? 512 : MAX_PROJECT_RESOLUTION) &&
           (version >= 4 || n === dimensions[0]),
       )
     )
@@ -116,6 +134,12 @@ export function openSculptProject(
       !latticeMin.every((v, a) => v <= 0 && v + dims[a] >= n)
     )
       throw new Error("Invalid layer lattice origin.");
+    if (
+      isSparse &&
+      (latticeMin.some((v) => v < -MAX_SPARSE_AXIS) ||
+        sparseChunkCount({ dimensions: dims, latticeMin: latticeMin as Vec3 }) > MAX_SPARSE_CHUNKS)
+    )
+      throw new Error("Sparse lattice exceeds the logical chunk budget.");
     if (
       typeof extent !== "number" ||
       !Number.isFinite(extent) ||
@@ -135,7 +159,7 @@ export function openSculptProject(
     const count = dims.reduce((a, b) => a * b, 1);
     const source = record.source === undefined ? undefined : object(record.source);
     if (source) {
-      if (version !== PROJECT_VERSION || source.encoding !== ANALYTIC_ENCODING)
+      if (version < PROJECT_VERSION || source.encoding !== ANALYTIC_ENCODING)
         throw new Error("Unsupported native source encoding.");
       const physical = analyticDimensions(layer.primitive);
       if (
@@ -158,12 +182,14 @@ export function openSculptProject(
         throw new Error("Invalid analytic source definition or reconstruction grid.");
       analyticSamples += count;
     }
-    totalSamples += count;
+    const sparse = isSparse ? parseSparseDescriptor(record.sparse, extent) : undefined;
+    if (sparse) sdfPageBytes += sparse.pageCount * SDF_PAGE_MEMORY;
+    else totalSamples += count;
     if (analyticSamples > MAX_ANALYTIC_SAMPLES || totalSamples > MAX_PROJECT_VOXELS)
       throw new Error(
         "Project cache sample budget exceeded. Split the project into smaller files.",
       );
-    const stored = source ? 0 : count;
+    const stored = sparse ? sparse.pageCount * SDF_PAGE_WORDS : source ? 0 : count;
     if (
       record.voxelOffset !== expectedOffset ||
       record.voxelCount !== stored ||
@@ -172,7 +198,7 @@ export function openSculptProject(
       throw new Error("Invalid layer voxel offset or payload length.");
     const offset = expectedOffset;
     expectedOffset += stored;
-    return { layer, source, n, extent, dims, latticeMin, offset, count };
+    return { layer, source, sparse, n, extent, dims, latticeMin, offset, count };
   });
   // Validate identities, hierarchy and linked metadata against lightweight holders.
   // These validators depend on definitions and poses. No source grid is allocated here.
@@ -333,29 +359,50 @@ export function openSculptProject(
           layers.map((layer) => layer.id),
         );
   if (
-    version === PROJECT_VERSION &&
-    buffer.byteLength - length + MAX_METADATA_BYTES + totalSamples * 8 + sparseBytes >
+    version >= PROJECT_VERSION &&
+    buffer.byteLength -
+      length +
+      MAX_METADATA_BYTES +
+      totalSamples * 8 +
+      sparseBytes +
+      sdfPageBytes >
       MAX_NATIVE_DECODE_BYTES
   )
     throw new Error("Native project reconstruction exceeds the memory budget. Split the project.");
-  for (const [index, { source, n, extent, dims, latticeMin, offset, count }] of plans.entries()) {
+  for (const [
+    index,
+    { source, sparse, n, extent, dims, latticeMin, offset, count },
+  ] of plans.entries()) {
     const layer = layers[index];
-    let volume: SDFVolume;
-    if (source && layer.primitive) {
-      volume = rebuildAnalyticCache(layer.primitive, n, count, source.fingerprint as number);
-      validateVoxels(volume.values, dims, extent, false);
+    let volume: VolumeStore;
+    if (sparse) {
+      const origin = latticeMin as Vec3;
+      const store = new SparseSDFVolume(
+        n,
+        extent,
+        MAX_SDF_PAGES,
+        { dimensions: dims, latticeMin: origin },
+        readSparsePages(view, 16 + length + offset * 4, sparse, origin, dims),
+      );
+      totalTriangles += validateSparseVoxels(store, false);
+      volume = store;
+    } else if (source && layer.primitive) {
+      const dense = rebuildAnalyticCache(layer.primitive, n, count, source.fingerprint as number);
+      validateVoxels(dense.values, dims, extent, false);
+      volume = dense;
     } else {
-      volume = new SDFVolume(n, extent, false, {
+      const dense = new SDFVolume(n, extent, false, {
         dimensions: dims,
         latticeMin: latticeMin as [number, number, number],
       });
       for (let i = 0; i < count; i++)
-        volume.values[i] = view.getFloat32(16 + length + (offset + i) * 4, true);
-      totalTriangles += validateVoxels(volume.values, dims, extent);
-      if (totalTriangles > MAX_PROJECT_TRIANGLES)
-        throw new Error("Aggregate project triangle budget exceeded.");
+        dense.values[i] = view.getFloat32(16 + length + (offset + i) * 4, true);
+      totalTriangles += validateVoxels(dense.values, dims, extent);
+      volume = dense;
       if (layer.primitive) validatePrimitiveCache(layer.primitive, volume);
     }
+    if (totalTriangles > MAX_PROJECT_TRIANGLES)
+      throw new Error("Aggregate project triangle budget exceeded.");
     onProgress?.(index + 1, plans.length);
     layer.volume = volume;
   }

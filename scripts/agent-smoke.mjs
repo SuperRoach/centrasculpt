@@ -8,6 +8,47 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { chromium } from "@playwright/test";
 
+const sparsePersistence = process.argv.includes("--sparse-bake");
+async function loadSparseBakeFixture(page) {
+  await import("./compile-core.mjs");
+  const { LayerStack, SculptProject, SdfLayer } = await import("../work/test-build/layers.mjs");
+  const { evaluatePrimitive } = await import("../work/test-build/parametric-primitive.mjs");
+  const { saveSculptProject } = await import("../work/test-build/project.mjs");
+  const layer = (primitive, name, order) => {
+    const steps = evaluatePrimitive(primitive, 33, 63 ** 3);
+    let next = steps.next();
+    while (!next.done) next = steps.next();
+    return new SdfLayer(next.value, { primitive, name, order });
+  };
+  const body = layer(
+    { kind: "box", width: 0.5, height: 0.35, depth: 0.5 },
+    "Sparse Bake source",
+    0,
+  );
+  const cutter = layer({ kind: "cylinder", diameter: 0.13, height: 0.5 }, "Sparse Bake cutter", 1);
+  body.booleanModifiers = [
+    { id: "fixture-cut", sourceId: cutter.id, operation: "difference", enabled: true },
+  ];
+  const project = new SculptProject(new LayerStack([body, cutter], body.id), {
+    mode: "add",
+    radius: 0.22,
+    strength: 0.8,
+    hardness: 0.6,
+    camera: { position: [2.4, 1.7, 3.3], target: [0, 0, 0] },
+  });
+  await page.locator("#project-file").setInputFiles({
+    name: "Sparse Bake fixture.form",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(saveSculptProject(project)),
+  });
+  await page.locator('[data-library-action="library:open"]').click();
+  await page
+    .locator("#project-message")
+    .filter({ hasText: /^Opened / })
+    .waitFor();
+  await page.locator('[data-surface-view="separate"]').click();
+}
+
 const port = Number(process.env.AGENT_SMOKE_PORT ?? 5197);
 const hostnameValue = hostname().toLowerCase();
 const machineLocalHostname = hostnameValue.endsWith(".local")
@@ -27,7 +68,13 @@ const waitUntil = async (check, message) => {
 function start(agent) {
   const child = spawn(
     process.execPath,
-    ["node_modules/vite/bin/vite.js", "--host", "0.0.0.0", "--port", `${port}`],
+    [
+      "node_modules/vite/bin/vite.js",
+      "--host",
+      sparsePersistence ? "127.0.0.1" : "0.0.0.0",
+      "--port",
+      `${port}`,
+    ],
     {
       env: {
         ...process.env,
@@ -115,6 +162,7 @@ smoke: try {
     );
   }
   await page.goto(origin);
+  if (sparsePersistence) await loadSparseBakeFixture(page);
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByRole("button", { name: "Approve connection", exact: true }).waitFor();
   for (const viewport of [
@@ -192,6 +240,27 @@ smoke: try {
   await page.getByRole("checkbox", { name: "Allow editing (includes Undo)", exact: true }).check();
   await page.getByRole("button", { name: "Open local agent access", exact: true }).click();
   await page.getByText("Connected · editing allowed", { exact: true }).waitFor();
+  if (sparsePersistence) {
+    await page.locator('#local-agent-panel[data-state="editing"]').waitFor({ state: "attached" });
+    const objects = await call("list_objects");
+    assert(objects.ok, JSON.stringify(objects));
+    const source = objects.value.find((item) => item.name === "Sparse Bake source");
+    assert(source);
+    const id = source.id;
+    const bake = await call("boolean_bake", {
+      id,
+      storage: "sparse",
+      expectedRevision: (await call("scene_summary")).revision,
+    });
+    assert(bake.ok, JSON.stringify(bake));
+    await page.locator("#mesh-info").filter({ hasText: "Sparse trial" }).waitFor();
+    const undo = await call("undo", { expectedRevision: (await call("scene_summary")).revision });
+    assert(undo.ok, JSON.stringify(undo));
+    assert.equal((await call("get_booleans", { id })).value[0].operation, "difference");
+    assert.deepEqual(pageErrors, []);
+    console.log("PASS: browser-approved stdio MCP sparse Boolean Bake and Undo");
+    break smoke;
+  }
   const nearMM = (actual, expected, tolerance = 1e-9) => {
     assert.equal(actual.length, expected.length);
     expected.forEach((value, axis) => {

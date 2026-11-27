@@ -15,6 +15,9 @@ export const MAGIC = [70, 79, 82, 77, 83, 68, 70, 0]; // FORMSDF\0
 export const PROJECT_VERSION = 24;
 /** Compatibility alias for the first analytic format. */
 export const ANALYTIC_PROJECT_VERSION = PROJECT_VERSION;
+export const SPARSE_PROJECT_VERSION = 25;
+export const isCanonicalProjectVersion = (version: number) =>
+  version === PROJECT_VERSION || version === SPARSE_PROJECT_VERSION;
 export const ANALYTIC_ENCODING = "primitive-sdf-v1";
 export const MAX_ANALYTIC_SAMPLES = 20 * 63 ** 3;
 export const MAX_NATIVE_DECODE_BYTES = 256 * 1024 ** 2;

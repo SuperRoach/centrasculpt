@@ -1,9 +1,10 @@
 import { copySculptMask } from "./sculpt-mask";
 import { copySculptPaint } from "./sculpt-paint";
-import type { DenseAllocator } from "./sdf";
+import type { DenseAllocator, LatticeVolume } from "./sdf";
 import { SDFVolume } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import type { Vec3 } from "./transform";
-import type { VolumeBounds } from "./volume-store";
+import type { VolumeBounds, VolumeStore } from "./volume-store";
 /** Storage stage: prepares an independent replacement, never installs it directly
  * into a live layer/history. IndependentLayers coordinates automatic publication. */
 export type DenseGrowthLimits = {
@@ -66,6 +67,40 @@ export function planDenseGrowth(
   options: Partial<DenseGrowthLimits> = {},
 ): DenseGrowthPlan | null {
   const limits = limitsFor(options);
+  const layout = growthLayout(source, footprint, limits);
+  if (!layout) return null;
+  const { latticeMin: nextMin, dimensions } = layout,
+    oldMin = source.latticeMin,
+    oldDimensions = source.dimensions,
+    samples = count(dimensions),
+    oldCount = count(oldDimensions),
+    transientStorageBytes = (oldCount + samples) * 8;
+  if (
+    !dimensions.every((n) => Number.isSafeInteger(n) && n >= 3 && n <= limits.maxAxisSamples) ||
+    !nextMin.every((v) => Number.isSafeInteger(v) && Math.abs(v) <= 1000000) ||
+    !Number.isSafeInteger(samples) ||
+    samples > limits.maxSamples ||
+    transientStorageBytes > limits.maxTransientBytes
+  )
+    throw new Error(
+      "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced.",
+    );
+  return {
+    latticeMin: nextMin,
+    dimensions,
+    offset: oldMin.map((v, a) => v - nextMin[a]) as Vec3,
+    samples,
+    addedSamples: samples - oldCount,
+    storageBytes: samples * 8,
+    transientStorageBytes,
+  };
+}
+export function growthLayout(
+  source: LatticeVolume,
+  footprint: VolumeBounds,
+  options: Partial<DenseGrowthLimits> = {},
+) {
+  const limits = limitsFor(options);
   if (
     !footprint ||
     !Array.isArray(footprint.min) ||
@@ -95,29 +130,14 @@ export function planDenseGrowth(
         limits.paddingBlocks * limits.blockCells;
   }
   if (nextMin.every((v, a) => v === oldMin[a] && nextMax[a] === oldMax[a])) return null;
-  const dimensions = nextMin.map((v, a) => nextMax[a] - v + 1) as Vec3,
-    samples = count(dimensions),
-    oldCount = count(oldDimensions),
-    transientStorageBytes = (oldCount + samples) * 8;
-  if (
-    !dimensions.every((n) => Number.isSafeInteger(n) && n >= 3 && n <= limits.maxAxisSamples) ||
-    !nextMin.every((v) => Number.isSafeInteger(v) && Math.abs(v) <= 1000000) ||
-    !Number.isSafeInteger(samples) ||
-    samples > limits.maxSamples ||
-    transientStorageBytes > limits.maxTransientBytes
-  )
-    throw new Error(
-      "Volume growth exceeds the dense storage safety limit. Existing sculpture kept; no resolution was reduced.",
-    );
-  return {
-    latticeMin: nextMin,
-    dimensions,
-    offset: oldMin.map((v, a) => v - nextMin[a]) as Vec3,
-    samples,
-    addedSamples: samples - oldCount,
-    storageBytes: samples * 8,
-    transientStorageBytes,
-  };
+  return { latticeMin: nextMin, dimensions: nextMin.map((v, a) => nextMax[a] - v + 1) as Vec3 };
+}
+export function assertExactLatticeGrowth(source: VolumeStore, next: VolumeStore): Vec3 {
+  if (source instanceof SDFVolume && next instanceof SDFVolume)
+    return assertExactDenseGrowth(source, next);
+  if (source instanceof SparseSDFVolume && next instanceof SparseSDFVolume)
+    return next.assertGrowthFrom(source);
+  throw new Error("Growth must keep the original volume storage.");
 }
 export function prepareDenseGrowth(
   source: SDFVolume,

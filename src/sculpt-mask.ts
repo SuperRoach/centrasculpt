@@ -94,7 +94,7 @@ export class SculptMask {
       minimum: this.volume.latticeMin ?? [0, 0, 0],
     };
   }
-  restore(s: MaskSnapshot): void {
+  restore(s: MaskSnapshot, admitPage?: (bytes: number) => void): void {
     const d = this.volume.dimensions,
       m = this.volume.latticeMin ?? [0, 0, 0];
     this.base = s.base;
@@ -104,16 +104,25 @@ export class SculptMask {
     if (d.every((v, a) => v === s.dimensions[a]) && m.every((v, a) => v === s.minimum[a]))
       this.pages = new Map(s.pages);
     else {
-      const [nx, ny] = s.dimensions;
+      const [nx, ny, nz] = s.dimensions;
       for (const [page, data] of s.pages)
         for (let j = 0; j < PAGE; j++) {
           const id = page * PAGE + j;
-          if (id >= s.dimensions.reduce((a, b) => a * b, 1) || data[j] === s.base) continue;
+          if (id >= nx * ny * nz || data[j] === s.base) continue;
           const x = (id % nx) + s.minimum[0] - m[0],
             y = (Math.floor(id / nx) % ny) + s.minimum[1] - m[1],
             z = Math.floor(id / (nx * ny)) + s.minimum[2] - m[2];
-          if (x >= 0 && y >= 0 && z >= 0 && x < d[0] && y < d[1] && z < d[2])
-            this.write(this.volume.index(x, y, z), this.inverted ? 1 - data[j] : data[j]);
+          if (x < 0 || y < 0 || z < 0 || x >= d[0] || y >= d[1] || z >= d[2]) continue;
+          const index = this.volume.index(x, y, z),
+            target = Math.floor(index / PAGE);
+          let values = this.pages.get(target);
+          if (!values) {
+            admitPage?.(PAGE * 4 + 64);
+            values = new Float32Array(PAGE).fill(this.base);
+            this.pages.set(target, values);
+            this.writable.add(target);
+          }
+          values[index % PAGE] = data[j];
         }
     }
     this.revision++;

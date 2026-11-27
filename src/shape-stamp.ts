@@ -1,4 +1,5 @@
 import type { SdfLayer } from "./layers";
+import { MAX_PROJECT_VOXELS } from "./project-format";
 import { sculptMask } from "./sculpt-mask";
 import type { Bounds, MirrorPlane } from "./sdf";
 import { reflectPoint } from "./sdf";
@@ -81,6 +82,11 @@ export function* prepareStampSteps(
       ? dims[a] - 1
       : Math.min(dims[a] - 1, Math.floor((v + padding - origin[a]) / volume.step)),
   );
+  if (
+    readSparse &&
+    lo.reduce((count, v, a) => count * Math.max(0, hi[a] - v + 1), 1) > MAX_PROJECT_VOXELS
+  )
+    throw new Error("Stamp exceeds the exact sparse scan limit. Use a smaller target or stamp.");
   if (
     maxStagingBytes !== Infinity &&
     (!Number.isSafeInteger(maxStagingBytes) || maxStagingBytes < 0)

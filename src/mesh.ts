@@ -1,5 +1,5 @@
 import { BufferAttribute, BufferGeometry } from "three";
-import { assertExactDenseGrowth } from "./dense-growth";
+import { assertExactLatticeGrowth } from "./dense-growth";
 import type { Bounds } from "./sdf";
 import { SDFVolume } from "./sdf";
 import { SparseSDFVolume } from "./sparse-sdf";
@@ -280,9 +280,10 @@ export class IncrementalMesher {
     this.layout = this.buildLayout(volume);
     this.chunks = this.layout.chunks;
     if (volume instanceof SparseSDFVolume) {
-      const width = Math.min(chunkSize + 5, volume.resolution);
+      const width = chunkSize + 5;
       this.halo = new Float32Array(width ** 3);
-      if (!volume.residentBytes) return;
+      for (const [x, y, z] of volume.surfaceBlocks(chunkSize)) this.enqueue(this.idAt(x, y, z));
+      return;
     }
     this.invalidate();
   }
@@ -343,13 +344,24 @@ export class IncrementalMesher {
   chunkKey(id: number): string {
     return this.chunks[id]?.key ?? "";
   }
+  chunkCanReuseAfterGrowth(id: number, next: VolumeStore): boolean {
+    const bounds = this.chunks[id].bounds,
+      dims = this.layout.dimensions,
+      old = this.volume.bounds,
+      expanded = next.bounds;
+    return bounds.min.every(
+      (lo, a) =>
+        (old.min[a] === expanded.min[a] || lo >= 2) &&
+        (old.max[a] === expanded.max[a] || bounds.max[a] <= dims[a] - 3),
+    );
+  }
   /** The editor coordinates this staged rebind with source/history publication.
    * Validation and layout allocations precede publication; old geometry is retained.
    * No resampling, layer metadata edit or disposal of unchanged buffers. */
   rebindVolume(next: SDFVolume) {
     return this.prepareRebindVolume(next)();
   }
-  prepareRebindVolume(next: SDFVolume): () => {
+  prepareRebindVolume(next: SDFVolume | SparseSDFVolume): () => {
     reusedChunks: number;
     addedChunks: number;
     dirtyChunks: number;
@@ -357,8 +369,6 @@ export class IncrementalMesher {
   } {
     const start = performance.now();
     if (this.disposed) throw new Error("Mesher is disposed.");
-    if (!(this.volume instanceof SDFVolume))
-      throw new Error("Dense growth requires a dense lattice source.");
     if (next === this.volume)
       return () => ({
         reusedChunks: this.chunks.length,
@@ -366,12 +376,13 @@ export class IncrementalMesher {
         dirtyChunks: this.dirty.size,
         validationMs: performance.now() - start,
       });
-    assertExactDenseGrowth(this.volume, next);
+    assertExactLatticeGrowth(this.volume, next);
     const oldCount = this.chunks.length,
       oldBounds = this.volume.bounds,
       newBounds = next.bounds,
       layout = this.buildLayout(next, this.chunks),
-      dirty = new Map(this.dirty);
+      dirty = new Map(this.dirty),
+      sparse = next instanceof SparseSDFVolume;
     for (let id = 0; id < layout.chunks.length; id++) {
       const chunk = layout.chunks[id];
       if (id < oldCount) {
@@ -392,8 +403,8 @@ export class IncrementalMesher {
                 break;
               }
             }
-        if (affected) dirty.set(id, 0);
-      } else {
+        if (affected && !dirty.has(id)) dirty.set(id, sparse ? performance.now() : 0);
+      } else if (next instanceof SDFVolume) {
         // New positive capacity has no surface. Avoid extraction and even empty
         // geometry allocation; edits later invalidate these stable chunk IDs.
         const { min, max } = chunk.bounds;
@@ -408,19 +419,31 @@ export class IncrementalMesher {
         if (occupied) dirty.set(id, 0);
       }
     }
+    const restore =
+      sparse && this.undoRestore
+        ? {
+            ...this.undoRestore,
+            chunks: new Map(
+              [...this.undoRestore.chunks].filter(([id]) =>
+                this.chunkCanReuseAfterGrowth(id, next),
+              ),
+            ),
+          }
+        : this.undoRestore;
     const source = this.volume,
       revision = this.editRevision;
     let used = false;
     return () => {
       if (used || this.disposed || this.editRevision !== revision || this.volume !== source)
         throw new Error("Stale mesher growth preparation.");
-      assertExactDenseGrowth(source as SDFVolume, next);
+      assertExactLatticeGrowth(source, next);
       used = true;
       this.editRevision++;
       this.volume = next;
       this.layout = layout;
       this.chunks = layout.chunks;
       this.dirty = dirty;
+      this.undoRestore = restore;
       return {
         reusedChunks: oldCount,
         addedChunks: this.chunks.length - oldCount,
@@ -527,7 +550,10 @@ export class IncrementalMesher {
         break;
       const chunk = this.chunks[id],
         previous = cached?.get(id);
-      const region = cached ? undefined : extractRegion(this.volume, chunk.bounds, this.halo);
+      const region =
+        previous || (cached && !this.halo)
+          ? undefined
+          : extractRegion(this.volume, chunk.bounds, this.halo);
       chunk.mixedSigns = region?.mixedSigns ?? !!previous;
       let geometry: BufferGeometry;
       if (previous) {

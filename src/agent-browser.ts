@@ -523,6 +523,7 @@ export function mountAgentAccess(
           job.name === "inspect_print_mesh" ||
           job.name === "get_geometry_diagnostics" ||
           job.name === "inspect_parts" ||
+          job.name === "boolean_bake" ||
           (job.name === "capture_scene_preview" && (job.args.objectId || job.args.partId));
         if (evaluatingMesh) viewport?.onMeshEvaluation?.(true);
         void operation()

@@ -24,24 +24,36 @@ import {
   MAX_PROJECT_VOXELS,
   PROJECT_VERSION,
   type ProjectSettings,
+  SPARSE_PROJECT_VERSION,
   validateSettings,
 } from "./project-format";
-import { projectTriangleBudgetError, validateVoxels } from "./project-validation";
+import { SDF_PAGE_WORDS, sparseDescriptor, writeSparsePages } from "./project-sparse-pages";
+import {
+  projectTriangleBudgetError,
+  validateSparseVoxels,
+  validateVoxels,
+} from "./project-validation";
 import { sculptMask } from "./sculpt-mask";
 import { sculptPaint } from "./sculpt-paint";
 import type { SDFVolume } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { validateToolPreferences } from "./tool-preferences";
 import { requireLegacyCubicGrid, volumeSampleCount } from "./volume-store";
-/** Write the canonical v24 format with exact stored or reconstructed voxel fields. */
+/** Write the canonical native format with exact stored or reconstructed voxel fields. */
 export function saveSculptProject(
   project: SculptProject,
   display: ProjectDisplayPreferences | undefined = project.displayPreferences,
+  maxArchiveBytes = MAX_PROJECT_BYTES,
 ): ArrayBuffer {
   validateBooleanGraph(project.layerStack.layers);
   const settings = validateSettings(project.settings),
     layers = project.layerStack.layers;
   if (layers.length < 1 || layers.length > MAX_PROJECT_LAYERS)
     throw new Error(`Projects support 1–${MAX_PROJECT_LAYERS} stored layer records.`);
+  const version = layers.some(({ volume }) => volume instanceof SparseSDFVolume)
+    ? SPARSE_PROJECT_VERSION
+    : PROJECT_VERSION;
+  let sparseBytes = 0;
   let offset = 0,
     totalSamples = 0,
     analyticSamples = 0,
@@ -61,22 +73,25 @@ export function saveSculptProject(
       n = volume.resolution;
     if (n < 3 || n > MAX_PROJECT_RESOLUTION || volume.extent <= 0 || volume.extent > 10)
       throw new Error("Project grid exceeds supported limits.");
+    const sparse = volume instanceof SparseSDFVolume ? volume : undefined;
+    if (sparse && layer.primitive)
+      throw new Error("Sparse native primitive caches are unsupported.");
     const source = analyticRecord(layer);
     if (!source && layer.primitive) validatePrimitiveCache(layer.primitive, volume);
     const count = volumeSampleCount(volume);
-    totalSamples += count;
+    if (sparse) sparseBytes += sparse.pageMemoryBytes;
+    else totalSamples += count;
     if (source) analyticSamples += count;
     if (analyticSamples > MAX_ANALYTIC_SAMPLES)
       throw new Error("Analytic reconstruction sample budget exceeded.");
     if (totalSamples > MAX_PROJECT_VOXELS)
       throw new Error("Aggregate project voxel budget exceeded.");
-    const data =
-      volume.getDenseView() ??
-      volume.readRegion({
-        min: [0, 0, 0],
-        max: volume.dimensions.map((v) => v - 1) as [number, number, number],
-      }).values;
-    totalTriangles += validateVoxels(data, volume.dimensions, volume.extent, !source);
+    if (sparse) totalTriangles += validateSparseVoxels(sparse);
+    else {
+      const dense = volume.getDenseView();
+      if (!dense) throw new Error("Unsupported native volume storage.");
+      totalTriangles += validateVoxels(dense, volume.dimensions, volume.extent, !source);
+    }
     if (totalTriangles > MAX_PROJECT_TRIANGLES)
       throw projectTriangleBudgetError(totalTriangles, layer.name);
     const mask = maskPayloads[index],
@@ -95,6 +110,7 @@ export function saveSculptProject(
     const result = {
       ...metadata,
       source,
+      sparse: sparse && sparseDescriptor(sparse),
       paint,
       mask: maskDescriptor,
       grid: {
@@ -105,7 +121,7 @@ export function saveSculptProject(
         latticeMin: volume.latticeMin ?? [0, 0, 0],
       },
       voxelOffset: offset,
-      voxelCount: source ? 0 : count,
+      voxelCount: sparse ? sparse.allocatedPages * SDF_PAGE_WORDS : source ? 0 : count,
     };
     offset += result.voxelCount;
     return result;
@@ -169,6 +185,7 @@ export function saveSculptProject(
       paintBytes +
       2 * assetOffset +
       totalSamples * 8 +
+      sparseBytes +
       layers.reduce(
         (sum, { volume }) => sum + sculptMask(volume).memoryBytes + sculptPaint(volume).memoryBytes,
         0,
@@ -182,14 +199,17 @@ export function saveSculptProject(
     bytes = new Uint8Array(buffer),
     view = new DataView(buffer);
   bytes.set(MAGIC);
-  view.setUint32(8, PROJECT_VERSION, true);
+  view.setUint32(8, version, true);
   view.setUint32(12, metadata.length, true);
   bytes.set(metadata, 16);
-  let index = 0;
-  for (const [a, layer] of layers.entries()) {
-    if (descriptors[a].source) continue;
-    for (let i = 0; i < volumeSampleCount(layer.volume); i++)
-      view.setFloat32(16 + metadata.length + index++ * 4, layer.volume.readVoxel(i), true);
+  for (const [a, { volume }] of layers.entries()) {
+    const { source, voxelOffset, voxelCount } = descriptors[a];
+    if (source) continue;
+    const start = 16 + metadata.length + voxelOffset * 4;
+    if (volume instanceof SparseSDFVolume) writeSparsePages(view, start, volume);
+    else
+      for (let i = 0; i < voxelCount; i++)
+        view.setFloat32(start + i * 4, volume.readVoxel(i), true);
   }
   let maskStart = 16 + metadata.length + offset * 4;
   if (hasMasks)

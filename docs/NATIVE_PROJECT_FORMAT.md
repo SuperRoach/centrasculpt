@@ -1,6 +1,6 @@
 # Native project format
 
-Centra Sculpt reads `.form` versions 1–24. Versions 1–2 store one sculpt
+Centra Sculpt reads `.form` versions 1–25. Versions 1–2 store one sculpt
 volume. Versions 3–23 add independent layers and successive metadata
 features. Version 9 introduced STL reference assets. Version 10 introduced
 layer parenting. The Phase 8.8e electronics enclosure uses version 19 for
@@ -8,9 +8,9 @@ associative attachments.
 
 ## Version 24 native storage
 
-Centra Sculpt writes version 24 for every native project, including sculpt-only
-files, mixed projects, Library downloads and recovery checkpoints. Older
-builds need an update to open v24.
+Centra Sculpt writes version 24 when every layer uses dense or analytic
+storage. Projects containing an experimental sparse layer use version 25
+for manual saves, Library projects and recovery checkpoints.
 
 The header is unchanged. It contains the eight-byte `FORMSDF\0` magic and
 little-endian uint32 format version and UTF-8 JSON length. The JSON is at most
@@ -81,6 +81,46 @@ interoperability with older builds or an untested platform is required.
   candidate preparation. The abort path terminates the Worker or disposes
   the candidate. A recoverable assembly-preview failure is reported and the
   scene can open with its editable source geometry as in older formats.
+
+## Version 25 sparse layers
+
+The header and section order remain the same. Dense and analytic layer
+records keep their v24 encodings, including when mixed with sparse layers.
+A sparse layer has a `sparse` descriptor with `encoding: "sdf-pages-f32-le-v1"`,
+`defaultValue` and `pageCount`. Version 1 of the page encoding requires the
+exact positive Float32 value of four times the initial extent. The layer
+retains its initial resolution, spacing, signed lattice minimum and current
+dimensions in `grid`.
+
+Each 2,060-byte record contains three signed little-endian int32 page
+coordinates (X, Y, Z), then 512 little-endian Float32 samples in x-fastest
+order. A page coordinate covers absolute sample indices `8p…8p+7`. The
+initial layer origin anchors these indices for the life of the layer. Layer
+ID and signed page coordinates identify a record. Records are unique and
+ordered by signed Z, then Y, then X. `voxelOffset` and `voxelCount` are
+32-bit word offsets and lengths inside the first binary section. The sparse
+layer's count is `pageCount × 515`. Record ordinal `i` begins at byte
+`16 + metadataLength + 4 × voxelOffset + 2060 × i`.
+
+Absent pages and padding outside the declared lattice read the explicit
+default. All stored finite Float32 bits, including signed zero and
+non-default positive distances, round-trip. The reader rejects misplaced,
+duplicate and reordered records, invalid padding or samples, nonpositive
+outer faces, invalid lengths and trailing data. The existing aggregate
+triangle limit counts candidate cells around negative pages. Dense and
+analytic layers retain their aggregate sample budget. Each sparse layer may
+address up to 1,153 samples per axis and 32,768 logical 16-cell chunks, with
+13,824 resident 8³ pages. All layers share the existing archive size and
+256 MiB native memory admission limits. Sparse stored data and page
+overhead count toward that memory budget. The logical dense equivalent
+does not enter the sparse decode allocation.
+
+Open and recovery workers transfer resident page buffers. Library import
+validates before publishing its independent entry. Rename and duplicate
+preserve the binary records. Library revision checks and recovery checksum
+and IndexedDB transactions apply to both native versions. Current recovery
+checkpoints carry the complete archive and restored projects start fresh
+Undo history.
 
 ### Migrating versions 1–23
 

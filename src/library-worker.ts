@@ -1,6 +1,6 @@
 import { importNative } from "./library-codec";
-import { openSculptProject, PROJECT_VERSION } from "./project";
-import { projectTransfer } from "./project-transfer";
+import { isCanonicalProjectVersion, openSculptProject } from "./project";
+import { projectFieldBuffers, projectTransfer } from "./project-transfer";
 import { newProjectData } from "./project-workflow";
 
 self.onmessage = ({ data: request }) => {
@@ -9,14 +9,14 @@ self.onmessage = ({ data: request }) => {
       self.postMessage({ progress: { completed, total } });
     if (request.kind === "decode") {
       const project = openSculptProject(request.data, progress);
-      const nativeBudget = new DataView(request.data).getUint32(8, true) === PROJECT_VERSION;
+      const nativeBudget = isCanonicalProjectVersion(new DataView(request.data).getUint32(8, true));
       const snapshot = projectTransfer(project);
       self.postMessage(
         { result: { snapshot, nativeBudget } },
         {
           transfer: [
             ...new Set([
-              ...snapshot.layers.map((l) => l.values.buffer),
+              ...projectFieldBuffers(snapshot),
               ...(snapshot.displayPreferences?.references?.map(
                 (r) => r.bytes.buffer as ArrayBuffer,
               ) ?? []),

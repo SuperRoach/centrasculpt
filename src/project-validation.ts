@@ -2,6 +2,8 @@ import { analyticRecord } from "./analytic-cache";
 import type { SdfLayer } from "./layers";
 import { MAX_PROJECT_TRIANGLES } from "./project-format";
 
+import { SparseSDFVolume, sparsePageCoordinates } from "./sparse-sdf";
+
 const TET_MASKS = [0b01100011, 0b01000111, 0b01001101, 0b11001001, 0b11010001, 0b01110001];
 const POPCOUNT = Array.from(
   { length: 256 },
@@ -54,6 +56,62 @@ function countProjectVolumeTriangles(values: Float32Array, [nx, ny, nz]: [number
       }
   return triangles;
 }
+const CELL_CORNERS = [
+  [0, 0, 0],
+  [1, 0, 0],
+  [1, 1, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+  [1, 0, 1],
+  [1, 1, 1],
+  [0, 1, 1],
+];
+export function validateSparseVoxels(volume: SparseSDFVolume, validateSamples = true): number {
+  const origin = volume.latticeMin,
+    dims = volume.dimensions;
+  if (validateSamples)
+    for (const [id, page] of volume.residentPages()) {
+      const base = sparsePageCoordinates(id).map((p, a) => p * 8 - origin[a]);
+      for (let j = 0; j < page.length; j++) {
+        const v = page[j];
+        if (!Number.isFinite(v) || Math.abs(v) > volume.defaultValue)
+          throw new Error("Voxel data contains non-finite or out-of-range values.");
+        const x = base[0] + (j & 7),
+          y = base[1] + ((j >> 3) & 7),
+          z = base[2] + (j >> 6);
+        if (x < 0 || y < 0 || z < 0 || x >= dims[0] || y >= dims[1] || z >= dims[2]) {
+          if (v !== volume.defaultValue)
+            throw new Error("Sparse SDF page has non-default padding.");
+        } else if (
+          v <= 0 &&
+          (x === 0 ||
+            y === 0 ||
+            z === 0 ||
+            x === dims[0] - 1 ||
+            y === dims[1] - 1 ||
+            z === dims[2] - 1)
+        )
+          throw new Error("The SDF volume boundary must remain positive.");
+      }
+    }
+  let triangles = 0;
+  const read = volume.prepareSampleReader();
+  for (const block of volume.surfaceBlocks(8)) {
+    const min = block.map((v, a) => Math.max(0, v * 8 - origin[a])),
+      max = block.map((v, a) => Math.min(dims[a] - 1, (v + 1) * 8 - origin[a]));
+    for (let z = min[2]; z < max[2]; z++)
+      for (let y = min[1]; y < max[1]; y++)
+        for (let x = min[0]; x < max[0]; x++) {
+          let mask = 0;
+          for (const [i, c] of CELL_CORNERS.entries())
+            if (read(x + c[0], y + c[1], z + c[2]) < 0) mask |= 1 << i;
+          triangles += CELL_TRIANGLES[mask];
+          if (triangles > MAX_PROJECT_TRIANGLES)
+            throw new Error("Sparse SDF surface exceeds the native triangle import limit.");
+        }
+  }
+  return triangles;
+}
 export function projectTriangleBudgetError(triangles: number, name: string): Error {
   return new Error(
     "Native project triangle budget exceeded at " +
@@ -77,13 +135,12 @@ export function assertProjectTriangleBudget(
     : layers) {
     if (analyticRecord(layer)) continue;
     const volume = layer.volume;
-    const values =
-      volume.getDenseView() ??
-      volume.readRegion({
-        min: [0, 0, 0],
-        max: volume.dimensions.map((v) => v - 1) as [number, number, number],
-      }).values;
-    triangles += countProjectVolumeTriangles(values, volume.dimensions);
+    if (volume instanceof SparseSDFVolume) triangles += validateSparseVoxels(volume, false);
+    else {
+      const dense = volume.getDenseView();
+      if (!dense) throw new Error("Unsupported native volume storage.");
+      triangles += countProjectVolumeTriangles(dense, volume.dimensions);
+    }
     if (triangles > MAX_PROJECT_TRIANGLES) throw projectTriangleBudgetError(triangles, layer.name);
   }
 }

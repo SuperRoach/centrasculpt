@@ -2,6 +2,7 @@ import { link, lstat, mkdtemp, readFile, rmdir, stat, unlink, writeFile } from "
 import { basename, dirname, join, resolve } from "node:path";
 import "./compile-core.mjs";
 import {
+  isCanonicalProjectVersion,
   MAX_PROJECT_BYTES,
   openSculptProject,
   PROJECT_VERSION,
@@ -25,7 +26,8 @@ const bytes = (buffer) => Uint8Array.from(buffer).buffer;
 const originalData = bytes(original);
 const project = openSculptProject(originalData);
 const version = new DataView(originalData).getUint32(8, true);
-if (version === PROJECT_VERSION) throw new Error("The input is already a canonical v24 project.");
+if (isCanonicalProjectVersion(version))
+  throw new Error(`The input is already a canonical v${version} project.`);
 
 async function publish(target, content) {
   const staging = await mkdtemp(join(dirname(target), ".centra-migration-"));

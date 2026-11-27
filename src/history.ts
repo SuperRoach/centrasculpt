@@ -1,6 +1,6 @@
-import { assertExactDenseGrowth } from "./dense-growth";
-import type { Bounds, VoxelChangeListener } from "./sdf";
-import { SDFVolume } from "./sdf";
+import { assertExactLatticeGrowth } from "./dense-growth";
+import { type Bounds, type DenseLatticeLayout, SDFVolume, type VoxelChangeListener } from "./sdf";
+import type { SparseSDFVolume } from "./sparse-sdf";
 import type { VolumeStore } from "./volume-store";
 export type HistoryKind = "stroke" | "reset" | "shape-stamp" | "move";
 export type HistoryTransaction = { layerId: string; kind: HistoryKind; changedVoxels: number };
@@ -31,11 +31,10 @@ export class SculptHistory {
   ) {}
   /** Stage index remapping for past, redo and the in-flight action. Capacity is
    * retained on undo/cancel; only values are replayed. No empty-grid snapshots. */
-  prepareVolumeRebind(next: SDFVolume): () => void {
+  prepareVolumeRebind(next: VolumeStore): () => void {
     const revision = this.revision,
       old = this.volume;
-    if (!(old instanceof SDFVolume)) throw new Error("History growth requires a dense source.");
-    const offset = assertExactDenseGrowth(old, next),
+    const offset = assertExactLatticeGrowth(old, next),
       [nx, ny] = old.dimensions;
     const remap = (index: number) =>
       next.index(
@@ -59,7 +58,7 @@ export class SculptHistory {
         : null;
     let used = false;
     return () => {
-      assertExactDenseGrowth(old, next);
+      assertExactLatticeGrowth(old, next);
       if (
         used ||
         this.revision !== revision ||
@@ -77,6 +76,40 @@ export class SculptHistory {
       this.volume = next;
       this.revision++;
     };
+  }
+  assertSparseGrowthBoundary(source: SparseSDFVolume, layout: DenseLatticeLayout): void {
+    const dims = source.dimensions,
+      origin = source.latticeMin;
+    const low = origin.map((v, a) => layout.latticeMin[a] < v);
+    const high = origin.map((v, a) => layout.latticeMin[a] + layout.dimensions[a] > v + dims[a]);
+    const check = (index: number, before: number, after: number) => {
+      if (before === source.defaultValue && after === source.defaultValue) return;
+      const x = index % dims[0],
+        y = Math.floor(index / dims[0]) % dims[1],
+        z = Math.floor(index / (dims[0] * dims[1]));
+      if (
+        (low[0] && x === 0) ||
+        (high[0] && x === dims[0] - 1) ||
+        (low[1] && y === 0) ||
+        (high[1] && y === dims[1] - 1) ||
+        (low[2] && z === 0) ||
+        (high[2] && z === dims[2] - 1)
+      )
+        throw new Error(
+          "Sparse growth is unavailable while history can change an expanding boundary.",
+        );
+    };
+    for (const action of [...this.past, ...this.future, ...(this.packed ? [this.packed] : [])]) {
+      if (
+        !action.bounds.min.some(
+          (v, a) => (low[a] && v === 0) || (high[a] && action.bounds.max[a] === dims[a] - 1),
+        )
+      )
+        continue;
+      for (let i = 0; i < action.indices.length; i++)
+        check(action.indices[i], action.before[i], action.after[i]);
+    }
+    if (this.pending) for (const [id, { before, after }] of this.pending) check(id, before, after);
   }
   get pendingMemoryEstimate(): number {
     return (this.pending?.size ?? 0) * 160 + (this.packed?.indices.length ?? 0) * 12;
