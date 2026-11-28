@@ -131,6 +131,7 @@ export async function reconstructMoveAsync(
               interaction: field.interaction,
               axis: field.axis.toArray(),
               angle: field.angle,
+              mirror: field.mirror,
             },
           },
           transfer as ArrayBuffer[],

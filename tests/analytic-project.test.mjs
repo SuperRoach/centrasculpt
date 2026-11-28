@@ -298,7 +298,7 @@ test("v25 mixes signed sparse records with v24 analytic and dense layers", () =>
     [(layer) => (layer.sparse.pageCount = MAX_SDF_PAGES + 1), /page budget/],
     [(layer) => (layer.sparse.pageCount = 2), /voxel offset/],
     [(layer) => (layer.grid.dimensions[1] = 2000), /grid dimensions/],
-    [(layer) => (layer.grid.dimensions = [1025, 513, 513]), /logical chunk budget/],
+    [(layer) => (layer.grid.dimensions = [1154, 513, 513]), /Invalid layer grid dimensions/],
   ])
     assert.throws(() => openSculptProject(mutate(data, (m) => change(m.layers[0]))), pattern);
 

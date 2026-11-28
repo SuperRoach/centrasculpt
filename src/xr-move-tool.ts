@@ -381,17 +381,12 @@ export class XRMoveTool implements XRStrokeInteraction {
         this.feedback += ` · Tool stick: edge softness ${this.preview.field.falloff.toFixed(2)}`;
       return;
     }
-    if (
-      runtime.volume instanceof SparseSDFVolume &&
-      (runtime.mesher.pendingChunks || l.symmetry.enabled)
-    ) {
+    if (runtime.volume instanceof SparseSDFVolume && runtime.mesher.pendingChunks) {
       this.targetState = "unavailable";
       this.influence.hide();
       this.marker.visible = false;
       this.armed = false;
-      this.feedback = l.symmetry.enabled
-        ? "Turn off Mirror to use Move on the sparse trial."
-        : "Move · waiting for sparse surface updates";
+      this.feedback = "Move · waiting for sparse surface updates";
       return;
     }
     if (!tool!.buttons.trigger.pressed && tool!.buttons.trigger.rawValue < 0.45) this.armed = true;
@@ -478,6 +473,7 @@ export class XRMoveTool implements XRStrokeInteraction {
       this.capture.mode === "elastic" ? "elastic" : "non-elastic",
       this.capture.stiffness,
       this.capture.maxRadius,
+      runtime.volume instanceof SparseSDFVolume ? l.symmetry : undefined,
     );
     surface.getWorldScale(this.worldScale);
     this.gesture.capture(this.capture.precision, 1 / this.worldScale.x);
@@ -579,6 +575,15 @@ export class XRMoveTool implements XRStrokeInteraction {
       this.capture === capture && generation === this.commitGeneration && !abort.signal.aborted;
     const guard = () => {
       if (!owned() || !this.runtime) return false;
+      if (this.runtime.volume instanceof SparseSDFVolume) {
+        const captured = this.preview.field.mirror,
+          current = l.symmetry;
+        if (
+          !!captured !== current.enabled ||
+          (captured && (captured.axis !== current.axis || captured.offset !== current.offset))
+        )
+          return false;
+      }
       const surface = this.runtime.surface.group;
       surface.updateWorldMatrix(true, false);
       return surface.matrixWorld.elements.every(

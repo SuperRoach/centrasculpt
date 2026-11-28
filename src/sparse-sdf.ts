@@ -5,7 +5,6 @@ export const SDF_PAGE_SAMPLES = 8 ** 3;
 export const SDF_PAGE_MEMORY = SDF_PAGE_SAMPLES * 4 + 96;
 export const MAX_SDF_PAGES = 192 ** 3 / SDF_PAGE_SAMPLES;
 export const MAX_SPARSE_AXIS = 1153;
-export const MAX_SPARSE_CHUNKS = 32768;
 const KEY_BASE = 4096;
 const KEY_BIAS = KEY_BASE / 2;
 export type SparsePageSnapshot = { defaultValue: number; pages: Map<number, Float32Array> };
@@ -19,13 +18,6 @@ export function sparsePageCoordinates(id: number): Vec3 {
     (Math.floor(id / KEY_BASE) % KEY_BASE) - KEY_BIAS,
     Math.floor(id / KEY_BASE ** 2) - KEY_BIAS,
   ];
-}
-export function sparseChunkCount({ dimensions, latticeMin }: DenseLatticeLayout): number {
-  return dimensions.reduce(
-    (count, n, a) =>
-      count * (Math.ceil((latticeMin[a] + n - 1) / 16) - Math.floor(latticeMin[a] / 16)),
-    1,
-  );
 }
 const MAX_BRUSH_SAMPLES = 2 * 1024 ** 2;
 
@@ -43,6 +35,15 @@ export class SparseSDFVolume extends LatticeVolume {
   private scratch = new Float32Array(0);
   private readonly pages = new Map<number, Float32Array>();
   private pageRevision = 0;
+  private sampledPageId = -1;
+  private sampledPage?: Float32Array;
+  private pageMapChanged(): void {
+    this.pageRevision++;
+    // Release a cached page immediately on reclamation and forget cached misses
+    // when new pages become resident. Value-only writes keep the same array.
+    this.sampledPageId = -1;
+    this.sampledPage = undefined;
+  }
   private readonly dirtyPages = new Set<number>();
   private writeRevision = 0;
   private growthSource?: { volume: SparseSDFVolume; revision: number };
@@ -56,12 +57,8 @@ export class SparseSDFVolume extends LatticeVolume {
     layout?: DenseLatticeLayout,
     snapshot?: SparsePageSnapshot,
   ) {
-    if (
-      layout &&
-      (!layout.latticeMin.every((n) => n >= -MAX_SPARSE_AXIS) ||
-        sparseChunkCount(layout) > MAX_SPARSE_CHUNKS)
-    )
-      throw new Error("Sparse lattice exceeds the logical chunk budget.");
+    if (layout && !layout.latticeMin.every((n) => n >= -MAX_SPARSE_AXIS))
+      throw new Error("Sparse lattice origin exceeds the coordinate limit.");
     super(resolution, extent, false, layout, false, {
       axis: MAX_SPARSE_AXIS,
       samples: MAX_SPARSE_AXIS ** 3,
@@ -135,7 +132,7 @@ export class SparseSDFVolume extends LatticeVolume {
       this.dirtyPages.delete(id);
       removed++;
     }
-    if (removed) this.pageRevision++;
+    if (removed) this.pageMapChanged();
     return removed;
   }
   get pageMemoryBytes(): number {
@@ -256,7 +253,12 @@ export class SparseSDFVolume extends LatticeVolume {
     );
   }
   readSample(x: number, y: number, z: number): number {
-    return this.pages.get(this.key(x, y, z))?.[this.offset(x, y, z)] ?? this.defaultValue;
+    const id = this.key(x, y, z);
+    if (id !== this.sampledPageId) {
+      this.sampledPageId = id;
+      this.sampledPage = this.pages.get(id);
+    }
+    return this.sampledPage?.[this.offset(x, y, z)] ?? this.defaultValue;
   }
   /** Interpolation usually visits several samples in the same page. An empty
    * cached page must be looked up again if an edit made new pages resident. */
@@ -337,7 +339,7 @@ export class SparseSDFVolume extends LatticeVolume {
         this.dirtyPages.add(key);
         this.reclaimCandidates.add(key);
       }
-      this.pageRevision++;
+      this.pageMapChanged();
     };
   }
   getDenseView(): undefined {
@@ -397,7 +399,7 @@ export class SparseSDFVolume extends LatticeVolume {
       this.dirtyPages.add(key);
       this.reclaimCandidates.add(key);
     }
-    if (staged.length) this.pageRevision++;
+    if (staged.length) this.pageMapChanged();
   }
   /** Gather one page intersection at a time, keeping the output X-major. */
   gather(bounds: Bounds, target: Float32Array): void {

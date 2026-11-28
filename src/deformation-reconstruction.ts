@@ -140,15 +140,18 @@ export async function reconstructMove(
   if (vertices % 3 || !vertices) throw new Error("Move source has no complete triangles.");
   // Arrays, radix scratch, hierarchy, plus worst-case patch staging. Count-based
   // byte estimate is a resource check, not a global vertex limit.
-  const box = field.affectedBounds(),
-    dims = next.dimensions,
+  const dims = next.dimensions,
     origin = next.bounds.min,
     halo = 3 * next.step;
-  const lo = box.min.map((v, a) => Math.max(0, Math.floor((v - halo - origin[a]) / next.step))),
-    hi = box.max.map((v, a) =>
-      Math.min(dims[a] - 1, Math.ceil((v + halo - origin[a]) / next.step)),
-    ),
-    total = lo.reduce((n, v, a) => n * Math.max(0, hi[a] - v + 1), 1);
+  field.assertSeparatedMirror(halo + next.step);
+  const regions = field.affectedRegions().map((box) => ({
+    lo: box.min.map((v, a) => Math.max(0, Math.floor((v - halo - origin[a]) / next.step))),
+    hi: box.max.map((v, a) => Math.min(dims[a] - 1, Math.ceil((v + halo - origin[a]) / next.step))),
+  }));
+  const total = regions.reduce(
+    (sum, { lo, hi }) => sum + lo.reduce((n, v, a) => n * Math.max(0, hi[a] - v + 1), 1),
+    0,
+  );
   const estimated = vertices * 48;
   if (estimated + (next instanceof SparseSDFVolume ? total * 24 : 0) > maxBytes)
     throw new Error(
@@ -203,57 +206,85 @@ export async function reconstructMove(
     bounds: Bounds = { min: [...dims], max: [0, 0, 0] };
   let count = 0,
     sampled = 0;
-  for (let z = lo[2]; z <= hi[2]; z++)
-    for (let y = lo[1]; y <= hi[1]; y++)
-      for (let x = lo[0]; x <= hi[0]; x++) {
-        p.set(next.coordinate(x, 0), next.coordinate(y, 1), next.coordinate(z, 2));
-        const id = next.index(x, y, z),
-          old = next.readVoxel(id),
-          weight = field.weight(p);
-        sampled++;
-        // Material outside the original compact influence is never removed, including
-        // another component overlapped by the dragged surface.
-        if (!(weight === 0 && old <= 0)) {
-          index.beginQuery(p, next.step * 1e-6);
-          while (!index.stepQuery()) await work.pause();
-          const distance = index.distance;
-          // Preserve exact values around unchanged components when sign and nearest
-          // triangle agree. Moved/removed material still reconstructs consistently.
-          if (!(weight === 0 && !index.nearestChanged && old < 0 === distance < 0)) {
-            const value = sculptMask(next).blend(
-              id,
-              old,
-              Math.max(-next.extent * 4, Math.min(next.extent * 4, distance)),
-            );
-            if (
-              !Number.isFinite(value) ||
-              ((x === 0 ||
-                y === 0 ||
-                z === 0 ||
-                x === dims[0] - 1 ||
-                y === dims[1] - 1 ||
-                z === dims[2] - 1) &&
-                value <= 0)
-            )
-              throw new Error("Move reconstruction would clip the positive volume boundary.");
-            if (value !== old) {
-              indices[count] = id;
-              before[count] = old;
-              after[count] = value;
-              count++;
-              for (let a = 0; a < 3; a++) {
-                const v = a === 0 ? x : a === 1 ? y : z;
-                bounds.min[a] = Math.min(bounds.min[a], v);
-                bounds.max[a] = Math.max(bounds.max[a], v);
-              }
+  function* rows({ lo, hi }: (typeof regions)[number]) {
+    for (let z = lo[2]; z <= hi[2]; z++)
+      for (let y = lo[1]; y <= hi[1]; y++) yield { y, z, x0: lo[0], x1: hi[0] };
+  }
+  // Merge the two disjoint row streams in lattice-index order for history.
+  function* orderedRows() {
+    const primary = rows(regions[0]);
+    if (regions.length === 1) {
+      yield* primary;
+      return;
+    }
+    const reflected = rows(regions[1]);
+    let a = primary.next(),
+      b = reflected.next();
+    while (!a.done || !b.done) {
+      if (
+        !a.done &&
+        (b.done ||
+          next.index(a.value.x0, a.value.y, a.value.z) <
+            next.index(b.value.x0, b.value.y, b.value.z))
+      ) {
+        yield a.value;
+        a = primary.next();
+      } else if (!b.done) {
+        yield b.value;
+        b = reflected.next();
+      }
+    }
+  }
+  for (const { x0, x1, y, z } of orderedRows())
+    for (let x = x0; x <= x1; x++) {
+      p.set(next.coordinate(x, 0), next.coordinate(y, 1), next.coordinate(z, 2));
+      const id = next.index(x, y, z),
+        old = next.readVoxel(id),
+        weight = field.weight(p);
+      sampled++;
+      // Material outside the original compact influence is never removed, including
+      // another component overlapped by the dragged surface.
+      if (!(weight === 0 && old <= 0)) {
+        index.beginQuery(p, next.step * 1e-6);
+        while (!index.stepQuery()) await work.pause();
+        const distance = index.distance;
+        // Preserve exact values around unchanged components when sign and nearest
+        // triangle agree. Moved/removed material still reconstructs consistently.
+        if (!(weight === 0 && !index.nearestChanged && old < 0 === distance < 0)) {
+          const value = sculptMask(next).blend(
+            id,
+            old,
+            Math.max(-next.extent * 4, Math.min(next.extent * 4, distance)),
+          );
+          if (
+            !Number.isFinite(value) ||
+            ((x === 0 ||
+              y === 0 ||
+              z === 0 ||
+              x === dims[0] - 1 ||
+              y === dims[1] - 1 ||
+              z === dims[2] - 1) &&
+              value <= 0)
+          )
+            throw new Error("Move reconstruction would clip the positive volume boundary.");
+          if (value !== old) {
+            indices[count] = id;
+            before[count] = old;
+            after[count] = value;
+            count++;
+            for (let a = 0; a < 3; a++) {
+              const v = a === 0 ? x : a === 1 ? y : z;
+              bounds.min[a] = Math.min(bounds.min[a], v);
+              bounds.max[a] = Math.max(bounds.max[a], v);
             }
           }
         }
-        if (sampled % 128 === 0) {
-          progress({ stage: "reconstruction", completed: sampled, total });
-          await work.pause();
-        }
       }
+      if (sampled % 128 === 0) {
+        progress({ stage: "reconstruction", completed: sampled, total });
+        await work.pause();
+      }
+    }
   progress({ stage: "reconstruction", completed: total, total });
   return {
     patch: {

@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry } from "three";
 import { assertExactLatticeGrowth } from "./dense-growth";
 import type { Bounds } from "./sdf";
 import { SDFVolume } from "./sdf";
-import { SparseSDFVolume } from "./sparse-sdf";
+import { SparseSDFVolume, sparsePageCoordinates, sparsePageId } from "./sparse-sdf";
 import type { VolumeStore } from "./volume-store";
 
 type Point = [number, number, number] & { normal?: [number, number, number] };
@@ -225,6 +225,7 @@ type MeshChunk = {
 type ChunkLayout = {
   chunks: MeshChunk[];
   lookup: Int32Array;
+  sparse?: Map<number, MeshChunk>;
   min: Point;
   max: Point;
   size: Point;
@@ -256,7 +257,7 @@ export class IncrementalMesher {
   /** Register colour arrays attached to owned chunks after extraction. */
   setChunkColours(update: ChunkUpdate, colours: Float32Array): void {
     const { geometry } = update;
-    if (this.chunks[update.id]?.geometry !== geometry || this.borrowed.has(geometry))
+    if (this.chunkAt(update.id)?.geometry !== geometry || this.borrowed.has(geometry))
       throw new Error("Chunk colours require a current owned geometry.");
     this.ownedBytes += colours.byteLength - (geometry.getAttribute("color")?.array.byteLength ?? 0);
     geometry.setAttribute("color", new BufferAttribute(colours, 3));
@@ -275,6 +276,7 @@ export class IncrementalMesher {
   constructor(
     private volume: VolumeStore,
     private readonly chunkSize = 16,
+    deferSparseExtraction = false,
   ) {
     if (!Number.isInteger(chunkSize) || chunkSize < 1) throw new Error("Invalid chunk size");
     this.layout = this.buildLayout(volume);
@@ -282,31 +284,53 @@ export class IncrementalMesher {
     if (volume instanceof SparseSDFVolume) {
       const width = chunkSize + 5;
       this.halo = new Float32Array(width ** 3);
-      for (const [x, y, z] of volume.surfaceBlocks(chunkSize)) this.enqueue(this.idAt(x, y, z));
+      if (!deferSparseExtraction) this.invalidate();
       return;
     }
     this.invalidate();
   }
-  private buildLayout(volume: VolumeStore, reuse: MeshChunk[] = []): ChunkLayout {
+  private boundsAt([x, y, z]: Point, { origin, dimensions }: ChunkLayout): Bounds {
+    const cell = [x, y, z];
+    return {
+      min: cell.map((v, a) => Math.max(0, v * this.chunkSize - origin[a])) as Point,
+      max: cell.map((v, a) =>
+        Math.min(dimensions[a] - 1, (v + 1) * this.chunkSize - origin[a]),
+      ) as Point,
+    };
+  }
+  private buildLayout(volume: VolumeStore, reuse?: ChunkLayout): ChunkLayout {
     const origin = volume.latticeMin ?? [0, 0, 0],
-      dims = volume.dimensions,
+      dimensions = volume.dimensions,
       min = origin.map((v) => Math.floor(v / this.chunkSize)) as Point,
-      max = origin.map((v, a) => Math.ceil((v + dims[a] - 1) / this.chunkSize) - 1) as Point,
+      max = origin.map((v, a) => Math.ceil((v + dimensions[a] - 1) / this.chunkSize) - 1) as Point,
       size = min.map((v, a) => max[a] - v + 1) as Point;
-    const chunks = reuse.map((c) => ({ ...c })),
+    const layout: ChunkLayout = {
+      chunks: [],
+      lookup: new Int32Array(0),
+      min,
+      max,
+      size,
+      origin,
+      dimensions,
+    };
+    if (volume instanceof SparseSDFVolume) {
+      // Keys pack signed global lattice block coordinates and survive growth and reclamation.
+      layout.sparse = new Map();
+      for (const [id, chunk] of reuse?.sparse ?? [])
+        layout.sparse.set(id, {
+          ...chunk,
+          bounds: this.boundsAt(sparsePageCoordinates(id), layout),
+        });
+      return layout;
+    }
+    const chunks = (reuse?.chunks ?? []).map((c) => ({ ...c })),
       ids = new Map(chunks.map((c, id) => [c.key, id])),
       lookup = new Int32Array(size[0] * size[1] * size[2]);
     for (let z = min[2]; z <= max[2]; z++)
       for (let y = min[1]; y <= max[1]; y++)
         for (let x = min[0]; x <= max[0]; x++) {
           const key = `${x},${y},${z}`,
-            cell = [x, y, z],
-            bounds = {
-              min: cell.map((v, a) => Math.max(0, v * this.chunkSize - origin[a])) as Point,
-              max: cell.map((v, a) =>
-                Math.min(dims[a] - 1, (v + 1) * this.chunkSize - origin[a]),
-              ) as Point,
-            };
+            bounds = this.boundsAt([x, y, z], layout);
           let id = ids.get(key);
           if (id === undefined) {
             id = chunks.length;
@@ -315,19 +339,21 @@ export class IncrementalMesher {
           } else chunks[id].bounds = bounds;
           lookup[x - min[0] + size[0] * (y - min[1] + size[1] * (z - min[2]))] = id;
         }
-    return {
-      chunks,
-      lookup,
-      min,
-      max,
-      size,
-      origin: [...origin] as Point,
-      dimensions: [...dims] as Point,
-    };
+    layout.chunks = chunks;
+    layout.lookup = lookup;
+    return layout;
   }
   private idAt(x: number, y: number, z: number): number {
-    const { min, size, lookup } = this.layout;
-    return lookup[x - min[0] + size[0] * (y - min[1] + size[1] * (z - min[2]))];
+    const { min, size, lookup, sparse } = this.layout;
+    return sparse
+      ? sparsePageId(x, y, z)
+      : lookup[x - min[0] + size[0] * (y - min[1] + size[1] * (z - min[2]))];
+  }
+  private chunkAt(id: number): MeshChunk | undefined {
+    return this.layout.sparse ? this.layout.sparse.get(id) : this.chunks[id];
+  }
+  private *chunkEntries(layout = this.layout): IterableIterator<[number, MeshChunk]> {
+    yield* layout.sparse ?? layout.chunks.entries();
   }
   get pendingChunks(): number {
     return this.dirty.size;
@@ -336,26 +362,41 @@ export class IncrementalMesher {
     return this.dirty.values().next().value;
   }
   private enqueue(id: number): void {
-    if (!this.dirty.has(id)) this.dirty.set(id, this.halo ? performance.now() : 0);
+    const sparse = this.layout.sparse;
+    if (sparse && !sparse.has(id)) {
+      const coordinates = sparsePageCoordinates(id);
+      sparse.set(id, {
+        key: coordinates.join(","),
+        bounds: this.boundsAt(coordinates, this.layout),
+        geometry: null,
+        mixedSigns: false,
+      });
+    }
+    if (!this.dirty.has(id)) this.dirty.set(id, sparse ? performance.now() : 0);
   }
   get allocatedChunks(): number {
-    return this.chunks.length;
+    return this.layout.sparse?.size ?? this.chunks.length;
   }
   orderedChunkIds(): Iterable<number> {
-    return this.layout.lookup.values();
+    return this.layout.sparse
+      ? [...this.layout.sparse.keys()].sort((a, b) => a - b)
+      : this.layout.lookup.values();
   }
   chunkKey(id: number): string {
-    return this.chunks[id]?.key ?? "";
+    return this.layout.sparse ? sparsePageCoordinates(id).join(",") : (this.chunks[id]?.key ?? "");
   }
   chunkCanReuseAfterGrowth(id: number, next: VolumeStore): boolean {
-    const bounds = this.chunks[id].bounds,
+    const bounds = this.chunkAt(id)?.bounds,
       dims = this.layout.dimensions,
       old = this.volume.bounds,
       expanded = next.bounds;
-    return bounds.min.every(
-      (lo, a) =>
-        (old.min[a] === expanded.min[a] || lo >= 2) &&
-        (old.max[a] === expanded.max[a] || bounds.max[a] <= dims[a] - 3),
+    return (
+      !!bounds &&
+      bounds.min.every(
+        (lo, a) =>
+          (old.min[a] === expanded.min[a] || lo >= 2) &&
+          (old.max[a] === expanded.max[a] || bounds.max[a] <= dims[a] - 3),
+      )
     );
   }
   /** The editor coordinates this staged rebind with source/history publication.
@@ -374,23 +415,24 @@ export class IncrementalMesher {
     if (this.disposed) throw new Error("Mesher is disposed.");
     if (next === this.volume)
       return () => ({
-        reusedChunks: this.chunks.length,
+        reusedChunks: this.allocatedChunks,
         addedChunks: 0,
         dirtyChunks: this.dirty.size,
         validationMs: performance.now() - start,
       });
     assertExactLatticeGrowth(this.volume, next);
-    const oldCount = this.chunks.length,
+    const oldCount = this.allocatedChunks,
       oldBounds = this.volume.bounds,
       newBounds = next.bounds,
-      layout = this.buildLayout(next, this.chunks),
+      layout = this.buildLayout(next, this.layout),
       dirty = new Map(this.dirty),
       sparse = next instanceof SparseSDFVolume;
-    for (let id = 0; id < layout.chunks.length; id++) {
-      const chunk = layout.chunks[id];
-      if (id < oldCount) {
+    for (const [id, chunk] of this.chunkEntries(layout)) {
+      if (sparse || id < oldCount) {
         // Only occupied old boundary chunks can observe changed gradient halos.
-        const p = chunk.geometry?.getAttribute("position");
+        const p = this.chunkCanReuseAfterGrowth(id, next)
+          ? undefined
+          : chunk.geometry?.getAttribute("position");
         let affected = false;
         if (p)
           for (let i = 0; i < p.count && !affected; i++)
@@ -449,7 +491,7 @@ export class IncrementalMesher {
       this.undoRestore = restore;
       return {
         reusedChunks: oldCount,
-        addedChunks: this.chunks.length - oldCount,
+        addedChunks: this.allocatedChunks - oldCount,
         dirtyChunks: dirty.size,
         validationMs: performance.now() - start,
       };
@@ -459,6 +501,17 @@ export class IncrementalMesher {
     this.editRevision++;
     if (bounds === null) return;
     this.clearUndoRestore();
+    if (this.volume instanceof SparseSDFVolume) {
+      // Existing output may need clearing. Newly occupied blocks come from resident
+      // negative samples, even when the invalidated patch spans a large empty gap.
+      const overlaps = ({ min, max }: Bounds) =>
+        !bounds || min.every((v, a) => v <= bounds.max[a] + 1 && max[a] >= bounds.min[a] - 2);
+      for (const [id, chunk] of this.chunkEntries()) if (overlaps(chunk.bounds)) this.enqueue(id);
+      for (const coordinates of this.volume.surfaceBlocks(this.chunkSize))
+        if (overlaps(this.boundsAt(coordinates, this.layout)))
+          this.enqueue(sparsePageId(...coordinates));
+      return;
+    }
     if (!bounds) {
       this.chunks.forEach((_, id) => {
         this.enqueue(id);
@@ -485,7 +538,7 @@ export class IncrementalMesher {
     const [nx, ny] = this.layout.dimensions,
       p = [index % nx, Math.floor(index / nx) % ny, Math.floor(index / (nx * ny))] as Point;
     this.visitAffected({ min: p, max: p }, (id) => {
-      if (signChanged || this.chunks[id].mixedSigns) this.enqueue(id);
+      if (signChanged || this.chunkAt(id)?.mixedSigns) this.enqueue(id);
     });
   }
   /** Coalesce identical chunk/gradient-halo coverage during a staged stamp patch.
@@ -525,7 +578,7 @@ export class IncrementalMesher {
           for (let y = ly; y <= hy; y++)
             for (let x = lx; x <= hx; x++) {
               const id = this.idAt(x, y, z);
-              if (signChanged || this.chunks[id].mixedSigns) this.enqueue(id);
+              if (signChanged || this.chunkAt(id)?.mixedSigns) this.enqueue(id);
             }
         visited.add(key);
       }
@@ -551,7 +604,7 @@ export class IncrementalMesher {
         (updates.length > 0 && performance.now() - start >= maxMilliseconds)
       )
         break;
-      const chunk = this.chunks[id],
+      const chunk = this.chunkAt(id)!,
         previous = cached?.get(id);
       const region =
         previous || (cached && !this.halo)
@@ -577,8 +630,12 @@ export class IncrementalMesher {
           chunk.geometry.dispose();
         }
       }
-      chunk.geometry = geometry;
-      this.ownedBytes += this.bytes(geometry);
+      if (this.layout.sparse && !chunk.mixedSigns && !geometry.getAttribute("position").count)
+        this.layout.sparse.delete(id);
+      else {
+        chunk.geometry = geometry;
+        this.ownedBytes += this.bytes(geometry);
+      }
       updates.push({ id, bounds: chunk.bounds, geometry });
       this.dirty.delete(id);
     }
@@ -592,7 +649,7 @@ export class IncrementalMesher {
       stats: {
         milliseconds,
         chunks: updates.length,
-        totalChunks: this.chunks.length,
+        totalChunks: this.allocatedChunks,
         rebuilds: this.rebuilds,
         averageMilliseconds: this.totalMilliseconds / this.rebuilds,
       },
@@ -603,17 +660,19 @@ export class IncrementalMesher {
   forkEdit(next: SDFVolume | SparseSDFVolume, bounds: Bounds): IncrementalMesher {
     if (this.disposed || this.dirty.size) throw new Error("Finish source meshing before Move.");
     if (next.step !== this.volume.step) throw new Error("Move cannot resample source spacing.");
-    const fork = new IncrementalMesher(next, this.chunkSize);
-    fork.layout = fork.buildLayout(next, this.chunks);
+    const fork = new IncrementalMesher(next, this.chunkSize, true);
+    fork.layout = fork.buildLayout(next, this.layout);
     fork.chunks = fork.layout.chunks;
     fork.dirty.clear();
     fork.triangleCount = this.triangleCount;
-    for (const chunk of fork.chunks) if (chunk.geometry) fork.borrowed.add(chunk.geometry);
+    for (const [, chunk] of fork.chunkEntries())
+      if (chunk.geometry) fork.borrowed.add(chunk.geometry);
     fork.invalidate(bounds);
     const before = this.volume.bounds,
       after = next.bounds;
-    for (let id = 0; id < this.chunks.length; id++) {
-      const g = this.chunks[id].geometry;
+    for (const [id, chunk] of this.chunkEntries()) {
+      if (this.chunkCanReuseAfterGrowth(id, next)) continue;
+      const g = chunk.geometry;
       if (!g?.getAttribute("position").count) continue;
       if (!g.boundingBox) g.computeBoundingBox();
       const box = g.boundingBox!;
@@ -631,9 +690,19 @@ export class IncrementalMesher {
     return fork;
   }
   snapshotUpdates(): (ChunkUpdate & { mixedSigns: boolean })[] {
-    return this.chunks.flatMap((c, id) =>
-      c.geometry ? [{ id, bounds: c.bounds, geometry: c.geometry, mixedSigns: c.mixedSigns }] : [],
-    );
+    const updates: (ChunkUpdate & { mixedSigns: boolean })[] = [];
+    const entries = this.layout.sparse
+      ? [...this.layout.sparse].sort(([a], [b]) => a - b)
+      : this.chunks.entries();
+    for (const [id, chunk] of entries)
+      if (chunk.geometry)
+        updates.push({
+          id,
+          bounds: chunk.bounds,
+          geometry: chunk.geometry,
+          mixedSigns: chunk.mixedSigns,
+        });
+    return updates;
   }
   get triangles(): number {
     return this.triangleCount;
@@ -658,25 +727,24 @@ export class IncrementalMesher {
   rebuild(): { geometry: BufferGeometry; stats: RebuildStats } | null {
     const result = this.rebuildChunks();
     if (!result) return null;
-    const regions = this.chunks
-      .filter((c) => c.geometry)
-      .map((c) => ({
-        positions: Array.from(c.geometry!.getAttribute("position").array),
-        normals: Array.from(c.geometry!.getAttribute("normal").array),
-      }));
+    const regions = this.snapshotUpdates().map(({ geometry }) => ({
+      positions: Array.from(geometry.getAttribute("position").array),
+      normals: Array.from(geometry.getAttribute("normal").array),
+    }));
     return { geometry: geometryFromRegions(regions), stats: result.stats };
   }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.clearUndoRestore();
-    for (const c of this.chunks)
+    for (const [, c] of this.chunkEntries())
       if (c.geometry && !this.borrowed.has(c.geometry)) c.geometry.dispose();
     this.borrowed.clear();
     this.dirty.clear();
     this.chunks = [];
     this.layout.chunks = [];
     this.layout.lookup = new Int32Array(0);
+    this.layout.sparse?.clear();
     this.triangleCount = 0;
     this.ownedBytes = 0;
   }

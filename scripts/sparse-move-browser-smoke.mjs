@@ -4,23 +4,25 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
-import { createBaseProject } from "../work/test-build/layers.mjs";
+import { createBaseProject, SdfLayer } from "../work/test-build/layers.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
+import { SDFVolume } from "../work/test-build/sdf.mjs";
 import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 
 const port = Number(process.env.SPARSE_MOVE_SMOKE_PORT ?? 5209);
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn(process.execPath, [
-  "node_modules/vite/bin/vite.js",
-  "--host",
-  "127.0.0.1",
-  "--port",
-  String(port),
-  "--strictPort",
-]);
-let browser;
-try {
-  await new Promise((resolve, reject) => {
+const startServer = (command = []) =>
+  spawn(process.execPath, [
+    "node_modules/vite/bin/vite.js",
+    ...command,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+    "--strictPort",
+  ]);
+const waitServer = (server) =>
+  new Promise((resolve, reject) => {
     server.stdout.on("data", (data) => {
       if (data.toString().includes(origin)) resolve();
     });
@@ -28,29 +30,44 @@ try {
     server.on("error", reject);
     server.on("exit", (code) => reject(new Error(`Vite exited (${code})`)));
   });
+let server = startServer(),
+  browser;
+try {
+  await waitServer(server);
   browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(`${origin}/scripts/persistent-move-browser.html?sparse`);
   const has = (selector, hasText) => page.locator(selector).filter({ hasText }).waitFor();
-  await has("#check", "PASS");
-  await has("#state", "hold Tool trigger");
-  await page.locator("#grab").click();
-  await page.locator("#pull").click();
-  await page.locator("#commit").click();
-  await has("#state", "Move committed");
-  await has("#metrics", '"backend":"worker"');
-  await page.locator("#verify").click();
-  await has("#check", "committed source changed");
-  await page.locator("#undo").click();
-  await has("#check", "0 undo / 1 redo");
-  await page.locator("#redo").click();
-  await has("#check", "1 undo / 0 redo");
-  await has("#check", "PASS");
-  console.log("PASS: browser WebGL preview, sparse Move worker, Undo/Redo and v25 roundtrip");
+  for (const mirrored of [false, true]) {
+    await page.goto(
+      `${origin}/scripts/persistent-move-browser.html?sparse${mirrored ? "&mirror" : ""}`,
+    );
+    await has("#check", "PASS");
+    await has("#state", "hold Tool trigger");
+    await page.locator("#grab").click();
+    await page.locator("#pull").click();
+    await page.locator("#commit").click();
+    await has("#state", "Move committed");
+    await has("#metrics", '"backend":"worker"');
+    await page.locator("#verify").click();
+    await has("#check", "committed source changed");
+    await page.locator("#undo").click();
+    await has("#check", "0 undo / 1 redo");
+    await page.locator("#redo").click();
+    await has("#check", "1 undo / 0 redo");
+    await has("#check", "PASS");
+    console.log(
+      `PASS: browser WebGL preview, ${mirrored ? "mirrored " : ""}sparse Move worker, Undo/Redo and v25 roundtrip`,
+    );
+  }
+  const exited = new Promise((resolve) => server.once("exit", resolve));
+  server.kill();
+  await exited;
+  server = startServer(["preview"]);
+  await waitServer(server);
 
   const cutSource = new SparseSDFVolume(33);
   cutSource.brush({ x: 0, y: 0, z: 0 }, 0.55, "add", 0.8, undefined, 0.6, true);
@@ -61,6 +78,7 @@ try {
     hardness: 0.6,
     camera: { position: [2.4, 1.7, 3.3], target: [0, 0, 0] },
   });
+  project.layerStack.insert(new SdfLayer(new SDFVolume(33), { name: "Dense control" }));
   const original = saveSculptProject(project);
   await page.goto(origin);
   await page.locator("#project-file").setInputFiles({
@@ -71,6 +89,7 @@ try {
   await page.locator('[data-library-action="library:open"]').click();
   await has("#project-message", /^Opened /);
   await page.locator("#cut-plane").click();
+  await page.locator("#cut-scope").selectOption("all-editable");
   await page.locator("#cut-apply").click();
   await has("#cut-preview-status", "Cut complete");
   await page.keyboard.press("Escape");
@@ -87,15 +106,21 @@ try {
   const bytes = await readFile(await download.path());
   assert.equal(bytes.readUInt32LE(8), 25);
   const opened = openSculptProject(Uint8Array.from(bytes).buffer);
-  assert.equal(opened.layerStack.layers.length, 2);
+  assert.equal(opened.layerStack.layers.length, 4);
   assert(
-    opened.layerStack.layers.every(
-      ({ volume }) => volume instanceof SparseSDFVolume && volume.hasInterior(),
+    opened.layerStack.layers.every(({ volume }) =>
+      volume instanceof SparseSDFVolume
+        ? volume.hasInterior()
+        : volume.values.some((value) => value < 0),
     ),
+  );
+  assert.equal(
+    opened.layerStack.layers.filter(({ volume }) => volume instanceof SparseSDFVolume).length,
+    2,
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: desktop Plane Cut of Library-imported sparse source and two-piece v25 download",
+    "PASS: production Cut All of Library-imported mixed sources and four-piece v25 download",
   );
 } catch (error) {
   const page = browser?.contexts()[0]?.pages()[0];

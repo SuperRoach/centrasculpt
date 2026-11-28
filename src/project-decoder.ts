@@ -39,14 +39,7 @@ import { REFERENCE_LIMITS } from "./reference-images";
 import { sculptMask } from "./sculpt-mask";
 import { sculptPaint } from "./sculpt-paint";
 import { SDFVolume } from "./sdf";
-import {
-  MAX_SDF_PAGES,
-  MAX_SPARSE_AXIS,
-  MAX_SPARSE_CHUNKS,
-  SDF_PAGE_MEMORY,
-  SparseSDFVolume,
-  sparseChunkCount,
-} from "./sparse-sdf";
+import { MAX_SDF_PAGES, MAX_SPARSE_AXIS, SDF_PAGE_MEMORY, SparseSDFVolume } from "./sparse-sdf";
 import { validateToolPreferences } from "./tool-preferences";
 import type { Vec3 } from "./transform";
 import type { VolumeStore } from "./volume-store";
@@ -134,12 +127,8 @@ export function openSculptProject(
       !latticeMin.every((v, a) => v <= 0 && v + dims[a] >= n)
     )
       throw new Error("Invalid layer lattice origin.");
-    if (
-      isSparse &&
-      (latticeMin.some((v) => v < -MAX_SPARSE_AXIS) ||
-        sparseChunkCount({ dimensions: dims, latticeMin: latticeMin as Vec3 }) > MAX_SPARSE_CHUNKS)
-    )
-      throw new Error("Sparse lattice exceeds the logical chunk budget.");
+    if (isSparse && latticeMin.some((v) => v < -MAX_SPARSE_AXIS))
+      throw new Error("Sparse lattice origin exceeds the coordinate limit.");
     if (
       typeof extent !== "number" ||
       !Number.isFinite(extent) ||

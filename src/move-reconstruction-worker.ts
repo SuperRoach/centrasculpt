@@ -28,6 +28,7 @@ self.onmessage = async ({ data: d }) => {
     const f = d.field,
       field = new RadialMoveField();
     field.capture(new Vector3(...f.center), f.radius, f.falloff, 1);
+    field.setMirror(f.mirror);
     field.configure(f.mode, f.stiffness);
     field.setDisplacement(new Vector3(...f.delta));
     field.interaction = f.interaction;

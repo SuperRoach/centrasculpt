@@ -1,3 +1,12 @@
+### Larger experimental sparse sculpts — Phase 9.7
+
+- Experimental sparse clay can grow across large gaps at the same detail.
+  Native files keep sparse layers and their original spacing on reopen.
+- Mirror works with sparse Move when the two influence and travel regions
+  stay clear of the mirror plane.
+- **Plane Cut → All visible, unlocked SDF layers** can split dense and
+  sparse sculpt layers together. Undo restores every source in one step.
+
 ### Native projects save as v24 — Phase 8.9a
 
 - All new project saves use v24. Matching primitive definitions rebuild their

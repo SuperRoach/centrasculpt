@@ -213,7 +213,10 @@ test("Move grows at fixed spacing, remaps history and refuses without changing s
     const abort = new AbortController();
     await rejects(() => move(sparse, f, abort.signal, undefined, () => abort.abort()), /cancelled/);
     sparse.symmetry.enabled = true;
-    await rejects(() => move(sparse, f), /Turn off Mirror/);
+    await rejects(
+      () => move(sparse, field("translate", 0.25, [-0.1, 0, 0], [0.1, 0, 0])),
+      /separated influence and travel regions/,
+    );
     sparse.symmetry.enabled = false;
     assert(sparse.undo(true));
     drain(sparse);
@@ -417,6 +420,104 @@ test("sparse Move destination page refusal preserves the source", async () => {
     assert.equal(editor.undoCount, 0);
     assert.equal(source.allocatedPages, cap);
     assert.deepEqual(checkpoint(editor), before);
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("mirrored sparse Move uses reflected influences with one worker-backed undo transaction", async () => {
+  const editor = make(true, { dimensions: [65, 33, 33], latticeMin: [-16, 0, 0] }, 0.51),
+    previousWorker = globalThis.Worker;
+  try {
+    const source = editor.active.volume;
+    for (let z = 0; z < 33; z++)
+      for (let y = 0; y < 33; y++)
+        for (let x = 0; x < 33; x++) {
+          const distance = Math.hypot(
+            source.coordinate(x) + 0.49,
+            source.coordinate(y),
+            source.coordinate(z),
+          );
+          if (distance < 0.44) source.writeVoxel(source.index(x, y, z), distance - 0.3);
+        }
+    editor.active.mesher.invalidate();
+    drain(editor);
+    Object.assign(editor.symmetry, { enabled: true, axis: "x", offset: 0.01 });
+    globalThis.Worker = BrowserWorker;
+    const before = checkpoint(editor),
+      volume = editor.active.volume,
+      count = editor.undoCount;
+    const f = field("free", 0.22, [0.51, 0, 0.22], [0.045, 0.022, 0]);
+    f.setMirror(editor.symmetry);
+    const primary = new Vector3(0.56, 0.07, 0.03);
+    const reflected = f.setReflectedPoint(primary, new Vector3());
+    const expected = f.setReflectedPoint(f.position(primary, new Vector3()), new Vector3());
+    assert(f.position(reflected, new Vector3()).distanceTo(expected) < 1e-14);
+    assert(await move(editor, f));
+    assert.equal(editor.lastMoveStats.backend, "worker");
+    assert.equal(editor.undoCount, count + 1);
+    const after = checkpoint(editor);
+    let negative = false,
+      positive = false;
+    const next = editor.active.volume;
+    for (let z = 0; z < 33; z++)
+      for (let y = 0; y < 33; y++)
+        for (let x = 0; x < 65; x++)
+          if (next.readSample(x, y, z) !== volume.readSample(x, y, z)) {
+            if (x < 32) negative = true;
+            if (x > 32) positive = true;
+            assert.notEqual(x, 32, "The gap at the mirror plane stays exact");
+          }
+    assert(negative && positive);
+    assert(editor.undo());
+    drain(editor);
+    assert.deepEqual(checkpoint(editor), before);
+    assert(editor.undo(true));
+    drain(editor);
+    assert.deepEqual(checkpoint(editor), after);
+  } finally {
+    globalThis.Worker = previousWorker;
+    editor.dispose();
+  }
+});
+
+test("Cut All stages mixed pieces without exposing partial changes and records one undo", async () => {
+  const editor = make(true);
+  try {
+    const dense = editor.create(64);
+    const sparse = editor.project.layerStack.layers[0];
+    const original = new Uint8Array(saveSculptProject(editor.project));
+    const revision = editor.sourceRevision;
+    const abort = new AbortController();
+    let prepared = 0;
+    const plane = { point: [0, 0, 0], normal: [1, 0, 0] };
+    await assert.rejects(
+      editor.cutByPlane(
+        plane,
+        abort.signal,
+        (stage) => {
+          assert.deepEqual(editor.project.layerStack.layers, [sparse, dense]);
+          assert.equal(editor.project.activeLayerId, dense.id);
+          if (stage.startsWith("Preparing") && ++prepared === 2) abort.abort();
+        },
+        "all-editable",
+      ),
+      /cancelled/,
+    );
+    assert.equal(prepared, 2);
+    assert.equal(editor.sourceRevision, revision);
+    assert.deepEqual(new Uint8Array(saveSculptProject(editor.project)), original);
+    assert.equal(editor.undoCount, 0);
+    await editor.cutByPlane(plane, signal(), () => {}, "all-editable");
+    assert.equal(editor.undoCount, 1);
+    const pieces = editor.project.layerStack.layers;
+    assert.equal(pieces.length, 4);
+    assert(pieces.slice(0, 2).every(({ volume }) => volume instanceof SparseSDFVolume));
+    assert(pieces.slice(2).every(({ volume }) => volume instanceof SDFVolume));
+    assert(editor.undo());
+    assert.deepEqual(new Uint8Array(saveSculptProject(editor.project)), original);
+    assert(editor.undo(true));
+    assert.deepEqual(editor.project.layerStack.layers, pieces);
   } finally {
     editor.dispose();
   }

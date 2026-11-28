@@ -30,7 +30,7 @@ function mesh(runtime) {
     .exportUpdates()
     .filter(({ geometry }) => geometry.getAttribute("position").count)
     .map(({ id, geometry }) => [
-      id,
+      runtime.mesher.chunkKey(id),
       geometry.getAttribute("position").array.slice(),
       geometry.getAttribute("normal").array.slice(),
     ]);
@@ -663,7 +663,8 @@ test("Clay grows both signed directions at fixed spacing and rebinds field, hist
     editor.finishStroke();
     drain(editor);
     const originalMesh = mesh(editor.active);
-    const keys = originalMesh.map(([id]) => editor.active.mesher.chunkKey(id));
+    const ids = editor.active.mesher.snapshotUpdates().map(({ id }) => id);
+    const keys = ids.map((id) => editor.active.mesher.chunkKey(id));
     const initial = before.captureSamples();
     const pageIds = [...before.residentPages()].map(([id]) => id);
 
@@ -691,7 +692,7 @@ test("Clay grows both signed directions at fixed spacing and rebinds field, hist
     assert.equal(grown.step, before.step);
     assert(grown.bounds.min[0] < before.bounds.min[0]);
     assert(grown.bounds.max[0] > before.bounds.max[0]);
-    assert(keys.every((key, i) => editor.active.mesher.chunkKey(originalMesh[i][0]) === key));
+    assert(keys.every((key, i) => editor.active.mesher.chunkKey(ids[i]) === key));
     const livePages = new Map(grown.residentPages());
     assert(pageIds.every((id) => livePages.has(id)));
     assert([...livePages.keys()].some((id) => sparsePageCoordinates(id)[0] < 0));
@@ -744,7 +745,7 @@ test("logical and transient growth refusal leave the source, residency, queue an
     const pages = new Map([...before.residentPages()].map(([id, a]) => [id, a.slice()]));
     const revision = editor.committedRevision;
     for (const [limits, pattern] of [
-      [{ maxAxisSamples: 64 }, /logical lattice or chunk budget/],
+      [{ maxAxisSamples: 64 }, /logical lattice limit/],
       [{ maxTransientBytes: 65536 }, /resident and transient memory budget/],
     ]) {
       editor.growthLimits = limits;
@@ -797,6 +798,47 @@ test("cancelling a growing stroke restores exact values and leaves older redo av
     assert(editor.undo(true));
     drain(editor);
     assert.deepEqual(mesh(editor.active), baked);
+  } finally {
+    editor.dispose();
+  }
+});
+
+test("large signed sparse editor opens, meshes, exports and clears without an extent-sized directory", () => {
+  const volume = new SparseSDFVolume(65, 0.032, undefined, {
+    dimensions: [1089, 1089, 1089],
+    latticeMin: [-512, -512, -512],
+  });
+  const editor = new IndependentLayers(createBaseProject(volume, settings));
+  try {
+    const mesher = editor.active.mesher;
+    assert.equal(mesher.allocatedChunks, 0);
+    const samples = [63, 1025].map((i) => volume.index(i, i, i));
+    for (const index of samples) {
+      volume.writeVoxel(index, -0.0005);
+      mesher.invalidateSample(index, true);
+    }
+    drain(editor);
+    const chunks = mesher.snapshotUpdates();
+    assert(chunks.length > 1 && chunks.length <= 16);
+    assert.equal(mesher.allocatedChunks, chunks.length);
+    assert(chunks.some(({ id }) => mesher.chunkKey(id).startsWith("-")));
+    assert.equal(
+      editor.exportSources()[0].chunks.length,
+      chunks.filter(({ geometry }) => geometry.attributes.position.count).length,
+    );
+    const reopened = new IndependentLayers(openSculptProject(saveSculptProject(editor.project)));
+    try {
+      assert.deepEqual(mesh(reopened.active), mesh(editor.active));
+    } finally {
+      reopened.dispose();
+    }
+    for (const index of samples) {
+      volume.writeVoxel(index, volume.defaultValue);
+      mesher.invalidateSample(index, true);
+    }
+    drain(editor);
+    assert.equal(mesher.allocatedChunks, 0);
+    assert.equal(editor.active.surface.spatial.chunks, 0);
   } finally {
     editor.dispose();
   }

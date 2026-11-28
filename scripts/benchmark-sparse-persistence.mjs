@@ -8,6 +8,7 @@ import { IncrementalMesher } from "../work/test-build/mesh.mjs";
 import { openSculptProject, saveSculptProject } from "../work/test-build/project.mjs";
 import { SparseSDFVolume } from "../work/test-build/sparse-sdf.mjs";
 import { strokeTrace } from "./research/compact-sculpt/trace.mjs";
+import { topology } from "./research/narrow-band-evidence.mjs";
 
 const [tracePath, outputPath] = process.argv.slice(2);
 assert(tracePath && outputPath, "Pass the existing Phase 8.3 trace JSON and an output path.");
@@ -88,7 +89,7 @@ for (const { kind, span, resolution, strokes } of workloads) {
         editor.finishStroke();
       } catch (error) {
         editor.cancelStroke();
-        if (!/logical lattice or chunk budget/.test(error.message)) throw error;
+        if (!/logical lattice limit/.test(error.message)) throw error;
         refusal = error.message;
       }
       while (editor.pendingChunks) editor.drainSparseMeshes();
@@ -123,6 +124,13 @@ for (const { kind, span, resolution, strokes } of workloads) {
       while (editor.pendingChunks) editor.drainSparseMeshes();
       assert.equal(meshSignature(editor.active.mesher), mesh);
     }
+    const topologyStats = topology(
+      editor.active.mesher.snapshotUpdates().map(({ geometry }) => ({
+        positions: geometry.getAttribute("position").array,
+      })),
+      1000,
+      0.001,
+    );
     const result = {
       kind,
       span,
@@ -135,6 +143,8 @@ for (const { kind, span, resolution, strokes } of workloads) {
       expansions: editor.active.expansions,
       pages: volume.allocatedPages,
       triangles: editor.active.triangles,
+      topology: topologyStats,
+      allocatedChunks: editor.active.mesher.allocatedChunks,
       archiveBytes: data.byteLength,
       saveMs,
       openMs,

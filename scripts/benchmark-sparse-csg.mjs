@@ -66,10 +66,10 @@ function hashField(volume) {
 function hashMesh(updates) {
   const hash = createHash("sha256");
   let triangles = 0;
-  for (const { id, geometry } of [...updates].sort((a, b) => a.id - b.id)) {
+  for (const { bounds, geometry } of updates) {
     const position = geometry.getAttribute("position");
     if (!position.count) continue;
-    hash.update(`${id}:${position.count}:`);
+    hash.update(`${bounds.min}:${position.count}:`);
     triangles += position.count / 3;
     for (const key of ["position", "normal"]) {
       const { buffer, byteOffset, byteLength } = geometry.getAttribute(key).array;

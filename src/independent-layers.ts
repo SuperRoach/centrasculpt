@@ -42,7 +42,7 @@ import {
 import type { ExportSource } from "./export-mesh";
 import { anchoredBoxPose, checkedRectangularBox, type Face, resizeFace } from "./face-resize";
 import { SculptHistory } from "./history";
-import { type HierarchyState, LayerGroup } from "./layer-hierarchy";
+import { type HierarchyState, LayerGroup, validateHierarchy } from "./layer-hierarchy";
 import type { LayerOperation, SculptProject } from "./layers";
 import {
   type AssemblyPart,
@@ -98,12 +98,7 @@ import { reflectPoint, SDFVolume, validateMirrorPlane } from "./sdf";
 import { prepareShape } from "./shape-library";
 import { prepareStampSteps } from "./shape-stamp";
 import { validateShapeDefinition } from "./shapes";
-import {
-  MAX_SPARSE_AXIS,
-  MAX_SPARSE_CHUNKS,
-  SparseSDFVolume,
-  sparseChunkCount,
-} from "./sparse-sdf";
+import { MAX_SPARSE_AXIS, SparseSDFVolume } from "./sparse-sdf";
 import { ClayStroke } from "./stroke";
 import { buildExportMesh, ChunkSurface } from "./surface";
 import type { VolumeTransform } from "./transform";
@@ -1193,26 +1188,21 @@ export class IndependentLayers {
     source: SparseSDFVolume,
     layout: import("./sdf").DenseLatticeLayout,
     options: Partial<DenseGrowthLimits>,
-  ): number {
-    const chunks = sparseChunkCount(layout);
+  ): void {
     if (
-      chunks > MAX_SPARSE_CHUNKS ||
       layout.dimensions.some(
         (n) => n > Math.min(options.maxAxisSamples ?? MAX_SPARSE_AXIS, MAX_SPARSE_AXIS),
       ) ||
       (options.maxSamples !== undefined &&
         layout.dimensions.reduce((n, d) => n * d, 1) > options.maxSamples)
     )
-      throw new Error(
-        "Sparse growth exceeds the logical lattice or chunk budget. Existing sculpture kept.",
-      );
+      throw new Error("Sparse growth exceeds the logical lattice limit. Existing sculpture kept.");
     // A stamp/Boolean can replace even positive face distances. Such faces have
     // no defined implicit continuation in this growth policy.
     source.assertGrowthBoundary(layout);
     // A pending redo could restore a non-default old face after capacity grows.
     // Reject such history on a moving face, regardless of the live field.
     runtime.history.assertSparseGrowthBoundary(source, layout);
-    return chunks;
   }
   private prepareSparseChannelHistory(
     runtime: LayerRuntime,
@@ -1270,7 +1260,8 @@ export class IndependentLayers {
       options = this.growthLimits;
     const layout = growthLayout(source, footprint, options);
     if (!layout) return;
-    const chunks = this.validateSparseGrowth(runtime, source, layout, options);
+    this.validateSparseGrowth(runtime, source, layout, options);
+    const chunks = runtime.mesher.allocatedChunks;
     const limit = options.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes;
     let staged =
       this.trackedBytes +
@@ -2343,8 +2334,6 @@ export class IndependentLayers {
       stack.select(entry.activeBefore);
       this.selectedGroupId = entry.selectedBefore;
     }
-    this.syncPresentation();
-    this.composite.invalidate();
   }
   /** One explicit command, one sparse layer-bound action. Preparation is read-only. */
   stampShape(value: unknown, inStroke = false): boolean {
@@ -2548,8 +2537,10 @@ export class IndependentLayers {
     runtime.rebuild();
     this.composite.invalidateLayer(runtime.layer);
   }
-  private uniqueName(base: string): string {
-    const names = new Set(this.project.layerStack.layers.map((l) => l.name));
+  private uniqueName(
+    base: string,
+    names: ReadonlySet<string> = new Set(this.project.layerStack.layers.map((layer) => layer.name)),
+  ): string {
     let result = base.slice(0, 128),
       suffix = 2;
     while (names.has(result)) {
@@ -2588,95 +2579,130 @@ export class IndependentLayers {
     progress: (stage: string) => void = () => {},
     scope: "active" | "all-editable" = "active",
   ): Promise<string> {
-    if (scope === "active") return this.cutOneByPlane(plane, signal, progress);
     this.assertAvailable();
     this.finishStroke();
     this.finishTransform();
     if (this.selectedGroupId) throw new Error("Select a sculpt layer before cutting.");
-    const ids = this.project.layerStack.layers
-      .filter(
-        (layer) =>
-          layer.editable &&
-          !layer.procedural &&
-          !layer.primitive &&
-          (layer.volume instanceof SDFVolume || layer.volume instanceof SparseSDFVolume),
-      )
-      .map((layer) => layer.id);
-    if (!ids.length) throw new Error("There are no visible, unlocked SDF layers to cut.");
-    if (ids.some((id) => this.runtime(id).volume instanceof SparseSDFVolume)) {
-      if (ids.length === 1 && ids[0] === this.project.activeLayerId)
-        return this.cutOneByPlane(plane, signal, progress);
-      throw new Error("Use Active Layer to cut a sparse sculpt.");
-    }
-    this.assertCapacity(0, undefined, ids.length);
-    const activeBefore = this.project.activeLayerId,
-      selectedBefore = this.selectedGroupId,
-      revision = this.committedRevision,
-      entries: CutEntry[] = [];
+    const stack = this.project.layerStack,
+      activeBefore = stack.activeLayerId,
+      targets =
+        scope === "active"
+          ? [stack.active]
+          : stack.layers.filter(
+              (layer) =>
+                layer.editable &&
+                !layer.procedural &&
+                !layer.primitive &&
+                (layer.volume instanceof SDFVolume || layer.volume instanceof SparseSDFVolume),
+            );
+    if (!targets.length) throw new Error("There are no visible, unlocked SDF layers to cut.");
+    const originals = targets.map((layer) => {
+      const runtime = this.editableRuntime(layer.id);
+      this.assertSculptable(layer);
+      this.assertBooleanUnreferenced(layer.id);
+      if (layer.operation === "intersect")
+        throw new Error(
+          "Cut an Intersect layer only after converting it to separate Union layers.",
+        );
+      return runtime;
+    });
+    const extraSamples = originals.reduce(
+      (sum, { volume }) =>
+        sum + (volume instanceof SparseSDFVolume ? 0 : volumeSampleCount(volume)),
+      0,
+    );
+    this.assertCapacity(extraSamples, undefined, originals.length);
+    const sparse = originals.some(({ volume }) => volume instanceof SparseSDFVolume),
+      limit = sparse
+        ? (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes)
+        : DENSE_GROWTH_LIMITS.maxTransientBytes;
+    let additionalTriangles =
+      MAX_PROJECT_TRIANGLES -
+      [...this.runtimes.values()].reduce((sum, runtime) => sum + runtime.triangles, 0);
+    const base = this.trackedBytes + (sparse ? this.composite.trackedBytes : 0);
+    const entries: CutEntry[] = [],
+      names = new Set(stack.layers.map(({ name }) => name)),
+      guards: (() => void)[] = [];
+    let hierarchy = stack.hierarchy.snapshot(),
+      selected = activeBefore,
+      stagedBytes = 0,
+      published = false;
+    this.cutPending = true;
     try {
-      for (const id of ids) {
-        if (signal.aborted) throw new Error("Plane Cut cancelled; all source layers kept.");
-        this.project.layerStack.select(id);
-        this.selectedGroupId = null;
-        await this.cutOneByPlane(plane, signal, progress, false);
-        const entry = this.past.at(-1);
-        if (!entry || entry.kind !== "cut")
-          throw new Error("Cut preparation did not produce a history record.");
+      for (const original of originals) {
+        const stage = (bytes: number, triangles: number) => {
+          this.copyStagingBytes = stagedBytes + bytes;
+          if (
+            base + this.copyStagingBytes > limit ||
+            triangles > additionalTriangles + original.triangles
+          )
+            throw new Error("Plane Cut exceeds the geometry or memory safety limit. Source kept.");
+        };
+        const { entry, check, bytes } = await this.preparePlaneCut(
+          original,
+          plane,
+          signal,
+          progress,
+          hierarchy,
+          selected,
+          names,
+          stage,
+        );
         entries.push(entry);
+        guards.push(check);
+        stagedBytes += bytes;
+        additionalTriangles +=
+          original.triangles - entry.negative.triangles - entry.positive.triangles;
+        hierarchy = entry.after;
+        selected = entry.activeAfter;
       }
-      this.past.splice(this.past.length - entries.length, entries.length);
+      for (const check of guards) check();
+      // No yields, progress callbacks or partial timeline entries during publication.
+      for (const entry of entries) {
+        this.replayCut(entry, true);
+        this.display.setColour(
+          this.project.id,
+          entry.positive.layer.id,
+          this.display.colour(this.project.id, entry.original.layer.id, entry.original.layer.order),
+        );
+      }
       this.discardFuture();
-      this.past.push({ kind: "cut-batch", layerId: activeBefore, entries });
-      this.project.layerStack.select(entries.at(-1)!.activeAfter);
-      this.committedRevision = revision + entries.length;
+      const first = entries[0];
+      this.past.push(
+        scope === "active" ? first : { kind: "cut-batch", layerId: activeBefore, entries },
+      );
+      this.committedRevision++;
+      published = true;
       this.syncPresentation();
       this.composite.invalidate();
-      return entries.at(-1)!.positive.layer.id;
-    } catch (error) {
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const entry = this.past.pop();
-        if (entry?.kind === "cut") {
-          this.replayCut(entry, false);
+      return selected;
+    } finally {
+      if (!published)
+        for (const entry of entries) {
           entry.negative.dispose();
           entry.positive.dispose();
         }
-        this.display.remove(this.project.id, entries[i].positive.layer.id);
-      }
-      this.project.layerStack.select(activeBefore);
-      this.selectedGroupId = selectedBefore;
-      this.committedRevision = revision;
-      this.syncPresentation();
-      this.composite.invalidate();
-      throw error;
+      this.copyStagingBytes = 0;
+      this.cutPending = false;
     }
   }
-  private async cutOneByPlane(
+  private async preparePlaneCut(
+    original: LayerRuntime,
     plane: CutPlane,
     signal: AbortSignal,
     progress: (stage: string) => void,
-    recordHistory = true,
-  ): Promise<string> {
-    this.assertAvailable();
-    this.finishStroke();
-    this.finishTransform();
-    if (this.selectedGroupId) throw new Error("Select a sculpt layer before cutting.");
-    const original = this.editableRuntime(this.project.activeLayerId);
-    this.assertSculptable(original.layer);
-    this.assertBooleanUnreferenced(original.layer.id);
-    if (original.layer.operation === "intersect")
-      throw new Error("Cut an Intersect layer only after converting it to separate Union layers.");
+    hierarchyBefore: HierarchyState,
+    activeBefore: string,
+    names: Set<string>,
+    stage: (bytes: number, triangles: number) => void,
+  ): Promise<{ entry: CutEntry; check: () => void; bytes: number }> {
     const source = original.volume,
       metadata = JSON.stringify(original.layer.metadata()),
-      hierarchyBefore = this.project.layerStack.hierarchy.snapshot(),
-      activeBefore = this.project.activeLayerId,
-      selectedBefore = this.selectedGroupId,
-      index = this.project.layerStack.layers.findIndex((l) => l.id === original.layer.id),
       sampleCount = volumeSampleCount(source);
     const sparse = source instanceof SparseSDFVolume;
     const fieldRevision = sparse ? source.fieldRevision : undefined,
       maskRevision = sculptMask(source).revision,
       paintRevision = sculptPaint(source).revision;
-    this.assertCapacity(sparse ? 0 : sampleCount, original.layer.id, 1);
     const staging =
       (sparse
         ? 2 *
@@ -2686,12 +2712,7 @@ export class IndependentLayers {
         : sampleCount * 16) +
       sculptMask(source).memoryBytes * 2 +
       sculptPaint(source).memoryBytes * 2;
-    const limit = sparse
-      ? (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes)
-      : DENSE_GROWTH_LIMITS.maxTransientBytes;
-    const compositeBytes = sparse ? this.composite.trackedBytes : 0;
-    if (this.trackedBytes + compositeBytes + staging > limit)
-      throw new Error("Plane Cut exceeds the project memory budget. Source layer kept.");
+    stage(staging, 0);
     const revision = this.committedRevision,
       projectId = this.project.id,
       normalWorld = new Vector3(...plane.normal),
@@ -2704,14 +2725,12 @@ export class IndependentLayers {
     const localPoint = toLocal({ x: pointWorld.x, y: pointWorld.y, z: pointWorld.z }, transform),
       localPlane = {
         point: [localPoint.x, localPoint.y, localPoint.z] as [number, number, number],
-        normal: normalWorld.applyQuaternion(rotation).normalize().toArray() as [
-          number,
-          number,
-          number,
-        ],
+        normal: normalWorld
+          .applyQuaternion(rotation)
+          .multiply(new Vector3(...transform.scale))
+          .normalize()
+          .toArray() as [number, number, number],
       };
-    this.cutPending = true;
-    this.copyStagingBytes = staging;
     const releaseSource = sparse ? source.pinResidentPages() : undefined;
     let negative: LayerRuntime | undefined, positive: LayerRuntime | undefined;
     const check = () => {
@@ -2736,7 +2755,7 @@ export class IndependentLayers {
       let step = work.next(),
         deadline = performance.now() + 3;
       while (!step.done) {
-        if (sparse && performance.now() >= deadline) {
+        if (performance.now() >= deadline) {
           await yieldBake();
           check();
           deadline = performance.now() + 3;
@@ -2755,7 +2774,7 @@ export class IndependentLayers {
             for (let j = 0; j < copy.length && start + j < sampleCount; j++)
               if (target.readVoxel(start + j) > source.step * 2) copy[j] = snapshot.base;
             if (copy.some((value) => value !== snapshot.base)) pages.set(page, copy);
-            if (sparse && performance.now() >= deadline) {
+            if (performance.now() >= deadline) {
               await yieldBake();
               check();
               deadline = performance.now() + 3;
@@ -2774,56 +2793,48 @@ export class IndependentLayers {
       negative = new LayerRuntime(original.layer, this.neutral, fields.negative, true);
       const { id: unused, ...sourceMetadata } = original.layer.metadata();
       void unused;
+      const name = this.uniqueName(`${original.layer.name} cut`, names);
+      names.add(name);
       const layer = new SdfLayer(fields.positive, {
         ...sourceMetadata,
-        name: this.uniqueName(`${original.layer.name} cut`),
+        name,
         locked: false,
         visible: true,
         operation: original.layer.operation,
-        order: index + 1,
+        order: sourceMetadata.order + 1,
       });
       positive = new LayerRuntime(layer, this.neutral, fields.positive, true);
-      const triangleBudget =
-        MAX_PROJECT_TRIANGLES -
-        [...this.runtimes.values()]
-          .filter((runtime) => runtime !== original)
-          .reduce((sum, runtime) => sum + runtime.triangles, 0);
-      for (const candidate of [negative, positive])
+      const pieces = [negative, positive];
+      const bytes = () =>
+        pieces.reduce((bytes, { volume, mesher }) => {
+          const storage =
+            volume instanceof SparseSDFVolume
+              ? volume.pageMemoryBytes + mesher.haloBytes + mesher.allocatedChunks * 512
+              : sampleCount * 8;
+          return (
+            bytes +
+            storage +
+            mesher.ownedGeometryBytes +
+            sculptMask(volume).memoryBytes +
+            sculptPaint(volume).memoryBytes
+          );
+        }, 0);
+      stage(bytes(), 0);
+      for (const candidate of pieces)
         while (candidate.mesher.pendingChunks) {
           check();
           candidate.rebuild(2, 3);
-          if (
-            negative.triangles + positive.triangles > triangleBudget ||
-            this.trackedBytes +
-              (sparse ? compositeBytes : this.copyStagingBytes) +
-              negative.mesher.ownedGeometryBytes +
-              positive.mesher.ownedGeometryBytes >
-              limit
-          )
-            throw new Error("Plane Cut exceeds the geometry or memory safety limit. Source kept.");
+          stage(bytes(), negative.triangles + positive.triangles);
           progress("Building piece previews…");
           await yieldBake();
         }
       check();
-      const positiveLayer = positive.layer;
-      this.group.remove(original.surface.group);
-      this.runtimes.delete(original.layer.id);
-      original.layer.volume = fields.negative;
-      this.install(negative);
-      this.project.layerStack.insert(positiveLayer, index + 1);
-      const afterState = this.project.layerStack.hierarchy.snapshot(),
-        parent = this.project.layerStack.hierarchy.parent(original.layer.id);
-      afterState.layers.find((layerState) => layerState.id === positiveLayer.id)!.parentId = parent;
-      this.project.layerStack.hierarchy.restore(afterState);
-      this.install(positive);
-      this.selectedGroupId = null;
-      this.project.layerStack.select(positiveLayer.id);
-      this.display.setColour(
-        this.project.id,
-        positiveLayer.id,
-        this.display.colour(this.project.id, original.layer.id, index),
-      );
-      if (recordHistory) this.discardFuture();
+      const after = structuredClone(hierarchyBefore),
+        sourceLeaf = after.layers.find(({ id }) => id === original.layer.id);
+      if (!sourceLeaf) throw new Error("Plane Cut source hierarchy changed.");
+      after.layers.push({ ...sourceLeaf, id: layer.id, name, visible: true, locked: false });
+      for (const order of [after.order, after.compositionOrder])
+        order.splice(order.indexOf(sourceLeaf.id) + 1, 0, layer.id);
       const entry: CutEntry = {
         kind: "cut",
         layerId: original.layer.id,
@@ -2832,25 +2843,23 @@ export class IndependentLayers {
         positive,
         originalVolume: source,
         before: hierarchyBefore,
-        after: this.project.layerStack.hierarchy.snapshot(),
+        after: validateHierarchy(
+          after,
+          after.layers.map(({ id }) => id),
+        ),
         activeBefore,
-        activeAfter: positiveLayer.id,
-        selectedBefore,
+        activeAfter: layer.id,
+        selectedBefore: null,
         selectedAfter: null,
       };
-      this.past.push(entry);
-      this.committedRevision++;
-      this.syncPresentation();
-      this.composite.invalidate();
+      const retained = bytes();
       negative = undefined;
       positive = undefined;
-      return positiveLayer.id;
+      return { entry, check, bytes: retained };
     } finally {
       negative?.dispose();
       positive?.dispose();
-      this.copyStagingBytes = 0;
       releaseSource?.();
-      this.cutPending = false;
     }
   }
   async duplicateAsync(
@@ -3839,6 +3848,7 @@ export class IndependentLayers {
       candidate = new LayerRuntime(layer, this.neutral, volume, true);
       let meshingMs = 0,
         chunks = 0;
+      const plannedChunks = candidate.mesher.pendingChunks;
       while (candidate.rebuild(8, 3)) {
         meshingMs += candidate.lastMeshMs;
         chunks += candidate.lastChanged;
@@ -3846,7 +3856,7 @@ export class IndependentLayers {
           throw new Error(
             "Bake would exceed the project triangle budget, including preserved sources. Choose a lower resolution.",
           );
-        progress?.({ stage: "meshing", completed: chunks, total: candidate.totalChunks });
+        progress?.({ stage: "meshing", completed: chunks, total: plannedChunks });
         await yieldBake();
         checkBakeCancelled(signal);
         if (this.disposed) throw new Error("Bake cancelled: project closed.");
@@ -4449,8 +4459,7 @@ export class IndependentLayers {
     )
       throw new Error("Move needs a ready, visible, unlocked sculpt source in Separate Layers.");
     const sparse = source instanceof SparseSDFVolume;
-    if (sparse && this.symmetry.enabled)
-      throw new Error("Turn off Mirror to use Move on the sparse trial.");
+    const symmetry = { ...this.symmetry };
     if (
       (input.interaction === "rotate" ||
         input.interaction === "twist" ||
@@ -4465,6 +4474,10 @@ export class IndependentLayers {
     field.configure(input.mode, input.stiffness);
     field.interaction = input.interaction;
     field.setRotation(input.axis, input.angle);
+    if (sparse) {
+      field.setMirror(symmetry);
+      field.assertSeparatedMirror(source.step * 4);
+    }
     const limits = { ...this.growthLimits },
       footprint = field.affectedBounds();
     for (let a = 0; a < 3; a++) {
@@ -4476,11 +4489,8 @@ export class IndependentLayers {
         : planDenseGrowth(source, footprint, limits),
       layout = plan ?? { dimensions: source.dimensions, latticeMin: source.latticeMin },
       samples = layout.dimensions.reduce((n, v) => n * v, 1);
-    const chunks = sparse
-      ? plan
-        ? this.validateSparseGrowth(runtime, source, layout, limits)
-        : runtime.mesher.allocatedChunks
-      : 0;
+    if (sparse && plan) this.validateSparseGrowth(runtime, source, layout, limits);
+    const chunks = runtime.mesher.allocatedChunks;
     if (!sparse) this.assertCapacity(samples, runtime.layer.id);
     const limit = limits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes,
       base = this.trackedBytes + (sparse ? this.composite.trackedBytes : 0),
@@ -4513,7 +4523,11 @@ export class IndependentLayers {
       sculptPaint(source).revision === paintRevision &&
       runtime.layer.editable &&
       sameTransform(runtime.layer.transform, transform) &&
-      (!sparse || (!this.symmetry.enabled && source.fieldRevision === fieldRevision)) &&
+      (!sparse ||
+        (this.symmetry.enabled === symmetry.enabled &&
+          (!symmetry.enabled ||
+            (this.symmetry.axis === symmetry.axis && this.symmetry.offset === symmetry.offset)) &&
+          source.fieldRevision === fieldRevision)) &&
       this.viewMode === "separate" &&
       externalGuard();
     const work = new MoveWork(signal, guard);

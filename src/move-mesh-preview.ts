@@ -1,8 +1,9 @@
 import type { BufferGeometry, Group, Material } from "three";
-import { BufferAttribute, Matrix4, Mesh, MeshStandardMaterial, Sphere, type Vector3 } from "three";
+import { BufferAttribute, Matrix4, Mesh, MeshStandardMaterial, Sphere, Vector3 } from "three";
 import type { ChunkSpatialIndex } from "./chunk-spatial-index";
 import { FREE_MOVE_CORE, RadialMoveField } from "./move-field";
 import { surfaceMask } from "./sculpt-mask";
+import type { MirrorPlane } from "./sdf";
 import type { MoveInteraction } from "./tool-preferences";
 export const MOVE_PREPARATION_BUDGET_MS = 12;
 const identity = new Matrix4();
@@ -18,6 +19,15 @@ uniform float moveRadius;
 uniform float moveExponent;
 uniform float moveElastic;
 uniform float moveStiffness;
+uniform vec3 moveMirrorAxis;
+uniform float moveMirrorOffset;
+bool reflectedMove(vec3 p) {
+ return (dot(p,moveMirrorAxis)-moveMirrorOffset)*(dot(moveCenter,moveMirrorAxis)-moveMirrorOffset)<0.0;
+}
+vec3 reflectMoveVector(vec3 v) { return v-2.0*dot(v,moveMirrorAxis)*moveMirrorAxis; }
+vec3 reflectMovePoint(vec3 p) {
+ return p+2.0*(moveMirrorOffset-dot(p,moveMirrorAxis))*moveMirrorAxis;
+}
 float moveDistanceSquared(float raw) {
  if(moveInteraction<2.5)return raw;
  float t=max(0.0,(sqrt(raw)-${FREE_MOVE_CORE})/(1.0-${FREE_MOVE_CORE}));
@@ -49,7 +59,7 @@ vec3 rotationalMove(vec3 p){
  float w=moveWeight(p),profile=moveTwists()?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0;
  return moveCenter+rotateMove(r,moveAngle*w*profile)+(moveInteraction>2.5?moveDelta*w:vec3(0.0));
 }
-vec3 moveNormal(vec3 p,vec3 n) {
+vec3 primaryMoveNormal(vec3 p,vec3 n) {
  if(moveInteraction>0.5){vec3 r=p-moveCenter;float w=moveWeight(p),profile=moveTwists()?(1.0+dot(r,moveAxis)/moveRadius)*0.5:1.0,theta=moveAngle*w*profile;
  vec3 gradient=moveGradient(p),g=gradient*moveAngle*profile;if(moveTwists())g+=moveAxis*moveAngle*w/(2.0*moveRadius);
  vec3 v=cross(moveAxis,rotateMove(r,theta)),a=rotateMove(vec3(1,0,0),theta)+v*g.x,b=rotateMove(vec3(0,1,0),theta)+v*g.y,c=rotateMove(vec3(0,0,1),theta)+v*g.z;
@@ -60,6 +70,16 @@ vec3 moveNormal(vec3 p,vec3 n) {
  return cross(b,c)*n.x+cross(c,a)*n.y+cross(a,b)*n.z;
 }
 
+vec3 moveNormal(vec3 p,vec3 n) {
+ if(!reflectedMove(p))return primaryMoveNormal(p,n);
+ return reflectMoveVector(primaryMoveNormal(reflectMovePoint(p),reflectMoveVector(n)));
+}
+vec3 moveDisplacement(vec3 p) {
+ bool reflected=reflectedMove(p);
+ if(reflected)p=reflectMovePoint(p);
+ vec3 delta=moveInteraction>0.5?rotationalMove(p)-p:(moveElastic>0.5?elasticMove(p,-1):moveDelta*moveWeight(p));
+ return reflected?reflectMoveVector(delta):delta;
+}
 `;
 type Binding = {
   mesh: Mesh;
@@ -79,6 +99,8 @@ export class MoveMeshPreview {
   private readonly materials = new Map<MeshStandardMaterial, MeshStandardMaterial>();
   private readonly influence = new Sphere();
   private readonly candidates: Mesh[] = [];
+  private readonly mirroredCandidates: Mesh[] = [];
+  private readonly mirroredInfluence = new Sphere();
   readonly uniforms = {
     moveInteraction: { value: 0 },
     moveAxis: { value: this.field.axis },
@@ -89,6 +111,8 @@ export class MoveMeshPreview {
     moveExponent: { value: 3 },
     moveElastic: { value: 0 },
     moveStiffness: { value: 1 },
+    moveMirrorAxis: { value: new Vector3() },
+    moveMirrorOffset: { value: 0 },
   };
   get active(): boolean {
     return this.bindings.length > 0;
@@ -107,6 +131,7 @@ export class MoveMeshPreview {
     mode: "non-elastic" | "elastic" = "non-elastic",
     stiffness = 1,
     reservedRadius = radius,
+    mirror?: MirrorPlane,
   ): void {
     this.restore();
     if (!Number.isFinite(reservedRadius) || reservedRadius < radius)
@@ -114,6 +139,20 @@ export class MoveMeshPreview {
     this.uniforms.moveInteraction.value = 0;
     this.field.capture(center, radius, falloff, strength);
     this.field.configure(mode, stiffness);
+    this.field.setMirror(mirror);
+    this.uniforms.moveMirrorAxis.value.set(0, 0, 0);
+    this.uniforms.moveMirrorOffset.value = 0;
+    if (this.field.mirror) {
+      const axis = "xyz".indexOf(this.field.mirror.axis);
+      this.uniforms.moveMirrorAxis.value.setComponent(axis, 1);
+      this.uniforms.moveMirrorOffset.value = this.field.mirror.offset;
+      if (Math.abs(center.getComponent(axis) - this.field.mirror.offset) <= reservedRadius)
+        throw new Error(
+          "Mirrored Move needs two separated influences. Move away from the plane or reduce radius.",
+        );
+      this.field.setReflectedPoint(center, this.mirroredInfluence.center);
+      this.mirroredInfluence.radius = reservedRadius;
+    }
     this.uniforms.moveElastic.value = mode === "elastic" ? 1 : 0;
     this.uniforms.moveStiffness.value = stiffness;
     this.uniforms.moveRadius.value = radius;
@@ -133,7 +172,14 @@ export class MoveMeshPreview {
         );
     };
     try {
-      if (index) index.sphere(this.influence, this.candidates);
+      if (index) {
+        index.sphere(this.influence, this.candidates);
+        if (this.field.mirror) {
+          index.sphere(this.mirroredInfluence, this.mirroredCandidates);
+          for (const candidate of this.mirroredCandidates)
+            if (!this.candidates.includes(candidate)) this.candidates.push(candidate);
+        }
+      }
       for (const object of index ? this.candidates : surface.children) {
         if (!(object instanceof Mesh) || !object.visible) continue;
         const mesh = object,
@@ -144,7 +190,12 @@ export class MoveMeshPreview {
           throw new Error("Move requires layer-local chunk geometry.");
         // Chunk extraction already builds bounding spheres; no SDF reads or full remesh.
         const sphere = mesh.geometry.boundingSphere;
-        if (sphere && !sphere.intersectsSphere(this.influence)) continue;
+        if (
+          sphere &&
+          !sphere.intersectsSphere(this.influence) &&
+          !(this.field.mirror && sphere.intersectsSphere(this.mirroredInfluence))
+        )
+          continue;
         candidates += p.count;
         if (!(mesh.material instanceof MeshStandardMaterial))
           throw new Error("Move preview requires the existing sculpt material.");
@@ -154,7 +205,14 @@ export class MoveMeshPreview {
           const x = p.getX(i) - center.x,
             y = p.getY(i) - center.y,
             z = p.getZ(i) - center.z;
-          const distanceSquared = x * x + y * y + z * z;
+          let distanceSquared = x * x + y * y + z * z;
+          if (this.field.mirror) {
+            const reflected = this.mirroredInfluence.center,
+              dx = p.getX(i) - reflected.x,
+              dy = p.getY(i) - reflected.y,
+              dz = p.getZ(i) - reflected.z;
+            distanceSquared = Math.min(distanceSquared, dx * dx + dy * dy + dz * dz);
+          }
           if (distanceSquared < r2) count++;
           if (distanceSquared < reservedSquared) inReservation = true;
           if ((i & 1023) === 1023) checkBudget();
@@ -213,10 +271,10 @@ export class MoveMeshPreview {
               )
               .replace(
                 "#include <begin_vertex>",
-                "#include <begin_vertex>\ntransformed += (1.0-sculptMaskWeight)*(moveInteraction>0.5?rotationalMove(position)-position:(moveElastic>0.5?elasticMove(position,-1):moveDelta*moveWeight(position)));",
+                "#include <begin_vertex>\ntransformed += (1.0-sculptMaskWeight)*moveDisplacement(position);",
               );
           };
-          preview.customProgramCacheKey = () => "centra-move-preview-v5-free";
+          preview.customProgramCacheKey = () => "centra-move-preview-v6-mirror";
           this.materials.set(material, preview);
         }
         Object.assign(preview, {
@@ -256,6 +314,7 @@ export class MoveMeshPreview {
       throw error;
     } finally {
       this.candidates.length = 0;
+      this.mirroredCandidates.length = 0;
       this.preparationMs = performance.now() - start;
     }
   }

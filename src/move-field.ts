@@ -1,4 +1,5 @@
 import { Vector3 } from "three";
+import { type MirrorPlane, validateMirrorPlane } from "./sdf";
 import type { MoveInteraction } from "./tool-preferences";
 import type { VolumeBounds } from "./volume-store";
 /** Shared field contract for preview and reconstruction evaluation.
@@ -16,6 +17,39 @@ export const FREE_MOVE_CORE = 0.25;
 export class RadialMoveField implements DeformationField {
   readonly center = new Vector3();
   readonly delta = new Vector3();
+  mirror?: MirrorPlane;
+  private mirrorAxis = -1;
+  private readonly reflectedPoint = new Vector3();
+  private readonly reflectedNormal = new Vector3();
+  setMirror(plane?: MirrorPlane): void {
+    if (plane) validateMirrorPlane(plane);
+    this.mirror = plane?.enabled ? { ...plane } : undefined;
+    this.mirrorAxis = this.mirror ? "xyz".indexOf(this.mirror.axis) : -1;
+  }
+  setReflectedPoint(point: Vector3, out: Vector3): Vector3 {
+    if (!this.mirror) return out.copy(point);
+    const coordinate = point.getComponent(this.mirrorAxis);
+    return out.copy(point).setComponent(this.mirrorAxis, 2 * this.mirror.offset - coordinate);
+  }
+  private useReflection(point: Vector3): boolean {
+    return (
+      !!this.mirror &&
+      (point.getComponent(this.mirrorAxis) - this.mirror.offset) *
+        (this.center.getComponent(this.mirrorAxis) - this.mirror.offset) <
+        0
+    );
+  }
+  assertSeparatedMirror(padding: number): void {
+    if (!this.mirror) return;
+    const { min, max } = this.primaryBounds();
+    if (
+      min[this.mirrorAxis] - padding <= this.mirror.offset &&
+      max[this.mirrorAxis] + padding >= this.mirror.offset
+    )
+      throw new Error(
+        "Mirrored Move needs two separated influence and travel regions. Move away from the plane, reduce radius, or shorten the pull.",
+      );
+  }
   radius = 0.3;
   falloff = 2;
   strength = 1;
@@ -91,7 +125,7 @@ export class RadialMoveField implements DeformationField {
   private readonly translationGradient = new Vector3();
   private rotation(point: Vector3, out: Vector3): Vector3 {
     const r = this.rotated.copy(point).sub(this.center),
-      w = this.weight(point),
+      w = this.primaryWeight(point),
       profile = this.interaction === "twist" ? (1 + r.dot(this.axis) / this.radius) * 0.5 : 1;
     out
       .copy(r)
@@ -134,6 +168,11 @@ export class RadialMoveField implements DeformationField {
     // Long pulls stretch existing triangles before the release-time SDF reconstruction.
   }
   weight(point: Vector3): number {
+    return this.primaryWeight(
+      this.useReflection(point) ? this.setReflectedPoint(point, this.reflectedPoint) : point,
+    );
+  }
+  private primaryWeight(point: Vector3): number {
     const distanceSquared = point.distanceToSquared(this.center) / (this.radius * this.radius),
       q = this.interaction === "free" ? this.coreDistanceSquared(distanceSquared) : distanceSquared;
     return q >= 1 ? 0 : (1 - q) ** (this.falloff + 1);
@@ -160,6 +199,12 @@ export class RadialMoveField implements DeformationField {
           );
   }
   position(point: Vector3, out: Vector3): Vector3 {
+    if (!this.useReflection(point)) return this.primaryPosition(point, out);
+    const reflected = this.setReflectedPoint(point, this.reflectedPoint);
+    if (!this.primaryWeight(reflected)) return out.copy(point);
+    return this.setReflectedPoint(this.primaryPosition(reflected, out), out);
+  }
+  private primaryPosition(point: Vector3, out: Vector3): Vector3 {
     if (this.interaction !== "translate") return this.rotation(point, out);
     if (this.mode === "elastic") {
       const x = point.x,
@@ -171,13 +216,22 @@ export class RadialMoveField implements DeformationField {
       out.z += z;
       return out;
     }
-    const weight = this.weight(point);
+    const weight = this.primaryWeight(point);
     return out.copy(point).addScaledVector(this.delta, weight);
   }
   normal(point: Vector3, normal: Vector3, out: Vector3): Vector3 {
+    if (!this.useReflection(point)) return this.primaryNormal(point, normal, out);
+    const reflected = this.setReflectedPoint(point, this.reflectedPoint);
+    if (!this.primaryWeight(reflected)) return out.copy(normal).normalize();
+    const n = this.reflectedNormal.copy(normal);
+    n.setComponent(this.mirrorAxis, -n.getComponent(this.mirrorAxis));
+    this.primaryNormal(reflected, n, out);
+    return out.setComponent(this.mirrorAxis, -out.getComponent(this.mirrorAxis));
+  }
+  private primaryNormal(point: Vector3, normal: Vector3, out: Vector3): Vector3 {
     if (this.interaction !== "translate") {
       const r = this.rotated.copy(point).sub(this.center),
-        w = this.weight(point),
+        w = this.primaryWeight(point),
         profile = this.interaction === "twist" ? (1 + r.dot(this.axis) / this.radius) * 0.5 : 1,
         theta = this.angle * w * profile;
       this.gradient(point, this.translationGradient);
@@ -233,7 +287,26 @@ export class RadialMoveField implements DeformationField {
     out.copy(normal).multiplyScalar(determinant).addScaledVector(g, -dot);
     return out.lengthSq() > 1e-12 ? out.normalize() : out.set(nx, ny, nz).normalize();
   }
+  affectedRegions(): VolumeBounds[] {
+    const primary = this.primaryBounds();
+    if (!this.mirror) return [primary];
+    const axis = this.mirrorAxis,
+      min = [...primary.min] as VolumeBounds["min"],
+      max = [...primary.max] as VolumeBounds["max"];
+    min[axis] = 2 * this.mirror.offset - primary.max[axis];
+    max[axis] = 2 * this.mirror.offset - primary.min[axis];
+    return [primary, { min, max }];
+  }
   affectedBounds(): VolumeBounds {
+    const [primary, reflected] = this.affectedRegions();
+    if (!reflected) return primary;
+    for (let a = 0; a < 3; a++) {
+      primary.min[a] = Math.min(primary.min[a], reflected.min[a]);
+      primary.max[a] = Math.max(primary.max[a], reflected.max[a]);
+    }
+    return primary;
+  }
+  private primaryBounds(): VolumeBounds {
     const c = this.center,
       d = this.delta,
       r = this.radius;

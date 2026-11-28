@@ -232,7 +232,8 @@ test("shader uses shared field uniforms and analytic normals, with no per-frame 
       };
     material.onBeforeCompile(shader, {});
     assert(shader.vertexShader.includes("moveNormal(position,objectNormal)"));
-    assert(shader.vertexShader.includes("elasticMove(position,-1):moveDelta*moveWeight(position)"));
+    assert(shader.vertexShader.includes("moveDisplacement(position)"));
+    assert(shader.vertexShader.includes("elasticMove(p,-1):moveDelta*moveWeight(p)"));
     assert.equal(shader.uniforms.moveDelta.value, f.move.preview.field.delta);
     const chunks = f.l.active.surface.group.children,
       versions = chunks.map((m) => [

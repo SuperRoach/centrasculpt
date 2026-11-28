@@ -109,11 +109,14 @@ duplicate and reordered records, invalid padding or samples, nonpositive
 outer faces, invalid lengths and trailing data. The existing aggregate
 triangle limit counts candidate cells around negative pages. Dense and
 analytic layers retain their aggregate sample budget. Each sparse layer may
-address up to 1,153 samples per axis and 32,768 logical 16-cell chunks, with
-13,824 resident 8³ pages. All layers share the existing archive size and
-256 MiB native memory admission limits. Sparse stored data and page
-overhead count toward that memory budget. The logical dense equivalent
-does not enter the sparse decode allocation.
+address up to 1,153 samples per axis and hold up to 13,824 resident 8³ pages.
+The editor creates 16-cell mesh-directory entries on demand, using signed
+global block coordinates. The directory stores queued and surface state in
+memory and is rebuilt from resident pages on reopen. All layers share the
+existing archive-size and 256 MiB native memory admission limits. Sparse
+decode charges stored data and page overhead independently of logical
+extent. The page encoding and file version are unchanged. Older v25
+editors can refuse large files that exceed their logical chunk limit.
 
 Open and recovery workers transfer resident page buffers. Library import
 validates before publishing its independent entry. Rename and duplicate

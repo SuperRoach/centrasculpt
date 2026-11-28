@@ -192,13 +192,14 @@ reclamation of exact implicit pages after their history and reader pins
 release. Mirror during sparse Move and multi-layer sparse Cut All are gated.
 [Implementation, verification and handover](PHASE_9_6_SPARSE_MOVE_CUT_RECLAMATION.md)
 
-**Phase 9.7 · Production readiness.** Keep sparse opt-in through readiness.
-The remaining gates are the full
-1 mm metre-scale fixtures, paired physical Quest timing and isolated peak
-process/renderer/GPU memory. OPFS prefetch and clean-page eviction are a
-separate storage experiment with stable records, explicit residency and
-transactional checkpoint manifests. Indexed live geometry is separate
-mesh work.
+**Phase 9.7 · Production readiness.** Sparse mesh-directory allocation now
+tracks queued or surfaced chunks. The 1 mm desktop fixtures complete through
+1,000 mm. Mirrored sparse Move covers separated regions, and Cut All supports
+mixed editable layers in one transaction. The paired physical Quest compact
+replay shows a first-submission improvement and a slower sparse release
+drain. Warm lookup and transformed case medians pass. Exact-master memory
+and complete isolated device memory evidence still gate promotion. Dense stays the default and
+sparse remains opt-in. [Phase 9.7 evidence](PHASE_9_7_SPARSE_READINESS.md)
 
 Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
 and the implemented Undo cache stay in Phase 8. An adaptive brush candidate

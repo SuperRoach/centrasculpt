@@ -60,7 +60,7 @@ function replay({ kind, resolution, extent, strokes }, sparse) {
       }
     for (const { id, geometry } of mesher.snapshotUpdates()) {
       if (!geometry.getAttribute("position").count) continue;
-      surface.update(String(id));
+      surface.update(mesher.chunkKey(id));
       for (const name of ["position", "normal"])
         surface.update(new Uint8Array(geometry.getAttribute(name).array.buffer));
     }

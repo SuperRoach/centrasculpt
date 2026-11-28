@@ -1,3 +1,17 @@
+# Phase 9.7 — Experimental sparse readiness
+
+Sparse clay now allocates its mesh directory on demand and completes the
+100–1,000 mm tube, branch and islands at 1 mm spacing. Mirrored sparse Move
+supports distinct influence and travel regions, and Plane Cut All stages
+mixed-layer outputs in one Undo action. Native v25 still stores independent
+signed page records and reopens sparse layers in place.
+
+Four paired compact-bust runs on a physical Quest 3 at 90 Hz showed faster
+first mesh submission and longer release drains for sparse. The original
+exact-master memory gate and complete on-device peak memory coverage remain
+open for promotion. Dense remains the default. See the
+[Phase 9.7 readiness report](PHASE_9_7_SPARSE_READINESS.md).
+
 # Phase 9.6 — Sparse Move, Plane Cut and page reclamation
 
 Experimental sparse clay now supports bounded Move-family reconstruction,
