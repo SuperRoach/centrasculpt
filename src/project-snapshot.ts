@@ -138,10 +138,15 @@ export async function captureProject(
         check();
       };
       if (sparse && v instanceof SparseSDFVolume) {
-        for (const [id, page] of v.residentPages()) {
-          check();
-          sparse.pages.set(id, page.slice());
-          if (performance.now() >= deadline) await pause();
+        const release = v.pinResidentPages();
+        try {
+          for (const [id, page] of v.residentPages()) {
+            check();
+            sparse.pages.set(id, page.slice());
+            if (performance.now() >= deadline) await pause();
+          }
+        } finally {
+          release();
         }
       } else if (dense && values) {
         for (let i = 0; i < values.length; i += 16384) {

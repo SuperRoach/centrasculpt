@@ -3,6 +3,7 @@ import { MoveWork, reconstructMove } from "./deformation-reconstruction";
 import { RadialMoveField } from "./move-field";
 import { sculptMask } from "./sculpt-mask";
 import { SDFVolume } from "./sdf";
+import { MAX_SDF_PAGES, SparseSDFVolume } from "./sparse-sdf";
 
 // One private snapshot per worker; termination is cancellation, never publication.
 self.onmessage = async ({ data: d }) => {
@@ -14,13 +15,15 @@ self.onmessage = async ({ data: d }) => {
       group.add(new Mesh(geometry));
     }
     let first = true;
-    const volume = new SDFVolume(d.resolution, d.extent, false, d.layout, (n) => {
-      if (first) {
-        first = false;
-        return d.values;
-      }
-      return new Float32Array(n);
-    });
+    const volume = d.sparse
+      ? new SparseSDFVolume(d.resolution, d.extent, MAX_SDF_PAGES, d.layout, d.sparse)
+      : new SDFVolume(d.resolution, d.extent, false, d.layout, (n) => {
+          if (first) {
+            first = false;
+            return d.values;
+          }
+          return new Float32Array(n);
+        });
     if (d.mask) sculptMask(volume).restore(d.mask);
     const f = d.field,
       field = new RadialMoveField();

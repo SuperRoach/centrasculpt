@@ -341,6 +341,9 @@ export class IncrementalMesher {
   get allocatedChunks(): number {
     return this.chunks.length;
   }
+  orderedChunkIds(): Iterable<number> {
+    return this.layout.lookup.values();
+  }
   chunkKey(id: number): string {
     return this.chunks[id]?.key ?? "";
   }
@@ -597,7 +600,7 @@ export class IncrementalMesher {
   }
   /** Isolated edit branch: retain unchanged chunk buffers, remesh only the patch.
    * Borrowed buffers stay owned by the source until successful publication. */
-  forkEdit(next: SDFVolume, bounds: Bounds): IncrementalMesher {
+  forkEdit(next: SDFVolume | SparseSDFVolume, bounds: Bounds): IncrementalMesher {
     if (this.disposed || this.dirty.size) throw new Error("Finish source meshing before Move.");
     if (next.step !== this.volume.step) throw new Error("Move cannot resample source spacing.");
     const fork = new IncrementalMesher(next, this.chunkSize);

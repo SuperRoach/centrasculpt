@@ -67,7 +67,7 @@ import {
 } from "./parametric-primitive";
 import { type PersonalStamp, personalStampSource } from "./personal-stamp";
 import { snapValue } from "./physical-units";
-import { type CutPlane, splitSdfByPlane } from "./plane-cut";
+import { type CutPlane, splitSdfByPlaneSteps } from "./plane-cut";
 import { evaluateTube, type TubeSource, validateTube } from "./procedural-tube";
 import {
   assertProjectTriangleBudget,
@@ -216,6 +216,8 @@ export class LayerRuntime {
 export type MoveCommitStats = {
   backend: "worker" | "cooperative";
   waitMs: number;
+  workerInputBytes: number;
+  workerPostMs: number;
   slicePercentiles: { p50: number; p95: number; p99: number };
   wallMs: number;
   cpuMs: number;
@@ -1073,7 +1075,22 @@ export class IndependentLayers {
   }
   /** Give the oldest released queue one bounded slice when brush work does not own the frame. */
   drainSparseMeshes(): boolean {
-    return !this.strokeLayer && (this.sparseQueue().runtime?.rebuild() ?? false);
+    // Move and Cut own a staging allowance. An unrelated queued remesh
+    // must not grow the live mesh allocation while that allowance is in use.
+    if (this.strokeLayer || this.movePending || this.cutPending) return false;
+    const rebuilt = this.sparseQueue().runtime?.rebuild() ?? false;
+    if (
+      rebuilt ||
+      this.previewOwner ||
+      this.baking ||
+      this.copyPending ||
+      this.modellingOwner ||
+      this.preparingStandaloneStamp
+    )
+      return rebuilt;
+    for (const { volume } of this.runtimes.values())
+      if (volume instanceof SparseSDFVolume) volume.reclaimImplicitPages(8);
+    return false;
   }
   get pendingChunks(): number {
     let count = 0;
@@ -1157,7 +1174,8 @@ export class IndependentLayers {
     this.group.add(runtime.surface.group);
   }
   private bindSparseBudget(runtime: LayerRuntime): void {
-    if (runtime.volume instanceof SparseSDFVolume)
+    if (runtime.volume instanceof SparseSDFVolume) {
+      runtime.volume.pageHistory = runtime.history;
       runtime.volume.admitAllocation = (bytes) => {
         if (
           this.trackedBytes +
@@ -1168,16 +1186,14 @@ export class IndependentLayers {
         )
           throw new Error("Sparse edit exceeds the resident and transient memory budget.");
       };
+    }
   }
-  private growSparseRuntime(
+  private validateSparseGrowth(
     runtime: LayerRuntime,
     source: SparseSDFVolume,
-    footprint: import("./volume-store").VolumeBounds,
-  ): void {
-    const started = performance.now(),
-      options = this.growthLimits;
-    const layout = growthLayout(source, footprint, options);
-    if (!layout) return;
+    layout: import("./sdf").DenseLatticeLayout,
+    options: Partial<DenseGrowthLimits>,
+  ): number {
     const chunks = sparseChunkCount(layout);
     if (
       chunks > MAX_SPARSE_CHUNKS ||
@@ -1196,26 +1212,14 @@ export class IndependentLayers {
     // A pending redo could restore a non-default old face after capacity grows.
     // Reject such history on a moving face, regardless of the live field.
     runtime.history.assertSparseGrowthBoundary(source, layout);
-    const limit = options.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes;
-    let staged =
-      this.trackedBytes +
-      this.composite.trackedBytes +
-      runtime.history.pendingMemoryEstimate * 2.5 +
-      runtime.history.memoryBytes / 3 +
-      source.pageMemoryBytes +
-      chunks * 512;
-    const check = (bytes: number) => {
-      staged += bytes;
-      if (staged > limit)
-        throw new Error(
-          "Sparse growth exceeds the resident and transient memory budget. Existing sculpture kept.",
-        );
-    };
-    check(0);
-    const next = source.copyForGrowth(layout),
-      snapshot = this.undoMesh;
-    sculptMask(next).restore(sculptMask(source).snapshot(), check);
-    sculptPaint(next).restore(sculptPaint(source).snapshot(), check);
+    return chunks;
+  }
+  private prepareSparseChannelHistory(
+    runtime: LayerRuntime,
+    next: SparseSDFVolume,
+    entries: Iterable<TimelineEntry>,
+    check: (bytes: number) => void,
+  ): () => void {
     const stagedMasks = new Map<MaskSnapshot, MaskSnapshot>();
     const rebindMask = (before: MaskSnapshot): MaskSnapshot => {
       const previous = stagedMasks.get(before);
@@ -1228,7 +1232,7 @@ export class IndependentLayers {
     };
     const rebindPaint = (before: PaintSnapshot) => before.map(rebindMask) as PaintSnapshot;
     const rebindChannels: (() => void)[] = [];
-    for (const entry of this.historyEntries()) {
+    for (const entry of entries) {
       if (entry.layerId !== runtime.layer.id) continue;
       if (entry.kind === "mask") {
         const before = rebindMask(entry.before),
@@ -1253,6 +1257,46 @@ export class IndependentLayers {
         });
       }
     }
+    return () => {
+      for (const publish of rebindChannels) publish();
+    };
+  }
+  private growSparseRuntime(
+    runtime: LayerRuntime,
+    source: SparseSDFVolume,
+    footprint: import("./volume-store").VolumeBounds,
+  ): void {
+    const started = performance.now(),
+      options = this.growthLimits;
+    const layout = growthLayout(source, footprint, options);
+    if (!layout) return;
+    const chunks = this.validateSparseGrowth(runtime, source, layout, options);
+    const limit = options.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes;
+    let staged =
+      this.trackedBytes +
+      this.composite.trackedBytes +
+      runtime.history.pendingMemoryEstimate * 2.5 +
+      runtime.history.memoryBytes / 3 +
+      source.pageMemoryBytes +
+      chunks * 512;
+    const check = (bytes: number) => {
+      staged += bytes;
+      if (staged > limit)
+        throw new Error(
+          "Sparse growth exceeds the resident and transient memory budget. Existing sculpture kept.",
+        );
+    };
+    check(0);
+    const next = source.copyForGrowth(layout),
+      snapshot = this.undoMesh;
+    sculptMask(next).restore(sculptMask(source).snapshot(), check);
+    sculptPaint(next).restore(sculptPaint(source).snapshot(), check);
+    const publishChannels = this.prepareSparseChannelHistory(
+      runtime,
+      next,
+      this.historyEntries(),
+      check,
+    );
     const cache =
       snapshot?.runtime === runtime
         ? new Map(
@@ -1265,8 +1309,9 @@ export class IndependentLayers {
       publishMesh = runtime.mesher.prepareRebindVolume(next);
     publishMesh();
     publishHistory();
-    for (const publish of rebindChannels) publish();
+    publishChannels();
     source.admitAllocation = undefined;
+    source.pageHistory = undefined;
     runtime.volume = runtime.layer.volume = next;
     this.bindSparseBudget(runtime);
     next.finishGrowth();
@@ -2554,10 +2599,16 @@ export class IndependentLayers {
           layer.editable &&
           !layer.procedural &&
           !layer.primitive &&
-          layer.volume instanceof SDFVolume,
+          (layer.volume instanceof SDFVolume || layer.volume instanceof SparseSDFVolume),
       )
       .map((layer) => layer.id);
     if (!ids.length) throw new Error("There are no visible, unlocked SDF layers to cut.");
+    if (ids.some((id) => this.runtime(id).volume instanceof SparseSDFVolume)) {
+      if (ids.length === 1 && ids[0] === this.project.activeLayerId)
+        return this.cutOneByPlane(plane, signal, progress);
+      throw new Error("Use Active Layer to cut a sparse sculpt.");
+    }
+    this.assertCapacity(0, undefined, ids.length);
     const activeBefore = this.project.activeLayerId,
       selectedBefore = this.selectedGroupId,
       revision = this.committedRevision,
@@ -2584,7 +2635,11 @@ export class IndependentLayers {
     } catch (error) {
       for (let i = entries.length - 1; i >= 0; i--) {
         const entry = this.past.pop();
-        if (entry?.kind === "cut") this.replayCut(entry, false);
+        if (entry?.kind === "cut") {
+          this.replayCut(entry, false);
+          entry.negative.dispose();
+          entry.positive.dispose();
+        }
         this.display.remove(this.project.id, entries[i].positive.layer.id);
       }
       this.project.layerStack.select(activeBefore);
@@ -2608,8 +2663,6 @@ export class IndependentLayers {
     const original = this.editableRuntime(this.project.activeLayerId);
     this.assertSculptable(original.layer);
     this.assertBooleanUnreferenced(original.layer.id);
-    if (!(original.volume instanceof SDFVolume))
-      throw new Error("Plane Cut needs a dense SDF layer.");
     if (original.layer.operation === "intersect")
       throw new Error("Cut an Intersect layer only after converting it to separate Union layers.");
     const source = original.volume,
@@ -2619,10 +2672,25 @@ export class IndependentLayers {
       selectedBefore = this.selectedGroupId,
       index = this.project.layerStack.layers.findIndex((l) => l.id === original.layer.id),
       sampleCount = volumeSampleCount(source);
-    this.assertCapacity(sampleCount, original.layer.id, 1);
+    const sparse = source instanceof SparseSDFVolume;
+    const fieldRevision = sparse ? source.fieldRevision : undefined,
+      maskRevision = sculptMask(source).revision,
+      paintRevision = sculptPaint(source).revision;
+    this.assertCapacity(sparse ? 0 : sampleCount, original.layer.id, 1);
     const staging =
-      sampleCount * 16 + sculptMask(source).memoryBytes * 2 + sculptPaint(source).memoryBytes * 2;
-    if (this.trackedBytes + staging > 256 * 1024 ** 2)
+      (sparse
+        ? 2 *
+          (source.pageMemoryBytes +
+            original.mesher.allocatedChunks * 512 +
+            original.mesher.haloBytes)
+        : sampleCount * 16) +
+      sculptMask(source).memoryBytes * 2 +
+      sculptPaint(source).memoryBytes * 2;
+    const limit = sparse
+      ? (this.growthLimits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes)
+      : DENSE_GROWTH_LIMITS.maxTransientBytes;
+    const compositeBytes = sparse ? this.composite.trackedBytes : 0;
+    if (this.trackedBytes + compositeBytes + staging > limit)
       throw new Error("Plane Cut exceeds the project memory budget. Source layer kept.");
     const revision = this.committedRevision,
       projectId = this.project.id,
@@ -2644,6 +2712,7 @@ export class IndependentLayers {
       };
     this.cutPending = true;
     this.copyStagingBytes = staging;
+    const releaseSource = sparse ? source.pinResidentPages() : undefined;
     let negative: LayerRuntime | undefined, positive: LayerRuntime | undefined;
     const check = () => {
       if (
@@ -2653,6 +2722,9 @@ export class IndependentLayers {
         this.committedRevision !== revision ||
         this.runtimes.get(original.layer.id) !== original ||
         original.layer.volume !== source ||
+        (sparse && source.fieldRevision !== fieldRevision) ||
+        sculptMask(source).revision !== maskRevision ||
+        sculptPaint(source).revision !== paintRevision ||
         JSON.stringify(original.layer.metadata()) !== metadata
       )
         throw new Error("Plane Cut cancelled or source changed; original kept.");
@@ -2660,26 +2732,45 @@ export class IndependentLayers {
     try {
       check();
       progress("Preparing closed SDF pieces…");
-      const fields = splitSdfByPlane(source, localPlane);
-      const copyChannels = (target: SDFVolume, side: SDFVolume) => {
-        const mask = sculptMask(source).snapshot(),
-          paint = sculptPaint(source).snapshot();
-        const clipped = (snapshot: MaskSnapshot) => {
+      const work = splitSdfByPlaneSteps(source, localPlane);
+      let step = work.next(),
+        deadline = performance.now() + 3;
+      while (!step.done) {
+        if (sparse && performance.now() >= deadline) {
+          await yieldBake();
+          check();
+          deadline = performance.now() + 3;
+        }
+        step = work.next();
+      }
+      const fields = step.value;
+      const mask = sculptMask(source).snapshot(),
+        paint = sculptPaint(source).snapshot();
+      const copyChannels = async (target: VolumeStore) => {
+        const clipped = async (snapshot: MaskSnapshot) => {
           const pages = new Map<number, Float32Array>();
           for (const [page, values] of snapshot.pages) {
             const copy = values.slice(),
               start = page * 256;
-            for (let j = 0; j < copy.length && start + j < side.values.length; j++)
-              if (side.values[start + j] > source.step * 2) copy[j] = snapshot.base;
+            for (let j = 0; j < copy.length && start + j < sampleCount; j++)
+              if (target.readVoxel(start + j) > source.step * 2) copy[j] = snapshot.base;
             if (copy.some((value) => value !== snapshot.base)) pages.set(page, copy);
+            if (sparse && performance.now() >= deadline) {
+              await yieldBake();
+              check();
+              deadline = performance.now() + 3;
+            }
           }
           return { ...snapshot, pages };
         };
-        sculptMask(target).restore(clipped(mask));
-        sculptPaint(target).restore(paint.map((channel) => clipped(channel)) as PaintSnapshot);
+        sculptMask(target).restore(await clipped(mask));
+        const clippedPaint = [] as MaskSnapshot[];
+        for (const channel of paint) clippedPaint.push(await clipped(channel));
+        sculptPaint(target).restore(clippedPaint as PaintSnapshot);
       };
-      copyChannels(fields.negative, fields.negative);
-      copyChannels(fields.positive, fields.positive);
+      await copyChannels(fields.negative);
+      await copyChannels(fields.positive);
+      check();
       negative = new LayerRuntime(original.layer, this.neutral, fields.negative, true);
       const { id: unused, ...sourceMetadata } = original.layer.metadata();
       void unused;
@@ -2704,10 +2795,10 @@ export class IndependentLayers {
           if (
             negative.triangles + positive.triangles > triangleBudget ||
             this.trackedBytes +
-              this.copyStagingBytes +
+              (sparse ? compositeBytes : this.copyStagingBytes) +
               negative.mesher.ownedGeometryBytes +
               positive.mesher.ownedGeometryBytes >
-              256 * 1024 ** 2
+              limit
           )
             throw new Error("Plane Cut exceeds the geometry or memory safety limit. Source kept.");
           progress("Building piece previews…");
@@ -2758,6 +2849,7 @@ export class IndependentLayers {
       negative?.dispose();
       positive?.dispose();
       this.copyStagingBytes = 0;
+      releaseSource?.();
       this.cutPending = false;
     }
   }
@@ -3459,7 +3551,11 @@ export class IndependentLayers {
   }
   private discardFuture(preserveVoxelRedo = false): void {
     if (this.assemblyTransaction) return;
-    for (const entry of this.flattenEntries(this.future))
+    const discarded = this.future;
+    this.future = [];
+    if (!preserveVoxelRedo)
+      for (const runtime of this.runtimes.values()) runtime.history.discardRedo();
+    for (const entry of this.flattenEntries(discarded))
       if (entry.kind === "bake" && !this.runtimes.has(entry.layerId)) {
         entry.runtime.dispose();
         this.display.remove(this.project.id, entry.layerId);
@@ -3475,10 +3571,7 @@ export class IndependentLayers {
           if (!this.project.layerStack.layers.some((layer) => layer.id === cut.positive.layer.id))
             this.display.remove(this.project.id, cut.positive.layer.id);
         }
-    this.future = [];
     this.releaseHierarchyOrphans();
-    if (!preserveVoxelRedo)
-      for (const runtime of this.runtimes.values()) runtime.history.discardRedo();
   }
   private bakeState(): BakeState {
     return {
@@ -4343,17 +4436,21 @@ export class IndependentLayers {
       revision = sourceSurface.revision,
       maskRevision = sculptMask(source).revision,
       paintRevision = sculptPaint(source).revision,
+      fieldRevision = source instanceof SparseSDFVolume ? source.fieldRevision : undefined,
       project = this.project.id,
       start = performance.now();
     this.assertSculptable(runtime.layer);
     if (
       runtime.layer.volume !== source ||
-      !(source instanceof SDFVolume) ||
+      !(source instanceof SDFVolume || source instanceof SparseSDFVolume) ||
       !runtime.layer.editable ||
       this.viewMode !== "separate" ||
       sourceMesher.pendingChunks
     )
-      throw new Error("Move needs a ready, visible, unlocked dense source in Separate Layers.");
+      throw new Error("Move needs a ready, visible, unlocked sculpt source in Separate Layers.");
+    const sparse = source instanceof SparseSDFVolume;
+    if (sparse && this.symmetry.enabled)
+      throw new Error("Turn off Mirror to use Move on the sparse trial.");
     if (
       (input.interaction === "rotate" ||
         input.interaction === "twist" ||
@@ -4374,14 +4471,23 @@ export class IndependentLayers {
       footprint.min[a] -= source.step * 3;
       footprint.max[a] += source.step * 3;
     }
-    const plan = planDenseGrowth(source, footprint, limits),
+    const plan = sparse
+        ? growthLayout(source, footprint, limits)
+        : planDenseGrowth(source, footprint, limits),
       layout = plan ?? { dimensions: source.dimensions, latticeMin: source.latticeMin },
       samples = layout.dimensions.reduce((n, v) => n * v, 1);
-    this.assertCapacity(samples, runtime.layer.id);
+    const chunks = sparse
+      ? plan
+        ? this.validateSparseGrowth(runtime, source, layout, limits)
+        : runtime.mesher.allocatedChunks
+      : 0;
+    if (!sparse) this.assertCapacity(samples, runtime.layer.id);
     const limit = limits.maxTransientBytes ?? DENSE_GROWTH_LIMITS.maxTransientBytes,
-      base = this.trackedBytes,
+      base = this.trackedBytes + (sparse ? this.composite.trackedBytes : 0),
       candidateStorage =
-        samples * 8 + sculptMask(source).memoryBytes * 3 + sculptPaint(source).memoryBytes * 12;
+        (sparse ? source.pageMemoryBytes + chunks * 1024 + runtime.mesher.haloBytes : samples * 8) +
+        sculptMask(source).memoryBytes * 3 +
+        sculptPaint(source).memoryBytes * 12;
     let geometryBytes = 0;
     for (const o of sourceSurface.group.children)
       if ("geometry" in o) {
@@ -4407,18 +4513,42 @@ export class IndependentLayers {
       sculptPaint(source).revision === paintRevision &&
       runtime.layer.editable &&
       sameTransform(runtime.layer.transform, transform) &&
+      (!sparse || (!this.symmetry.enabled && source.fieldRevision === fieldRevision)) &&
       this.viewMode === "separate" &&
       externalGuard();
     const work = new MoveWork(signal, guard);
+    const releaseSource = sparse ? source.pinResidentPages() : undefined;
     let mesher: IncrementalMesher | undefined, stagedSurface: ChunkSurface | undefined;
     try {
-      const next = await copyMoveVolume(source, layout, work, progress),
-        result = await reconstructMoveAsync(
+      const next = await copyMoveVolume(source, layout, work, progress);
+      let channelStaging = 0;
+      const admitChannels = (bytes: number) => {
+        channelStaging += bytes;
+        this.moveStagingBytes = candidateStorage + channelStaging;
+        if (base + this.moveStagingBytes > limit)
+          throw new Error("Move channel remap exceeds the memory safety estimate.");
+      };
+      let publishChannels: (() => void) | undefined;
+      if (next instanceof SparseSDFVolume) {
+        sculptMask(next).restore(sculptMask(source).snapshot(), admitChannels);
+        sculptPaint(next).restore(sculptPaint(source).snapshot(), admitChannels);
+        if (plan)
+          publishChannels = this.prepareSparseChannelHistory(
+            runtime,
+            next,
+            this.historyEntries(),
+            admitChannels,
+          );
+      }
+      const reconstructionBudget = available - channelStaging;
+      if (reconstructionBudget <= 0)
+        throw new Error("Move exceeds the reconstruction memory safety estimate.");
+      const result = await reconstructMoveAsync(
           sourceSurface.group,
           next,
           field,
           work,
-          available,
+          reconstructionBudget,
           progress,
         ),
         patch = result.patch;
@@ -4427,8 +4557,9 @@ export class IndependentLayers {
         patch.indices.buffer.byteLength +
         patch.before.buffer.byteLength +
         patch.after.buffer.byteLength;
-      const retainedStaging =
+      let retainedStaging =
         candidateStorage +
+        channelStaging +
         result.indexBytes +
         patchBytes +
         patch.indices.length * 12 +
@@ -4436,17 +4567,41 @@ export class IndependentLayers {
       this.moveStagingBytes = retainedStaging + geometryBytes;
       if (base + this.moveStagingBytes > limit)
         throw new Error("Move staging/history exceeds the memory safety estimate.");
+      if (next instanceof SparseSDFVolume) {
+        // The worker owns a read-only copy. Reserve all destination pages on the
+        // detached candidate before applying any patch or preparing publication.
+        next.admitAllocation = (bytes) => {
+          retainedStaging += bytes;
+          this.moveStagingBytes = retainedStaging + geometryBytes;
+          if (base + this.moveStagingBytes > limit)
+            throw new Error("Move exceeds the sparse page staging budget.");
+        };
+        const pages = next.preparePatchPages(patch.indices, limit - base - this.moveStagingBytes);
+        let step = pages.next();
+        while (!step.done) {
+          await work.pause();
+          step = pages.next();
+        }
+        step.value?.();
+        next.admitAllocation = undefined;
+      }
       const history = runtime.history.prepareMoveReplacement(next, patch);
       for (let i = 0; i < patch.indices.length; i++) {
-        next.values[patch.indices[i]] = patch.after[i];
+        next.writeVoxel(patch.indices[i], patch.after[i]);
         if (i % 4096 === 4095) await work.pause();
       }
+      let paintPeak = 0;
       await transportPaint(
         source,
         next,
         field,
         () => work.pause(),
         Math.max(0, limit - base - this.moveStagingBytes),
+        sparse
+          ? (bytes) => {
+              paintPeak = Math.max(paintPeak, bytes);
+            }
+          : undefined,
       );
       mesher = sourceMesher.forkEdit(next, patch.bounds!);
       let meshMs = 0,
@@ -4501,15 +4656,13 @@ export class IndependentLayers {
         }
         return true;
       });
-      const discarded = this.future.filter(
-          (e) => e.kind === "bake" && !this.runtimes.has(e.layerId),
-        ),
-        future: TimelineEntry[] = [],
-        slot = this.group.children.indexOf(sourceSurface.group);
+      const slot = this.group.children.indexOf(sourceSurface.group);
       if (slot < 0) throw new Error("Move source is no longer displayed.");
       const stats: MoveCommitStats = {
         backend: work.backend,
         waitMs: work.waitMs,
+        workerInputBytes: work.workerInputBytes,
+        workerPostMs: work.workerPostMs,
         slicePercentiles: work.slicePercentiles,
         wallMs: performance.now() - start,
         cpuMs: work.measuredCPU,
@@ -4523,7 +4676,12 @@ export class IndependentLayers {
           base +
           Math.max(
             this.moveStagingBytes,
-            candidateStorage + work.workerSnapshotBytes + result.indexBytes + patchBytes,
+            retainedStaging + geometryBytes + paintPeak,
+            candidateStorage +
+              channelStaging +
+              work.workerSnapshotBytes +
+              result.indexBytes +
+              patchBytes,
           ),
         dirtyChunks,
         grew: !!plan,
@@ -4536,8 +4694,15 @@ export class IndependentLayers {
       // allocations precede this synchronous publication. No await below.
       history.publish();
       adopt();
+      publishChannels?.();
+      if (source instanceof SparseSDFVolume) {
+        source.admitAllocation = undefined;
+        source.pageHistory = undefined;
+      }
+      if (next instanceof SparseSDFVolume) next.finishGrowth();
       runtime.volume = runtime.layer.volume = next;
       runtime.mesher = mesher;
+      this.bindSparseBudget(runtime);
       runtime.surface = stagedSurface;
       registerMaskSurface(stagedSurface.group, () => runtime.volume);
       this.group.children[slot] = stagedSurface.group;
@@ -4553,7 +4718,6 @@ export class IndependentLayers {
       }
       this.committedRevision++;
       this.past = past;
-      this.future = future;
       this.lastMoveStats = stats;
       invalidateComposite();
       mesher = undefined;
@@ -4563,11 +4727,7 @@ export class IndependentLayers {
       try {
         sourceMesher.dispose();
         sourceSurface.clear();
-        for (const e of discarded)
-          if (e.kind === "bake") {
-            e.runtime.dispose();
-            this.display.remove(this.project.id, e.layerId);
-          }
+        this.discardFuture();
       } catch (error) {
         console.warn("Move committed; deferred resource cleanup failed", error);
       }
@@ -4575,6 +4735,7 @@ export class IndependentLayers {
     } finally {
       mesher?.dispose();
       stagedSurface?.clear();
+      releaseSource?.();
       this.moveStagingBytes = 0;
       this.movePending = false;
     }

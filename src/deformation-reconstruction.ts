@@ -1,11 +1,12 @@
-import type { Group } from "three";
-import { Mesh, Vector3 } from "three";
+import { Group, Mesh, Vector3 } from "three";
 import type { RadialMoveField } from "./move-field";
 import { copySculptMask, sculptMask } from "./sculpt-mask";
 import { copySculptPaint } from "./sculpt-paint";
 import type { Bounds } from "./sdf";
 import { SDFVolume } from "./sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import { TriangleDistanceIndex } from "./triangle-distance-index";
+import type { VolumeStore } from "./volume-store";
 export type MoveProgress = {
   stage: "copying" | "indexing" | "reconstruction" | "meshing";
   completed: number;
@@ -50,6 +51,8 @@ export class MoveWork {
   waitMs = 0;
   backend: "worker" | "cooperative" = "cooperative";
   workerSnapshotBytes = 0;
+  workerInputBytes = 0;
+  workerPostMs = 0;
   constructor(
     readonly signal: AbortSignal,
     private readonly guard: () => boolean,
@@ -83,11 +86,24 @@ export class MoveWork {
   }
 }
 export async function copyMoveVolume(
-  source: SDFVolume,
+  source: SDFVolume | SparseSDFVolume,
   layout: { dimensions: [number, number, number]; latticeMin: [number, number, number] },
   work: MoveWork,
   progress: (p: MoveProgress) => void,
-): Promise<SDFVolume> {
+): Promise<SDFVolume | SparseSDFVolume> {
+  if (source instanceof SparseSDFVolume) {
+    const pages = new Map<number, Float32Array>();
+    for (const [id, page] of source.residentPages()) {
+      pages.set(id, page.slice());
+      if (pages.size % 128 === 0) {
+        progress({ stage: "copying", completed: pages.size, total: source.allocatedPages });
+        await work.pause();
+      }
+    }
+    const next = source.copyForGrowth(layout, pages);
+    progress({ stage: "copying", completed: pages.size, total: pages.size });
+    return next;
+  }
   const next = new SDFVolume(source.resolution, source.extent, false, layout),
     offset = source.latticeMin.map((v, a) => v - layout.latticeMin[a]),
     [nx, ny, nz] = source.dimensions;
@@ -110,21 +126,31 @@ export async function copyMoveVolume(
   return next;
 }
 export async function reconstructMove(
-  surface: Group,
-  next: SDFVolume,
+  surface: Group | readonly Mesh[],
+  next: VolumeStore,
   field: RadialMoveField,
   work: MoveWork,
   maxBytes: number,
   progress: (p: MoveProgress) => void,
 ): Promise<{ patch: MovePatch; indexBytes: number; sampled: number }> {
+  const objects = surface instanceof Group ? surface.children : surface;
   let vertices = 0;
-  for (const object of surface.children)
+  for (const object of objects)
     if (object instanceof Mesh) vertices += object.geometry.getAttribute("position").count;
   if (vertices % 3 || !vertices) throw new Error("Move source has no complete triangles.");
   // Arrays, radix scratch, hierarchy, plus worst-case patch staging. Count-based
   // byte estimate is a resource check, not a global vertex limit.
+  const box = field.affectedBounds(),
+    dims = next.dimensions,
+    origin = next.bounds.min,
+    halo = 3 * next.step;
+  const lo = box.min.map((v, a) => Math.max(0, Math.floor((v - halo - origin[a]) / next.step))),
+    hi = box.max.map((v, a) =>
+      Math.min(dims[a] - 1, Math.ceil((v + halo - origin[a]) / next.step)),
+    ),
+    total = lo.reduce((n, v, a) => n * Math.max(0, hi[a] - v + 1), 1);
   const estimated = vertices * 48;
-  if (estimated > maxBytes)
+  if (estimated + (next instanceof SparseSDFVolume ? total * 24 : 0) > maxBytes)
     throw new Error(
       "Move exceeds available reconstruction memory. Reduce scene detail or influence.",
     );
@@ -134,7 +160,7 @@ export async function reconstructMove(
     q = new Vector3();
   let at = 0,
     hasDeformation = false;
-  for (const object of surface.children)
+  for (const object of objects)
     if (object instanceof Mesh) {
       const source = object.geometry.getAttribute("position");
       for (let i = 0; i < source.count; i++) {
@@ -166,15 +192,6 @@ export async function reconstructMove(
     };
   const index = await TriangleDistanceIndex.build(positions, changed, () => work.pause());
   progress({ stage: "indexing", completed: vertices, total: vertices });
-  const box = field.affectedBounds(),
-    dims = next.dimensions,
-    origin = next.bounds.min,
-    halo = 3 * next.step;
-  const lo = box.min.map((v, a) => Math.max(0, Math.floor((v - halo - origin[a]) / next.step))),
-    hi = box.max.map((v, a) =>
-      Math.min(dims[a] - 1, Math.ceil((v + halo - origin[a]) / next.step)),
-    ),
-    total = lo.reduce((n, v, a) => n * Math.max(0, hi[a] - v + 1), 1);
   // Preallocate bounded patch storage once; subarray views retain owned buffers.
   if (index.bytes + total * 24 > maxBytes)
     throw new Error(
@@ -191,7 +208,7 @@ export async function reconstructMove(
       for (let x = lo[0]; x <= hi[0]; x++) {
         p.set(next.coordinate(x, 0), next.coordinate(y, 1), next.coordinate(z, 2));
         const id = next.index(x, y, z),
-          old = next.values[id],
+          old = next.readVoxel(id),
           weight = field.weight(p);
         sampled++;
         // Material outside the original compact influence is never removed, including

@@ -43,7 +43,7 @@ export class SculptMask {
     const value = this.pages.get(Math.floor(index / PAGE))?.[index % PAGE] ?? this.base;
     return this.inverted ? Math.fround(1 - value) : value;
   }
-  write(index: number, value: number): void {
+  write(index: number, value: number, admitPage?: (bytes: number) => void): void {
     if (
       !Number.isSafeInteger(index) ||
       index < 0 ||
@@ -58,6 +58,7 @@ export class SculptMask {
     const page = Math.floor(index / PAGE);
     let data = this.pages.get(page);
     if (!this.writable.has(page)) {
+      admitPage?.(PAGE * 4 + 64);
       data = data ? data.slice() : new Float32Array(PAGE).fill(this.base);
       this.pages.set(page, data);
       this.writable.add(page);

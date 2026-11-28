@@ -29,12 +29,17 @@ export function sparseChunkCount({ dimensions, latticeMin }: DenseLatticeLayout)
 }
 const MAX_BRUSH_SAMPLES = 2 * 1024 ** 2;
 
-/** Pages remain resident for the volume's lifetime so history replay needs no allocation. */
+/** Exact resident storage. Implicit pages may be reclaimed once replay and readers release them. */
 export class SparseSDFVolume extends LatticeVolume {
   protected override readonly yieldDuringBrushPublication = false;
   // A negative-axis growth shifts local indices but must not round old gradient fractions differently.
   protected override readonly normalsUseAbsoluteLattice = true;
   admitAllocation?: (bytes: number) => void;
+  pageHistory?: { readonly pagePinRevision: number; pinsPage(bounds: Bounds): boolean };
+  private readers = 0;
+  private reclaimCandidates = new Set<number>();
+  private historyPinned = new Set<number>();
+  private reclaimRevision = -1;
   private scratch = new Float32Array(0);
   private readonly pages = new Map<number, Float32Array>();
   private pageRevision = 0;
@@ -77,7 +82,11 @@ export class SparseSDFVolume extends LatticeVolume {
       this.defaultValue !== Math.fround(extent * 4)
     )
       throw new Error("Invalid sparse default field value.");
-    if (snapshot) for (const [id, page] of snapshot.pages) this.pages.set(id, page);
+    if (snapshot)
+      for (const [id, page] of snapshot.pages) {
+        this.pages.set(id, page);
+        if (page.every((value) => value === this.defaultValue)) this.reclaimCandidates.add(id);
+      }
   }
   /** Borrowed resident pages. Callers transfer ownership only from detached worker volumes. */
   *residentPages(): IterableIterator<[number, Float32Array]> {
@@ -87,9 +96,47 @@ export class SparseSDFVolume extends LatticeVolume {
     if (!this.pages.has(id)) return "implicit";
     return this.dirtyPages.has(id) ? "resident-dirty" : "resident-clean";
   }
-  /** All allocated pages are pinned for this resident-only implementation. */
+  /** A borrowed snapshot may span yields. A detached copy owns independent pages. */
+  pinResidentPages(): () => void {
+    this.readers++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.readers--;
+    };
+  }
   isPagePinned(id: number): boolean {
-    return this.pages.has(id);
+    return (
+      this.pages.has(id) &&
+      (this.readers > 0 || (this.pageHistory?.pinsPage(this.pageBounds(id)) ?? false))
+    );
+  }
+  /** Check only candidates; pages held by history are retried when that history changes. */
+  reclaimImplicitPages(maxPages: number): number {
+    if (this.readers || this.growthSource) return 0;
+    const revision = this.pageHistory?.pagePinRevision ?? -1;
+    if (revision !== this.reclaimRevision) {
+      for (const id of this.historyPinned) this.reclaimCandidates.add(id);
+      this.historyPinned.clear();
+      this.reclaimRevision = revision;
+    }
+    let removed = 0;
+    for (const id of this.reclaimCandidates) {
+      if (maxPages-- <= 0) break;
+      this.reclaimCandidates.delete(id);
+      const page = this.pages.get(id);
+      if (!page?.every((value) => value === this.defaultValue)) continue;
+      if (this.isPagePinned(id)) {
+        this.historyPinned.add(id);
+        continue;
+      }
+      this.pages.delete(id);
+      this.dirtyPages.delete(id);
+      removed++;
+    }
+    if (removed) this.pageRevision++;
+    return removed;
   }
   get pageMemoryBytes(): number {
     return this.pages.size * SDF_PAGE_MEMORY;
@@ -148,10 +195,13 @@ export class SparseSDFVolume extends LatticeVolume {
     }
   }
   /** New capacity uses the exact implicit value. Absolute page addresses never move. */
-  copyForGrowth(layout: DenseLatticeLayout): SparseSDFVolume {
+  copyForGrowth(
+    layout: DenseLatticeLayout,
+    detachedPages?: Map<number, Float32Array>,
+  ): SparseSDFVolume {
     const next = new SparseSDFVolume(this.resolution, this.extent, this.maxPages, layout, {
       defaultValue: this.defaultValue,
-      pages: new Map([...this.pages].map(([id, values]) => [id, values.slice()])),
+      pages: detachedPages ?? new Map([...this.pages].map(([id, values]) => [id, values.slice()])),
     });
     for (const id of this.dirtyPages) next.dirtyPages.add(id);
     next.growthSource = { volume: this, revision: this.writeRevision };
@@ -172,6 +222,9 @@ export class SparseSDFVolume extends LatticeVolume {
   /** Break the staged source reference once the runtime has published the replacement. */
   finishGrowth(): void {
     this.growthSource = undefined;
+  }
+  get fieldRevision(): number {
+    return this.writeRevision;
   }
   get allocatedPages(): number {
     return this.pages.size;
@@ -242,6 +295,8 @@ export class SparseSDFVolume extends LatticeVolume {
     if (page && !Object.is(page[offset], next)) {
       page[offset] = next;
       this.dirtyPages.add(key);
+      if (next === this.defaultValue && !this.historyPinned.has(key))
+        this.reclaimCandidates.add(key);
       this.writeRevision++;
     }
   }
@@ -280,6 +335,7 @@ export class SparseSDFVolume extends LatticeVolume {
       for (const [key, page] of staged) {
         this.pages.set(key, page);
         this.dirtyPages.add(key);
+        this.reclaimCandidates.add(key);
       }
       this.pageRevision++;
     };
@@ -339,6 +395,7 @@ export class SparseSDFVolume extends LatticeVolume {
     for (const [key, page] of staged) {
       this.pages.set(key, page);
       this.dirtyPages.add(key);
+      this.reclaimCandidates.add(key);
     }
     if (staged.length) this.pageRevision++;
   }

@@ -1,3 +1,13 @@
+# Phase 9.6 — Sparse Move, Plane Cut and page reclamation
+
+Experimental sparse clay now supports bounded Move-family reconstruction,
+including masked edits and admitted growth at fixed spacing. Active-layer
+Plane Cut produces two exact sparse pieces. Idle reclamation releases only
+implicit-valued pages with no active reader or voxel history pin. Mirror
+during sparse Move and multi-layer Cut All involving sparse sources are
+gated. Dense remains the default.
+[Coverage, measurements and readiness handover](PHASE_9_6_SPARSE_MOVE_CUT_RECLAMATION.md)
+
 # Phase 9.5 — Experimental native sparse persistence and growth
 
 Native v25 files retain exact sparse pages through open, download, Library

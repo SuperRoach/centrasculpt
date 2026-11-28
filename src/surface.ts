@@ -15,6 +15,9 @@ export class ChunkSurface {
   ) {
     this.group.name = "SDF Sculpture";
   }
+  chunkMesh(id: number): Mesh | undefined {
+    return this.meshes.get(id);
+  }
   clear(): void {
     this.group.clear();
     this.meshes.clear();

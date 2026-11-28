@@ -186,12 +186,19 @@ at fixed spacing. The 1 mm tube reaches 1,000 mm. The 1,000 mm diagonal
 branch and islands reach the current chunk-directory limit.
 [Native persistence, growth and replay results](PHASE_9_5_SPARSE_PERSISTENCE_GROWTH.md)
 
-Keep sparse opt-in. The next storage experiment is asynchronous OPFS
-prefetch and clean-page eviction with stable records, explicit residency,
-active and history pins, and transactional checkpoint manifests. Separate
-work will evaluate indexed live geometry. Move-family reconstruction,
-Plane Cut, history-aware reclamation, the full 1 mm fixture set, paired
-physical Quest timing and measured peak process/GPU memory remain gates.
+**Phase 9.6** adds bounded sparse Move-family reconstruction, fixed-spacing
+Move growth on an admissible exterior, active-layer Plane Cut and idle
+reclamation of exact implicit pages after their history and reader pins
+release. Mirror during sparse Move and multi-layer sparse Cut All are gated.
+[Implementation, verification and handover](PHASE_9_6_SPARSE_MOVE_CUT_RECLAMATION.md)
+
+**Phase 9.7 · Production readiness.** Keep sparse opt-in through readiness.
+The remaining gates are the full
+1 mm metre-scale fixtures, paired physical Quest timing and isolated peak
+process/renderer/GPU memory. OPFS prefetch and clean-page eviction are a
+separate storage experiment with stable records, explicit residency and
+transactional checkpoint manifests. Indexed live geometry is separate
+mesh work.
 
 Only outstanding 8.3c work moved here on 2026-11-15. Completed 8.3a/b research
 and the implemented Undo cache stay in Phase 8. An adaptive brush candidate

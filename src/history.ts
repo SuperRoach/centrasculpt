@@ -1,6 +1,6 @@
 import { assertExactLatticeGrowth } from "./dense-growth";
 import { type Bounds, type DenseLatticeLayout, SDFVolume, type VoxelChangeListener } from "./sdf";
-import type { SparseSDFVolume } from "./sparse-sdf";
+import { SparseSDFVolume } from "./sparse-sdf";
 import type { VolumeStore } from "./volume-store";
 export type HistoryKind = "stroke" | "reset" | "shape-stamp" | "move";
 export type HistoryTransaction = { layerId: string; kind: HistoryKind; changedVoxels: number };
@@ -110,6 +110,17 @@ export class SculptHistory {
         check(action.indices[i], action.before[i], action.after[i]);
     }
     if (this.pending) for (const [id, { before, after }] of this.pending) check(id, before, after);
+  }
+  get pagePinRevision(): number {
+    return this.revision;
+  }
+  pinsPage(bounds: Bounds): boolean {
+    // Pending brush writes may still be rolled back. Retained actions use
+    // conservative bounds so checking a page never scans the voxel deltas.
+    if (this.pending) return true;
+    const intersects = ({ bounds: action }: Action) =>
+      action.min.every((v, a) => v <= bounds.max[a] && action.max[a] >= bounds.min[a]);
+    return this.past.some(intersects) || this.future.some(intersects);
   }
   get pendingMemoryEstimate(): number {
     return (this.pending?.size ?? 0) * 160 + (this.packed?.indices.length ?? 0) * 12;
@@ -316,7 +327,7 @@ export class SculptHistory {
   /** Trusted atomic Move branch. Candidate is an exact lattice copy before
    * patch application. No live history/store mutation until the returned publish. */
   prepareMoveReplacement(
-    next: SDFVolume,
+    next: SDFVolume | SparseSDFVolume,
     patch: {
       indices: Uint32Array;
       before: Float32Array;
@@ -324,7 +335,11 @@ export class SculptHistory {
       bounds: Bounds | null;
     },
   ): { publish: () => void; undoCount: number } {
-    if (!(this.volume instanceof SDFVolume) || this.active || !this.canEdit())
+    if (
+      !(this.volume instanceof SDFVolume || this.volume instanceof SparseSDFVolume) ||
+      this.active ||
+      !this.canEdit()
+    )
       throw new Error("Move history target is unavailable.");
     if (
       !patch.indices.length ||
@@ -347,12 +362,14 @@ export class SculptHistory {
       !offset.every((v, a) => Number.isInteger(v) && v >= 0 && v + od[a] <= nd[a])
     )
       throw new Error("Move replacement must preserve the original lattice.");
+    if (next instanceof SparseSDFVolume) assertExactLatticeGrowth(old, next);
+    const count = nd[0] * nd[1] * nd[2];
     for (let i = 0; i < patch.indices.length; i++) {
       const id = patch.indices[i];
       if (
-        id >= next.values.length ||
+        id >= count ||
         (i > 0 && id <= patch.indices[i - 1]) ||
-        next.values[id] !== patch.before[i] ||
+        !Object.is(next.readVoxel(id), patch.before[i]) ||
         !Number.isFinite(patch.after[i]) ||
         Math.abs(patch.after[i]) > Math.fround(next.extent * 4)
       )

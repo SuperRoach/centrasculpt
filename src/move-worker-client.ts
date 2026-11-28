@@ -1,17 +1,17 @@
-import type { Group } from "three";
-import { Mesh } from "three";
+import { Group, Mesh } from "three";
 import type { MoveProgress, MoveWork } from "./deformation-reconstruction";
 import { reconstructMove } from "./deformation-reconstruction";
 import type { RadialMoveField } from "./move-field";
 import { sculptMask } from "./sculpt-mask";
 import type { SDFVolume } from "./sdf";
+import { type SparsePageSnapshot, SparseSDFVolume } from "./sparse-sdf";
 
 let generation = 0;
 /** Browser worker owns copies only. Node/unsupported environments use the cooperative path.
  * Worker startup/runtime failures reject without retrying expensive work on the render thread. */
 export async function reconstructMoveAsync(
-  surface: Group,
-  next: SDFVolume,
+  surface: Group | readonly Mesh[],
+  next: SDFVolume | SparseSDFVolume,
   field: RadialMoveField,
   work: MoveWork,
   maxBytes: number,
@@ -21,21 +21,38 @@ export async function reconstructMoveAsync(
     return reconstructMove(surface, next, field, work, maxBytes, progress);
   const id = ++generation,
     positions: Float32Array[] = [];
-  let snapshotBytes = next.values.byteLength * 2 + sculptMask(next).memoryBytes * 2;
-  for (const o of surface.children)
+  const objects = surface instanceof Group ? surface.children : surface;
+  const dense = next.getDenseView();
+  let snapshotBytes =
+    (next instanceof SparseSDFVolume ? next.pageMemoryBytes * 2 : dense!.byteLength * 2) +
+    sculptMask(next).memoryBytes * 2;
+  for (const o of objects)
     if (o instanceof Mesh) snapshotBytes += o.geometry.getAttribute("position").count * 12;
   // Preserve existing large-volume support when worker duplication exceeds the cap.
   let vertices = 0;
-  for (const o of surface.children)
+  for (const o of objects)
     if (o instanceof Mesh) vertices += o.geometry.getAttribute("position").count;
   if (snapshotBytes + vertices * 48 >= maxBytes)
     return reconstructMove(surface, next, field, work, maxBytes, progress);
-  const values = new Float32Array(next.values.length);
-  for (let i = 0; i < values.length; i += 65536) {
-    values.set(next.values.subarray(i, i + 65536), i);
-    await work.pause();
+  const values = dense && new Float32Array(dense.length);
+  let sparse: SparsePageSnapshot | undefined;
+  const fieldBuffers: ArrayBufferLike[] = [];
+  if (dense && values) {
+    fieldBuffers.push(values.buffer);
+    for (let i = 0; i < values.length; i += 65536) {
+      values.set(dense.subarray(i, i + 65536), i);
+      await work.pause();
+    }
+  } else if (next instanceof SparseSDFVolume) {
+    sparse = { defaultValue: next.defaultValue, pages: new Map() };
+    for (const [id, page] of next.residentPages()) {
+      const copy = page.slice();
+      sparse.pages.set(id, copy);
+      fieldBuffers.push(copy.buffer);
+      if (sparse.pages.size % 128 === 0) await work.pause();
+    }
   }
-  for (const o of surface.children)
+  for (const o of objects)
     if (o instanceof Mesh) {
       const a = o.geometry.getAttribute("position"),
         copy = new Float32Array(a.count * 3);
@@ -90,11 +107,15 @@ export async function reconstructMoveAsync(
             reject(error);
           }
         };
+        const transfer = [...fieldBuffers, ...positions.map((p) => p.buffer)];
+        work.workerInputBytes = transfer.reduce((bytes, buffer) => bytes + buffer.byteLength, 0);
+        const started = performance.now();
         worker.postMessage(
           {
             id,
             positions,
             values,
+            sparse,
             mask: sculptMask(next).snapshot(),
             resolution: next.resolution,
             extent: next.extent,
@@ -112,8 +133,9 @@ export async function reconstructMoveAsync(
               angle: field.angle,
             },
           },
-          [values.buffer, ...positions.map((p) => p.buffer)],
+          transfer as ArrayBuffer[],
         );
+        work.workerPostMs = performance.now() - started;
       }),
     );
   } finally {

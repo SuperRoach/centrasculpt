@@ -22,6 +22,7 @@ import type { IndependentLayers, LayerRuntime } from "./independent-layers";
 import { FREE_MOVE_CORE } from "./move-field";
 import { MoveGesture } from "./move-gesture";
 import { MOVE_PREPARATION_BUDGET_MS, MoveMeshPreview } from "./move-mesh-preview";
+import { SparseSDFVolume } from "./sparse-sdf";
 import type { MoveInteraction } from "./tool-preferences";
 import { uniformScale } from "./transform";
 import type { VolumeStore } from "./volume-store";
@@ -378,6 +379,19 @@ export class XRMoveTool implements XRStrokeInteraction {
         : `${this.tools.contextLabel} · release commits`;
       if (this.liveSizing === "move-falloff")
         this.feedback += ` · Tool stick: edge softness ${this.preview.field.falloff.toFixed(2)}`;
+      return;
+    }
+    if (
+      runtime.volume instanceof SparseSDFVolume &&
+      (runtime.mesher.pendingChunks || l.symmetry.enabled)
+    ) {
+      this.targetState = "unavailable";
+      this.influence.hide();
+      this.marker.visible = false;
+      this.armed = false;
+      this.feedback = l.symmetry.enabled
+        ? "Turn off Mirror to use Move on the sparse trial."
+        : "Move · waiting for sparse surface updates";
       return;
     }
     if (!tool!.buttons.trigger.pressed && tool!.buttons.trigger.rawValue < 0.45) this.armed = true;

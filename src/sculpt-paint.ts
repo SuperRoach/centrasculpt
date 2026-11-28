@@ -146,6 +146,7 @@ export async function transportPaint(
   field: RadialMoveField,
   pause: () => Promise<void>,
   maxBytes = 64 * 1024 ** 2,
+  reportBytes?: (bytes: number) => void,
 ) {
   const paint = sculptPaint(source);
   if (paint.empty) return;
@@ -155,6 +156,14 @@ export async function transportPaint(
     q = new Vector3(),
     dims = source.dimensions,
     nd = next.dimensions;
+  const admit = (extra = 0) => {
+    const bytes = acc.size * 192 + target.memoryBytes + extra;
+    if (bytes > maxBytes)
+      throw new Error(
+        "Paint transport exceeds the Move memory budget. Reduce the painted area or pull.",
+      );
+    reportBytes?.(bytes);
+  };
   let count = 0;
   for (const [id, a] of paint.channels[3].entries()) {
     p.set(
@@ -180,17 +189,19 @@ export async function transportPaint(
           v[3] += a * w;
           v[4] += w;
           acc.set(dest, v);
-          if (acc.size * 192 + target.memoryBytes > maxBytes)
-            throw new Error(
-              "Paint transport exceeds the Move memory budget. Reduce the painted area or pull.",
-            );
+          admit();
         }
     if (++count % 128 === 0) await pause();
   }
   target.clear();
   count = 0;
   for (const [id, v] of acc) {
-    for (let k = 0; k < 4; k++) target.channels[k].write(id, Math.min(1, v[k] / Math.max(1, v[4])));
+    for (let k = 0; k < 4; k++)
+      target.channels[k].write(
+        id,
+        Math.min(1, v[k] / Math.max(1, v[4])),
+        reportBytes ? admit : undefined,
+      );
     if (++count % 128 === 0) await pause();
   }
 }
